@@ -1,0 +1,272 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbindung zum OpenWrt Router",
+        "description": "Wähle die Verbindungsmethode für deinen OpenWrt Router. Ubus wird dringend empfohlen, da es alle Funktionen unterstützt. [Mehr erfahren]({docs_url}).",
+        "data": {
+          "host": "Host (IP-Adresse oder Hostname)",
+          "connection_type": "Verbindungstyp"
+        }
+      },
+      "credentials": {
+        "title": "Authentifizierung",
+        "description": "Gib die Zugangsdaten für {host} via {connection_type} ein.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort",
+          "use_ssl": "SSL/HTTPS verwenden",
+          "verify_ssl": "SSL-Zertifikat überprüfen",
+          "port": "Port",
+          "ubus_path": "Ubus Pfad (z.B. /ubus)"
+        }
+      },
+      "ssh": {
+        "title": "SSH Authentifizierung",
+        "description": "Gib die SSH Zugangsdaten für {host} ein.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort",
+          "ssh_key": "Privater SSH Schlüssel (Optional, lässt das Passwort leer, falls verwendet)",
+          "port": "Port"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Neu authentifizieren",
+        "description": "Die Zugangsdaten für den OpenWrt Router sind nicht mehr gültig. Bitte gib das neue Passwort ein.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      },
+      "ssdp_confirm": {
+        "title": "OpenWrt Router gefunden",
+        "description": "Möchten Sie {name} ({host}) einrichten? Die Verbindung wird über ubus (HTTP/HTTPS) hergestellt.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort",
+          "use_ssl": "SSL (HTTPS) nutzen",
+          "port": "Port (Optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum Router fehlgeschlagen. Prüfe IP/Host und ob der Dienst (ubus/LuCI/SSH) läuft.",
+      "invalid_auth": "Ungültige Zugangsdaten (Benutzername, Passwort oder SSH-Key).",
+      "timeout": "Zeitüberschreitung der Verbindung. Prüfe die Erreichbarkeit und den Port.",
+      "ssl_error": "SSL-Verifizierung fehlgeschlagen. Deaktiviere 'SSL-Zertifikat prüfen' bei selbstsignierten Zertifikaten.",
+      "package_missing": "Erforderliches OpenWrt Paket fehlt. Für ubus: 'uhttpd-mod-ubus'. Für LuCI: 'luci-mod-rpc'. Installation via SSH: 'opkg update && opkg install <paket>'.",
+      "permission_error": "Unzureichende RPC-Rechte. Prüfe die Benutzer-ACLs in /etc/config/rpcd oder LuCI Rechte.",
+      "unknown": "Ein unerwarteter Fehler ist aufgetreten."
+    },
+    "abort": {
+      "already_configured": "Dieser Router ist bereits konfiguriert.",
+      "reauth_successful": "Die erneute Authentifizierung war erfolgreich.",
+      "no_host": "Das gefundene Gerät hat keine gültige Host-Adresse.",
+      "not_openwrt": "Das gefundene Gerät scheint kein OpenWrt-Router zu sein."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenWrt Optionen",
+        "data": {
+          "update_interval": "Aktualisierungsintervall (Sekunden)",
+          "track_devices": "Verbundene Geräte tracken (Device Tracker)",
+          "track_wired": "Kabelgebundene Geräte in Tracking einschließen",
+          "consider_home": "Sekunden bevor ein Gerät auf 'abwesend' gesetzt wird",
+          "custom_firmware_repo": "Eigenes GitHub Firmware Repo (URL oder owner/repo)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "memory_usage": {
+        "name": "Arbeitsspeicher Auslastung"
+      },
+      "memory_used": {
+        "name": "Arbeitsspeicher genutzt"
+      },
+      "swap_usage": {
+        "name": "Swap Auslastung"
+      },
+      "load_1min": {
+        "name": "Auslastung (1m)"
+      },
+      "load_5min": {
+        "name": "Auslastung (5m)"
+      },
+      "load_15min": {
+        "name": "Auslastung (15m)"
+      },
+      "uptime": {
+        "name": "Betriebszeit"
+      },
+      "temperature": {
+        "name": "Temperatur"
+      },
+      "storage_usage": {
+        "name": "Speicherbelegung"
+      },
+      "firmware_version": {
+        "name": "Firmware-Version"
+      },
+      "kernel_version": {
+        "name": "Kernel-Version"
+      },
+      "architecture": {
+        "name": "Architektur"
+      },
+      "connected_clients": {
+        "name": "Verbundene Clients"
+      },
+      "wireless_clients": {
+        "name": "WLAN Clients"
+      },
+      "wifi_clients": {
+        "name": "Clients"
+      },
+      "wifi_signal": {
+        "name": "Signal"
+      },
+      "wifi_channel": {
+        "name": "Kanal"
+      },
+      "net_rx": {
+        "name": "Download (RX)"
+      },
+      "net_tx": {
+        "name": "Upload (TX)"
+      },
+      "net_ipv4": {
+        "name": "IPv4 Adresse"
+      },
+      "mwan_ratio": {
+        "name": "Online Quote"
+      },
+      "wifi_txpower": {
+        "name": "Sendeleistung"
+      },
+      "wifi_htmode": {
+        "name": "HT Modus"
+      },
+      "net_rx_errors": {
+        "name": "Empfangsfehler"
+      },
+      "net_tx_errors": {
+        "name": "Sendefehler"
+      },
+      "net_rx_dropped": {
+        "name": "Empf. verworfen"
+      },
+      "net_tx_dropped": {
+        "name": "Ges. verworfen"
+      },
+      "net_collisions": {
+        "name": "Kollisionen"
+      },
+      "net_multicast": {
+        "name": "Multicast"
+      },
+      "device_signal": {
+        "name": "Signalstärke"
+      },
+      "device_rx_rate": {
+        "name": "RX Rate"
+      },
+      "device_tx_rate": {
+        "name": "TX Rate"
+      },
+      "device_connection_type": {
+        "name": "Verbindungstyp"
+      }
+    },
+    "binary_sensor": {
+      "device_connected": {
+        "name": "Verbunden"
+      },
+      "firmware_update_available": {
+        "name": "Firmware Update Verfügbar"
+      },
+      "mwan_online": {
+        "name": "MWAN {interface} online"
+      },
+      "interface_up": {
+        "name": "{interface} verbunden"
+      },
+      "wps_active": {
+        "name": "WPS Aktiv"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Router neustarten"
+      },
+      "interface_reconnect": {
+        "name": "{interface} neu verbinden"
+      },
+      "firewall_port_forward": {
+        "name": "Portweiterleitung"
+      },
+      "device_access": {
+        "name": "Internetzugriff"
+      },
+      "wps_start": {
+        "name": "WPS starten"
+      },
+      "wps_cancel": {
+        "name": "WPS abbrechen"
+      },
+      "service_restart": {
+        "name": "{service} neustarten"
+      }
+    },
+    "switch": {
+      "wps": {
+        "name": "WPS"
+      },
+      "wireless_radio": {
+        "name": "Funknetz"
+      },
+      "service_toggle": {
+        "name": "Dienst"
+      }
+    },
+    "update": {
+      "firmware_update": {
+        "name": "Firmware"
+      },
+      "custom_firmware_update": {
+        "name": "Custom Firmware"
+      }
+    },
+    "light": {
+      "led": {
+        "name": "LED"
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Authentifizierung für {host} fehlgeschlagen",
+      "description": "Die OpenWrt Integration konnte sich nicht mit {host} authentifizieren. Die Zugangsdaten könnten sich geändert haben.\n\nBitte aktualisiere die Zugangsdaten, um die Verbindung wiederherzustellen."
+    },
+    "wan_down": {
+      "title": "Lokales Netzwerk / WAN auf {host} unterbrochen",
+      "description": "Der OpenWrt Router {host} meldet, dass das Haupt-WAN-Interface derzeit ausgeschaltet oder nicht verbunden ist. Die Internetverbindung könnte beeinträchtigt sein."
+    },
+    "connection_lost": {
+      "title": "Verbindung zu {host} verloren",
+      "description": "Home Assistant kann den OpenWrt Router unter {host} nicht mehr erreichen. Bitte überprüfe, ob das Gerät eingeschaltet und im Netzwerk erreichbar ist."
+    },
+    "missing_packages": {
+      "title": "Fehlende empfohlene Pakete auf {host}",
+      "description": "Um alle Funktionen der OpenWrt Integration optimal zu nutzen, fehlen einige Pakete auf {host}.\n\nBitte installiere die folgenden Pakete via LuCI oder SSH: `{packages}`."
+    },
+    "firmware_outdated": {
+      "title": "OpenWrt Firmware ist veraltet auf {host}",
+      "description": "Der OpenWrt Router {host} verwendet Version {current_version}, aber Version {latest_version} ist verfügbar.\n\nEs wird dringend empfohlen, die Firmware des Routers aus Sicherheitsgründen aktuell zu halten. Die neueste Version kann [hier]({release_url}) heruntergeladen werden."
+    }
+  }
+}

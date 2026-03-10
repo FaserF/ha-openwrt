@@ -1,0 +1,30 @@
+{
+  "domain": "openwrt",
+  "name": "OpenWrt",
+  "codeowners": [
+    "@FaserF"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "ssdp"
+  ],
+  "documentation": "https://github.com/FaserF/ha-openwrt",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/FaserF/ha-openwrt/issues",
+  "loggers": [
+    "openwrt"
+  ],
+  "requirements": [
+    "paramiko>=4.0.0"
+  ],
+  "ssdp": [
+    {
+      "st": "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
+    },
+    {
+      "st": "urn:schemas-upnp-org:device:InternetGatewayDevice:2"
+    }
+  ],
+  "version": "0.1.0"
+}

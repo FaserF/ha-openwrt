@@ -1,0 +1,79 @@
+"""Constants for the OpenWrt integration."""
+
+from __future__ import annotations
+
+from typing import Final
+
+DOMAIN: Final = "openwrt"
+
+CONF_HOST: Final = "host"
+CONF_USERNAME: Final = "username"
+CONF_PASSWORD: Final = "password"
+CONF_PORT: Final = "port"
+CONF_USE_SSL: Final = "use_ssl"
+CONF_VERIFY_SSL: Final = "verify_ssl"
+CONF_CONNECTION_TYPE: Final = "connection_type"
+CONF_SSH_KEY: Final = "ssh_key"
+CONF_UBUS_PATH: Final = "ubus_path"
+CONF_UPDATE_INTERVAL: Final = "update_interval"
+CONF_CONSIDER_HOME: Final = "consider_home"
+CONF_TRACK_DEVICES: Final = "track_devices"
+CONF_TRACK_WIRED: Final = "track_wired"
+CONF_INTERFACE: Final = "interface"
+
+CONNECTION_TYPE_UBUS: Final = "ubus"
+CONNECTION_TYPE_LUCI_RPC: Final = "luci_rpc"
+CONNECTION_TYPE_SSH: Final = "ssh"
+
+DEFAULT_PORT_UBUS: Final = 80
+DEFAULT_PORT_UBUS_SSL: Final = 443
+DEFAULT_PORT_SSH: Final = 22
+DEFAULT_PORT_LUCI_RPC: Final = 80
+DEFAULT_USERNAME: Final = "root"
+DEFAULT_UBUS_PATH: Final = "/ubus"
+DEFAULT_UPDATE_INTERVAL: Final = 30
+DEFAULT_CONSIDER_HOME: Final = 180
+DEFAULT_TRACK_DEVICES: Final = True
+DEFAULT_TRACK_WIRED: Final = True
+DEFAULT_USE_SSL: Final = False
+DEFAULT_VERIFY_SSL: Final = False
+
+PLATFORMS: Final = [
+    "binary_sensor",
+    "button",
+    "device_tracker",
+    "light",
+    "sensor",
+    "switch",
+    "update",
+]
+
+DATA_COORDINATOR: Final = "coordinator"
+DATA_CLIENT: Final = "client"
+
+ATTR_MANUFACTURER: Final = "OpenWrt"
+ATTR_MODEL: Final = "Router"
+
+OPENWRT_FIRMWARE_API: Final = "https://firmware-selector.openwrt.org/data/overview.json"
+OPENWRT_RELEASE_API: Final = "https://downloads.openwrt.org/.versions.json"
+
+CONF_CUSTOM_FIRMWARE_REPO: Final = "custom_firmware_repo"
+CONF_CUSTOM_FIRMWARE_PATTERN: Final = "custom_firmware_pattern"
+
+SENSOR_TYPE_SYSTEM: Final = "system"
+SENSOR_TYPE_NETWORK: Final = "network"
+SENSOR_TYPE_WIRELESS: Final = "wireless"
+SENSOR_TYPE_CLIENTS: Final = "clients"
+
+SIGNAL_STRENGTH_MAP: Final = {
+    range(-50, 0): "Excellent",
+    range(-60, -50): "Good",
+    range(-70, -60): "Fair",
+    range(-80, -70): "Weak",
+    range(-100, -80): "Very Weak",
+}
+
+SERVICE_REBOOT: Final = "reboot"
+SERVICE_EXEC: Final = "execute_command"
+SERVICE_INIT: Final = "manage_service"
+SERVICE_WOL: Final = "wake_on_lan"

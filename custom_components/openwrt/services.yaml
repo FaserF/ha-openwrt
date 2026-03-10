@@ -1,0 +1,53 @@
+reboot:
+  description: Reboots the OpenWrt router.
+  fields:
+    entry_id:
+      description: The config entry ID of the router to reboot.
+      example: 1234567890abcdef1234567890abcdef
+      required: false
+      selector:
+        text: {}
+
+execute_command:
+  description: Executes a shell command on the OpenWrt router.
+  fields:
+    entry_id:
+      description: The config entry ID of the router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        text: {}
+    command:
+      description: The command to execute.
+      example: "cat /proc/cpuinfo"
+      required: true
+      selector:
+        text: {}
+
+manage_service:
+  description: Manage an init.d service on the OpenWrt router.
+  fields:
+    entry_id:
+      description: The config entry ID of the router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        text: {}
+    service_name:
+      description: The name of the service (e.g., dnsmasq).
+      example: "dnsmasq"
+      required: true
+      selector:
+        text: {}
+    action:
+      description: The action to perform (start, stop, restart, enable, disable).
+      example: "restart"
+      required: true
+      selector:
+        select:
+          options:
+            - "start"
+            - "stop"
+            - "restart"
+            - "enable"
+            - "disable"

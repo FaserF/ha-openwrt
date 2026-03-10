@@ -1,0 +1,49 @@
+name: Bug Report
+description: Create a report to help us improve the OpenWrt integration
+title: '[Bug]: '
+labels: ['bug', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: input
+    id: version
+    attributes:
+      label: Integration Version
+      description: Which version of this integration are you using?
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: input
+    id: openwrt_version
+    attributes:
+      label: OpenWrt Version
+      description: Which version of OpenWrt is running on your router?
+      placeholder: 25.12.0
+    validations:
+      required: true
+  - type: dropdown
+    id: auth_method
+    attributes:
+      label: Connection Method
+      description: How is the integration connecting to your router?
+      options:
+        - ubus (HTTP/HTTPS)
+        - LuCI RPC
+        - SSH
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Please copy and paste any relevant log output. Use the integration's debug logging if possible.
+      render: shell

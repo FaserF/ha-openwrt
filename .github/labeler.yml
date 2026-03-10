@@ -1,0 +1,22 @@
+# Add "enhancement" label to PRs modifying feat/* branches or having feature in title
+enhancement:
+  - head-branch: ['^feat/', '^feature/']
+
+# Add "bug" label to PRs modifying fix/* branches
+bug:
+  - head-branch: ['^fix/', '^bugfix/']
+
+# Add "documentation" label
+documentation:
+  - changed-files:
+    - any-glob-to-any-file: ['**/*.md', 'docs/**']
+
+# Add "ci" label
+ci:
+  - changed-files:
+    - any-glob-to-any-file: ['.github/**']
+
+# Add "tests" label
+tests:
+  - changed-files:
+    - any-glob-to-any-file: ['tests/**']

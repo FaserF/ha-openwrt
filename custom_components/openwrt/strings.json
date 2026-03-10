@@ -1,0 +1,272 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to OpenWrt Router",
+        "description": "Select the connection method for your OpenWrt router. Ubus is highly recommended as it supports all features. [Learn more]({docs_url}).",
+        "data": {
+          "host": "Host (IP address or hostname)",
+          "connection_type": "Connection Type"
+        }
+      },
+      "credentials": {
+        "title": "Authentication",
+        "description": "Enter the credentials for {host} via {connection_type}.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "use_ssl": "Use SSL/HTTPS",
+          "verify_ssl": "Verify SSL Certificate",
+          "port": "Port",
+          "ubus_path": "Ubus Path (e.g. /ubus)"
+        }
+      },
+      "ssh": {
+        "title": "SSH Authentication",
+        "description": "Enter the SSH credentials for {host}.",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "ssh_key": "Private SSH Key (Optional, leaves password blank if used)",
+          "port": "Port"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "The credentials for the OpenWrt router are no longer valid. Please enter the new password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "ssdp_confirm": {
+        "title": "Discovered OpenWrt Router",
+        "description": "Do you want to set up {name} ({host})? Connection will be established via ubus (HTTP/HTTPS).",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "use_ssl": "Use SSL (HTTPS)",
+          "port": "Port (Optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the router. Check the IP/Host and ensure the selected service (ubus/LuCI/SSH) is running.",
+      "invalid_auth": "Invalid authentication credentials (Username, Password or SSH Key).",
+      "timeout": "Connection timed out. Check if the router is reachable and the port is correct.",
+      "ssl_error": "SSL verification failed. If using self-signed certs, disable 'Verify SSL Certificate'.",
+      "package_missing": "Required OpenWrt package is missing. For ubus: 'uhttpd-mod-ubus'. For LuCI: 'luci-mod-rpc'. Install via SSH: 'opkg update && opkg install <package>'.",
+      "permission_error": "Insufficient RPC permissions. Check your user ACLs in /etc/config/rpcd or LuCI permissions.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This router is already configured.",
+      "reauth_successful": "Re-authentication was successful.",
+      "no_host": "Discovered device has no valid host address.",
+      "not_openwrt": "Discovered device does not appear to be an OpenWrt router."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenWrt Options",
+        "data": {
+          "update_interval": "Update interval (seconds)",
+          "track_devices": "Track connected devices",
+          "track_wired": "Include wired devices in tracking",
+          "consider_home": "Seconds to wait before marking a device as away",
+          "custom_firmware_repo": "Custom GitHub Firmware Repo (URL or owner/repo)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "memory_usage": {
+        "name": "Memory Usage"
+      },
+      "memory_used": {
+        "name": "Memory Used"
+      },
+      "swap_usage": {
+        "name": "Swap Usage"
+      },
+      "load_1min": {
+        "name": "Load (1m)"
+      },
+      "load_5min": {
+        "name": "Load (5m)"
+      },
+      "load_15min": {
+        "name": "Load (15m)"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
+      "storage_usage": {
+        "name": "Storage Usage"
+      },
+      "firmware_version": {
+        "name": "Firmware Version"
+      },
+      "kernel_version": {
+        "name": "Kernel Version"
+      },
+      "architecture": {
+        "name": "Architecture"
+      },
+      "connected_clients": {
+        "name": "Connected Clients"
+      },
+      "wireless_clients": {
+        "name": "Wireless Clients"
+      },
+      "wifi_clients": {
+        "name": "Clients"
+      },
+      "wifi_signal": {
+        "name": "Signal"
+      },
+      "wifi_channel": {
+        "name": "Channel"
+      },
+      "net_rx": {
+        "name": "RX"
+      },
+      "net_tx": {
+        "name": "TX"
+      },
+      "net_ipv4": {
+        "name": "IPv4 Address"
+      },
+      "mwan_ratio": {
+        "name": "Online Ratio"
+      },
+      "wifi_txpower": {
+        "name": "TX Power"
+      },
+      "wifi_htmode": {
+        "name": "HT Mode"
+      },
+      "net_rx_errors": {
+        "name": "RX Errors"
+      },
+      "net_tx_errors": {
+        "name": "TX Errors"
+      },
+      "net_rx_dropped": {
+        "name": "RX Dropped"
+      },
+      "net_tx_dropped": {
+        "name": "TX Dropped"
+      },
+      "net_collisions": {
+        "name": "Collisions"
+      },
+      "net_multicast": {
+        "name": "Multicast"
+      },
+      "device_signal": {
+        "name": "Signal Strength"
+      },
+      "device_rx_rate": {
+        "name": "RX Rate"
+      },
+      "device_tx_rate": {
+        "name": "TX Rate"
+      },
+      "device_connection_type": {
+        "name": "Connection Type"
+      }
+    },
+    "binary_sensor": {
+      "device_connected": {
+        "name": "Connected"
+      },
+      "firmware_update_available": {
+        "name": "Firmware Update Available"
+      },
+      "mwan_online": {
+        "name": "Online"
+      },
+      "interface_up": {
+        "name": "Connected"
+      },
+      "wps_active": {
+        "name": "WPS Active"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Reboot"
+      },
+      "interface_reconnect": {
+        "name": "Reconnect"
+      },
+      "firewall_port_forward": {
+        "name": "Port Forward"
+      },
+      "device_access": {
+        "name": "Internet Access"
+      },
+      "wps_start": {
+        "name": "Start WPS"
+      },
+      "wps_cancel": {
+        "name": "Cancel WPS"
+      },
+      "service_restart": {
+        "name": "Restart"
+      }
+    },
+    "switch": {
+      "wps": {
+        "name": "WPS"
+      },
+      "wireless_radio": {
+        "name": "Radio"
+      },
+      "service_toggle": {
+        "name": "Service"
+      }
+    },
+    "update": {
+      "firmware_update": {
+        "name": "Firmware"
+      },
+      "custom_firmware_update": {
+        "name": "Custom Firmware"
+      }
+    },
+    "light": {
+      "led": {
+        "name": "LED"
+      }
+    }
+  },
+  "issues": {
+    "auth_failed": {
+      "title": "Authentication failed for {host}",
+      "description": "The OpenWrt integration could not authenticate with {host}. The credentials might have been changed.\n\nPlease update the credentials to restore the connection."
+    },
+    "wan_down": {
+      "title": "WAN connection is down on {host}",
+      "description": "The OpenWrt router {host} reports that the main WAN interface is currently down. Internet connectivity might be affected."
+    },
+    "connection_lost": {
+      "title": "Connection lost to {host}",
+      "description": "Home Assistant cannot reach the OpenWrt router at {host}. Please check if the device is powered on and reachable over the network."
+    },
+    "missing_packages": {
+      "title": "Missing recommended packages on {host}",
+      "description": "To use all features of the OpenWrt integration, some packages are missing on {host}.\n\nPlease install the following packages via LuCI or SSH: `{packages}`."
+    },
+    "firmware_outdated": {
+      "title": "OpenWrt firmware is outdated on {host}",
+      "description": "The OpenWrt router {host} is running version {current_version}, but version {latest_version} is available.\n\nIt is highly recommended to keep your router's firmware up to date for security reasons. You can download the latest release [here]({release_url})."
+    }
+  }
+}

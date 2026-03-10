@@ -1,0 +1,756 @@
+"""OpenWrt SSH client.
+
+Communicates with OpenWrt via SSH using paramiko.
+Supports both password and key-based authentication.
+This is the most compatible method that works with any OpenWrt installation.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import Any
+
+from .base import (
+    AccessControl,
+    ConnectedDevice,
+    DeviceInfo,
+    DhcpLease,
+    FirewallRedirect,
+    NetworkInterface,
+    OpenWrtClient,
+    ServiceInfo,
+    SystemResources,
+    WirelessInterface,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class SshError(Exception):
+    """Error communicating via SSH."""
+
+
+class SshAuthError(SshError):
+    """Authentication error."""
+
+
+class SshTimeoutError(SshError):
+    """Connection or request timeout."""
+
+
+class SshConnectionError(SshError):
+    """TCP connection failure (e.g. refused, unreachable)."""
+
+
+class SshKeyError(SshError):
+    """SSH key parsing or authentication failure."""
+
+
+class SshClient(OpenWrtClient):
+    """Client for OpenWrt via SSH (paramiko)."""
+
+    def __init__(
+        self,
+        host: str,
+        username: str,
+        password: str,
+        port: int = 22,
+        use_ssl: bool = False,
+        verify_ssl: bool = False,
+        ssh_key: str | None = None,
+    ) -> None:
+        """Initialize the SSH client."""
+        super().__init__(host, username, password, port, use_ssl, verify_ssl)
+        self._ssh_key = ssh_key
+        self._client: Any = None
+
+    async def _exec(self, command: str) -> str:
+        """Execute a command via SSH and return stdout."""
+
+        loop = asyncio.get_event_loop()
+
+        def _run() -> str:
+            if self._client is None:
+                raise SshError("Not connected")
+            _stdin, stdout, stderr = self._client.exec_command(command, timeout=15)
+            exit_code = stdout.channel.recv_exit_status()
+            output = stdout.read().decode("utf-8", errors="replace")
+            error = stderr.read().decode("utf-8", errors="replace")
+            if exit_code != 0 and error:
+                _LOGGER.debug(
+                    "SSH command '%s' returned %d: %s", command, exit_code, error
+                )
+            return output
+
+        try:
+            return await loop.run_in_executor(None, _run)
+        except Exception as err:
+            _LOGGER.debug("SSH command failed, marking as disconnected: %s", err)
+            self._connected = False
+            if self._client:
+                try:
+                    self._client.close()
+                except Exception:
+                    pass
+                self._client = None
+            raise
+
+    async def connect(self) -> bool:
+        """Connect via SSH."""
+        loop = asyncio.get_event_loop()
+
+        def _connect() -> None:
+            import io
+
+            import paramiko
+
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            connect_kwargs: dict[str, Any] = {
+                "hostname": self.host,
+                "port": self.port,
+                "username": self.username,
+                "timeout": 10,
+                "allow_agent": False,
+                "look_for_keys": False,
+            }
+
+            if self._ssh_key:
+                key_file = io.StringIO(self._ssh_key)
+                try:
+                    pkey = paramiko.RSAKey.from_private_key(key_file)
+                except Exception:
+                    key_file.seek(0)
+                    try:
+                        pkey = paramiko.Ed25519Key.from_private_key(key_file)
+                    except Exception:
+                        key_file.seek(0)
+                        pkey = paramiko.ECDSAKey.from_private_key(key_file)
+                connect_kwargs["pkey"] = pkey
+            else:
+                connect_kwargs["password"] = self.password
+
+            try:
+                client.connect(**connect_kwargs)
+            except paramiko.AuthenticationException as err:
+                raise SshAuthError(
+                    f"SSH auth failed for {self.username}@{self.host}. Check credentials/key."
+                ) from err
+            except TimeoutError as err:
+                raise SshTimeoutError(
+                    f"SSH connection timed out for {self.host}"
+                ) from err
+            except (OSError, paramiko.SSHException) as err:
+                err_str = str(err).lower()
+                if "connection refused" in err_str:
+                    raise SshConnectionError(
+                        f"SSH connection refused on {self.host}:{self.port}. Is SSH enabled?"
+                    ) from err
+                if "no route to host" in err_str:
+                    raise SshConnectionError(
+                        f"Host {self.host} is unreachable."
+                    ) from err
+                raise SshError(f"SSH connection failed: {err}") from err
+            except Exception as err:
+                raise SshError(f"SSH connection failed: {err}") from err
+
+            transport = client.get_transport()
+            if transport:
+                transport.set_keepalive(30)
+
+            self._client = client
+
+        try:
+            await loop.run_in_executor(None, _connect)
+            self._connected = True
+            _LOGGER.debug("SSH connected to %s", self.host)
+            return True
+        except SshError, SshAuthError:
+            raise
+        except Exception as err:
+            raise SshError(f"SSH connection error: {err}") from err
+
+    async def disconnect(self) -> None:
+        """Disconnect SSH."""
+        if self._client:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._client.close)
+            self._client = None
+        self._connected = False
+
+    async def get_device_info(self) -> DeviceInfo:
+        """Get device information."""
+        info = DeviceInfo()
+
+        board_json = await self._exec(
+            "ubus call system board 2>/dev/null || cat /etc/board.json 2>/dev/null"
+        )
+        if board_json and board_json.strip() and board_json.strip().startswith("{"):
+            data = json.loads(board_json)
+            info.hostname = data.get("hostname", "")
+            info.model = data.get("model", data.get("board_name", ""))
+            info.board_name = data.get("board_name", "")
+            info.kernel_version = data.get("kernel", "")
+            info.architecture = data.get("system", "")
+            release = data.get("release", {})
+            info.release_distribution = release.get("distribution", "OpenWrt")
+            info.release_version = release.get("version", "")
+            info.release_revision = release.get("revision", "")
+            info.target = release.get("target", "")
+            info.firmware_version = f"{info.release_version} ({info.release_revision})"
+
+        if not info.hostname:
+            try:
+                info.hostname = (
+                    await self._exec("uci get system.@system[0].hostname")
+                ).strip()
+            except Exception:  # noqa: BLE001
+                pass
+
+        if not info.release_version:
+            try:
+                release_str = await self._exec("cat /etc/openwrt_release")
+                for line in release_str.strip().split("\n"):
+                    if "DISTRIB_RELEASE" in line:
+                        info.release_version = line.split("=")[1].strip().strip("'\"")
+                    elif "DISTRIB_REVISION" in line:
+                        info.release_revision = line.split("=")[1].strip().strip("'\"")
+                    elif "DISTRIB_TARGET" in line:
+                        info.target = line.split("=")[1].strip().strip("'\"")
+                    elif "DISTRIB_ARCH" in line:
+                        info.architecture = line.split("=")[1].strip().strip("'\"")
+                info.firmware_version = (
+                    f"{info.release_version} ({info.release_revision})"
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+        try:
+            mac = (
+                await self._exec("cat /sys/class/net/br-lan/address 2>/dev/null")
+            ).strip()
+            info.mac_address = mac.upper() if mac else ""
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            uptime_str = await self._exec("cat /proc/uptime")
+            info.uptime = int(float(uptime_str.strip().split()[0]))
+        except Exception:  # noqa: BLE001
+            pass
+
+        return info
+
+    async def get_system_resources(self) -> SystemResources:
+        """Get system resource usage."""
+        resources = SystemResources()
+
+        meminfo = await self._exec("cat /proc/meminfo")
+        for line in meminfo.strip().split("\n"):
+            parts = line.split()
+            if len(parts) >= 2:
+                key = parts[0].rstrip(":")
+                val = int(parts[1]) * 1024
+                if key == "MemTotal":
+                    resources.memory_total = val
+                elif key == "MemFree":
+                    resources.memory_free = val
+                elif key == "Buffers":
+                    resources.memory_buffered = val
+                elif key == "Cached":
+                    resources.memory_cached = val
+                elif key == "SwapTotal":
+                    resources.swap_total = val
+                elif key == "SwapFree":
+                    resources.swap_free = val
+        resources.memory_used = (
+            resources.memory_total
+            - resources.memory_free
+            - resources.memory_buffered
+            - resources.memory_cached
+        )
+        resources.swap_used = resources.swap_total - resources.swap_free
+
+        try:
+            loadavg = await self._exec("cat /proc/loadavg")
+            parts = loadavg.strip().split()
+            if len(parts) >= 3:
+                resources.load_1min = float(parts[0])
+                resources.load_5min = float(parts[1])
+                resources.load_15min = float(parts[2])
+            if len(parts) >= 4:
+                resources.processes = (
+                    int(parts[3].split("/")[1]) if "/" in parts[3] else 0
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            uptime_str = await self._exec("cat /proc/uptime")
+            resources.uptime = int(float(uptime_str.strip().split()[0]))
+        except Exception:  # noqa: BLE001
+            pass
+
+        for thermal_path in [
+            "/sys/class/thermal/thermal_zone0/temp",
+            "/sys/class/hwmon/hwmon0/temp1_input",
+        ]:
+            try:
+                temp = await self._exec(f"cat {thermal_path} 2>/dev/null")
+                temp_val = int(temp.strip())
+                if temp_val > 1000:
+                    resources.temperature = temp_val / 1000.0
+                else:
+                    resources.temperature = float(temp_val)
+                break
+            except ValueError, Exception:  # noqa: BLE001
+                continue
+
+        try:
+            df_output = await self._exec("df /overlay 2>/dev/null || df / 2>/dev/null")
+            lines = df_output.strip().split("\n")
+            if len(lines) >= 2:
+                parts = lines[1].split()
+                if len(parts) >= 4:
+                    resources.filesystem_total = int(parts[1]) * 1024
+                    resources.filesystem_used = int(parts[2]) * 1024
+                    resources.filesystem_free = int(parts[3]) * 1024
+        except Exception:  # noqa: BLE001
+            pass
+
+        return resources
+
+    async def get_wireless_interfaces(self) -> list[WirelessInterface]:
+        """Get wireless interfaces."""
+        interfaces: list[WirelessInterface] = []
+
+        try:
+            wifi_json = await self._exec(
+                "ubus call network.wireless status 2>/dev/null"
+            )
+            if wifi_json and wifi_json.strip().startswith("{"):
+                data = json.loads(wifi_json)
+                for _radio_name, radio_data in data.items():
+                    if not isinstance(radio_data, dict):
+                        continue
+                    for iface in radio_data.get("interfaces", []):
+                        config = iface.get("config", {})
+                        iface_name = iface.get("ifname", "")
+                        wifi = WirelessInterface(
+                            name=iface_name,
+                            ssid=config.get("ssid", ""),
+                            mode=config.get("mode", ""),
+                            encryption=config.get("encryption", ""),
+                            enabled=not radio_data.get("disabled", False),
+                            up=radio_data.get("up", False),
+                        )
+
+                        if iface_name:
+                            try:
+                                iwinfo = await self._exec(
+                                    f"iwinfo {iface_name} info 2>/dev/null"
+                                )
+                                for line in iwinfo.split("\n"):
+                                    line = line.strip()
+                                    if "Channel:" in line:
+                                        try:
+                                            wifi.channel = int(
+                                                line.split("Channel:")[1]
+                                                .strip()
+                                                .split()[0]
+                                            )
+                                        except ValueError, IndexError:
+                                            pass
+                                    elif "Signal:" in line:
+                                        try:
+                                            wifi.signal = int(
+                                                line.split("Signal:")[1]
+                                                .strip()
+                                                .split()[0]
+                                            )
+                                        except ValueError, IndexError:
+                                            pass
+
+                                assoclist = await self._exec(
+                                    f"iwinfo {iface_name} assoclist 2>/dev/null"
+                                )
+                                if assoclist.strip():
+                                    wifi.clients_count = len(
+                                        [
+                                            line_item
+                                            for line_item in assoclist.strip().split(
+                                                "\n"
+                                            )
+                                            if line_item.strip()
+                                            and ":" in line_item.split()[0]
+                                            if line_item.split()
+                                        ]
+                                    )
+                            except Exception:  # noqa: BLE001
+                                pass
+
+                        interfaces.append(wifi)
+        except Exception:  # noqa: BLE001
+            pass
+
+        return interfaces
+
+    async def get_network_interfaces(self) -> list[NetworkInterface]:
+        """Get network interfaces."""
+        interfaces: list[NetworkInterface] = []
+
+        try:
+            dump = await self._exec("ubus call network.interface dump 2>/dev/null")
+            if dump and dump.strip().startswith("{"):
+                data = json.loads(dump)
+                for iface_data in data.get("interface", []):
+                    iface = NetworkInterface(
+                        name=iface_data.get("interface", ""),
+                        up=iface_data.get("up", False),
+                        protocol=iface_data.get("proto", ""),
+                        device=iface_data.get(
+                            "l3_device", iface_data.get("device", "")
+                        ),
+                        uptime=iface_data.get("uptime", 0),
+                    )
+                    ipv4 = iface_data.get("ipv4-address", [])
+                    if ipv4:
+                        iface.ipv4_address = ipv4[0].get("address", "")
+                    ipv6 = iface_data.get("ipv6-address", [])
+                    if ipv6:
+                        iface.ipv6_address = ipv6[0].get("address", "")
+                    iface.dns_servers = iface_data.get("dns-server", [])
+                    interfaces.append(iface)
+        except Exception:  # noqa: BLE001
+            pass
+
+        return interfaces
+
+    async def get_connected_devices(self) -> list[ConnectedDevice]:
+        """Get connected devices."""
+        devices: list[ConnectedDevice] = []
+
+        try:
+            leases = await self._exec("cat /tmp/dhcp.leases 2>/dev/null")
+            for line in leases.strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    devices.append(
+                        ConnectedDevice(
+                            mac=parts[1].upper(),
+                            ip=parts[2],
+                            hostname=parts[3] if parts[3] != "*" else "",
+                            connected=True,
+                        )
+                    )
+        except Exception:  # noqa: BLE001
+            pass
+
+        return devices
+
+    async def get_dhcp_leases(self) -> list[DhcpLease]:
+        """Get DHCP leases."""
+        leases: list[DhcpLease] = []
+
+        try:
+            content = await self._exec("cat /tmp/dhcp.leases 2>/dev/null")
+            for line in content.strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    leases.append(
+                        DhcpLease(
+                            expires=int(parts[0]) if parts[0].isdigit() else 0,
+                            mac=parts[1].upper(),
+                            ip=parts[2],
+                            hostname=parts[3] if parts[3] != "*" else "",
+                        )
+                    )
+        except Exception:  # noqa: BLE001
+            pass
+
+        return leases
+
+    async def get_services(self) -> list[ServiceInfo]:
+        """Get init.d services."""
+        services: list[ServiceInfo] = []
+
+        try:
+            ls_output = await self._exec("ls /etc/init.d/ 2>/dev/null")
+            for svc_name in ls_output.strip().split("\n"):
+                svc_name = svc_name.strip()
+                if not svc_name:
+                    continue
+                enabled = False
+                running = False
+                try:
+                    enabled_check = await self._exec(
+                        f"/etc/init.d/{svc_name} enabled && echo yes || echo no"
+                    )
+                    enabled = "yes" in enabled_check
+                    running_check = await self._exec(
+                        f"/etc/init.d/{svc_name} running && echo yes || echo no"
+                    )
+                    running = "yes" in running_check
+                except Exception:  # noqa: BLE001
+                    pass
+                services.append(
+                    ServiceInfo(name=svc_name, enabled=enabled, running=running)
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
+        return services
+
+    async def manage_service(self, name: str, action: str) -> bool:
+        """Manage a service."""
+        try:
+            await self._exec(f"/etc/init.d/{name} {action}")
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to %s service %s: %s", action, name, err)
+            return False
+
+    async def reboot(self) -> bool:
+        """Reboot the device."""
+        try:
+            await self._exec("reboot")
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to reboot: %s", err)
+            return False
+
+    async def execute_command(self, command: str) -> str:
+        """Execute a command."""
+        try:
+            return await self._exec(command)
+        except Exception as err:  # noqa: BLE001
+            return f"Error: {err}"
+
+    async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
+        """Enable/disable a wireless interface."""
+        try:
+            action = "0" if enabled else "1"
+            await self._exec(f"uci set wireless.{interface}.disabled='{action}'")
+            await self._exec("uci commit wireless")
+            await self._exec("wifi reload")
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to set wireless %s: %s", interface, err)
+            return False
+
+    async def install_firmware(self, url: str) -> None:
+        """Install firmware from the given URL."""
+        try:
+            download_cmd = f"wget -O /tmp/firmware.bin '{url}'"
+            _LOGGER.info("Downloading firmware: %s", download_cmd)
+            await self._exec(download_cmd)
+
+            _LOGGER.info("Starting sysupgrade...")
+            loop = asyncio.get_event_loop()
+
+            def _run_upgrade() -> None:
+                if self._client:
+                    self._client.exec_command(
+                        "nohup sysupgrade /tmp/firmware.bin > /dev/null 2>&1 &"
+                    )
+
+            await loop.run_in_executor(None, _run_upgrade)
+        except Exception as err:
+            _LOGGER.error("Failed to initiate firmware upgrade: %s", err)
+            raise SshError(f"Upgrade failed: {err}") from err
+
+    async def get_leds(self) -> list:
+        """Get LEDs from /sys/class/leds."""
+        from .base import LedInfo
+
+        leds: list[LedInfo] = []
+        try:
+            output = await self._exec(
+                "for led in /sys/class/leds/*/; do "
+                'name=$(basename "$led"); '
+                'brightness=$(cat "$led/brightness" 2>/dev/null || echo 0); '
+                'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
+                'trigger=$(cat "$led/trigger" 2>/dev/null | grep -oP "\\[\\K[^\\]]+" || echo none); '
+                'echo "$name|$brightness|$max|$trigger"; '
+                "done"
+            )
+            for line in output.strip().splitlines():
+                parts = line.strip().split("|")
+                if len(parts) >= 4:
+                    brightness = int(parts[1]) if parts[1].isdigit() else 0
+                    max_b = int(parts[2]) if parts[2].isdigit() else 255
+                    leds.append(
+                        LedInfo(
+                            name=parts[0],
+                            brightness=brightness,
+                            max_brightness=max_b,
+                            trigger=parts[3],
+                            active=brightness > 0,
+                        )
+                    )
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Cannot list LEDs via SSH")
+
+        return leds
+
+    async def set_led(self, name: str, brightness: int) -> bool:
+        """Set LED brightness via SSH."""
+        try:
+            await self._exec(f"echo {brightness} > /sys/class/leds/{name}/brightness")
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to set LED %s: %s", name, err)
+            return False
+
+    async def get_firewall_redirects(self) -> list[FirewallRedirect]:
+        """Get firewall port forwarding redirects via UCI over SSH."""
+        redirects: list[FirewallRedirect] = []
+        try:
+            output = await self._exec("uci show firewall")
+            sections: dict[str, dict[str, str]] = {}
+            for line in output.splitlines():
+                if "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                parts = key.split(".")
+                if len(parts) >= 2:
+                    section = parts[1]
+                    if section not in sections:
+                        sections[section] = {}
+                    if len(parts) >= 3:
+                        sections[section][parts[2]] = val.strip("'")
+
+            for section_id, data in sections.items():
+                if data.get(".type") == "redirect":
+                    redirects.append(
+                        FirewallRedirect(
+                            name=data.get("name", section_id),
+                            target_ip=data.get("dest_ip", ""),
+                            target_port=data.get("dest_port", ""),
+                            external_port=data.get("src_dport", ""),
+                            protocol=data.get("proto", "tcp"),
+                            enabled=data.get("enabled", "1") == "1",
+                            section_id=section_id,
+                        )
+                    )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to get firewall redirects via SSH: %s", err)
+        return redirects
+
+    async def set_firewall_redirect_enabled(
+        self, section_id: str, enabled: bool
+    ) -> bool:
+        """Enable or disable a firewall redirect via UCI over SSH."""
+        try:
+            val = "1" if enabled else "0"
+            await self._exec(f"uci set firewall.{section_id}.enabled='{val}'")
+            await self._exec("uci commit firewall")
+            await self._exec("/etc/init.d/firewall reload")
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to set firewall redirect via SSH: %s", err)
+            return False
+
+    async def get_access_control(self) -> list[AccessControl]:
+        """Get access control rules via UCI firewall rules over SSH."""
+        rules: list[AccessControl] = []
+        try:
+            output = await self._exec("uci show firewall")
+            sections: dict[str, dict[str, str]] = {}
+            for line in output.splitlines():
+                if "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                parts = key.split(".")
+                if len(parts) >= 2:
+                    section = parts[1]
+                    if section not in sections:
+                        sections[section] = {}
+                    if len(parts) >= 3:
+                        sections[section][parts[2]] = val.strip("'")
+
+            for section_id, data in sections.items():
+                if data.get(".type") != "rule":
+                    continue
+                name = data.get("name", "")
+                if not name.startswith("ha_acl_"):
+                    continue
+
+                mac = data.get("src_mac", "").upper()
+                if mac:
+                    rules.append(
+                        AccessControl(
+                            mac=mac,
+                            name=name.replace("ha_acl_", ""),
+                            blocked=data.get("enabled", "1") == "1"
+                            and data.get("target") in ("REJECT", "DROP"),
+                            section_id=section_id,
+                        )
+                    )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to get access control via SSH: %s", err)
+        return rules
+
+    async def set_access_control_blocked(self, mac: str, blocked: bool) -> bool:
+        """Block or unblock internet access for a MAC via SSH."""
+        mac_upper = mac.upper()
+        mac_safe = mac_upper.replace(":", "")
+        rule_name = f"ha_acl_{mac_safe}"
+        try:
+            rules = await self.get_access_control()
+            section_id = next((r.section_id for r in rules if r.mac == mac_upper), None)
+
+            if blocked:
+                if not section_id:
+                    await self._exec("uci add firewall rule")
+                    await self._exec(f"uci set firewall.{rule_name}=rule")
+                    section_id = rule_name
+                    await self._exec(
+                        f"uci set firewall.{section_id}.name='{rule_name}'"
+                    )
+                    await self._exec(f"uci set firewall.{section_id}.src='lan'")
+                    await self._exec(f"uci set firewall.{section_id}.dest='wan'")
+                    await self._exec(
+                        f"uci set firewall.{section_id}.src_mac='{mac_upper}'"
+                    )
+                    await self._exec(f"uci set firewall.{section_id}.target='REJECT'")
+
+                await self._exec(f"uci set firewall.{section_id}.enabled='1'")
+            else:
+                if section_id:
+                    await self._exec(f"uci set firewall.{section_id}.enabled='0'")
+
+            await self._exec("uci commit firewall")
+            await self._exec("/etc/init.d/firewall reload")
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to set access control via SSH: %s", err)
+            return False
+
+    async def get_external_ip(self) -> str | None:
+        """Get external IP via ifstatus over SSH."""
+        try:
+            output = await self._exec("ifstatus wan")
+            data = json.loads(output)
+            for addr in data.get("ipv4-address", []):
+                return addr.get("address")
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    async def manage_interface(self, name: str, action: str) -> bool:
+        """Manage a network interface (up/down/reconnect) via SSH."""
+        try:
+            if action == "reconnect":
+                await self._exec(f"ifdown {name} && ifup {name}")
+            elif action == "up":
+                await self._exec(f"ifup {name}")
+            elif action == "down":
+                await self._exec(f"ifdown {name}")
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to manage interface %s: %s", name, err)
+            return False

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":rebaseStalePrs",
+    ":prHourlyLimitNone"
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true
+    },
+    {
+      "matchPackageNames": ["python"],
+      "allowedVersions": "3.14.x"
+    }
+  ],
+  "python": {
+    "enabled": true
+  },
+  "github-actions": {
+    "enabled": true
+  }
+}

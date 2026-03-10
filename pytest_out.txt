@@ -1,0 +1,27 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\fabia\GitHub\ha-openwrt
+configfile: pyproject.toml
+plugins: anyio-4.12.1, Faker-40.4.0, asyncio-1.3.0, cov-7.0.0, mock-3.15.1, sugar-1.1.1, respx-0.22.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 0 items / 1 error
+
+=================================== ERRORS ====================================
+_________________ ERROR collecting tests/test_api_luci_rpc.py _________________
+ImportError while importing test module 'C:\Users\fabia\GitHub\ha-openwrt\tests\test_api_luci_rpc.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_api_luci_rpc.py:7: in <module>
+    from custom_components.openwrt.api.luci_rpc import (
+custom_components\openwrt\__init__.py:37: in <module>
+    from .coordinator import OpenWrtDataCoordinator, create_client
+custom_components\openwrt\coordinator.py:18: in <module>
+    from homeassistant.helpers.aiohttp_client import async_get_clientsession
+E   ModuleNotFoundError: No module named 'homeassistant.helpers.aiohttp_client'
+=========================== short test summary info ===========================
+ERROR tests/test_api_luci_rpc.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+============================== 1 error in 0.33s ===============================
