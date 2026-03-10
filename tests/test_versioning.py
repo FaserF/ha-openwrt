@@ -1,10 +1,11 @@
-import sys
 import os
+import sys
 
 # Add the script directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.github', 'scripts')))
 
-from bump_version import bump_version, parse_version
+from bump_version import bump_version
+
 
 def test_logic():
     scenarios = [
@@ -20,7 +21,7 @@ def test_logic():
         ("1.0.1-beta.1", "minor", "beta", ["v1.0.1-beta.1", "v1.0.0"], "1.1.0-beta.0"),
         ("1.1.0-beta.0", "minor", "stable", ["v1.1.0-beta.0", "v1.0.0"], "1.1.0"),
     ]
-    
+
     failed = 0
     for current, bump, status, tags, expected in scenarios:
         result = bump_version(current, bump, status, all_tags=tags)

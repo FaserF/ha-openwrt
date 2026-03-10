@@ -3,6 +3,7 @@
 import sys
 from unittest.mock import MagicMock
 
+
 # Attempt to mock Home Assistant if it is not installed
 # (e.g. running locally on Windows without C++ tools for lru-dict)
 # Mock Home Assistant modules always to avoid collection errors in non-HA environments
@@ -48,10 +49,10 @@ sys.modules["homeassistant.exceptions"].ConfigEntryAuthFailed = MockException
 sys.modules["homeassistant.exceptions"].ConfigEntryNotReady = MockException
 sys.modules["homeassistant.exceptions"].HomeAssistantError = MockException
 
-from collections.abc import Generator
-from unittest.mock import AsyncMock, patch
+from collections.abc import Generator  # noqa: E402
+from unittest.mock import AsyncMock, patch  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
 
 @pytest.fixture
