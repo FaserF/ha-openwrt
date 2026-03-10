@@ -104,7 +104,7 @@ class SshClient(OpenWrtClient):
         def _connect() -> None:
             import io
 
-            import paramiko
+            import paramiko  # type: ignore
 
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())

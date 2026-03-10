@@ -11,6 +11,7 @@ def mock_submodule(name):
     if name not in sys.modules:
         sys.modules[name] = MagicMock()
 
+
 # Broadly mock HA submodules
 ha_mocks = [
     "homeassistant",
@@ -41,9 +42,11 @@ ha_mocks = [
 for mock_name in ha_mocks:
     mock_submodule(mock_name)
 
+
 # Define specific exceptions used in code
 class MockException(Exception):
     pass
+
 
 sys.modules["homeassistant.exceptions"].ConfigEntryAuthFailed = MockException
 sys.modules["homeassistant.exceptions"].ConfigEntryNotReady = MockException

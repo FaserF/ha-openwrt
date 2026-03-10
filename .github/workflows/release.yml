@@ -42,6 +42,7 @@ jobs:
         run: |
           python .github/scripts/bump_version.py ${{ github.event.inputs.bump_type }} ${{ github.event.inputs.release_status }}
           NEW_VERSION=$(cat VERSION.txt)
+          rm VERSION.txt
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
@@ -74,7 +75,10 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add pyproject.toml custom_components/openwrt/manifest.json
-          git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]"
+          # Only commit if there are changes
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]"
+          fi
           git tag v${{ env.NEW_VERSION }}
           git push origin main --tags
 
@@ -88,11 +92,3 @@ jobs:
           prerelease: ${{ github.event.inputs.release_status == 'beta' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit and Push Version Bump
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add pyproject.toml custom_components/openwrt/manifest.json
-          git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]"
-          git push

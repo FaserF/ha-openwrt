@@ -2,7 +2,9 @@ import os
 import sys
 
 # Add the script directory to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.github', 'scripts')))
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".github", "scripts"))
+)
 
 from bump_version import bump_version
 
@@ -28,7 +30,9 @@ def test_logic():
         if result == expected:
             print(f"PASS: {current} + {bump} ({status}) -> {result}")
         else:
-            print(f"FAIL: {current} + {bump} ({status}) -> {result} (Expected: {expected})")
+            print(
+                f"FAIL: {current} + {bump} ({status}) -> {result} (Expected: {expected})"
+            )
             failed += 1
 
     if failed == 0:
@@ -36,6 +40,7 @@ def test_logic():
     else:
         print(f"\n{failed} tests failed.")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     test_logic()

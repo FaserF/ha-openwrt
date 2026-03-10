@@ -341,7 +341,7 @@ class LuciRpcClient(OpenWrtClient):
                         ipv4_addrs = iface_data.get("ipv4-address", [])
                         if ipv4_addrs:
                             return ipv4_addrs[0].get("address")
-        except (LuciRpcError, json.JSONDecodeError):
+        except LuciRpcError, json.JSONDecodeError:
             pass
         return None
 
