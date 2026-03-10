@@ -5,33 +5,48 @@ from unittest.mock import MagicMock
 
 # Attempt to mock Home Assistant if it is not installed
 # (e.g. running locally on Windows without C++ tools for lru-dict)
-try:
-    import homeassistant  # noqa: F401
-except ImportError:
+# Mock Home Assistant modules always to avoid collection errors in non-HA environments
+def mock_submodule(name):
+    if name not in sys.modules:
+        sys.modules[name] = MagicMock()
 
-    class MockHA:
-        pass
+# Broadly mock HA submodules
+ha_mocks = [
+    "homeassistant",
+    "homeassistant.core",
+    "homeassistant.config_entries",
+    "homeassistant.const",
+    "homeassistant.exceptions",
+    "homeassistant.helpers",
+    "homeassistant.helpers.aiohttp_client",
+    "homeassistant.helpers.config_validation",
+    "homeassistant.helpers.device_registry",
+    "homeassistant.helpers.entity_platform",
+    "homeassistant.helpers.issue_registry",
+    "homeassistant.helpers.typing",
+    "homeassistant.helpers.update_coordinator",
+    "homeassistant.components",
+    "homeassistant.components.binary_sensor",
+    "homeassistant.components.button",
+    "homeassistant.components.device_tracker",
+    "homeassistant.components.diagnostics",
+    "homeassistant.components.light",
+    "homeassistant.components.repairs",
+    "homeassistant.components.sensor",
+    "homeassistant.components.switch",
+    "homeassistant.components.update",
+]
 
-    sys.modules["homeassistant"] = MagicMock()
-    sys.modules["homeassistant.core"] = MagicMock()
-    sys.modules["homeassistant.config_entries"] = MagicMock()
-    sys.modules["homeassistant.exceptions"] = MagicMock()
+for mock_name in ha_mocks:
+    mock_submodule(mock_name)
 
-    # Needs to match specific exceptions used in code
-    class ConfigEntryAuthFailed(Exception):
-        pass
+# Define specific exceptions used in code
+class MockException(Exception):
+    pass
 
-    class ConfigEntryNotReady(Exception):
-        pass
-
-    sys.modules[
-        "homeassistant.exceptions"
-    ].ConfigEntryAuthFailed = ConfigEntryAuthFailed
-    sys.modules["homeassistant.exceptions"].ConfigEntryNotReady = ConfigEntryNotReady
-
-    sys.modules["homeassistant.helpers"] = MagicMock()
-    sys.modules["homeassistant.helpers.device_registry"] = MagicMock()
-    sys.modules["homeassistant.helpers.update_coordinator"] = MagicMock()
+sys.modules["homeassistant.exceptions"].ConfigEntryAuthFailed = MockException
+sys.modules["homeassistant.exceptions"].ConfigEntryNotReady = MockException
+sys.modules["homeassistant.exceptions"].HomeAssistantError = MockException
 
 from collections.abc import Generator
 from unittest.mock import AsyncMock, patch

@@ -323,6 +323,22 @@ class SshClient(OpenWrtClient):
 
         return resources
 
+    async def get_external_ip(self) -> str | None:
+        """Get public/external IP address."""
+        try:
+            status = await self._exec("ubus call network.interface dump 2>/dev/null")
+            if status and status.startswith("{"):
+                data = json.loads(status)
+                for iface_data in data.get("interface", []):
+                    iface_name = iface_data.get("interface", "").lower()
+                    if iface_name in ["wan", "wan6", "wwan", "modem"]:
+                        ipv4_addrs = iface_data.get("ipv4-address", [])
+                        if ipv4_addrs:
+                            return ipv4_addrs[0].get("address")
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interfaces."""
         interfaces: list[WirelessInterface] = []
@@ -430,26 +446,87 @@ class SshClient(OpenWrtClient):
         return interfaces
 
     async def get_connected_devices(self) -> list[ConnectedDevice]:
-        """Get connected devices."""
-        devices: list[ConnectedDevice] = []
+        """Get connected devices by combining DHCP, ARP and wireless station info."""
+        devices: dict[str, ConnectedDevice] = {}
 
+        # 1. DHCP Leases
         try:
             leases = await self._exec("cat /tmp/dhcp.leases 2>/dev/null")
             for line in leases.strip().split("\n"):
                 parts = line.split()
                 if len(parts) >= 4:
-                    devices.append(
-                        ConnectedDevice(
-                            mac=parts[1].upper(),
-                            ip=parts[2],
-                            hostname=parts[3] if parts[3] != "*" else "",
-                            connected=True,
-                        )
+                    mac = parts[1].lower()
+                    devices[mac] = ConnectedDevice(
+                        mac=mac,
+                        ip=parts[2],
+                        hostname=parts[3] if parts[3] != "*" else "",
+                        connected=True,
+                        is_wireless=False,
                     )
         except Exception:  # noqa: BLE001
             pass
 
-        return devices
+        # 2. ARP Neighbors
+        try:
+            arp = await self._exec("cat /proc/net/arp 2>/dev/null")
+            lines = arp.strip().split("\n")
+            if len(lines) > 1:
+                for line in lines[1:]:
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        mac = parts[3].lower()
+                        if not mac or mac == "00:00:00:00:00:00":
+                            continue
+                        if mac not in devices:
+                            devices[mac] = ConnectedDevice(
+                                mac=mac,
+                                ip=parts[0],
+                                connected=True,
+                                is_wireless=False,
+                            )
+        except Exception:  # noqa: BLE001
+            pass
+
+        # 3. Wireless Clients (iwinfo station dump)
+        try:
+            # Get wireless interfaces first
+            iw_out = await self._exec(
+                "iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'"
+            )
+            ifaces = iw_out.strip().split()
+            for iface in ifaces:
+                assoc = await self._exec(f"iwinfo {iface} assoclist 2>/dev/null")
+                for line in assoc.strip().split("\n"):
+                    if not line.strip() or "No information" in line:
+                        continue
+                    # Parsing: MAC  Signal  Noise  RX_Rate  TX_Rate
+                    parts = line.split()
+                    if len(parts) >= 1 and ":" in parts[0]:
+                        mac = parts[0].lower()
+                        if mac in devices:
+                            dev = devices[mac]
+                        else:
+                            dev = ConnectedDevice(mac=mac, connected=True)
+                            devices[mac] = dev
+
+                        dev.is_wireless = True
+                        dev.interface = iface
+                        if len(parts) >= 2:
+                            dev.signal = (
+                                int(parts[1]) if parts[1].lstrip("-").isdigit() else 0
+                            )
+
+                        if "5g" in iface.lower():
+                            dev.connection_type = "5GHz"
+                        elif "2g" in iface.lower():
+                            dev.connection_type = "2.4GHz"
+                        else:
+                            dev.connection_type = "wireless"
+
+        except Exception:  # noqa: BLE001
+            pass
+
+        return list(devices.values())
 
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         """Get DHCP leases."""
@@ -573,7 +650,7 @@ class SshClient(OpenWrtClient):
                 'name=$(basename "$led"); '
                 'brightness=$(cat "$led/brightness" 2>/dev/null || echo 0); '
                 'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
-                'trigger=$(cat "$led/trigger" 2>/dev/null | grep -oP "\\[\\K[^\\]]+" || echo none); '
+                'trigger=$(cat "$led/trigger" 2>/dev/null | tr " " "\\n" | grep "^\\[" | tr -d "[]" || echo none); '
                 'echo "$name|$brightness|$max|$trigger"; '
                 "done"
             )
@@ -729,17 +806,6 @@ class SshClient(OpenWrtClient):
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set access control via SSH: %s", err)
             return False
-
-    async def get_external_ip(self) -> str | None:
-        """Get external IP via ifstatus over SSH."""
-        try:
-            output = await self._exec("ifstatus wan")
-            data = json.loads(output)
-            for addr in data.get("ipv4-address", []):
-                return addr.get("address")
-        except Exception:  # noqa: BLE001
-            pass
-        return None
 
     async def manage_interface(self, name: str, action: str) -> bool:
         """Manage a network interface (up/down/reconnect) via SSH."""

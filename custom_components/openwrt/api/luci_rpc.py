@@ -9,6 +9,7 @@ Supports authentication via LuCI sysauth token.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -294,7 +295,55 @@ class LuciRpcClient(OpenWrtClient):
         except LuciRpcError:
             pass
 
+        # Thermal
+        try:
+            for zone in range(3):
+                temp = await self._rpc_call(
+                    "sys",
+                    "exec",
+                    [f"cat /sys/class/thermal/thermal_zone{zone}/temp 2>/dev/null"],
+                )
+                if temp and temp.strip().isdigit():
+                    resources.temperature = float(temp.strip()) / 1000.0
+                    break
+        except LuciRpcError:
+            pass
+
+        # Storage
+        try:
+            df = await self._rpc_call(
+                "sys", "exec", ["df /overlay 2>/dev/null || df / 2>/dev/null"]
+            )
+            if df:
+                lines = df.strip().split("\n")
+                if len(lines) >= 2:
+                    parts = lines[1].split()
+                    if len(parts) >= 4:
+                        resources.filesystem_total = int(parts[1]) * 1024
+                        resources.filesystem_used = int(parts[2]) * 1024
+                        resources.filesystem_free = int(parts[3]) * 1024
+        except LuciRpcError:
+            pass
+
         return resources
+
+    async def get_external_ip(self) -> str | None:
+        """Get public/external IP address."""
+        try:
+            status = await self._rpc_call(
+                "sys", "exec", ["ubus call network.interface dump"]
+            )
+            if status:
+                data = json.loads(status)
+                for iface_data in data.get("interface", []):
+                    iface_name = iface_data.get("interface", "").lower()
+                    if iface_name in ["wan", "wan6", "wwan", "modem"]:
+                        ipv4_addrs = iface_data.get("ipv4-address", [])
+                        if ipv4_addrs:
+                            return ipv4_addrs[0].get("address")
+        except (LuciRpcError, json.JSONDecodeError):
+            pass
+        return None
 
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interfaces via iwinfo."""
@@ -346,27 +395,97 @@ class LuciRpcClient(OpenWrtClient):
         return interfaces
 
     async def get_connected_devices(self) -> list[ConnectedDevice]:
-        """Get connected devices."""
-        devices: list[ConnectedDevice] = []
+        """Get connected devices by combining DHCP, ARP and wireless station info via sys.exec."""
+        devices: dict[str, ConnectedDevice] = {}
 
+        # 1. DHCP Leases
         try:
-            leases_str = await self._rpc_call("sys", "exec", ["cat /tmp/dhcp.leases"])
+            leases_str = await self._rpc_call(
+                "sys", "exec", ["cat /tmp/dhcp.leases 2>/dev/null"]
+            )
             if leases_str:
                 for line in leases_str.strip().split("\n"):
                     parts = line.split()
                     if len(parts) >= 4:
-                        devices.append(
-                            ConnectedDevice(
-                                mac=parts[1].upper(),
-                                ip=parts[2],
-                                hostname=parts[3] if parts[3] != "*" else "",
-                                connected=True,
-                            )
+                        mac = parts[1].lower()
+                        devices[mac] = ConnectedDevice(
+                            mac=mac,
+                            ip=parts[2],
+                            hostname=parts[3] if parts[3] != "*" else "",
+                            connected=True,
+                            is_wireless=False,
                         )
         except LuciRpcError:
             pass
 
-        return devices
+        # 2. ARP Neighbors
+        try:
+            arp = await self._rpc_call("sys", "exec", ["cat /proc/net/arp 2>/dev/null"])
+            if arp:
+                lines = arp.strip().split("\n")
+                if len(lines) > 1:
+                    for line in lines[1:]:
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            mac = parts[3].lower()
+                            if not mac or mac == "00:00:00:00:00:00":
+                                continue
+                            if mac not in devices:
+                                devices[mac] = ConnectedDevice(
+                                    mac=mac,
+                                    ip=parts[0],
+                                    connected=True,
+                                    is_wireless=False,
+                                )
+        except LuciRpcError:
+            pass
+
+        # 3. Wireless Clients (iwinfo station dump)
+        try:
+            # Get wireless interfaces first
+            iw_out = await self._rpc_call(
+                "sys",
+                "exec",
+                ["iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'"],
+            )
+            if iw_out:
+                ifaces = iw_out.strip().split()
+                for iface in ifaces:
+                    assoc = await self._rpc_call(
+                        "sys", "exec", [f"iwinfo {iface} assoclist 2>/dev/null"]
+                    )
+                    if assoc:
+                        for line in assoc.strip().split("\n"):
+                            if not line.strip() or "No information" in line:
+                                continue
+                            parts = line.split()
+                            if len(parts) >= 1 and ":" in parts[0]:
+                                mac = parts[0].lower()
+                                if mac in devices:
+                                    dev = devices[mac]
+                                else:
+                                    dev = ConnectedDevice(mac=mac, connected=True)
+                                    devices[mac] = dev
+
+                                dev.is_wireless = True
+                                dev.interface = iface
+                                if len(parts) >= 2:
+                                    dev.signal = (
+                                        int(parts[1])
+                                        if parts[1].lstrip("-").isdigit()
+                                        else 0
+                                    )
+
+                                if "5g" in iface.lower():
+                                    dev.connection_type = "5GHz"
+                                elif "2g" in iface.lower():
+                                    dev.connection_type = "2.4GHz"
+                                else:
+                                    dev.connection_type = "wireless"
+        except LuciRpcError:
+            pass
+
+        return list(devices.values())
 
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         """Get DHCP leases."""
@@ -381,7 +500,7 @@ class LuciRpcClient(OpenWrtClient):
                         leases.append(
                             DhcpLease(
                                 expires=int(parts[0]) if parts[0].isdigit() else 0,
-                                mac=parts[1].upper(),
+                                mac=parts[1].lower(),
                                 ip=parts[2],
                                 hostname=parts[3] if parts[3] != "*" else "",
                             )
@@ -420,3 +539,52 @@ class LuciRpcClient(OpenWrtClient):
         except LuciRpcError as err:
             _LOGGER.error("Failed to initiate firmware upgrade via LuCI RPC: %s", err)
             raise LuciRpcError(f"Upgrade failed: {err}") from err
+
+    async def get_leds(self) -> list:
+        """Get LEDs from /sys/class/leds via sys.exec."""
+        from .base import LedInfo
+
+        leds: list[LedInfo] = []
+        try:
+            cmd = (
+                "for led in /sys/class/leds/*/; do "
+                'name=$(basename "$led"); '
+                'brightness=$(cat "$led/brightness" 2>/dev/null || echo 0); '
+                'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
+                'trigger=$(cat "$led/trigger" 2>/dev/null | tr " " "\\n" | grep "^\\[" | tr -d "[]" || echo none); '
+                'echo "$name|$brightness|$max|$trigger"; '
+                "done"
+            )
+            output = await self._rpc_call("sys", "exec", [cmd])
+            if output:
+                for line in output.strip().splitlines():
+                    parts = line.strip().split("|")
+                    if len(parts) >= 4:
+                        brightness = int(parts[1]) if parts[1].isdigit() else 0
+                        max_b = int(parts[2]) if parts[2].isdigit() else 255
+                        leds.append(
+                            LedInfo(
+                                name=parts[0],
+                                brightness=brightness,
+                                max_brightness=max_b,
+                                trigger=parts[3],
+                                active=brightness > 0,
+                            )
+                        )
+        except LuciRpcError:
+            _LOGGER.debug("Cannot list LEDs via LuCI RPC")
+
+        return leds
+
+    async def set_led(self, name: str, brightness: int) -> bool:
+        """Set LED brightness via LuCI RPC sys.exec."""
+        try:
+            await self._rpc_call(
+                "sys",
+                "exec",
+                [f"echo {brightness} > /sys/class/leds/{name}/brightness"],
+            )
+            return True
+        except LuciRpcError as err:
+            _LOGGER.error("Failed to set LED %s: %s", name, err)
+            return False

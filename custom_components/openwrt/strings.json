@@ -109,6 +109,9 @@
       "storage_usage": {
         "name": "Storage Usage"
       },
+      "public_ip": {
+        "name": "Public IP"
+      },
       "firmware_version": {
         "name": "Firmware Version"
       },
@@ -190,10 +193,10 @@
         "name": "Firmware Update Available"
       },
       "mwan_online": {
-        "name": "Online"
+        "name": "MWAN {interface} Online"
       },
       "interface_up": {
-        "name": "Connected"
+        "name": "{interface} Connected"
       },
       "wps_active": {
         "name": "WPS Active"
@@ -201,10 +204,10 @@
     },
     "button": {
       "reboot": {
-        "name": "Reboot"
+        "name": "Reboot Router"
       },
       "interface_reconnect": {
-        "name": "Reconnect"
+        "name": "Reconnect {interface}"
       },
       "firewall_port_forward": {
         "name": "Port Forward"
@@ -219,7 +222,7 @@
         "name": "Cancel WPS"
       },
       "service_restart": {
-        "name": "Restart"
+        "name": "Restart {service}"
       }
     },
     "switch": {

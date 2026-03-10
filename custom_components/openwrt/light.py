@@ -54,7 +54,7 @@ class OpenWrtLedLight(CoordinatorEntity[OpenWrtDataCoordinator], LightEntity):
     _attr_has_entity_name = True
     _attr_color_mode = ColorMode.BRIGHTNESS
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
-    _attr_entity_registry_enabled_default = False
+    _attr_entity_registry_enabled_default = True
 
     def __init__(
         self,

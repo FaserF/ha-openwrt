@@ -307,32 +307,79 @@ class UbusClient(OpenWrtClient):
         )
 
         try:
+            # First try ubus system info disk
             fs_data = await self._call("system", "info")
             if "disk" in fs_data:
                 disk = fs_data["disk"]
                 root = disk.get("root", disk.get("/", {}))
-                if isinstance(root, dict):
+                if isinstance(root, dict) and root.get("total"):
                     resources.filesystem_total = root.get("total", 0)
                     resources.filesystem_used = root.get("used", 0)
                     resources.filesystem_free = root.get("total", 0) - root.get(
                         "used", 0
                     )
-        except UbusError:
+
+            # Fallback to df if ubus disk info is missing
+            if resources.filesystem_total == 0:
+                result = await self._call(
+                    "file", "exec", {"command": "df", "params": ["/"]}
+                )
+                stdout = result.get("stdout", "")
+                lines = stdout.strip().split("\n")
+                if len(lines) > 1:
+                    parts = lines[1].split()
+                    if len(parts) >= 4:
+                        # df returns blocks (typically 1K)
+                        resources.filesystem_total = int(parts[1]) * 1024
+                        resources.filesystem_used = int(parts[2]) * 1024
+                        resources.filesystem_free = int(parts[3]) * 1024
+        except UbusError, ValueError, IndexError:
             pass
 
+        # Temperature fetching
         try:
-            await self._call(
-                "uci",
-                "get",
-                {
-                    "config": "system",
-                    "section": "@system[0]",
-                },
-            )
-        except UbusError:
+            # Try thermal zones first
+            for zone in range(3):
+                try:
+                    res = await self._call(
+                        "file",
+                        "read",
+                        {"path": f"/sys/class/thermal/thermal_zone{zone}/temp"},
+                    )
+                    temp_raw = res.get("data", "").strip()
+                    if temp_raw.isdigit():
+                        resources.temperature = float(temp_raw) / 1000.0
+                        break
+                except UbusError:
+                    continue
+
+            # Fallback to board-specific temp via uci or generic system call if needed
+            if resources.temperature is None:
+                # Some routers have it in /sys/class/hwmon/hwmon0/temp1_input
+                res = await self._call(
+                    "file", "read", {"path": "/sys/class/hwmon/hwmon0/temp1_input"}
+                )
+                temp_raw = res.get("data", "").strip()
+                if temp_raw.isdigit():
+                    resources.temperature = float(temp_raw) / 1000.0
+        except UbusError, ValueError:
             pass
 
         return resources
+
+    async def get_external_ip(self) -> str | None:
+        """Get public/external IP address by checking the WAN interface."""
+        try:
+            status = await self._call("network.interface", "dump")
+            for iface_data in status.get("interface", []):
+                iface_name = iface_data.get("interface", "").lower()
+                if iface_name in ["wan", "wan6", "wwan", "modem"]:
+                    ipv4_addrs = iface_data.get("ipv4-address", [])
+                    if ipv4_addrs:
+                        return ipv4_addrs[0].get("address")
+        except UbusError:
+            pass
+        return None
 
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interface information."""
@@ -349,8 +396,12 @@ class UbusClient(OpenWrtClient):
 
             radio_interfaces = radio_data.get("interfaces", [])
             for iface in radio_interfaces:
+                iface_name = (
+                    iface.get("ifname")
+                    or iface.get("device")
+                    or iface.get("section", "")
+                )
                 iface_config = iface.get("config", {})
-                iface_name = iface.get("ifname", iface.get("section", ""))
                 _iface_network = iface_config.get("network", [])
 
                 wifi = WirelessInterface(
@@ -476,7 +527,7 @@ class UbusClient(OpenWrtClient):
                 if not isinstance(radio_data, dict):
                     continue
                 for iface in radio_data.get("interfaces", []):
-                    iface_name = iface.get("ifname", "")
+                    iface_name = iface.get("ifname") or iface.get("device", "")
                     if not iface_name:
                         continue
                     try:
@@ -585,8 +636,17 @@ class UbusClient(OpenWrtClient):
         """Get neighbor (ARP) table by reading /proc/net/arp."""
         neighbors: list[dict[str, str]] = []
         try:
-            result = await self._call("file", "read", {"path": "/proc/net/arp"})
-            content = result.get("data", "")
+            # First try file.read
+            try:
+                result = await self._call("file", "read", {"path": "/proc/net/arp"})
+                content = result.get("data", "")
+            except UbusError:
+                # Fallback to file.exec if read is restricted
+                result = await self._call(
+                    "file", "exec", {"command": "cat", "params": ["/proc/net/arp"]}
+                )
+                content = result.get("stdout", "")
+
             lines = content.strip().split("\n")
             if len(lines) > 1:
                 for line in lines[1:]:  # Skip header
@@ -595,7 +655,7 @@ class UbusClient(OpenWrtClient):
                         neighbors.append(
                             {
                                 "ip": parts[0],
-                                "mac": parts[3].upper(),
+                                "mac": parts[3].lower(),
                                 "interface": parts[5] if len(parts) > 5 else "",
                             }
                         )
@@ -613,7 +673,7 @@ class UbusClient(OpenWrtClient):
                 leases.append(
                     DhcpLease(
                         hostname=lease_data.get("hostname", ""),
-                        mac=lease_data.get("mac", "").upper(),
+                        mac=lease_data.get("mac", "").lower(),
                         ip=lease_data.get("ipaddr", ""),
                         expires=lease_data.get("expires", 0),
                     )
@@ -637,7 +697,7 @@ class UbusClient(OpenWrtClient):
                     leases.append(
                         DhcpLease(
                             expires=int(parts[0]) if parts[0].isdigit() else 0,
-                            mac=parts[1].upper(),
+                            mac=parts[1].lower(),
                             ip=parts[2],
                             hostname=parts[3] if parts[3] != "*" else "",
                         )
@@ -866,23 +926,6 @@ class UbusClient(OpenWrtClient):
             return True
         except UbusError:
             return False
-
-    async def get_external_ip(self) -> str | None:
-        """Get external/public IP address via network.interface.wan status."""
-        try:
-            data = await self._call("network.interface.wan", "status")
-            for addr in data.get("ipv4-address", []):
-                ip = addr.get("address")
-                if ip:
-                    return ip
-
-            if data.get("data", {}).get("ext_addr"):
-                return data.get("data", {}).get("ext_addr")
-
-        except UbusError:
-            pass
-
-        return None
 
     async def get_access_control(self) -> list[AccessControl]:
         """Get list of access control rules via UCI firewall rules."""

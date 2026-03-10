@@ -109,6 +109,9 @@
       "storage_usage": {
         "name": "Speicherbelegung"
       },
+      "public_ip": {
+        "name": "Öffentliche IP"
+      },
       "firmware_version": {
         "name": "Firmware-Version"
       },
