@@ -27,6 +27,8 @@ Supports **OpenWrt 25.12** and newer (older versions may also work, but are not 
 - **Smart Events**: 
   - Fires Home Assistant events (`openwrt_new_device`) when new, previously unknown MAC addresses connect to the network.
 - **HA Repairs**: Native repair integration for authentication failures, connection issues, and missing packages.
+- **Optimized Polling**: Parallel API calls and deduplicated wireless queries minimize router load and reduce polling latency.
+- **Full Localization**: All entities support Home Assistant's native translation framework with English and German included out of the box.
 
 
 ## ❤️ Support This Project

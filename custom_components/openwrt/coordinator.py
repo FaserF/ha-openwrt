@@ -227,7 +227,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         else:
             data.firmware_current_version = data.device_info.release_version
 
-        now = time.time()
+        now = self.hass.loop.time()
         if now - self._last_firmware_check > FIRMWARE_CHECK_INTERVAL.total_seconds():
             self._last_firmware_check = now
             await self._check_firmware_update(data)

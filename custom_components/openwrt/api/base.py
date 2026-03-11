@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import asyncio
 import json
 import logging
 import re
@@ -684,79 +685,56 @@ class OpenWrtClient(abc.ABC):
         """
         data = OpenWrtData()
 
-        data.device_info = await self.get_device_info()
-        data.system_resources = await self.get_system_resources()
-        data.network_interfaces = await self.get_network_interfaces()
-        data.connected_devices = await self.get_connected_devices()
+        # Core data: sequential for now to ensure proper error raising,
+        # but could also be parallelized if we handle exceptions.
+        # Let's parallelize core data first.
+        core_results = await asyncio.gather(
+            self.get_device_info(),
+            self.get_system_resources(),
+            self.get_network_interfaces(),
+            self.get_connected_devices(),
+        )
+        data.device_info, data.system_resources, data.network_interfaces, data.connected_devices = core_results
 
-        try:
-            data.wireless_interfaces = await self.get_wireless_interfaces()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional wireless info failed: %s", err)
+        # Optional data: parallelized with error handling.
+        optional_tasks = [
+            self.get_wireless_interfaces(),
+            self.get_dhcp_leases(),
+            self.get_ip_neighbors(),
+            self.get_mwan_status(),
+            self.get_wps_status(),
+            self.get_qmodem_info(),
+            self.get_services(),
+            self.get_leds(),
+            self.get_firewall_redirects(),
+            self.get_firewall_rules(),
+            self.get_access_control(),
+            self.get_vpn_status(),
+            self.get_latency(),
+            self.get_external_ip(),
+        ]
 
-        try:
-            data.dhcp_leases = await self.get_dhcp_leases()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional DHCP leases failed: %s", err)
+        opt_results = await asyncio.gather(*optional_tasks, return_exceptions=True)
 
-        try:
-            data.ip_neighbors = await self.get_ip_neighbors()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional IP neighbors failed: %s", err)
+        def get_val(res, default, name):
+            if isinstance(res, Exception):
+                _LOGGER.debug("Optional %s info failed: %s", name, res)
+                return default
+            return res
 
-        try:
-            data.mwan_status = await self.get_mwan_status()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional MWAN status failed: %s", err)
-
-        try:
-            data.wps_status = await self.get_wps_status()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional WPS status failed: %s", err)
-
-        try:
-            data.qmodem_info = await self.get_qmodem_info()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional QModem info failed: %s", err)
-
-        try:
-            data.services = await self.get_services()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional services info failed: %s", err)
-
-        try:
-            data.leds = await self.get_leds()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional LEDs info failed: %s", err)
-
-        try:
-            data.firewall_redirects = await self.get_firewall_redirects()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional firewall redirects info failed: %s", err)
-
-        try:
-            data.firewall_rules = await self.get_firewall_rules()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional firewall rules info failed: %s", err)
-
-        try:
-            data.access_control = await self.get_access_control()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional access control info failed: %s", err)
-
-        try:
-            data.vpn_interfaces = await self.get_vpn_status()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional VPN status check failed: %s", err)
-
-        try:
-            data.latency = await self.get_latency()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional latency check failed: %s", err)
-
-        try:
-            data.external_ip = await self.get_external_ip()
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional external IP check failed: %s", err)
+        data.wireless_interfaces = get_val(opt_results[0], [], "wireless")
+        data.dhcp_leases = get_val(opt_results[1], [], "DHCP leases")
+        data.ip_neighbors = get_val(opt_results[2], [], "IP neighbors")
+        data.mwan_status = get_val(opt_results[3], [], "MWAN")
+        data.wps_status = get_val(opt_results[4], WpsStatus(), "WPS")
+        data.qmodem_info = get_val(opt_results[5], QModemInfo(), "QModem")
+        data.services = get_val(opt_results[6], [], "services")
+        data.leds = get_val(opt_results[7], [], "LEDs")
+        data.firewall_redirects = get_val(opt_results[8], [], "firewall redirects")
+        data.firewall_rules = get_val(opt_results[9], [], "firewall rules")
+        data.access_control = get_val(opt_results[10], [], "access control")
+        data.vpn_interfaces = get_val(opt_results[11], [], "VPN status")
+        data.latency = get_val(opt_results[12], LatencyResult(), "latency")
+        data.external_ip = get_val(opt_results[13], None, "external IP")
 
         return data

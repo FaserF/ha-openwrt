@@ -150,16 +150,16 @@
         "name": "Kanal"
       },
       "net_rx": {
-        "name": "Download (RX)"
+        "name": "{interface} Download (RX)"
       },
       "net_tx": {
-        "name": "Upload (TX)"
+        "name": "{interface} Upload (TX)"
       },
       "net_ipv4": {
         "name": "{interface} IPv4 Adresse"
       },
       "mwan_ratio": {
-        "name": "Online Quote"
+        "name": "{interface} Online Quote"
       },
       "wifi_txpower": {
         "name": "Sendeleistung"
@@ -193,6 +193,12 @@
       },
       "device_tx_rate": {
         "name": "TX Rate"
+      },
+      "net_rx_rate": {
+        "name": "{interface} RX Rate"
+      },
+      "net_tx_rate": {
+        "name": "{interface} TX Rate"
       },
       "device_connection_type": {
         "name": "Verbindungstyp"
@@ -249,10 +255,10 @@
         "name": "WAN Latenz"
       },
       "vpn_rx": {
-        "name": "VPN RX"
+        "name": "{interface} VPN RX"
       },
       "vpn_tx": {
-        "name": "VPN TX"
+        "name": "{interface} VPN TX"
       },
       "vpn_peers": {
         "name": "VPN Peers"

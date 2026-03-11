@@ -150,16 +150,16 @@
         "name": "Channel"
       },
       "net_rx": {
-        "name": "RX"
+        "name": "{interface} RX"
       },
       "net_tx": {
-        "name": "TX"
+        "name": "{interface} TX"
       },
       "net_ipv4": {
         "name": "{interface} IPv4 Address"
       },
       "mwan_ratio": {
-        "name": "Online Ratio"
+        "name": "{interface} Online Ratio"
       },
       "wifi_txpower": {
         "name": "TX Power"
@@ -193,6 +193,12 @@
       },
       "device_tx_rate": {
         "name": "TX Rate"
+      },
+      "net_rx_rate": {
+        "name": "{interface} RX Rate"
+      },
+      "net_tx_rate": {
+        "name": "{interface} TX Rate"
       },
       "device_connection_type": {
         "name": "Connection Type"
@@ -249,10 +255,10 @@
         "name": "WAN Latency"
       },
       "vpn_rx": {
-        "name": "VPN RX"
+        "name": "{interface} RX"
       },
       "vpn_tx": {
-        "name": "VPN TX"
+        "name": "{interface} TX"
       },
       "vpn_peers": {
         "name": "VPN Peers"

@@ -546,8 +546,14 @@ class UbusClient(OpenWrtClient):
         except (UbusError, Exception):  # noqa: BLE001
             pass
 
+        # Fetch wireless_data once for both iwinfo and hostapd processing
+        wireless_data: dict[str, Any] = {}
         try:
             wireless_data = await self._call("network.wireless", "status")
+        except UbusError:
+            pass
+
+        if wireless_data:
             for _radio_name, radio_data in wireless_data.items():
                 if not isinstance(radio_data, dict):
                     continue
@@ -583,8 +589,6 @@ class UbusClient(OpenWrtClient):
                             )
                     except UbusError:
                         pass
-        except UbusError:
-            pass
 
         try:
             neighbors = await self.get_ip_neighbors()
@@ -612,8 +616,7 @@ class UbusClient(OpenWrtClient):
         except Exception as neigh_err:  # noqa: BLE001
             _LOGGER.debug("Error processing IP neighbors in get_connected_devices: %s", neigh_err)
 
-        try:
-            wireless_data = await self._call("network.wireless", "status")
+        if wireless_data:
             for _radio_name, radio_data in wireless_data.items():
                 if not isinstance(radio_data, dict):
                     continue
@@ -658,8 +661,7 @@ class UbusClient(OpenWrtClient):
 
                     except UbusError:
                         pass
-        except Exception as err:
-            _LOGGER.debug("Error fetching wireless status: %s", err)
+        else:
             # Fallback: list all hostapd objects directly
             try:
                 ubus_objects = await self._call("ubus", "list")
