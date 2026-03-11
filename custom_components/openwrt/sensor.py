@@ -438,6 +438,10 @@ async def async_setup_entry(
             for description in QMODEM_SENSORS:
                 entities.append(OpenWrtQModemSensorEntity(coordinator, entry, description))
 
+        for sqm in coordinator.data.sqm:
+            if sqm.section_id:
+                entities.extend(_create_sqm_sensors(coordinator, entry, sqm.section_id, sqm.name))
+
         # DHCP Lease Count sensor
         entities.append(
             OpenWrtSensorEntity(
@@ -688,6 +692,69 @@ def _create_wifi_sensors(
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
                     (w.htmode for w in data.wireless_interfaces if w.name == n), None
+                ),
+            ),
+        )
+    )
+
+    return sensors
+
+
+def _create_sqm_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    section_id: str,
+    name: str,
+) -> list[OpenWrtSensorEntity]:
+    """Create diagnostic sensors for an SQM instance."""
+    sensors = []
+
+    # SQM Interface
+    sensors.append(
+        OpenWrtSensorEntity(
+            coordinator,
+            entry,
+            OpenWrtSensorDescription(
+                key=f"sqm_{section_id}_interface",
+                translation_key="sqm_interface",
+                name=f"SQM {name} Interface",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                value_fn=lambda data, sid=section_id: next(
+                    (s.interface for s in data.sqm if s.section_id == sid), None
+                ),
+            ),
+        )
+    )
+
+    # SQM Qdisc
+    sensors.append(
+        OpenWrtSensorEntity(
+            coordinator,
+            entry,
+            OpenWrtSensorDescription(
+                key=f"sqm_{section_id}_qdisc",
+                translation_key="sqm_qdisc",
+                name=f"SQM {name} Qdisc",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                value_fn=lambda data, sid=section_id: next(
+                    (s.qdisc for s in data.sqm if s.section_id == sid), None
+                ),
+            ),
+        )
+    )
+
+    # SQM Script
+    sensors.append(
+        OpenWrtSensorEntity(
+            coordinator,
+            entry,
+            OpenWrtSensorDescription(
+                key=f"sqm_{section_id}_script",
+                translation_key="sqm_script",
+                name=f"SQM {name} Script",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                value_fn=lambda data, sid=section_id: next(
+                    (s.script for s in data.sqm if s.section_id == sid), None
                 ),
             ),
         )

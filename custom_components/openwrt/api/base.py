@@ -263,6 +263,20 @@ class VpnInterface:
 
 
 @dataclass
+class SqmStatus:
+    """SQM (Smart Queue Management) status."""
+
+    name: str = ""
+    enabled: bool = False
+    interface: str = ""
+    download: int = 0  # kbit/s
+    upload: int = 0    # kbit/s
+    qdisc: str = ""
+    script: str = ""
+    section_id: str = ""
+
+
+@dataclass
 class LatencyResult:
     """Network latency measurement result."""
 
@@ -305,6 +319,7 @@ class OpenWrtData:
     asu_image_status: str = ""  # e.g. "available", "building", "failed"
     asu_image_url: str | None = None
     qmodem_info: QModemInfo = field(default_factory=QModemInfo)
+    sqm: list[SqmStatus] = field(default_factory=list)
 
 
 class OpenWrtClient(abc.ABC):
@@ -468,6 +483,14 @@ class OpenWrtClient(abc.ABC):
     async def set_led(self, name: str, brightness: int) -> bool:
         """Set LED brightness (0=off, max=on)."""
         return False
+
+    async def get_sqm_status(self) -> list[SqmStatus]:
+        """Get SQM status."""
+        return []
+
+    @abc.abstractmethod
+    async def set_sqm_config(self, section_id: str, **kwargs: Any) -> bool:
+        """Set SQM configuration and reload."""
 
     @abc.abstractmethod
     async def install_firmware(self, url: str) -> None:
@@ -752,6 +775,7 @@ class OpenWrtClient(abc.ABC):
                 self.get_firewall_redirects(),
                 self.get_firewall_rules(),
                 self.get_access_control(),
+                self.get_sqm_status(),
             ]
             slow_results = await asyncio.gather(*slow_optional_tasks, return_exceptions=True)
 
@@ -760,6 +784,7 @@ class OpenWrtClient(abc.ABC):
             data.firewall_redirects = get_val(slow_results[2], [], "firewall redirects")
             data.firewall_rules = get_val(slow_results[3], [], "firewall rules")
             data.access_control = get_val(slow_results[4], [], "access control")
+            data.sqm = get_val(slow_results[5], [], "SQM")
 
             # Cache slow results
             self._cached_slow_data = {
@@ -768,6 +793,7 @@ class OpenWrtClient(abc.ABC):
                 "firewall_redirects": data.firewall_redirects,
                 "firewall_rules": data.firewall_rules,
                 "access_control": data.access_control,
+                "sqm": data.sqm,
             }
             _LOGGER.debug("Full poll cycle %d: refreshed slow-changing data", self._poll_count)
         else:
@@ -778,5 +804,6 @@ class OpenWrtClient(abc.ABC):
             data.firewall_redirects = cached.get("firewall_redirects", [])
             data.firewall_rules = cached.get("firewall_rules", [])
             data.access_control = cached.get("access_control", [])
+            data.sqm = cached.get("sqm", [])
 
         return data

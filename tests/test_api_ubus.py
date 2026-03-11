@@ -84,3 +84,46 @@ async def test_ubus_get_device_info(ubus_client: UbusClient):
         assert info.model == "Test Router"
         assert info.release_version == "25.12"
         assert info.architecture == ""
+
+
+@pytest.mark.asyncio
+async def test_ubus_get_sqm_status(ubus_client: UbusClient):
+    """Test fetching SQM status via ubus."""
+    ubus_client._session_id = "test_token"
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "eth0": {
+                ".type": "queue",
+                ".name": "eth0",
+                "enabled": "1",
+                "interface": "wan",
+                "download": "100000",
+                "upload": "50000",
+                "qdisc": "fq_codel",
+                "script": "simple.qos",
+            }
+        }
+
+        status = await ubus_client.get_sqm_status()
+        assert len(status) == 1
+        assert status[0].section_id == "eth0"
+        assert status[0].enabled is True
+        assert status[0].download == 100000
+
+
+@pytest.mark.asyncio
+async def test_ubus_set_sqm_config(ubus_client: UbusClient):
+    """Test setting SQM config via ubus."""
+    ubus_client._session_id = "test_token"
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        await ubus_client.set_sqm_config("eth0", enabled=False, download=200000)
+        
+        # Should call uci set (at least twice) and commit
+        assert mock_call.call_count >= 3
+        
+        # Check if enabled was set
+        mock_call.assert_any_call("uci", "set", {"config": "sqm", "section": "eth0", "values": {"enabled": "0"}})
+        # Check if download was set
+        mock_call.assert_any_call("uci", "set", {"config": "sqm", "section": "eth0", "values": {"download": "200000"}})
+        # Check commit
+        mock_call.assert_any_call("uci", "commit", {"config": "sqm"})

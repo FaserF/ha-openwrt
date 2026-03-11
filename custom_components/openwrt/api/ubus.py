@@ -1247,3 +1247,50 @@ class UbusClient(OpenWrtClient):
                 _LOGGER.info("Ubus connection lost during sysupgrade - device is rebooting")
                 return
             _LOGGER.warning("Sysupgrade command might have failed or disconnected: %s", err)
+    async def get_sqm_status(self) -> list[SqmStatus]:
+        """Get SQM status via uci ubus."""
+        from .base import SqmStatus
+        sqm_instances: list[SqmStatus] = []
+        try:
+            resp = await self._call("uci", "get", {"config": "sqm"})
+            if not resp or not isinstance(resp, dict):
+                return sqm_instances
+
+            # Support both {"values": {...}} and direct {...}
+            values = resp.get("values", resp)
+            if not isinstance(values, dict):
+                return sqm_instances
+
+            for section_id, section_data in values.items():
+                if isinstance(section_data, dict) and section_data.get(".type") == "queue":
+                    sqm = SqmStatus(
+                        section_id=section_id,
+                        name=section_data.get("name", section_id),
+                        enabled=section_data.get("enabled") == "1",
+                        interface=section_data.get("interface", ""),
+                        download=int(section_data.get("download", 0)),
+                        upload=int(section_data.get("upload", 0)),
+                        qdisc=section_data.get("qdisc", ""),
+                        script=section_data.get("script", ""),
+                    )
+                    sqm_instances.append(sqm)
+        except Exception as err:
+            _LOGGER.debug("SQM status check failed: %s", err)
+        return sqm_instances
+
+    async def set_sqm_config(self, section_id: str, **kwargs: Any) -> bool:
+        """Set SQM configuration via uci ubus."""
+        try:
+            for key, value in kwargs.items():
+                val_str = "1" if value is True else "0" if value is False else str(value)
+                await self._call("uci", "set", {
+                    "config": "sqm",
+                    "section": section_id,
+                    "values": {key: val_str}
+                })
+            await self._call("uci", "commit", {"config": "sqm"})
+            await self._call("file", "exec", {"command": "/etc/init.d/sqm", "params": ["reload"]})
+            return True
+        except Exception as err:
+            _LOGGER.error("Failed to set SQM config: %s", err)
+            return False

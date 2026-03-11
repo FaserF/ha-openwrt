@@ -271,6 +271,15 @@
       },
       "net_uptime": {
         "name": "{interface} Uptime"
+      },
+      "sqm_interface": {
+        "name": "SQM Interface"
+      },
+      "sqm_qdisc": {
+        "name": "SQM Qdisc"
+      },
+      "sqm_script": {
+        "name": "SQM Script"
       }
     },
     "binary_sensor": {
@@ -340,6 +349,9 @@
       },
       "firewall_rule": {
         "name": "Firewall Rule"
+      },
+      "sqm_enabled": {
+        "name": "SQM Enabled"
       }
     },
     "update": {
@@ -372,6 +384,12 @@
     "number": {
       "wifi_txpower_control": {
         "name": "TX Power"
+      },
+      "sqm_download": {
+        "name": "SQM Download Limit"
+      },
+      "sqm_upload": {
+        "name": "SQM Upload Limit"
       }
     }
   },

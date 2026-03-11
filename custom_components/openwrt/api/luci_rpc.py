@@ -782,3 +782,41 @@ class LuciRpcClient(OpenWrtClient):
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set firewall redirect via LuCI RPC: %s", err)
             return False
+    async def get_sqm_status(self) -> list[SqmStatus]:
+        """Get SQM status via LuCI RPC."""
+        from .base import SqmStatus
+
+        sqm_instances: list[SqmStatus] = []
+        try:
+            sqm_config = await self._rpc_call("uci", "get_all", ["sqm"])
+            if isinstance(sqm_config, dict):
+                for section_id, values in sqm_config.items():
+                    if isinstance(values, dict) and values.get(".type") == "queue":
+                        sqm_instances.append(
+                            SqmStatus(
+                                section_id=section_id,
+                                name=values.get("name", section_id),
+                                enabled=values.get("enabled") == "1",
+                                interface=values.get("interface", ""),
+                                download=int(values.get("download", "0")),
+                                upload=int(values.get("upload", "0")),
+                                qdisc=values.get("qdisc", ""),
+                                script=values.get("script", ""),
+                            )
+                        )
+        except Exception:
+            pass
+        return sqm_instances
+
+    async def set_sqm_config(self, section_id: str, **kwargs: Any) -> bool:
+        """Set SQM configuration via LuCI RPC."""
+        try:
+            for key, value in kwargs.items():
+                val_str = "1" if value is True else "0" if value is False else str(value)
+                await self._rpc_call("uci", "set", ["sqm", section_id, key, val_str])
+            await self._rpc_call("uci", "commit", ["sqm"])
+            await self._rpc_call("sys", "exec", ["/etc/init.d/sqm reload"])
+            return True
+        except Exception as err:
+            _LOGGER.error("Failed to set SQM config via LuCI RPC: %s", err)
+            return False

@@ -85,6 +85,12 @@ async def async_setup_entry(
                 )
             )
 
+        for sqm in coordinator.data.sqm:
+            if sqm.section_id:
+                entities.append(
+                    OpenWrtSqmSwitch(coordinator, entry, client, sqm.section_id, sqm.name)
+                )
+
     async_add_entities(entities)
 
 
@@ -438,4 +444,73 @@ class OpenWrtFirewallRuleSwitch(CoordinatorEntity[OpenWrtDataCoordinator], Switc
             await self._client.set_firewall_rule_enabled(self._section_id, False)
         except Exception as err:
             raise HomeAssistantError(f"Failed to disable firewall rule: {err}") from err
+        await self.coordinator.async_request_refresh()
+
+
+class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+    """Switch to enable/disable SQM."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = SwitchDeviceClass.SWITCH
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        client: OpenWrtClient,
+        section_id: str,
+        name: str,
+    ) -> None:
+        """Initialize the SQM switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._section_id = section_id
+        self._attr_unique_id = f"{entry.entry_id}_sqm_{section_id}"
+        self._attr_name = f"SQM {name}"
+        self._attr_translation_key = "sqm_enabled"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return SQM enabled status."""
+        if self.coordinator.data is None:
+            return None
+        for sqm in self.coordinator.data.sqm:
+            if sqm.section_id == self._section_id:
+                return sqm.enabled
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        if self.coordinator.data is None:
+            return {}
+        for sqm in self.coordinator.data.sqm:
+            if sqm.section_id == self._section_id:
+                return {
+                    "interface": sqm.interface,
+                    "download_limit": sqm.download,
+                    "upload_limit": sqm.upload,
+                    "qdisc": sqm.qdisc,
+                    "script": sqm.script,
+                }
+        return {}
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable SQM."""
+        try:
+            await self._client.set_sqm_config(self._section_id, enabled=True)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to enable SQM: {err}") from err
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable SQM."""
+        try:
+            await self._client.set_sqm_config(self._section_id, enabled=False)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to disable SQM: {err}") from err
         await self.coordinator.async_request_refresh()

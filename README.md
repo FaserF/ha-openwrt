@@ -23,6 +23,10 @@ Supports **OpenWrt 25.12** and newer (older versions may also work, but are not 
   - **Advanced Interface Diagnostics**: Individual sensors/attributes for IPv6 addresses, link speed (Mbps), duplex mode, and interface uptime.
 - **Configurable Control**:
   - **WiFi TX Power**: Native slider to control transmission power of WiFi radios.
+  - **SQM (Smart Queue Management)**: 
+    - Control enabled state of SQM instances.
+    - Set download and upload limits (Mbps) via native number sliders.
+    - Diagnostic sensors for configured interface, qdisc, and setup script.
   - **Backup Service**: Trigger full router configuration backups (`sysupgrade -b`) directly from Home Assistant.
 - **Smart Events**: 
   - Fires Home Assistant events (`openwrt_new_device`) when new, previously unknown MAC addresses connect to the network.

@@ -83,3 +83,46 @@ async def test_luci_get_device_info(luci_client: LuciRpcClient):
         assert info.hostname == "LuCI-Router"
         assert info.release_version == "25.12"
         assert info.architecture == "arm/v8"
+
+
+@pytest.mark.asyncio
+async def test_luci_get_sqm_status(luci_client: LuciRpcClient):
+    """Test fetching SQM status via LuCI RPC."""
+    luci_client._auth_token = "luci_test_token"
+    with patch.object(luci_client, "_rpc_call", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "eth0": {
+                ".type": "queue",
+                ".name": "eth0",
+                "enabled": "1",
+                "interface": "wan",
+                "download": "100000",
+                "upload": "50000",
+                "qdisc": "fq_codel",
+                "script": "simple.qos",
+            }
+        }
+
+        status = await luci_client.get_sqm_status()
+        assert len(status) == 1
+        assert status[0].section_id == "eth0"
+        assert status[0].enabled is True
+        assert status[0].download == 100000
+
+
+@pytest.mark.asyncio
+async def test_luci_set_sqm_config(luci_client: LuciRpcClient):
+    """Test setting SQM config via LuCI RPC."""
+    luci_client._auth_token = "luci_test_token"
+    with patch.object(luci_client, "_rpc_call", new_callable=AsyncMock) as mock_call:
+        await luci_client.set_sqm_config("eth0", enabled=False, download=200000)
+        
+        # Check if calls were made
+        assert mock_call.call_count >= 3
+        
+        # Check if enabled was set
+        mock_call.assert_any_call("uci", "set", ["sqm", "eth0", "enabled", "0"])
+        # Check if download was set
+        mock_call.assert_any_call("uci", "set", ["sqm", "eth0", "download", "200000"])
+        # Check commit
+        mock_call.assert_any_call("uci", "commit", ["sqm"])

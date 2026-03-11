@@ -1039,3 +1039,58 @@ class SshClient(OpenWrtClient):
                 pass
 
         return neighbors
+    async def get_sqm_status(self) -> list[SqmStatus]:
+        """Get SQM status via SSH."""
+        from .base import SqmStatus
+
+        sqm_instances: list[SqmStatus] = []
+        try:
+            output = await self._exec("uci show sqm 2>/dev/null")
+            if not output:
+                return sqm_instances
+
+            sections: dict[str, dict[str, str]] = {}
+            for line in output.splitlines():
+                if "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                parts = key.split(".")
+                if len(parts) >= 2:
+                    section = parts[1]
+                    if section not in sections:
+                        sections[section] = {}
+                    if len(parts) == 2:
+                        sections[section][".type"] = val.strip("'")
+                    elif len(parts) >= 3:
+                        sections[section][parts[2]] = val.strip("'")
+
+            for section_id, data in sections.items():
+                if data.get(".type") == "queue":
+                    sqm_instances.append(
+                        SqmStatus(
+                            section_id=section_id,
+                            name=data.get("name", section_id),
+                            enabled=data.get("enabled") == "1",
+                            interface=data.get("interface", ""),
+                            download=int(data.get("download", "0")),
+                            upload=int(data.get("upload", "0")),
+                            qdisc=data.get("qdisc", ""),
+                            script=data.get("script", ""),
+                        )
+                    )
+        except Exception as err:
+            _LOGGER.debug("Failed to get SQM status via SSH: %s", err)
+        return sqm_instances
+
+    async def set_sqm_config(self, section_id: str, **kwargs: Any) -> bool:
+        """Set SQM configuration via SSH."""
+        try:
+            for key, value in kwargs.items():
+                val_str = "1" if value is True else "0" if value is False else str(value)
+                await self._exec(f"uci set sqm.{section_id}.{key}='{val_str}'")
+            await self._exec("uci commit sqm")
+            await self._exec("/etc/init.d/sqm reload")
+            return True
+        except Exception as err:
+            _LOGGER.error("Failed to set SQM config via SSH: %s", err)
+            return False

@@ -110,3 +110,40 @@ async def test_ssh_get_temperature_fallback(ssh_client: SshClient):
 
         resources = await ssh_client.get_system_resources()
         assert resources.temperature == 45.0
+
+
+@pytest.mark.asyncio
+async def test_ssh_get_sqm_status(ssh_client: SshClient):
+    """Test fetching SQM status via SSH."""
+    ssh_client._connected = True
+    with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = (
+            "sqm.eth0=queue\n"
+            "sqm.eth0.enabled='1'\n"
+            "sqm.eth0.interface='wan'\n"
+            "sqm.eth0.download='100000'\n"
+            "sqm.eth0.upload='50000'\n"
+            "sqm.eth0.qdisc='fq_codel'\n"
+            "sqm.eth0.script='simple.qos'\n"
+        )
+
+        status = await ssh_client.get_sqm_status()
+        assert len(status) == 1
+        assert status[0].section_id == "eth0"
+        assert status[0].enabled is True
+        assert status[0].download == 100000
+
+
+@pytest.mark.asyncio
+async def test_ssh_set_sqm_config(ssh_client: SshClient):
+    """Test setting SQM config via SSH."""
+    ssh_client._connected = True
+    with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
+        await ssh_client.set_sqm_config("eth0", enabled=False, download=200000)
+        
+        # Check if commands were executed
+        calls = [c.args[0] for c in mock_exec.call_args_list]
+        assert "uci set sqm.eth0.enabled='0'" in calls
+        assert "uci set sqm.eth0.download='200000'" in calls
+        assert "uci commit sqm" in calls
+        assert "/etc/init.d/sqm reload" in calls
