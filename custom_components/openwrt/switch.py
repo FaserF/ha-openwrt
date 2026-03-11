@@ -58,6 +58,15 @@ async def async_setup_entry(
                     )
                 )
 
+        for rule in coordinator.data.firewall_rules:
+            # Only expose named rules to avoid clutter and potentially accidental system changes
+            if rule.name and rule.section_id and not rule.name.startswith("cfg"):
+                entities.append(
+                    OpenWrtFirewallRuleSwitch(
+                        coordinator, entry, client, rule.section_id, rule.name
+                    )
+                )
+
         for device in coordinator.data.connected_devices:
             if not device.mac:
                 continue
@@ -364,4 +373,69 @@ class OpenWrtAccessControlSwitch(
             raise HomeAssistantError(
                 f"Failed to block device {self._mac}: {err}"
             ) from err
+        await self.coordinator.async_request_refresh()
+class OpenWrtFirewallRuleSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+    """Switch to enable/disable a general firewall rule."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = SwitchDeviceClass.SWITCH
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        client: OpenWrtClient,
+        section_id: str,
+        name: str,
+    ) -> None:
+        """Initialize the firewall rule switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._section_id = section_id
+        self._attr_unique_id = f"{entry.entry_id}_firewall_rule_{section_id}"
+        self._attr_name = f"Firewall Rule {name}"
+        self._attr_translation_key = "firewall_rule"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return firewall rule status."""
+        if self.coordinator.data is None:
+            return None
+        for rule in self.coordinator.data.firewall_rules:
+            if rule.section_id == self._section_id:
+                return rule.enabled
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        if self.coordinator.data is None:
+            return {}
+        for rule in self.coordinator.data.firewall_rules:
+            if rule.section_id == self._section_id:
+                return {
+                    "target": rule.target,
+                    "src": rule.src,
+                    "dest": rule.dest,
+                }
+        return {}
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable the firewall rule."""
+        try:
+            await self._client.set_firewall_rule_enabled(self._section_id, True)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to enable firewall rule: {err}") from err
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable the firewall rule."""
+        try:
+            await self._client.set_firewall_rule_enabled(self._section_id, False)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to disable firewall rule: {err}") from err
         await self.coordinator.async_request_refresh()

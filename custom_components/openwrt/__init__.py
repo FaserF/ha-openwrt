@@ -15,10 +15,20 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, ServiceResponse
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers import device_registry as dr
 
 from .api.luci_rpc import LuciRpcAuthError, LuciRpcError
@@ -31,10 +41,11 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_EXEC,
+    SERVICE_INIT,
     SERVICE_REBOOT,
-    SERVICE_WOL,
     SERVICE_UCI_GET,
     SERVICE_UCI_SET,
+    SERVICE_WOL,
 )
 from .coordinator import OpenWrtDataCoordinator, create_client
 
@@ -116,7 +127,6 @@ async def _async_update_listener(
 
 def _register_services(hass: HomeAssistant) -> None:
     """Register integration services."""
-    import voluptuous as vol  # noqa: PLC0415
     from homeassistant.helpers import config_validation as cv  # noqa: PLC0415
 
     async def _handle_reboot(call: ServiceCall) -> None:
@@ -152,18 +162,18 @@ def _register_services(hass: HomeAssistant) -> None:
         config = call.data["config"]
         section = call.data.get("section")
         option = call.data.get("option")
-        
+
         if entry_id not in hass.data[DOMAIN]:
             raise vol.Invalid(f"Config entry {entry_id} not found")
-            
+
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
-        
+
         cmd_parts = ["uci", "get", config]
         if section:
             cmd_parts[-1] += f".{section}"
             if option:
                 cmd_parts[-1] += f".{option}"
-                
+
         cmd = " ".join(cmd_parts)
         try:
             result = await client.execute_command(cmd)
@@ -178,16 +188,16 @@ def _register_services(hass: HomeAssistant) -> None:
         section = call.data["section"]
         option = call.data.get("option")
         value = call.data["value"]
-        
+
         if entry_id not in hass.data[DOMAIN]:
             raise vol.Invalid(f"Config entry {entry_id} not found")
-            
+
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
-        
+
         target = f"{config}.{section}"
         if option:
             target += f".{option}"
-            
+
         cmd = f"uci set {target}='{value}' && uci commit {config} && reload_config"
         try:
             await client.execute_command(cmd)

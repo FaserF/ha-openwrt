@@ -19,6 +19,8 @@ from .base import (
     DeviceInfo,
     DhcpLease,
     FirewallRedirect,
+    FirewallRule,
+    IpNeighbor,
     MwanStatus,
     NetworkInterface,
     OpenWrtClient,
@@ -75,9 +77,10 @@ class UbusClient(OpenWrtClient):
         use_ssl: bool = False,
         verify_ssl: bool = False,
         ubus_path: str = "/ubus",
+        dhcp_software: str = "auto",
     ) -> None:
         """Initialize the ubus client."""
-        super().__init__(host, username, password, port, use_ssl, verify_ssl)
+        super().__init__(host, username, password, port, use_ssl, verify_ssl, dhcp_software)
         self._ubus_path = ubus_path
         self._session_id: str = "00000000000000000000000000000000"
         self._session: aiohttp.ClientSession | None = None
@@ -584,20 +587,30 @@ class UbusClient(OpenWrtClient):
             pass
 
         try:
-            neighbors = await self.get_neighbors()
+            neighbors = await self.get_ip_neighbors()
             for neigh in neighbors:
-                mac = neigh.get("mac", "").lower()
+                mac = neigh.mac.lower()
                 if not mac or mac in devices:
+                    # Update existing device if it was found via DHCP but not neighbors
+                    if mac in devices:
+                        dev = devices[mac]
+                        if not dev.neighbor_state:
+                            dev.neighbor_state = neigh.state
+                        if not dev.interface:
+                            dev.interface = neigh.interface
                     continue
+
                 devices[mac] = ConnectedDevice(
                     mac=mac,
-                    ip=neigh.get("ip", ""),
+                    ip=neigh.ip,
+                    interface=neigh.interface,
                     is_wireless=False,
                     connected=True,
                     connection_type="wired",
+                    neighbor_state=neigh.state,
                 )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as neigh_err:  # noqa: BLE001
+            _LOGGER.debug("Error processing IP neighbors in get_connected_devices: %s", neigh_err)
 
         try:
             wireless_data = await self._call("network.wireless", "status")
@@ -697,78 +710,131 @@ class UbusClient(OpenWrtClient):
 
         return list(devices.values())
 
-    async def get_neighbors(self) -> list[dict[str, str]]:
-        """Get neighbor (ARP) table by reading /proc/net/arp."""
-        neighbors: list[dict[str, str]] = []
+    async def get_ip_neighbors(self) -> list[IpNeighbor]:
+        """Get IP neighbor (ARP/NDP) table by running 'ip neigh show'."""
+        neighbors: list[IpNeighbor] = []
         try:
-            # First try file.read
-            try:
-                result = await self._call("file", "read", {"path": "/proc/net/arp"})
-                content = result.get("data", "")
-            except UbusError:
-                # Fallback to file.exec if read is restricted
-                result = await self._call(
-                    "file", "exec", {"command": "cat", "params": ["/proc/net/arp"]}
-                )
-                content = result.get("stdout", "")
+            # Use ip neigh show as it supports both IPv4 and IPv6 and provides state
+            result = await self._call(
+                "file", "exec", {"command": "ip", "params": ["neigh", "show"]}
+            )
+            content = result.get("stdout", "")
 
-            lines = content.strip().split("\n")
-            if len(lines) > 1:
-                for line in lines[1:]:  # Skip header
-                    parts = line.split()
-                    if len(parts) >= 4:
+            for line in content.strip().split("\n"):
+                if not line:
+                    continue
+                # Example: 192.168.1.1 dev br-lan lladdr 00:11:22:33:44:55 REACHABLE
+                # Example IPv6: fe80::1 dev br-lan lladdr 00:11:22:33:44:55 router STALE
+                parts = line.split()
+                if len(parts) >= 4:
+                    ip = parts[0]
+                    mac = ""
+                    interface = ""
+                    state = parts[-1]
+
+                    if "lladdr" in parts:
+                        idx = parts.index("lladdr")
+                        if len(parts) > idx + 1:
+                            mac = parts[idx + 1]
+                    if "dev" in parts:
+                        idx = parts.index("dev")
+                        if len(parts) > idx + 1:
+                            interface = parts[idx + 1]
+
+                    if mac:
                         neighbors.append(
-                            {
-                                "ip": parts[0],
-                                "mac": parts[3].lower(),
-                                "interface": parts[5] if len(parts) > 5 else "",
-                            }
+                            IpNeighbor(
+                                ip=ip,
+                                mac=mac.upper(),
+                                interface=interface,
+                                state=state,
+                            )
                         )
-        except UbusError:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.debug("Error getting IP neighbors: %s", exc)
+
+        # Fallback to /proc/net/arp if ip neigh failed or returned nothing
+        if not neighbors:
+            try:
+                try:
+                    result = await self._call("file", "read", {"path": "/proc/net/arp"})
+                    content = result.get("data", "")
+                except UbusError:
+                    result = await self._call(
+                        "file", "exec", {"command": "cat", "params": ["/proc/net/arp"]}
+                    )
+                    content = result.get("stdout", "")
+
+                lines = content.strip().split("\n")
+                if len(lines) > 1:
+                    for line in lines[1:]:
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            neighbors.append(
+                                IpNeighbor(
+                                    ip=parts[0],
+                                    mac=parts[3].upper(),
+                                    interface=parts[5] if len(parts) > 5 else "",
+                                    state="REACHABLE" if parts[2] != "0x0" else "STALE",
+                                )
+                            )
+            except Exception as fallback_exc:  # noqa: BLE001
+                _LOGGER.debug("Fallback to /proc/net/arp failed: %s", fallback_exc)
+
         return neighbors
 
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         """Get DHCP leases via ubus or file."""
+        if self.dhcp_software == "none":
+            return []
+
         leases: list[DhcpLease] = []
 
-        try:
-            result = await self._call("dhcp", "ipv4leases")
-            for lease_data in result.get("dhcp_leases", []):
-                leases.append(
-                    DhcpLease(
-                        hostname=lease_data.get("hostname", ""),
-                        mac=lease_data.get("mac", "").lower(),
-                        ip=lease_data.get("ipaddr", ""),
-                        expires=lease_data.get("expires", 0),
-                    )
-                )
-            return leases
-        except UbusError:
-            pass
-
-        try:
-            result = await self._call(
-                "file",
-                "read",
-                {
-                    "path": "/tmp/dhcp.leases",
-                },
-            )
-            content = result.get("data", "")
-            for line in content.strip().split("\n"):
-                parts = line.split()
-                if len(parts) >= 4:
+        # Try odhcpd via ubus
+        if self.dhcp_software in ("auto", "odhcpd"):
+            try:
+                result = await self._call("dhcp", "ipv4leases")
+                for lease_data in result.get("dhcp_leases", []):
                     leases.append(
                         DhcpLease(
-                            expires=int(parts[0]) if parts[0].isdigit() else 0,
-                            mac=parts[1].lower(),
-                            ip=parts[2],
-                            hostname=parts[3] if parts[3] != "*" else "",
+                            hostname=lease_data.get("hostname", ""),
+                            mac=lease_data.get("mac", "").lower(),
+                            ip=lease_data.get("ipaddr", ""),
+                            expires=lease_data.get("expires", 0),
                         )
                     )
-        except UbusError:
-            pass
+                if leases and self.dhcp_software == "odhcpd":
+                    return leases
+            except UbusError:
+                if self.dhcp_software == "odhcpd":
+                    _LOGGER.debug("Requested odhcpd but 'dhcp' ubus object not found")
+                    return []
+
+        # Try dnsmasq via file
+        if self.dhcp_software in ("auto", "dnsmasq"):
+            try:
+                result = await self._call(
+                    "file",
+                    "read",
+                    {
+                        "path": "/tmp/dhcp.leases",
+                    },
+                )
+                content = result.get("data", "")
+                for line in content.strip().split("\n"):
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        leases.append(
+                            DhcpLease(
+                                expires=int(parts[0]) if parts[0].isdigit() else 0,
+                                mac=parts[1].lower(),
+                                ip=parts[2],
+                                hostname=parts[3] if parts[3] != "*" else "",
+                            )
+                        )
+            except UbusError:
+                if self.dhcp_software == "dnsmasq":
+                    _LOGGER.debug("Requested dnsmasq but could not read /tmp/dhcp.leases")
 
         return leases
 
@@ -866,53 +932,6 @@ class UbusClient(OpenWrtClient):
             _LOGGER.error("Failed to %s service %s: %s", action, name, err)
             return False
 
-    async def reboot(self) -> bool:
-        """Reboot the device."""
-        try:
-            await self._call("system", "reboot")
-            return True
-        except UbusError as err:
-            _LOGGER.error("Failed to reboot: %s", err)
-            return False
-
-    async def execute_command(self, command: str) -> str:
-        """Execute a command via ubus file.exec."""
-        try:
-            parts = command.split()
-            result = await self._call(
-                "file",
-                "exec",
-                {
-                    "command": parts[0],
-                    "params": parts[1:] if len(parts) > 1 else [],
-                    "env": {},  # Explicitly empty env to satisfy parser
-                },
-            )
-            return result.get("stdout", "") + result.get("stderr", "")
-        except UbusError as err:
-            _LOGGER.error("Failed to execute command: %s", err)
-            return f"Error: {err}"
-
-    async def install_firmware(self, url: str) -> None:
-        """Install firmware from the given URL via Ubus."""
-        try:
-            download_cmd = f"wget -O /tmp/firmware.bin '{url}'"
-            _LOGGER.info("Downloading firmware via Ubus: %s", download_cmd)
-            await self._call(
-                "file",
-                "exec",
-                {
-                    "command": "/bin/sh",
-                    "params": [
-                        "-c",
-                        f"{download_cmd} && sysupgrade /tmp/firmware.bin > /dev/null 2>&1 &",
-                    ],
-                    "env": {},
-                },
-            )
-        except UbusError as err:
-            _LOGGER.error("Failed to initiate firmware upgrade via Ubus: %s", err)
-            raise UbusError(f"Upgrade failed: {err}") from err
 
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages via opkg."""
@@ -942,17 +961,52 @@ class UbusClient(OpenWrtClient):
         except UbusError:
             return False
 
-    async def manage_interface(self, name: str, action: str) -> bool:
-        """Manage a network interface (up/down/reconnect) via ubus."""
+
+    async def set_firewall_rule_enabled(
+        self, section_id: str, enabled: bool
+    ) -> bool:
+        """Enable or disable a firewall rule via UCI."""
         try:
-            if action == "reconnect":
-                await self._call(f"network.interface.{name}", "down")
-                await self._call(f"network.interface.{name}", "up")
-            else:
-                await self._call(f"network.interface.{name}", action)
+            action = "1" if enabled else "0"
+            await self._call(
+                "uci",
+                "set",
+                {
+                    "config": "firewall",
+                    "section": section_id,
+                    "values": {"enabled": action},
+                },
+            )
+            await self._call("uci", "commit", {"config": "firewall"})
+            await self.execute_command("/etc/init.d/firewall reload")
             return True
         except UbusError:
             return False
+
+    async def get_firewall_rules(self) -> list[FirewallRule]:
+        """Get general firewall rules via UCI."""
+        rules: list[FirewallRule] = []
+        try:
+            config = await self._call("uci", "get", {"config": "firewall"})
+            values = config.get("values", {})
+
+            for section_id, section_data in values.items():
+                if section_data.get(".type") != "rule":
+                    continue
+
+                rules.append(
+                    FirewallRule(
+                        name=section_data.get("name", section_id),
+                        enabled=str(section_data.get("enabled", "1")) == "1",
+                        section_id=section_id,
+                        target=section_data.get("target", ""),
+                        src=section_data.get("src", ""),
+                        dest=section_data.get("dest", ""),
+                    )
+                )
+        except UbusError:
+            pass
+        return rules
 
     async def get_firewall_redirects(self) -> list[FirewallRedirect]:
         """Get firewall port forwarding redirects via UCI."""

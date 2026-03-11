@@ -6,7 +6,6 @@ import asyncio
 import logging
 
 import aiohttp
-
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -48,7 +47,7 @@ class AsuClient:
                 return await resp.json()
         except aiohttp.ClientError as err:
             raise AsuClientError(f"Connection to ASU failed: {err}") from err
-        except asyncio.TimeoutError as err:
+        except TimeoutError as err:
             raise AsuClientError("Request to ASU timed out") from err
 
     async def request_build(
@@ -121,7 +120,7 @@ class AsuClient:
                     if "sysupgrade" in img.get("name", ""):
                         sysupgrade_file = img.get("name")
                         break
-                
+
                 if not sysupgrade_file and images:
                     # Fallback to the first image if no sysupgrade specifically matched
                     sysupgrade_file = images[0].get("name")

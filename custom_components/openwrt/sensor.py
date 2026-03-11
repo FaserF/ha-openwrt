@@ -915,7 +915,7 @@ class OpenWrtQModemSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], Senso
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        
+
         manufacturer = coordinator.data.qmodem_info.manufacturer or "Unknown"
         revision = coordinator.data.qmodem_info.revision
         model = f"QModem {revision}" if revision else "QModem Device"

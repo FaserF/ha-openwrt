@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-from custom_components.openwrt.api.base import OpenWrtData, DeviceInfo, SystemResources
+from custom_components.openwrt.api.base import OpenWrtData, SystemResources
 from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
 
 
@@ -18,12 +19,12 @@ async def test_coordinator_stale_data_on_timeout() -> None:
     config_entry.options = {}
     config_entry.data = {"host": "192.168.1.1", "username": "root", "password": "password"}
     config_entry.entry_id = "test_entry"
-    
+
     mock_client = AsyncMock()
     mock_client.connected = True
-    
+
     coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
-    
+
     # Set initial data
     initial_data = OpenWrtData(
         system_resources=SystemResources(uptime=100),
@@ -32,19 +33,19 @@ async def test_coordinator_stale_data_on_timeout() -> None:
         wireless_interfaces=[],
     )
     coordinator.data = initial_data
-    
+
     async def get_all_data_err(*args, **kwargs):
         raise TimeoutError("Connection timed out")
-        
+
     async def connect_err(*args, **kwargs):
         raise Exception("Reconnect failed")
-        
+
     mock_client.get_all_data = get_all_data_err
     mock_client.connect = connect_err
-    
+
     # Run update
     data = await coordinator._async_update_data()
-    
+
     # Should return initial_data
     assert data == initial_data
     assert coordinator.data == initial_data
@@ -58,22 +59,22 @@ async def test_coordinator_update_failed_on_new_install() -> None:
     config_entry.options = {}
     config_entry.data = {"host": "192.168.1.1", "username": "root", "password": "password"}
     config_entry.entry_id = "test_entry"
-    
+
     mock_client = AsyncMock()
     mock_client.connected = True
-    
+
     coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
     coordinator.data = None
-    
+
     async def get_all_data_err(*args, **kwargs):
         raise TimeoutError("Connection timed out")
-        
+
     async def connect_err(*args, **kwargs):
         raise Exception("Reconnect failed")
-        
+
     mock_client.get_all_data = get_all_data_err
     mock_client.connect = connect_err
-    
+
     # Run update - should raise UpdateFailed
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()

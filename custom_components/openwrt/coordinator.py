@@ -35,8 +35,10 @@ from .api.ubus import (
     UbusTimeoutError,
 )
 from .const import (
+    CONF_ASU_URL,
     CONF_CONNECTION_TYPE,
     CONF_CUSTOM_FIRMWARE_REPO,
+    CONF_DHCP_SOFTWARE,
     CONF_HOST,
     CONF_PASSWORD,
     CONF_PORT,
@@ -77,6 +79,7 @@ def create_client(config: dict[str, Any]) -> OpenWrtClient:
     password = config.get(CONF_PASSWORD, "")
     use_ssl = config.get(CONF_USE_SSL, False)
     verify_ssl = config.get(CONF_VERIFY_SSL, False)
+    dhcp_software = config.get(CONF_DHCP_SOFTWARE, "auto")
 
     if connection_type == CONNECTION_TYPE_SSH:
         port = config.get(CONF_PORT, DEFAULT_PORT_SSH)
@@ -86,6 +89,7 @@ def create_client(config: dict[str, Any]) -> OpenWrtClient:
             password=password,
             port=port,
             ssh_key=config.get(CONF_SSH_KEY),
+            dhcp_software=dhcp_software,
         )
 
     if connection_type == CONNECTION_TYPE_LUCI_RPC:
@@ -99,6 +103,7 @@ def create_client(config: dict[str, Any]) -> OpenWrtClient:
             port=port,
             use_ssl=use_ssl,
             verify_ssl=verify_ssl,
+            dhcp_software=dhcp_software,
         )
 
     port = config.get(
@@ -112,6 +117,7 @@ def create_client(config: dict[str, Any]) -> OpenWrtClient:
         use_ssl=use_ssl,
         verify_ssl=verify_ssl,
         ubus_path=config.get(CONF_UBUS_PATH, DEFAULT_UBUS_PATH),
+        dhcp_software=dhcp_software,
     )
 
 
@@ -323,7 +329,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # Prepare request to ASU
         target = data.device_info.target
         model = data.device_info.board_name
-        
+
         asu_url = self.config_entry.options.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org")
 
         session = async_get_clientsession(self.hass)
@@ -341,20 +347,20 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     ):
                         data.asu_update_available = True
                         data.asu_supported = True
-                        
+
                         try:
                             # Fetch installed packages for the update request
                             data.installed_packages = await self.client.get_installed_packages()
                         except Exception as e:
                             _LOGGER.debug("Failed to fetch installed packages for ASU: %s", e)
-                            
+
                         # If ASU has a newer version than official version check, use it
                         if self._version_is_newer(
                             data.firmware_latest_version or "0.0.0", latest_version
                         ):
                             data.firmware_latest_version = latest_version
                             data.firmware_upgradable = True
-                            
+
                             # Try to get direct image URL from ASU for this version
                             images = asu_info.get("images", [])
                             for img in images:
@@ -363,7 +369,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                                     # We'll use the official releases URL as fallback
                                     # But ASU might provide a direct one if we requested a build
                                     pass
-                            
+
                             data.firmware_release_url = (
                                 f"https://openwrt.org/releases/{latest_version}"
                             )

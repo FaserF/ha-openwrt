@@ -19,6 +19,9 @@ from .base import (
     ConnectedDevice,
     DeviceInfo,
     DhcpLease,
+    FirewallRedirect,
+    FirewallRule,
+    IpNeighbor,
     NetworkInterface,
     OpenWrtClient,
     SystemResources,
@@ -63,9 +66,10 @@ class LuciRpcClient(OpenWrtClient):
         port: int = 80,
         use_ssl: bool = False,
         verify_ssl: bool = False,
+        dhcp_software: str = "auto",
     ) -> None:
         """Initialize the LuCI RPC client."""
-        super().__init__(host, username, password, port, use_ssl, verify_ssl)
+        super().__init__(host, username, password, port, use_ssl, verify_ssl, dhcp_software)
         self._auth_token: str = ""
         self._session: aiohttp.ClientSession | None = None
         self._rpc_id: int = 0
@@ -488,57 +492,57 @@ class LuciRpcClient(OpenWrtClient):
         return list(devices.values())
 
     async def get_dhcp_leases(self) -> list[DhcpLease]:
-        """Get DHCP leases."""
+        """Get DHCP leases via LuCI RPC."""
+        if self.dhcp_software == "none":
+            return []
+
         leases: list[DhcpLease] = []
 
-        try:
-            leases_str = await self._rpc_call("sys", "exec", ["cat /tmp/dhcp.leases"])
-            if leases_str:
-                for line in leases_str.strip().split("\n"):
-                    parts = line.split()
-                    if len(parts) >= 4:
+        # Try odhcpd via ubus call over sys.exec if enabled
+        if self.dhcp_software in ("auto", "odhcpd"):
+            try:
+                # Some OpenWrt versions allow calling ubus via sys.exec
+                stdout = await self._rpc_call("sys", "exec", ["ubus call dhcp ipv4leases 2>/dev/null"])
+                if stdout and stdout.strip().startswith("{"):
+                    data = json.loads(stdout)
+                    for lease_data in data.get("dhcp_leases", []):
                         leases.append(
                             DhcpLease(
-                                expires=int(parts[0]) if parts[0].isdigit() else 0,
-                                mac=parts[1].lower(),
-                                ip=parts[2],
-                                hostname=parts[3] if parts[3] != "*" else "",
+                                hostname=lease_data.get("hostname", ""),
+                                mac=lease_data.get("mac", "").lower(),
+                                ip=lease_data.get("ipaddr", ""),
+                                expires=lease_data.get("expires", 0),
                             )
                         )
-        except LuciRpcError:
-            pass
+                    if leases and self.dhcp_software == "odhcpd":
+                        return leases
+            except Exception:  # noqa: BLE001
+                if self.dhcp_software == "odhcpd":
+                    _LOGGER.debug("Requested odhcpd but 'ubus call dhcp' failed via LuCI RPC")
+                    return []
+
+        # Try dnsmasq via file over LuCI RPC
+        if self.dhcp_software in ("auto", "dnsmasq"):
+            try:
+                leases_str = await self._rpc_call("sys", "exec", ["cat /tmp/dhcp.leases 2>/dev/null"])
+                if leases_str:
+                    for line in leases_str.strip().split("\n"):
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            leases.append(
+                                DhcpLease(
+                                    expires=int(parts[0]) if parts[0].isdigit() else 0,
+                                    mac=parts[1].lower(),
+                                    ip=parts[2],
+                                    hostname=parts[3] if parts[3] != "*" else "",
+                                )
+                            )
+            except LuciRpcError:
+                if self.dhcp_software == "dnsmasq":
+                    _LOGGER.debug("Requested dnsmasq but cat /tmp/dhcp.leases failed via LuCI RPC")
 
         return leases
 
-    async def reboot(self) -> bool:
-        """Reboot the device."""
-        try:
-            await self._rpc_call("sys", "reboot")
-            return True
-        except LuciRpcError as err:
-            _LOGGER.error("Failed to reboot: %s", err)
-            return False
-
-    async def execute_command(self, command: str) -> str:
-        """Execute a command via LuCI RPC."""
-        try:
-            result = await self._rpc_call("sys", "exec", [command])
-            return result or ""
-        except LuciRpcError as err:
-            _LOGGER.error("Failed to execute command: %s", err)
-            return f"Error: {err}"
-
-    async def install_firmware(self, url: str) -> None:
-        """Install firmware from the given URL via LuCI RPC sys.exec."""
-        try:
-            download_cmd = f"wget -O /tmp/firmware.bin '{url}'"
-            _LOGGER.info("Downloading firmware via LuCI RPC: %s", download_cmd)
-
-            cmd = f'sh -c "{download_cmd} && nohup sysupgrade /tmp/firmware.bin > /dev/null 2>&1 &"'
-            await self._rpc_call("sys", "exec", [cmd])
-        except LuciRpcError as err:
-            _LOGGER.error("Failed to initiate firmware upgrade via LuCI RPC: %s", err)
-            raise LuciRpcError(f"Upgrade failed: {err}") from err
 
     async def get_leds(self) -> list:
         """Get LEDs from /sys/class/leds via sys.exec."""
@@ -575,6 +579,42 @@ class LuciRpcClient(OpenWrtClient):
             _LOGGER.debug("Cannot list LEDs via LuCI RPC")
 
         return leds
+
+    async def get_ip_neighbors(self) -> list[IpNeighbor]:
+        """Get IP neighbor (ARP/NDP) table via sys.exec."""
+        neighbors: list[IpNeighbor] = []
+        try:
+            output = await self._rpc_call("sys", "exec", ["ip neigh show"])
+            if output:
+                for line in output.strip().splitlines():
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        ip = parts[0]
+                        mac = ""
+                        interface = ""
+                        state = parts[-1]
+
+                        if "dev" in parts:
+                            idx = parts.index("dev")
+                            if idx + 1 < len(parts):
+                                interface = parts[idx + 1]
+                        if "lladdr" in parts:
+                            idx = parts.index("lladdr")
+                            if idx + 1 < len(parts):
+                                mac = parts[idx + 1].lower()
+
+                        if mac:
+                            neighbors.append(
+                                IpNeighbor(
+                                    ip=ip,
+                                    mac=mac,
+                                    interface=interface,
+                                    state=state,
+                                )
+                            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Failed to get IP neighbors via LuCI RPC: %s", err)
+        return neighbors
 
     async def reboot(self) -> bool:
         """Reboot the device via LuCI RPC."""
@@ -649,3 +689,96 @@ class LuciRpcClient(OpenWrtClient):
         except LuciRpcError:
             _LOGGER.debug("Failed to list installed packages via LuCI RPC")
             return []
+
+    async def get_firewall_rules(self) -> list[FirewallRule]:
+        """Get general firewall rules via UCI over LuCI RPC."""
+        rules: list[FirewallRule] = []
+        try:
+            output = await self.execute_command("uci show firewall")
+            sections: dict[str, dict[str, str]] = {}
+            for line in output.splitlines():
+                if "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                parts = key.split(".")
+                if len(parts) >= 2:
+                    section = parts[1]
+                    if section not in sections:
+                        sections[section] = {}
+                    if len(parts) >= 3:
+                        sections[section][parts[2]] = val.strip("'")
+
+            for section_id, data in sections.items():
+                if data.get(".type") == "rule":
+                    rules.append(
+                        FirewallRule(
+                            name=data.get("name", section_id),
+                            enabled=data.get("enabled", "1") == "1",
+                            section_id=section_id,
+                            target=data.get("target", ""),
+                            src=data.get("src", ""),
+                            dest=data.get("dest", ""),
+                        )
+                    )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to get firewall rules via LuCI RPC: %s", err)
+        return rules
+
+    async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
+        """Enable or disable a firewall rule via UCI over LuCI RPC."""
+        try:
+            val = "1" if enabled else "0"
+            cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
+            await self.execute_command(cmd)
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to set firewall rule via LuCI RPC: %s", err)
+            return False
+
+    async def get_firewall_redirects(self) -> list[FirewallRedirect]:
+        """Get firewall port forwarding redirects via UCI over LuCI RPC."""
+        redirects: list[FirewallRedirect] = []
+        try:
+            output = await self.execute_command("uci show firewall")
+            sections: dict[str, dict[str, str]] = {}
+            for line in output.splitlines():
+                if "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                parts = key.split(".")
+                if len(parts) >= 2:
+                    section = parts[1]
+                    if section not in sections:
+                        sections[section] = {}
+                    if len(parts) >= 3:
+                        sections[section][parts[2]] = val.strip("'")
+
+            for section_id, data in sections.items():
+                if data.get(".type") == "redirect":
+                    redirects.append(
+                        FirewallRedirect(
+                            name=data.get("name", section_id),
+                            target_ip=data.get("dest_ip", ""),
+                            target_port=data.get("dest_port", ""),
+                            external_port=data.get("src_dport", ""),
+                            protocol=data.get("proto", "tcp"),
+                            enabled=data.get("enabled", "1") == "1",
+                            section_id=section_id,
+                        )
+                    )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to get firewall redirects via LuCI RPC: %s", err)
+        return redirects
+
+    async def set_firewall_redirect_enabled(
+        self, section_id: str, enabled: bool
+    ) -> bool:
+        """Enable or disable a firewall redirect via UCI over LuCI RPC."""
+        try:
+            val = "1" if enabled else "0"
+            cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
+            await self.execute_command(cmd)
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to set firewall redirect via LuCI RPC: %s", err)
+            return False

@@ -158,12 +158,12 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             try:
                 from .const import CONF_ASU_URL
                 from .helpers.asu import AsuClient
-                
+
                 asu_url = self.coordinator.config_entry.options.get(
                     CONF_ASU_URL, "https://sysupgrade.openwrt.org"
                 )
                 asu_client = AsuClient(self.hass, asu_url)
-                
+
                 request_hash = await asu_client.request_build(
                     version=data.firmware_latest_version,
                     target=data.device_info.target,
@@ -171,17 +171,17 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                     packages=data.installed_packages,
                     client_name=f"Home Assistant OpenWrt Integration ({self.coordinator.name})"
                 )
-                
+
                 _LOGGER.info("ASU build requested (hash: %s). Waiting for image...", request_hash)
                 download_url = await asu_client.poll_build_status(request_hash)
-                
+
                 _LOGGER.info("ASU build complete. Flashing image from: %s", download_url)
                 await self.coordinator.client.install_firmware(download_url)
-                
+
             except Exception as err:
                 _LOGGER.error("ASU firmware update failed: %s", err)
                 raise HomeAssistantError(f"ASU firmware update failed: {err}") from err
-            
+
             return
 
         # Standard Update Flow

@@ -81,11 +81,11 @@ async def test_ssh_get_connected_devices_iwinfo_fallback(ssh_client: SshClient):
 
         devices = await ssh_client.get_connected_devices()
         assert len(devices) == 2
-        
+
         # ARP device
         dev1 = next(d for d in devices if d.mac == "00:11:22:33:44:55")
         assert dev1.ip == "192.168.1.5"
-        
+
         # Ubus fallback device
         dev2 = next(d for d in devices if d.mac == "aa:bb:cc:dd:ee:ff")
         assert dev2.is_wireless is True

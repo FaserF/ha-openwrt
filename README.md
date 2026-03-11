@@ -7,7 +7,10 @@
 
 A secure, production-ready Home Assistant integration for OpenWrt devices. Monitor system resources, track connected devices, manage WiFi radios, execute commands, and natively update firmware directly from Home Assistant.
 
-Supports **OpenWrt 25.12** and newer (older versions may also work, but are not directly tested and supported within this integration, update to the latest release if possible).
+### Why use this integration?
+While you can monitor routers via SNMP or ping trackers, this integration uses native OpenWrt APIs (Ubus/RPC) to provide deep, reliable integration without the overhead of polling generic network protocols. This means instant device tracking via modern ARP/NDP tables, full control over firewall rules and radios, and even the ability to compile firmware directly from your dashboard.
+
+Supports **OpenWrt 25.12** and newer (older versions may also work, but are not directly tested and supported within this integration; update to the latest release if possible).
 
 ## ✨ Features
 
@@ -21,7 +24,11 @@ Supports **OpenWrt 25.12** and newer (older versions may also work, but are not 
   - Reboot router.
   - Toggle WPS, WiFi radios, and system services (enable/disable/restart).
   - Execute custom commands on the router via Home Assistant services.
-- **Device Tracking**: Track both wired and wireless devices with configurable "Consider Home" delays. Native `device_tracker` integration.
+- **Device Tracking**: 
+  - Tracks both wired and wireless devices using DHCP, ARP, and NDP.
+  - **`ip neigh` Integration**: Uses modern Linux neighbor tracking for more reliable device detection, including IPv6 support.
+  - **Configurable "Consider Home"**: Set a custom grace period (up to 1 hour) to prevent devices from flickering between "Home" and "Away".
+  - Native `device_tracker` integration with detailed device attributes.
 - **Wake-on-LAN (WoL)**: 
   - Automated "Wake on LAN" buttons for all tracked devices.
   - Global `wake_on_lan` service to wake any device by MAC address via the router.
@@ -66,6 +73,8 @@ This integration is fully compatible with [HACS](https://hacs.xyz/).
 
 ## ⚙️ Configuration
 
+> 🛡️ **Security Note**: Before configuring the integration, please read our [Security Best Practices](SECURITY.md) regarding dedicated accounts, restricting permissions, and connection methods. Using `root` is supported but not recommended.
+
 Adding your OpenWrt router is entirely done via the UI. **No YAML configuration is required.**
 
 1. Navigate to **Settings > Devices & Services** in Home Assistant.
@@ -86,6 +95,10 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
 After configuration, click **Configure** on the integration page to adjust:
 - **Update Interval**: How frequently to poll data (default 30s).
 - **Device Tracking**: Enable/disable device tracking and include/exclude wired devices.
+- **Consider Home**: Set the grace period (in seconds) for device presence detection to prevent "presence flickering".
+- **DHCP Software**: Manual selection of DHCP software (`dnsmasq`, `odhcpd`, or `auto-detect`) for more reliable device identification across different OpenWrt setups.
+- **Advanced Tracking**: Integration with `ip neigh` (ARP/NDP) to track connected devices even if they are not active in the DHCP lease table (e.g., static IPs or wired devices).
+- **Firewall Rule Control**: Expose named OpenWrt firewall rules as switches in Home Assistant. This allows for granular control over internet access, port forwards, and more directly from your dashboard.
 - **Custom Firmware Repo**: Provide a GitHub repo (e.g., `owner/repo`) if you use custom OpenWrt community builds.
 
 ## 📖 Automation Examples
@@ -339,6 +352,71 @@ action:
       target: <YOUR_OPENWRT_ENTRY_ID>
       mac: "AA:BB:CC:DD:EE:FF"
       interface: "br-lan"
+```
+</details>
+
+<details>
+<summary><strong>🧠 High Resource Usage Alert (CPU/Memory)</strong></summary>
+
+Get notified early if your router is struggling with high load, potentially preventing network outages or indicating a runaway background process.
+
+```yaml
+alias: "Router: High Resource Usage Alert"
+trigger:
+  - platform: numeric_state
+    entity_id: sensor.openwrt_cpu_load_1m
+    above: 4.0
+    for:
+      minutes: 5
+  - platform: numeric_state
+    entity_id: sensor.openwrt_memory_usage
+    above: 90
+    for:
+      minutes: 5
+action:
+  - service: notify.notify
+    data:
+      title: "⚠️ Router Overload Warning"
+      message: >-
+        The OpenWrt router is experiencing sustained high resource usage!
+        Trigger: {{ trigger.entity_id }} is currently at {{ trigger.to_state.state }}.
+```
+</details>
+
+<details>
+<summary><strong>🙋‍♂️ Guest WiFi Automation Based on Presence</strong></summary>
+
+Automatically enable the Guest WiFi when a specific "Guest Mode" input boolean is turned on, or disable it when everyone leaves the house to improve security and reduce airtime congestion.
+
+```yaml
+alias: "WiFi: Auto-Disable Guest Network"
+trigger:
+  - platform: state
+    entity_id: zone.home
+    to: "0"  # Everyone left home
+    for:
+      minutes: 10
+action:
+  - service: switch.turn_off
+    target:
+      entity_id: switch.openwrt_wireless_guest
+```
+</details>
+
+<details>
+<summary><strong>🔁 Daily Router Reboot (Scheduled Maintenance)</strong></summary>
+
+Some specific setups or failing modems require a daily reboot. You can easily schedule this via Home Assistant natively rather than relying on OpenWrt cronjobs.
+
+```yaml
+alias: "Router: Daily Maintenance Reboot"
+trigger:
+  - platform: time
+    at: "04:00:00"
+action:
+  - service: button.press
+    target:
+      entity_id: button.openwrt_reboot_router
 ```
 </details>
 

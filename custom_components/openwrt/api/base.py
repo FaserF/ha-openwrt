@@ -7,6 +7,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ class ConnectedDevice:
     connected: bool = True
     connection_type: str = ""  # e.g. "wired", "2.4GHz", "5GHz", "6GHz"
     connection_info: str = ""  # e.g. "802.11ax", "1000Mbps"
+    neighbor_state: str = ""
     uptime: int = 0
 
 
@@ -147,6 +149,16 @@ class DhcpLease:
     mac: str = ""
     ip: str = ""
     expires: int = 0
+
+
+@dataclass
+class IpNeighbor:
+    """IP neighbor (ARP/NDP) information."""
+
+    ip: str = ""
+    mac: str = ""
+    interface: str = ""
+    state: str = ""  # REACHABLE, STALE, DELAY, PROBE, INCOMPLETE, FAILED, PERMANENT, NOARP
 
 
 @dataclass
@@ -213,6 +225,18 @@ class FirewallRedirect:
 
 
 @dataclass
+class FirewallRule:
+    """General firewall rule."""
+
+    name: str = ""
+    enabled: bool = True
+    section_id: str = ""
+    target: str = ""
+    src: str = ""
+    dest: str = ""
+
+
+@dataclass
 class AccessControl:
     """Device access control (Parental Control)."""
 
@@ -232,11 +256,13 @@ class OpenWrtData:
     network_interfaces: list[NetworkInterface] = field(default_factory=list)
     connected_devices: list[ConnectedDevice] = field(default_factory=list)
     dhcp_leases: list[DhcpLease] = field(default_factory=list)
+    ip_neighbors: list[IpNeighbor] = field(default_factory=list)
     mwan_status: list[MwanStatus] = field(default_factory=list)
     wps_status: WpsStatus = field(default_factory=WpsStatus)
     services: list[ServiceInfo] = field(default_factory=list)
     leds: list[LedInfo] = field(default_factory=list)
     firewall_redirects: list[FirewallRedirect] = field(default_factory=list)
+    firewall_rules: list[FirewallRule] = field(default_factory=list)
     access_control: list[AccessControl] = field(default_factory=list)
     external_ip: str | None = None
     firmware_upgradable: bool = False
@@ -264,6 +290,7 @@ class OpenWrtClient(abc.ABC):
         port: int = 80,
         use_ssl: bool = False,
         verify_ssl: bool = False,
+        dhcp_software: str = "auto",
     ) -> None:
         """Initialize the client."""
         self.host = host
@@ -272,6 +299,7 @@ class OpenWrtClient(abc.ABC):
         self.port = port
         self.use_ssl = use_ssl
         self.verify_ssl = verify_ssl
+        self.dhcp_software = dhcp_software
         self._connected = False
 
     @property
@@ -314,6 +342,10 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         """Get DHCP lease information."""
+
+    @abc.abstractmethod
+    async def get_ip_neighbors(self) -> list[IpNeighbor]:
+        """Get IP neighbor (ARP/NDP) table."""
 
     @abc.abstractmethod
     async def reboot(self) -> bool:
@@ -381,6 +413,14 @@ class OpenWrtClient(abc.ABC):
         """Enable or disable a firewall redirect."""
         return False
 
+    @abc.abstractmethod
+    async def get_firewall_rules(self) -> list[FirewallRule]:
+        """Get firewall rules."""
+
+    @abc.abstractmethod
+    async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
+        """Enable or disable a firewall rule."""
+
     async def get_access_control(self) -> list[AccessControl]:
         """Get list of access control rules."""
         return []
@@ -421,7 +461,7 @@ class OpenWrtClient(abc.ABC):
                 data = json.loads(output)
             except json.JSONDecodeError:
                 return info
-            
+
             info_list = data.get("info", [])
             if not info_list:
                 return info
@@ -430,11 +470,11 @@ class OpenWrtClient(abc.ABC):
 
             for info_item in info_list:
                 modem_info_list = info_item.get("modem_info", [])
-                
+
                 current_context = None
                 lte_signals = {}
                 nr5g_signals = {}
-                
+
                 for item in modem_info_list:
                     class_origin = item.get("class_origin", "")
                     item_key = item.get("key", "")
@@ -495,7 +535,7 @@ class OpenWrtClient(abc.ABC):
 
         except Exception as err:
             _LOGGER.debug("Error retrieving QModem info: %s", err)
-            
+
         return info
 
     async def get_all_data(self) -> OpenWrtData:
@@ -521,6 +561,11 @@ class OpenWrtClient(abc.ABC):
             data.dhcp_leases = await self.get_dhcp_leases()
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Optional DHCP leases failed: %s", err)
+
+        try:
+            data.ip_neighbors = await self.get_ip_neighbors()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Optional IP neighbors failed: %s", err)
 
         try:
             data.mwan_status = await self.get_mwan_status()
@@ -550,7 +595,12 @@ class OpenWrtClient(abc.ABC):
         try:
             data.firewall_redirects = await self.get_firewall_redirects()
         except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Optional firewall info failed: %s", err)
+            _LOGGER.debug("Optional firewall redirects info failed: %s", err)
+
+        try:
+            data.firewall_rules = await self.get_firewall_rules()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Optional firewall rules info failed: %s", err)
 
         try:
             data.access_control = await self.get_access_control()

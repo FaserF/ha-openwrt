@@ -75,10 +75,21 @@
           "track_devices": "Track Network Devices",
           "track_wired": "Include Wired Devices in Tracking",
           "consider_home": "Device 'Consider Home' Delay (seconds)",
+          "dhcp_software": "DHCP Software",
           "custom_firmware_repo": "Custom Firmware GitHub Repo (owner/repo)",
           "asu_url": "Attended Sysupgrade Server URL"
         },
         "description": "Configure OpenWrt integration options."
+      }
+    }
+  },
+  "selector": {
+    "dhcp_software": {
+      "options": {
+        "auto": "Auto-detect",
+        "dnsmasq": "dnsmasq (/tmp/dhcp.leases)",
+        "odhcpd": "odhcpd (ubus dhcp ipv4leases)",
+        "none": "None (disabled)"
       }
     }
   },
@@ -287,6 +298,12 @@
       },
       "service_toggle": {
         "name": "Service"
+      },
+      "firewall_port_forward": {
+        "name": "Port Forward"
+      },
+      "firewall_rule": {
+        "name": "Firewall Rule"
       }
     },
     "update": {

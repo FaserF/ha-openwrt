@@ -1,11 +1,13 @@
 """Pytest configuration and fixtures for the OpenWrt integration tests."""
 
 import sys
-from typing import Any
-from unittest.mock import MagicMock, AsyncMock, patch
-from dataclasses import dataclass
 from collections.abc import Generator
+from dataclasses import dataclass
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+
 
 # Attempt to mock Home Assistant if it is not installed
 # Mock Home Assistant modules always to avoid collection errors
@@ -46,35 +48,53 @@ class MockEntity:
     _attr_name: str | None = None
     _attr_device_info: Any | None = None
     _attr_extra_state_attributes: dict[str, Any] | None = None
-    def __init__(self, *args, **kwargs): pass
+    def __init__(self, *args, **kwargs):
+        pass
+    def async_write_ha_state(self):
+        pass
+    async def async_update_ha_state(self, force_refresh=False):
+        pass
 
 class MockCoordinatorEntity(MockEntity):
     """Base class for mocked coordinator entities."""
     def __init__(self, coordinator, *args, **kwargs):
         self.coordinator = coordinator
         super().__init__(*args, **kwargs)
+    @classmethod
     def __class_getitem__(cls, _):
         return cls
 
+# Helper to ensure we return classes when accessed from MagicMock
+def create_mock_class(base_class):
+    mock = MagicMock()
+    mock.__iter__ = None  # Prevent being treated as iterable
+    return mock
+
 # Pre-populate sys.modules with proper classes BEFORE any imports
-platforms = ["sensor", "binary_sensor", "switch", "button", "light", "update"]
+platforms = ["sensor", "binary_sensor", "switch", "button", "light", "update", "device_tracker"]
 for platform in platforms:
     module_name = f"homeassistant.components.{platform}"
     mock_module = MagicMock()
-    
-    # Description class
-    desc_class_name = "".join([n.capitalize() for n in platform.split("_")]) + "EntityDescription"
-    setattr(mock_module, desc_class_name, MockEntityDescription)
-    
-    # Entity class
+
+    # Generic Entity and Description classes for the platform
     ent_class_name = "".join([n.capitalize() for n in platform.split("_")]) + "Entity"
+    desc_class_name = "".join([n.capitalize() for n in platform.split("_")]) + "EntityDescription"
     setattr(mock_module, ent_class_name, MockEntity)
-    
+    setattr(mock_module, desc_class_name, MockEntityDescription)
+
+    # Specific common entity classes
+    if platform == "device_tracker":
+        mock_module.ScannerEntity = MockEntity
+        mock_module.TrackerEntity = MockEntity
+        mock_module.SourceType = MagicMock()
+
     sys.modules[module_name] = mock_module
 
 # Other required classes
 sys.modules["homeassistant.exceptions"] = MagicMock()
 sys.modules["homeassistant.const"] = MagicMock()
+sys.modules["homeassistant.core"] = MagicMock()
+sys.modules["homeassistant.helpers"] = MagicMock()
 sys.modules["homeassistant.helpers.entity"] = MagicMock()
 sys.modules["homeassistant.helpers.entity"].EntityDescription = MockEntityDescription
 sys.modules["homeassistant.helpers.entity"].Entity = MockEntity
@@ -84,7 +104,7 @@ class MockDataUpdateCoordinator:
         self.name = kwargs.get("name", "Unknown")
         self.config_entry = kwargs.get("config_entry")
         self.hass = args[0] if args else kwargs.get("hass")
-    
+
     async def async_config_entry_first_refresh(self):
         pass
 
@@ -106,14 +126,19 @@ ha_mocks = [
     "homeassistant.helpers.typing",
     "homeassistant.components.diagnostics",
     "homeassistant.components.repairs",
+    "homeassistant.util",
 ]
 
 for mock_name in ha_mocks:
     mock_submodule(mock_name)
 
 # Define specific exceptions
-class MockException(Exception): pass
-class UpdateFailed(MockException): pass
+class MockException(Exception):
+    pass
+
+
+class UpdateFailed(MockException):
+    pass
 
 sys.modules["homeassistant.exceptions"].ConfigEntryAuthFailed = MockException
 sys.modules["homeassistant.exceptions"].ConfigEntryNotReady = MockException

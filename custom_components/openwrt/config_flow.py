@@ -53,9 +53,11 @@ from .api.ubus import (
     UbusTimeoutError,
 )
 from .const import (
+    CONF_ASU_URL,
     CONF_CONNECTION_TYPE,
     CONF_CONSIDER_HOME,
     CONF_CUSTOM_FIRMWARE_REPO,
+    CONF_DHCP_SOFTWARE,
     CONF_SSH_KEY,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
@@ -287,6 +289,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_PASSWORD): str,
             vol.Required(CONF_USE_SSL, default=DEFAULT_USE_SSL): bool,
             vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
+            vol.Optional(CONF_DHCP_SOFTWARE, default="auto"): vol.In(
+                ["auto", "dnsmasq", "odhcpd", "none"]
+            ),
             vol.Optional(CONF_PORT): int,
         }
 
@@ -328,6 +333,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_USERNAME, default=DEFAULT_USERNAME): str,
                 vol.Optional(CONF_PASSWORD): str,
                 vol.Optional(CONF_SSH_KEY): str,
+                vol.Optional(CONF_DHCP_SOFTWARE, default="auto"): vol.In(
+                    ["auto", "dnsmasq", "odhcpd", "none"]
+                ),
                 vol.Optional(CONF_PORT, default=DEFAULT_PORT_SSH): int,
             }
         )
@@ -485,6 +493,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
                     CONF_ASU_URL,
                     default=current.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org"),
                 ): str,
+                vol.Optional(
+                    CONF_DHCP_SOFTWARE,
+                    default=current.get(CONF_DHCP_SOFTWARE, "auto"),
+                ): vol.In(["auto", "dnsmasq", "odhcpd", "none"]),
             }
         )
 

@@ -18,6 +18,8 @@ from .base import (
     DeviceInfo,
     DhcpLease,
     FirewallRedirect,
+    FirewallRule,
+    IpNeighbor,
     NetworkInterface,
     OpenWrtClient,
     ServiceInfo,
@@ -60,9 +62,10 @@ class SshClient(OpenWrtClient):
         use_ssl: bool = False,
         verify_ssl: bool = False,
         ssh_key: str | None = None,
+        dhcp_software: str = "auto",
     ) -> None:
         """Initialize the SSH client."""
-        super().__init__(host, username, password, port, use_ssl, verify_ssl)
+        super().__init__(host, username, password, port, use_ssl, verify_ssl, dhcp_software)
         self._ssh_key = ssh_key
         self._client: Any = None
 
@@ -95,6 +98,7 @@ class SshClient(OpenWrtClient):
                 except Exception:
                     pass
                 self._client = None
+            return ""
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages."""
         try:
@@ -484,41 +488,45 @@ class SshClient(OpenWrtClient):
 
         # 1. DHCP Leases
         try:
-            leases = await self._exec("cat /tmp/dhcp.leases 2>/dev/null")
-            for line in leases.strip().split("\n"):
-                parts = line.split()
-                if len(parts) >= 4:
-                    mac = parts[1].lower()
-                    devices[mac] = ConnectedDevice(
-                        mac=mac,
-                        ip=parts[2],
-                        hostname=parts[3] if parts[3] != "*" else "",
-                        connected=True,
-                        is_wireless=False,
-                    )
+            leases = await self.get_dhcp_leases()
+            for lease in leases:
+                mac = lease.mac.lower()
+                devices[mac] = ConnectedDevice(
+                    mac=mac,
+                    ip=lease.ip,
+                    hostname=lease.hostname,
+                    connected=True,
+                    is_wireless=False,
+                )
         except Exception:  # noqa: BLE001
             pass
 
-        # 2. ARP Neighbors
+        # 2. IP Neighbors
         try:
-            arp = await self._exec("cat /proc/net/arp 2>/dev/null")
-            lines = arp.strip().split("\n")
-            if len(lines) > 1:
-                for line in lines[1:]:
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        mac = parts[3].lower()
-                        if not mac or mac == "00:00:00:00:00:00":
-                            continue
-                        if mac not in devices:
-                            devices[mac] = ConnectedDevice(
-                                mac=mac,
-                                ip=parts[0],
-                                connected=True,
-                                is_wireless=False,
-                            )
-        except Exception:  # noqa: BLE001
-            pass
+            neighbors = await self.get_ip_neighbors()
+            for neigh in neighbors:
+                mac = neigh.mac.lower()
+                if not mac or mac in devices:
+                    # Update existing device if it was found via DHCP but not neighbors
+                    if mac in devices:
+                        dev = devices[mac]
+                        if not dev.neighbor_state:
+                            dev.neighbor_state = neigh.state
+                        if not dev.interface:
+                            dev.interface = neigh.interface
+                    continue
+
+                devices[mac] = ConnectedDevice(
+                    mac=mac,
+                    ip=neigh.ip,
+                    interface=neigh.interface,
+                    connected=True,
+                    is_wireless=False,
+                    connection_type="wired",
+                    neighbor_state=neigh.state,
+                )
+        except Exception as neigh_err:  # noqa: BLE001
+            _LOGGER.debug("Error processing IP neighbors in get_connected_devices (SSH): %s", neigh_err)
 
         # 3. Wireless Clients (iwinfo station dump)
         try:
@@ -603,27 +611,6 @@ class SshClient(OpenWrtClient):
 
         return list(devices.values())
 
-    async def get_dhcp_leases(self) -> list[DhcpLease]:
-        """Get DHCP leases."""
-        leases: list[DhcpLease] = []
-
-        try:
-            content = await self._exec("cat /tmp/dhcp.leases 2>/dev/null")
-            for line in content.strip().split("\n"):
-                parts = line.split()
-                if len(parts) >= 4:
-                    leases.append(
-                        DhcpLease(
-                            expires=int(parts[0]) if parts[0].isdigit() else 0,
-                            mac=parts[1].upper(),
-                            ip=parts[2],
-                            hostname=parts[3] if parts[3] != "*" else "",
-                        )
-                    )
-        except Exception:  # noqa: BLE001
-            pass
-
-        return leases
 
     async def get_services(self) -> list[ServiceInfo]:
         """Get init.d services."""
@@ -693,26 +680,6 @@ class SshClient(OpenWrtClient):
             _LOGGER.error("Failed to set wireless %s: %s", interface, err)
             return False
 
-    async def install_firmware(self, url: str) -> None:
-        """Install firmware from the given URL."""
-        try:
-            download_cmd = f"wget -O /tmp/firmware.bin '{url}'"
-            _LOGGER.info("Downloading firmware: %s", download_cmd)
-            await self._exec(download_cmd)
-
-            _LOGGER.info("Starting sysupgrade...")
-            loop = asyncio.get_event_loop()
-
-            def _run_upgrade() -> None:
-                if self._client:
-                    self._client.exec_command(
-                        "nohup sysupgrade /tmp/firmware.bin > /dev/null 2>&1 &"
-                    )
-
-            await loop.run_in_executor(None, _run_upgrade)
-        except Exception as err:
-            _LOGGER.error("Failed to initiate firmware upgrade: %s", err)
-            raise SshError(f"Upgrade failed: {err}") from err
 
     async def get_leds(self) -> list:
         """Get LEDs from /sys/class/leds."""
@@ -755,6 +722,54 @@ class SshClient(OpenWrtClient):
             return True
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set LED %s: %s", name, err)
+            return False
+
+    async def get_firewall_rules(self) -> list[FirewallRule]:
+        """Get firewall rules via UCI over SSH."""
+        from .base import FirewallRule
+
+        rules: list[FirewallRule] = []
+        try:
+            output = await self._exec("uci show firewall")
+            sections: dict[str, dict[str, str]] = {}
+            for line in output.splitlines():
+                if "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                parts = key.split(".")
+                if len(parts) >= 2:
+                    section = parts[1]
+                    if section not in sections:
+                        sections[section] = {}
+                    if len(parts) >= 3:
+                        sections[section][parts[2]] = val.strip("'")
+
+            for section_id, data in sections.items():
+                if data.get(".type") == "rule":
+                    rules.append(
+                        FirewallRule(
+                            name=data.get("name", section_id),
+                            enabled=data.get("enabled", "1") == "1",
+                            section_id=section_id,
+                            target=data.get("target", ""),
+                            src=data.get("src", ""),
+                            dest=data.get("dest", ""),
+                        )
+                    )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to get firewall rules via SSH: %s", err)
+        return rules
+
+    async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
+        """Enable or disable a firewall rule via UCI over SSH."""
+        try:
+            val = "1" if enabled else "0"
+            await self._exec(f"uci set firewall.{section_id}.enabled='{val}'")
+            await self._exec("uci commit firewall")
+            await self._exec("/etc/init.d/firewall reload")
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Failed to set firewall rule via SSH: %s", err)
             return False
 
     async def get_firewall_redirects(self) -> list[FirewallRedirect]:
@@ -915,3 +930,112 @@ class SshClient(OpenWrtClient):
                 _LOGGER.info("SSH connection lost during sysupgrade - device is likely rebooting")
                 return
             _LOGGER.warning("Sysupgrade command might have failed or disconnected: %s", err)
+
+    async def get_dhcp_leases(self) -> list[DhcpLease]:
+        """Get DHCP leases via SSH."""
+        if self.dhcp_software == "none":
+            return []
+
+        leases: list[DhcpLease] = []
+
+        # Try odhcpd via ubus over SSH
+        if self.dhcp_software in ("auto", "odhcpd"):
+            try:
+                stdout = await self._exec("ubus call dhcp ipv4leases 2>/dev/null")
+                if stdout and stdout.strip().startswith("{"):
+                    data = json.loads(stdout)
+                    for lease_data in data.get("dhcp_leases", []):
+                        leases.append(
+                            DhcpLease(
+                                hostname=lease_data.get("hostname", ""),
+                                mac=lease_data.get("mac", "").lower(),
+                                ip=lease_data.get("ipaddr", ""),
+                                expires=lease_data.get("expires", 0),
+                            )
+                        )
+                    if leases and self.dhcp_software == "odhcpd":
+                        return leases
+            except Exception:  # noqa: BLE001
+                if self.dhcp_software == "odhcpd":
+                    _LOGGER.debug("Requested odhcpd but 'ubus call dhcp' failed via SSH")
+                    return []
+
+        # Try dnsmasq via file over SSH
+        if self.dhcp_software in ("auto", "dnsmasq"):
+            try:
+                content = await self._exec("cat /tmp/dhcp.leases 2>/dev/null")
+                for line in content.strip().split("\n"):
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        leases.append(
+                            DhcpLease(
+                                expires=int(parts[0]) if parts[0].isdigit() else 0,
+                                mac=parts[1].lower(),
+                                ip=parts[2],
+                                hostname=parts[3] if parts[3] != "*" else "",
+                            )
+                        )
+            except Exception:  # noqa: BLE001
+                if self.dhcp_software == "dnsmasq":
+                    _LOGGER.debug("Requested dnsmasq but cat /tmp/dhcp.leases failed via SSH")
+
+        return leases
+
+    async def get_ip_neighbors(self) -> list[IpNeighbor]:
+        """Get IP neighbor (ARP/NDP) table via SSH."""
+        neighbors: list[IpNeighbor] = []
+        try:
+            # Try ip neigh show first (supports IPv6 and states)
+            content = await self._exec("ip neigh show 2>/dev/null")
+            for line in content.strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split()
+                if len(parts) >= 4:
+                    ip = parts[0]
+                    mac = ""
+                    interface = ""
+                    state = parts[-1]
+
+                    if "lladdr" in parts:
+                        idx = parts.index("lladdr")
+                        if len(parts) > idx + 1:
+                            mac = parts[idx + 1]
+                    if "dev" in parts:
+                        idx = parts.index("dev")
+                        if len(parts) > idx + 1:
+                            interface = parts[idx + 1]
+
+                    if mac:
+                        neighbors.append(
+                            IpNeighbor(
+                                ip=ip,
+                                mac=mac.upper(),
+                                interface=interface,
+                                state=state,
+                            )
+                        )
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Fallback to /proc/net/arp
+        if not neighbors:
+            try:
+                content = await self._exec("cat /proc/net/arp 2>/dev/null")
+                lines = content.strip().split("\n")
+                if len(lines) > 1:
+                    for line in lines[1:]:
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            neighbors.append(
+                                IpNeighbor(
+                                    ip=parts[0],
+                                    mac=parts[3].upper(),
+                                    interface=parts[5] if len(parts) > 5 else "",
+                                    state="REACHABLE" if parts[2] != "0x0" else "STALE",
+                                )
+                            )
+            except Exception:  # noqa: BLE001
+                pass
+
+        return neighbors

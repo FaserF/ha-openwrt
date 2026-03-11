@@ -38,6 +38,20 @@ DEFAULT_TRACK_WIRED: Final = True
 DEFAULT_USE_SSL: Final = False
 DEFAULT_VERIFY_SSL: Final = False
 
+DHCP_SOFTWARE_AUTO: Final = "auto"
+DHCP_SOFTWARE_DNSMASQ: Final = "dnsmasq"
+DHCP_SOFTWARE_ODHCPD: Final = "odhcpd"
+DHCP_SOFTWARE_NONE: Final = "none"
+
+DHCP_SOFTWARE_LIST: Final = [
+    DHCP_SOFTWARE_AUTO,
+    DHCP_SOFTWARE_DNSMASQ,
+    DHCP_SOFTWARE_ODHCPD,
+    DHCP_SOFTWARE_NONE,
+]
+
+CONF_DHCP_SOFTWARE: Final = "dhcp_software"
+
 PLATFORMS: Final = [
     "binary_sensor",
     "button",

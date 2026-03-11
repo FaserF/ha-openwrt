@@ -7,6 +7,7 @@ ARP tables, and wireless association lists.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.device_tracker import (
@@ -105,9 +106,10 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             name=self.name,
             via_device=(DOMAIN, entry.data[CONF_HOST]),
         )
-        self._consider_home = entry.options.get(
-            CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME
+        self._consider_home = timedelta(
+            seconds=entry.options.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME)
         )
+        self._last_seen: datetime | None = None
 
     @property
     def source_type(self) -> SourceType:
@@ -122,11 +124,26 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     def is_connected(self) -> bool:
         """Return true if the device is connected."""
         if self.coordinator.data is None:
-            return False
-        return any(
+            return self._check_consider_home(False)
+
+        connected = any(
             d.mac == self._mac and d.connected
             for d in self.coordinator.data.connected_devices
         )
+        return self._check_consider_home(connected)
+
+    def _check_consider_home(self, connected: bool) -> bool:
+        """Apply consider_home logic: keep device home for a grace period."""
+        now = datetime.now()
+        if connected:
+            self._last_seen = now
+            return True
+
+        # Not currently seen, check if within consider_home window
+        if self._last_seen and (now - self._last_seen) < self._consider_home:
+            return True
+
+        return False
 
     @property
     def mac_address(self) -> str:
@@ -187,6 +204,8 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                     attrs["tx_bytes"] = device.tx_bytes
                 if device.uptime:
                     attrs["uptime"] = device.uptime
+                if device.neighbor_state:
+                    attrs["neighbor_state"] = device.neighbor_state
                 return attrs
 
         return {}
