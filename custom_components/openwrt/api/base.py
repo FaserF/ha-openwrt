@@ -682,39 +682,51 @@ class OpenWrtClient(abc.ABC):
         Core data (device_info, system_resources, network_interfaces, connected_devices)
         must succeed or raise an exception to trigger UpdateFailed in coordinator.
         Optional modules may fail gracefully.
+
+        Slow-changing data (device_info, services, LEDs, firewall rules/redirects,
+        access_control) is only fetched every SLOW_POLL_INTERVAL polls to reduce
+        router load.
         """
+        SLOW_POLL_INTERVAL = 10  # Fetch slow data every 10th poll
+
         data = OpenWrtData()
+        self._poll_count = getattr(self, "_poll_count", 0) + 1
+        is_full_poll = self._poll_count % SLOW_POLL_INTERVAL == 1 or self._poll_count == 1
 
-        # Core data: sequential for now to ensure proper error raising,
-        # but could also be parallelized if we handle exceptions.
-        # Let's parallelize core data first.
-        core_results = await asyncio.gather(
-            self.get_device_info(),
-            self.get_system_resources(),
-            self.get_network_interfaces(),
-            self.get_connected_devices(),
-        )
-        data.device_info, data.system_resources, data.network_interfaces, data.connected_devices = core_results
+        if is_full_poll:
+            # Full poll: fetch device_info fresh
+            core_results = await asyncio.gather(
+                self.get_device_info(),
+                self.get_system_resources(),
+                self.get_network_interfaces(),
+                self.get_connected_devices(),
+            )
+            data.device_info, data.system_resources, data.network_interfaces, data.connected_devices = core_results
+            self._cached_device_info = data.device_info
+        else:
+            # Fast poll: reuse cached device_info, fetch dynamic core data
+            core_results = await asyncio.gather(
+                self.get_system_resources(),
+                self.get_network_interfaces(),
+                self.get_connected_devices(),
+            )
+            data.system_resources, data.network_interfaces, data.connected_devices = core_results
+            data.device_info = getattr(self, "_cached_device_info", data.device_info)
 
-        # Optional data: parallelized with error handling.
-        optional_tasks = [
+        # Always-fresh optional data (changes every cycle)
+        fast_optional_tasks = [
             self.get_wireless_interfaces(),
             self.get_dhcp_leases(),
             self.get_ip_neighbors(),
             self.get_mwan_status(),
             self.get_wps_status(),
             self.get_qmodem_info(),
-            self.get_services(),
-            self.get_leds(),
-            self.get_firewall_redirects(),
-            self.get_firewall_rules(),
-            self.get_access_control(),
             self.get_vpn_status(),
             self.get_latency(),
             self.get_external_ip(),
         ]
 
-        opt_results = await asyncio.gather(*optional_tasks, return_exceptions=True)
+        fast_results = await asyncio.gather(*fast_optional_tasks, return_exceptions=True)
 
         def get_val(res, default, name):
             if isinstance(res, Exception):
@@ -722,19 +734,49 @@ class OpenWrtClient(abc.ABC):
                 return default
             return res
 
-        data.wireless_interfaces = get_val(opt_results[0], [], "wireless")
-        data.dhcp_leases = get_val(opt_results[1], [], "DHCP leases")
-        data.ip_neighbors = get_val(opt_results[2], [], "IP neighbors")
-        data.mwan_status = get_val(opt_results[3], [], "MWAN")
-        data.wps_status = get_val(opt_results[4], WpsStatus(), "WPS")
-        data.qmodem_info = get_val(opt_results[5], QModemInfo(), "QModem")
-        data.services = get_val(opt_results[6], [], "services")
-        data.leds = get_val(opt_results[7], [], "LEDs")
-        data.firewall_redirects = get_val(opt_results[8], [], "firewall redirects")
-        data.firewall_rules = get_val(opt_results[9], [], "firewall rules")
-        data.access_control = get_val(opt_results[10], [], "access control")
-        data.vpn_interfaces = get_val(opt_results[11], [], "VPN status")
-        data.latency = get_val(opt_results[12], LatencyResult(), "latency")
-        data.external_ip = get_val(opt_results[13], None, "external IP")
+        data.wireless_interfaces = get_val(fast_results[0], [], "wireless")
+        data.dhcp_leases = get_val(fast_results[1], [], "DHCP leases")
+        data.ip_neighbors = get_val(fast_results[2], [], "IP neighbors")
+        data.mwan_status = get_val(fast_results[3], [], "MWAN")
+        data.wps_status = get_val(fast_results[4], WpsStatus(), "WPS")
+        data.qmodem_info = get_val(fast_results[5], QModemInfo(), "QModem")
+        data.vpn_interfaces = get_val(fast_results[6], [], "VPN status")
+        data.latency = get_val(fast_results[7], LatencyResult(), "latency")
+        data.external_ip = get_val(fast_results[8], None, "external IP")
+
+        # Slow-changing optional data (services, LEDs, firewall, access control)
+        if is_full_poll:
+            slow_optional_tasks = [
+                self.get_services(),
+                self.get_leds(),
+                self.get_firewall_redirects(),
+                self.get_firewall_rules(),
+                self.get_access_control(),
+            ]
+            slow_results = await asyncio.gather(*slow_optional_tasks, return_exceptions=True)
+
+            data.services = get_val(slow_results[0], [], "services")
+            data.leds = get_val(slow_results[1], [], "LEDs")
+            data.firewall_redirects = get_val(slow_results[2], [], "firewall redirects")
+            data.firewall_rules = get_val(slow_results[3], [], "firewall rules")
+            data.access_control = get_val(slow_results[4], [], "access control")
+
+            # Cache slow results
+            self._cached_slow_data = {
+                "services": data.services,
+                "leds": data.leds,
+                "firewall_redirects": data.firewall_redirects,
+                "firewall_rules": data.firewall_rules,
+                "access_control": data.access_control,
+            }
+            _LOGGER.debug("Full poll cycle %d: refreshed slow-changing data", self._poll_count)
+        else:
+            # Reuse cached slow-changing data
+            cached = getattr(self, "_cached_slow_data", {})
+            data.services = cached.get("services", [])
+            data.leds = cached.get("leds", [])
+            data.firewall_redirects = cached.get("firewall_redirects", [])
+            data.firewall_rules = cached.get("firewall_rules", [])
+            data.access_control = cached.get("access_control", [])
 
         return data
