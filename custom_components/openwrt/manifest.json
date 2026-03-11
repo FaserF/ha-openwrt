@@ -24,6 +24,52 @@
     },
     {
       "st": "urn:schemas-upnp-org:device:InternetGatewayDevice:2"
+    },
+    {
+      "st": "upnp:rootdevice"
+    }
+  ],
+  "zeroconf": [
+    {
+      "type": "_http._tcp.local.",
+      "name": "openwrt*"
+    },
+    {
+      "type": "_ssh._tcp.local.",
+      "name": "openwrt*"
+    },
+    {
+      "type": "_luci._tcp.local."
+    },
+    {
+      "type": "_http._tcp.local."
+    },
+    {
+      "type": "_ssh._tcp.local."
+    }
+  ],
+  "dhcp": [
+    {
+      "hostname": "openwrt*",
+      "macaddress": "pattern"
+    },
+    {
+      "hostname": "lede*"
+    },
+    {
+      "hostname": "librecmc*"
+    },
+    {
+      "macaddress": "D4BC52*"
+    },
+    {
+      "macaddress": "E848B8*"
+    },
+    {
+      "macaddress": "000C43*"
+    },
+    {
+      "macaddress": "B0B98A*"
     }
   ],
   "version": "1.0.0"

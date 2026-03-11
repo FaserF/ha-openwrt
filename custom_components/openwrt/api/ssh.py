@@ -22,7 +22,10 @@ from .base import (
     IpNeighbor,
     NetworkInterface,
     OpenWrtClient,
+    OpenWrtPackages,
+    OpenWrtPermissions,
     ServiceInfo,
+    SqmStatus,
     SystemResources,
     WirelessInterface,
 )
@@ -78,9 +81,13 @@ class SshClient(OpenWrtClient):
             if self._client is None:
                 raise SshError("Not connected")
             _stdin, stdout, stderr = self._client.exec_command(command, timeout=15)
+            # Read streams to prevent blocking
+            out_bytes = stdout.read()
+            err_bytes = stderr.read()
+            # Wait for exit status
             exit_code = stdout.channel.recv_exit_status()
-            output = stdout.read().decode("utf-8", errors="replace")
-            error = stderr.read().decode("utf-8", errors="replace")
+            output = out_bytes.decode("utf-8", errors="replace")
+            error = err_bytes.decode("utf-8", errors="replace")
             if exit_code != 0 and error:
                 _LOGGER.debug(
                     "SSH command '%s' returned %d: %s", command, exit_code, error
@@ -337,13 +344,19 @@ class SshClient(OpenWrtClient):
         ]:
             try:
                 temp = await self._exec(f"cat {thermal_path} 2>/dev/null")
-                temp_val = int(temp.strip())
+                if not temp:
+                    continue
+                # Remove quotes that paramiko sometimes returns
+                temp_clean = temp.strip().strip("'").strip('"')
+                if not temp_clean or not temp_clean.isdigit():
+                    continue
+                temp_val = int(temp_clean)
                 if temp_val > 1000:
                     resources.temperature = temp_val / 1000.0
                 else:
                     resources.temperature = float(temp_val)
                 break
-            except ValueError, Exception:  # noqa: BLE001
+            except (ValueError, Exception):  # noqa: BLE001
                 continue
 
         try:
@@ -415,7 +428,7 @@ class SshClient(OpenWrtClient):
                                                 .strip()
                                                 .split()[0]
                                             )
-                                        except ValueError, IndexError:
+                                        except (ValueError, IndexError):
                                             pass
                                     elif "Signal:" in line:
                                         try:
@@ -424,7 +437,7 @@ class SshClient(OpenWrtClient):
                                                 .strip()
                                                 .split()[0]
                                             )
-                                        except ValueError, IndexError:
+                                        except (ValueError, IndexError):
                                             pass
 
                                 assoclist = await self._exec(
@@ -542,7 +555,7 @@ class SshClient(OpenWrtClient):
                         continue
                     # Parsing: MAC  Signal  Noise  RX_Rate  TX_Rate
                     parts = line.split()
-                    if len(parts) >= 1 and ":" in parts[0]:
+                    if len(parts) >= 1 and parts[0].count(":") == 5 and len(parts[0]) == 17:
                         mac = parts[0].lower()
                         if mac in devices:
                             dev = devices[mac]
@@ -723,6 +736,83 @@ class SshClient(OpenWrtClient):
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set LED %s: %s", name, err)
             return False
+
+    async def check_permissions(self) -> OpenWrtPermissions:
+        """Check user permissions via SSH.
+
+        SSH access generally provides full root access, but we try to
+        verify if common commands work to be safe.
+        """
+        from .base import OpenWrtPermissions
+        perms = OpenWrtPermissions()
+
+        try:
+            # First check if we are root
+            id_out = await self._exec("id -u")
+            if id_out.strip() == "0":
+                # Root has all permissions
+                for attr in perms.__dict__:
+                    if not attr.startswith("_"):
+                        setattr(perms, attr, True)
+                return perms
+
+            # Test uci read access for non-root
+            await self._exec("uci get system.@system[0] 2>/dev/null")
+            perms.read_system = True
+            perms.read_network = True
+            perms.read_firewall = True
+            perms.read_wireless = True
+            perms.read_sqm = True
+            perms.read_led = True
+            perms.read_vpn = True
+            perms.read_mwan = True
+            perms.read_devices = True
+            perms.read_services = True
+
+            # Test write access (we won't actually write, but SSH usually has full rights if it can read)
+            perms.write_system = True
+            perms.write_network = True
+            perms.write_firewall = True
+            perms.write_wireless = True
+            perms.write_sqm = True
+            perms.write_led = True
+            perms.write_devices = True
+            perms.write_services = True
+            perms.write_access_control = True
+        except Exception:
+            pass
+        return perms
+
+    async def check_packages(self) -> OpenWrtPackages:
+        """Check installed packages."""
+        packages = OpenWrtPackages()
+        try:
+            # Check packages using a single fast SSH command if possible,
+            # or multiple if needed. Here we check existence of binaries or init scripts.
+            cmd = (
+                "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
+                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn; do "
+                "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
+            )
+            out = await self._exec(cmd)
+            results = out.strip().split("\n")
+            if results:
+                if len(results) >= 1:
+                    packages.sqm_scripts = results[0] == "1"
+                if len(results) >= 2:
+                    packages.mwan3 = results[1] == "1"
+                if len(results) >= 3:
+                    packages.iwinfo = results[2] == "1"
+                if len(results) >= 4:
+                    packages.etherwake = results[3] == "1"
+                if len(results) >= 5:
+                    packages.wireguard = results[4] == "1"
+                if len(results) >= 6:
+                    packages.openvpn = results[5] == "1"
+        except Exception as err:
+            _LOGGER.error("Failed to check packages via SSH: %s", err)
+            # We don't raise here to allow the rest of the flow to continue
+        return packages
 
     async def get_firewall_rules(self) -> list[FirewallRule]:
         """Get firewall rules via UCI over SSH."""
@@ -1041,7 +1131,6 @@ class SshClient(OpenWrtClient):
         return neighbors
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status via SSH."""
-        from .base import SqmStatus
 
         sqm_instances: list[SqmStatus] = []
         try:

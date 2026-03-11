@@ -121,14 +121,53 @@ sys.modules["homeassistant.helpers.update_coordinator"] = MagicMock()
 sys.modules["homeassistant.helpers.update_coordinator"].CoordinatorEntity = MockCoordinatorEntity
 sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator
 
+class MockConfigFlow:
+    """Mock ConfigFlow."""
+    VERSION = 1
+    def __init__(self, *args, **kwargs):
+        self.hass = None
+        self.context = {}
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__()
+    async def async_set_unique_id(self, unique_id, *, raise_on_progress=True):
+        return None
+    def _abort_if_unique_id_configured(self, *args, **kwargs):
+        pass
+    def async_show_form(self, *args, **kwargs):
+        return {"type": "FORM", "step_id": kwargs.get("step_id")}
+    def async_create_entry(self, *args, **kwargs):
+        return {"type": "CREATE_ENTRY", "title": kwargs.get("title"), "data": kwargs.get("data")}
+    def async_abort(self, *args, **kwargs):
+        return {"type": "ABORT", "reason": kwargs.get("reason")}
+
+class MockOptionsFlow(MockConfigFlow):
+    """Mock OptionsFlow."""
+    pass
+
+sys.modules["homeassistant.config_entries"] = MagicMock()
+sys.modules["homeassistant.config_entries"].ConfigFlow = MockConfigFlow
+sys.modules["homeassistant.config_entries"].OptionsFlow = MockOptionsFlow
+sys.modules["homeassistant.config_entries"].ConfigEntry = MagicMock()
+
+const_mock = sys.modules["homeassistant.const"]
+const_mock.CONF_HOST = "host"
+const_mock.CONF_USERNAME = "username"
+const_mock.CONF_PASSWORD = "password"
+const_mock.CONF_PORT = "port"
+
 ha_mocks = [
     "homeassistant.core",
     "homeassistant.config_entries",
+    "homeassistant.helpers",
     "homeassistant.helpers.aiohttp_client",
     "homeassistant.helpers.config_validation",
     "homeassistant.helpers.device_registry",
     "homeassistant.helpers.entity_platform",
     "homeassistant.helpers.issue_registry",
+    "homeassistant.helpers.service_info",
+    "homeassistant.helpers.service_info.ssdp",
+    "homeassistant.helpers.service_info.dhcp",
+    "homeassistant.helpers.service_info.zeroconf",
     "homeassistant.helpers.typing",
     "homeassistant.components.diagnostics",
     "homeassistant.components.repairs",
@@ -183,3 +222,16 @@ def mock_ubus_client() -> Generator[AsyncMock]:
         client.get_all_data.return_value = AsyncMock()
         client.connected = True
         yield client
+
+
+@pytest.fixture
+def hass() -> MagicMock:
+    """Mock HomeAssistant object."""
+    mock_hass = MagicMock()
+    mock_hass.config_entries = MagicMock()
+    mock_hass.config_entries.flow = AsyncMock()
+    mock_hass.data = {}
+    mock_hass.services = MagicMock()
+    mock_hass.services.has_service = MagicMock(return_value=False)
+    mock_hass.services.async_register = MagicMock()
+    return mock_hass

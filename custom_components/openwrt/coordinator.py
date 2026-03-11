@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from datetime import timedelta
 from typing import Any
 
@@ -134,6 +133,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     ) -> None:
         """Initialize the coordinator."""
         self.client = client
+        self.hass = hass
+        self.config_entry = config_entry
         self._firmware_checked = False
         self._last_firmware_check: float = 0.0
         self._last_update_time: float = 0.0

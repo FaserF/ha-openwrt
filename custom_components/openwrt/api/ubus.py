@@ -24,7 +24,10 @@ from .base import (
     MwanStatus,
     NetworkInterface,
     OpenWrtClient,
+    OpenWrtPackages,
+    OpenWrtPermissions,
     ServiceInfo,
+    SqmStatus,
     SystemResources,
     WirelessInterface,
     WpsStatus,
@@ -360,14 +363,17 @@ class UbusClient(OpenWrtClient):
                 try:
                     res = await self._call("file", "read", {"path": path})
                     temp_raw = res.get("data", "").strip()
-                    if temp_raw.isdigit():
-                        temp = float(temp_raw)
+                    # Handle cases where output might contain non-digits (e.g. quotes or trailing chars)
+                    import re
+                    match = re.search(r"(\d+)", temp_raw)
+                    if match:
+                        temp = float(match.group(1))
                         if temp > 200:  # Usually millidegrees
                             temp /= 1000.0
                         if 0 < temp < 150:  # Sanity check
                             resources.temperature = temp
                             break
-                except UbusError:
+                except (UbusError, ValueError):
                     continue
 
             # Fallback to execute_command if file.read failed or missing paths
@@ -712,75 +718,213 @@ class UbusClient(OpenWrtClient):
 
         return list(devices.values())
 
-    async def get_ip_neighbors(self) -> list[IpNeighbor]:
-        """Get IP neighbor (ARP/NDP) table by running 'ip neigh show'."""
-        neighbors: list[IpNeighbor] = []
+    async def check_permissions(self) -> OpenWrtPermissions:
+        """Check user permissions via ubus session list and uci tests."""
+        from .base import OpenWrtPermissions
+        perms = OpenWrtPermissions()
         try:
-            # Use ip neigh show as it supports both IPv4 and IPv6 and provides state
-            result = await self._call(
-                "file", "exec", {"command": "ip", "params": ["neigh", "show"]}
+            # Check if we are root user - root usually has full access even if ACL list is empty or restricted
+            if self.username == "root":
+                for attr in perms.__dict__:
+                    if not attr.startswith("_"):
+                        setattr(perms, attr, True)
+                return perms
+
+            # Check session access list - this is the most definitive way
+            session_list = await self._call("session", "list")
+            if session_list and "access" in session_list.get("values", {}):
+                access = session_list["values"]["access"]
+
+                def has_perm(obj: str, method: str) -> bool:
+                    # Some versions use exact matches, some use wildcards
+                    for pattern, methods in access.items():
+                        # Check object pattern match
+                        if pattern == "*" or pattern == obj or (pattern.endswith("*") and obj.startswith(pattern[:-1])):
+                            # methods can be a list containing the allowed methods for this object
+                            if "*" in methods or method in methods:
+                                return True
+                    return False
+
+                perms.read_system = has_perm("system", "board") or has_perm("system", "read")
+                perms.write_system = has_perm("system", "reboot") or has_perm("system", "write")
+                perms.read_network = has_perm("network.interface", "dump") or has_perm("network.interface", "read") or has_perm("network", "read")
+                perms.write_network = has_perm("network.interface", "up") or has_perm("network.interface", "write") or has_perm("network", "write")
+                perms.read_firewall = has_perm("firewall", "read") or has_perm("uci", "read")
+                perms.write_firewall = has_perm("firewall", "write") or has_perm("uci", "write")
+                perms.read_wireless = has_perm("iwinfo", "read") or has_perm("hostapd.*", "read") or has_perm("network.wireless", "read")
+                perms.write_wireless = has_perm("iwinfo", "write") or has_perm("hostapd.*", "write") or has_perm("network.wireless", "write")
+                perms.read_services = has_perm("file", "read") or has_perm("luci", "read") or has_perm("service", "read")
+                perms.write_services = has_perm("file", "write") or has_perm("luci", "write") or has_perm("service", "write")
+                perms.read_sqm = has_perm("uci", "read") or has_perm("luci", "read")
+                perms.write_sqm = has_perm("uci", "write") or has_perm("luci", "write")
+                perms.read_vpn = has_perm("network.interface", "read") or has_perm("uci", "read")
+                perms.read_mwan = has_perm("uci", "read") or has_perm("file", "read")
+                perms.read_led = has_perm("file", "read") or has_perm("uci", "read")
+                perms.write_led = has_perm("file", "write") or has_perm("uci", "write")
+                perms.read_devices = has_perm("network.interface", "read") or has_perm("dhcp", "read") or has_perm("file", "read")
+                perms.write_devices = has_perm("file", "exec") or has_perm("hostapd.*", "write")
+                perms.write_access_control = has_perm("uci", "write") or has_perm("firewall", "write")
+
+                # If we got definitive access list, we are done
+                return perms
+
+            # Fallback to manual probes
+            async def can_call(obj: str, method: str, params: dict | None = None) -> bool:
+                try:
+                    await self._call(obj, method, params)
+                    return True
+                except UbusPermissionError:
+                    return False
+                except Exception:
+                    return True
+
+            perms.read_system = await can_call("system", "board")
+            perms.write_system = await can_call("uci", "set", {"config": "system"})
+            perms.read_network = await can_call("network.interface", "dump")
+            perms.write_network = await can_call("network.interface", "up", {"interface": "loopback"})
+            perms.read_firewall = await can_call("uci", "get", {"config": "firewall"})
+            perms.write_firewall = await can_call("uci", "set", {"config": "firewall"})
+            perms.read_wireless = await can_call("network.wireless", "status")
+            perms.write_wireless = await can_call("uci", "set", {"config": "wireless"})
+            perms.read_sqm = await can_call("uci", "get", {"config": "sqm"})
+            perms.write_sqm = await can_call("uci", "set", {"config": "sqm"})
+            perms.read_led = await can_call("uci", "get", {"config": "system"})
+            perms.write_led = await can_call("uci", "set", {"config": "system"})
+            perms.read_vpn = perms.read_network
+            perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"})
+            perms.read_devices = await can_call("dhcp", "ipv4leases") or perms.read_network
+            perms.write_devices = await can_call("file", "exec", {"command": "ls"})
+            perms.write_access_control = perms.write_firewall
+            perms.read_services = perms.write_devices
+            perms.write_services = perms.write_devices
+
+        except Exception as err:
+            _LOGGER.debug("Error checking permissions via ubus: %s", err)
+            if self.connected:
+                perms.read_system = True
+                perms.read_network = True
+
+        return perms
+
+    async def check_packages(self) -> OpenWrtPackages:
+        """Check installed packages."""
+        packages = OpenWrtPackages()
+        try:
+            cmd = (
+                "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
+                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn; do "
+                "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
-            content = result.get("stdout", "")
+            result = await self._call(
+                "file", "exec", {"command": "sh", "params": ["-c", cmd]}
+            )
+            out = result.get("stdout", "")
+            results = out.strip().split("\n")
+            if results:
+                if len(results) >= 1:
+                    packages.sqm_scripts = results[0] == "1"
+                if len(results) >= 2:
+                    packages.mwan3 = results[1] == "1"
+                if len(results) >= 3:
+                    packages.iwinfo = results[2] == "1"
+                if len(results) >= 4:
+                    packages.etherwake = results[3] == "1"
+                if len(results) >= 5:
+                    packages.wireguard = results[4] == "1"
+                if len(results) >= 6:
+                    packages.openvpn = results[5] == "1"
+        except Exception as err:
+            _LOGGER.error("Failed to check packages via ubus: %s", err)
+            # We don't raise here to allow the rest of the flow to continue
+        return packages
 
-            for line in content.strip().split("\n"):
-                if not line:
+    async def get_ip_neighbors(self) -> list[IpNeighbor]:
+        """Get IP neighbor (ARP/NDP) table."""
+        neighbors: list[IpNeighbor] = []
+
+        # 1. Try ubus network.device status (more robust as it doesn't need file.exec)
+        try:
+            status = await self._call("network.device", "status")
+            # This call returns a dictionary of devices. We iterate over them to find neighbors.
+            for dev_name, dev_info in status.items():
+                if not isinstance(dev_info, dict):
                     continue
-                # Example: 192.168.1.1 dev br-lan lladdr 00:11:22:33:44:55 REACHABLE
-                # Example IPv6: fe80::1 dev br-lan lladdr 00:11:22:33:44:55 router STALE
-                parts = line.split()
-                if len(parts) >= 4:
-                    ip = parts[0]
-                    mac = ""
-                    interface = ""
-                    state = parts[-1]
-
-                    if "lladdr" in parts:
-                        idx = parts.index("lladdr")
-                        if len(parts) > idx + 1:
-                            mac = parts[idx + 1]
-                    if "dev" in parts:
-                        idx = parts.index("dev")
-                        if len(parts) > idx + 1:
-                            interface = parts[idx + 1]
-
-                    if mac:
+                # Some OpenWrt versions show neighbors here
+                neighbors_list = dev_info.get("neighbors", [])
+                for neigh in neighbors_list:
+                    mac = neigh.get("lladdr")
+                    ip = neigh.get("address")
+                    if mac and ip:
                         neighbors.append(
                             IpNeighbor(
                                 ip=ip,
                                 mac=mac.upper(),
-                                interface=interface,
-                                state=state,
+                                interface=dev_name,
+                                state=neigh.get("state", "REACHABLE"),
                             )
                         )
-        except Exception as exc:  # noqa: BLE001
-            _LOGGER.debug("Error getting IP neighbors: %s", exc)
+        except Exception:  # noqa: BLE001
+            pass
 
-        # Fallback to /proc/net/arp if ip neigh failed or returned nothing
+        # 2. Try file.exec ip neigh show (only works if permissions allow)
         if not neighbors:
             try:
-                try:
-                    result = await self._call("file", "read", {"path": "/proc/net/arp"})
-                    content = result.get("data", "")
-                except UbusError:
-                    result = await self._call(
-                        "file", "exec", {"command": "cat", "params": ["/proc/net/arp"]}
-                    )
-                    content = result.get("stdout", "")
+                result = await self._call(
+                    "file", "exec", {"command": "ip", "params": ["neigh", "show"]}
+                )
+                content = result.get("stdout", "")
 
-                lines = content.strip().split("\n")
-                if len(lines) > 1:
+                for line in content.strip().split("\n"):
+                    if not line:
+                        continue
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        ip = parts[0]
+                        mac = ""
+                        interface = ""
+                        state = parts[-1]
+
+                        if "lladdr" in parts:
+                            idx = parts.index("lladdr")
+                            if len(parts) > idx + 1:
+                                mac = parts[idx + 1]
+                        if "dev" in parts:
+                            idx = parts.index("dev")
+                            if len(parts) > idx + 1:
+                                interface = parts[idx + 1]
+
+                        if mac:
+                            neighbors.append(
+                                IpNeighbor(
+                                    ip=ip,
+                                    mac=mac.upper(),
+                                    interface=interface,
+                                    state=state,
+                                )
+                            )
+            except Exception: # noqa: BLE001
+                pass
+
+        # 3. Fallback to /proc/net/arp via file.read (passive)
+        if not neighbors:
+            try:
+                result = await self._call("file", "read", {"path": "/proc/net/arp"})
+                content = result.get("data", "")
+                if content:
+                    lines = content.strip().split("\n")
+                    # Skip header
                     for line in lines[1:]:
                         parts = line.split()
-                        if len(parts) >= 4:
+                        if len(parts) >= 6:
                             neighbors.append(
                                 IpNeighbor(
                                     ip=parts[0],
                                     mac=parts[3].upper(),
-                                    interface=parts[5] if len(parts) > 5 else "",
-                                    state="REACHABLE" if parts[2] != "0x0" else "STALE",
+                                    interface=parts[5],
+                                    state="REACHABLE",
                                 )
                             )
-            except Exception as fallback_exc:  # noqa: BLE001
+            except Exception as fallback_exc: # noqa: BLE001
                 _LOGGER.debug("Fallback to /proc/net/arp failed: %s", fallback_exc)
 
         return neighbors
@@ -1265,7 +1409,7 @@ class UbusClient(OpenWrtClient):
                 if isinstance(section_data, dict) and section_data.get(".type") == "queue":
                     sqm = SqmStatus(
                         section_id=section_id,
-                        name=section_data.get("name", section_id),
+                        name=str(section_data.get("name", section_id)),
                         enabled=section_data.get("enabled") == "1",
                         interface=section_data.get("interface", ""),
                         download=int(section_data.get("download", 0)),

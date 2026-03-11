@@ -287,6 +287,43 @@ class LatencyResult:
 
 
 @dataclass
+class OpenWrtPermissions:
+    """Permissions granted to the current user."""
+
+    read_system: bool = False
+    write_system: bool = False
+    read_network: bool = False
+    write_network: bool = False
+    read_firewall: bool = False
+    write_firewall: bool = False
+    read_wireless: bool = False
+    write_wireless: bool = False
+    read_services: bool = False
+    write_services: bool = False
+    read_sqm: bool = False
+    write_sqm: bool = False
+    read_vpn: bool = False
+    read_mwan: bool = False
+    read_led: bool = False
+    write_led: bool = False
+    read_devices: bool = False
+    write_devices: bool = False
+    write_access_control: bool = False
+
+
+@dataclass
+class OpenWrtPackages:
+    """Installed packages on the OpenWrt device. None means unknown."""
+
+    sqm_scripts: bool | None = None
+    mwan3: bool | None = None
+    iwinfo: bool | None = None
+    etherwake: bool | None = None
+    wireguard: bool | None = None
+    openvpn: bool | None = None
+
+
+@dataclass
 class OpenWrtData:
     """Aggregated data from an OpenWrt device."""
 
@@ -344,6 +381,9 @@ class OpenWrtClient(abc.ABC):
         self.verify_ssl = verify_ssl
         self.dhcp_software = dhcp_software
         self._connected = False
+        self._poll_count = 0
+        self._cached_device_info: DeviceInfo | None = None
+        self._cached_slow_data: dict[str, Any] = {}
 
     @property
     def connected(self) -> bool:
@@ -353,30 +393,47 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def connect(self) -> bool:
         """Establish connection and authenticate."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def disconnect(self) -> None:
         """Disconnect from the device."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def get_device_info(self) -> DeviceInfo:
         """Get device information."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def get_system_resources(self) -> SystemResources:
         """Get system resource usage."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def check_permissions(self) -> OpenWrtPermissions:
+        """Check what permissions the current user has."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def check_packages(self) -> OpenWrtPackages:
+        """Check installed packages."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interface information."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def get_network_interfaces(self) -> list[NetworkInterface]:
         """Get network interface information."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def get_connected_devices(self) -> list[ConnectedDevice]:
         """Get list of connected clients/devices."""
+        raise NotImplementedError
 
     async def get_neighbors(self) -> list[dict[str, str]]:
         """Get neighbor (ARP/NDP) table entries."""
@@ -385,18 +442,22 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         """Get DHCP lease information."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
         """Get IP neighbor (ARP/NDP) table."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def reboot(self) -> bool:
         """Reboot the device."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def execute_command(self, command: str) -> str:
         """Execute a command on the device."""
+        raise NotImplementedError
 
     async def kick_device(self, mac_address: str, interface: str) -> bool:
         """Kick a wireless device from the network using hostapd."""
@@ -459,10 +520,12 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def get_firewall_rules(self) -> list[FirewallRule]:
         """Get firewall rules."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
         """Enable or disable a firewall rule."""
+        raise NotImplementedError
 
     async def get_access_control(self) -> list[AccessControl]:
         """Get list of access control rules."""
@@ -491,14 +554,17 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def set_sqm_config(self, section_id: str, **kwargs: Any) -> bool:
         """Set SQM configuration and reload."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def install_firmware(self, url: str) -> None:
         """Install firmware from the given URL."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages on the device."""
+        raise NotImplementedError
 
     async def get_vpn_status(self) -> list[VpnInterface]:
         """Get VPN tunnel status (WireGuard/OpenVPN)."""
@@ -728,12 +794,12 @@ class OpenWrtClient(abc.ABC):
             self._cached_device_info = data.device_info
         else:
             # Fast poll: reuse cached device_info, fetch dynamic core data
-            core_results = await asyncio.gather(
+            core_results_fast = await asyncio.gather(
                 self.get_system_resources(),
                 self.get_network_interfaces(),
                 self.get_connected_devices(),
             )
-            data.system_resources, data.network_interfaces, data.connected_devices = core_results
+            data.system_resources, data.network_interfaces, data.connected_devices = core_results_fast
             data.device_info = getattr(self, "_cached_device_info", data.device_info)
 
         # Always-fresh optional data (changes every cycle)
@@ -751,7 +817,7 @@ class OpenWrtClient(abc.ABC):
 
         fast_results = await asyncio.gather(*fast_optional_tasks, return_exceptions=True)
 
-        def get_val(res, default, name):
+        def get_val(res: Any, default: Any, name: str) -> Any:
             if isinstance(res, Exception):
                 _LOGGER.debug("Optional %s info failed: %s", name, res)
                 return default

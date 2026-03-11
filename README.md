@@ -86,6 +86,38 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
 - **LuCI RPC**: Uses the LuCI web interface API. A good fallback if Ubus isn't exposed.
 - **SSH**: Uses an SSH connection (Password or Private Key). Extremely compatible but slower than HTTP-based methods.
 
+### Required Permissions
+
+If you are using a non-root user (e.g. for security reasons), you need to grant specific OpenWrt permissions (via `rpcd` ACLs or LuCI) to utilize all features of this integration:
+
+| Subsystem | Description | Write Permission Required for |
+|-----------|-------------|-------------------------------|
+| **System** | Read router info, stats (Hostname, Load, Memory, Temp, Storage) | Rebooting router, sysupgrade, backups |
+| **Network** | Read interfaces, bytes/packets counters, speeds | Toggling & reconnecting interfaces |
+| **Wireless** | Read WiFi radios, SSIDs, signal levels, client lists | Toggling radios/SSIDs, WPS control |
+| **Firewall** | Read firewall rules & port forwards | Toggling rules/forwards, Parental Control (Device Blocking) |
+| **Devices** | Read DHCP Leases, ARP/Neighbor table (Connected devices) | Wake on LAN, Kicking wireless clients |
+| **VPN** | Read WireGuard & OpenVPN status | - |
+| **SQM** | Read SQM instance status | Toggling SQM, Changing bandwidth limits |
+| **Services** | Read active system services (OpenVPN, AdGuard, etc.) | Toggling & restarting services |
+| **LEDs** | Read current state of router LEDs | Toggling LEDs, changing brightness |
+| **MWAN3** | Read Multi-WAN load balancing status | - |
+
+During setup, the integration will check your user's permissions and display a summary of available features.
+
+### Required Packages
+
+Some features require additional OpenWrt packages to be installed on your router. During setup, the integration will check if these are installed.
+
+| Package | Missing Features |
+|---------|------------------|
+| **sqm-scripts** | SQM QoS Settings (Limits, Toggles) |
+| **mwan3** | MWAN3 Sensors (Load balancing status) |
+| **iwinfo** | Enhanced WiFi Info (Bitrate, detailed signal diagnostics) |
+| **etherwake** | Wake on LAN functionality |
+| **wireguard-tools** | WireGuard VPN Sensors |
+| **openvpn** | OpenVPN Sensors |
+
 ## 🛠️ Options Flow
 
 After configuration, click **Configure** on the integration page to adjust:
@@ -491,6 +523,69 @@ action:
     data:
       title: "📉 Network Latency Spike"
       message: "Current WAN latency is {{ states('sensor.openwrt_wan_latency') }}ms."
+```
+</details>
+
+<details>
+<summary><strong>🏎️ SQM Night Mode (Speed Boost)</strong></summary>
+
+Automatically increase SQM bandwidth limits during night hours when network contention is lower.
+
+```yaml
+alias: "Network: SQM Night Speed Boost"
+trigger:
+  - platform: time
+    at: "01:00:00"
+action:
+  - service: number.set_value
+    target:
+      entity_id: number.openwrt_sqm_eth1_download
+    data:
+      value: 200
+  - service: number.set_value
+    target:
+      entity_id: number.openwrt_sqm_eth1_upload
+    data:
+      value: 100
+
+---
+
+alias: "Network: SQM Day Speed Limit"
+trigger:
+  - platform: time
+    at: "08:00:00"
+action:
+  - service: number.set_value
+    target:
+      entity_id: number.openwrt_sqm_eth1_download
+    data:
+      value: 100
+  - service: number.set_value
+    target:
+      entity_id: number.openwrt_sqm_eth1_upload
+    data:
+      value: 50
+```
+</details>
+
+<details>
+<summary><strong>⚡ WiFi Optimizer (Channel Scan)</strong></summary>
+
+Trigger a wireless optimization scan via custom command if high latency or packet loss is detected on a wireless interface.
+
+```yaml
+alias: "WiFi: Optimize on High Latency"
+trigger:
+  - platform: numeric_state
+    entity_id: sensor.openwrt_wan_latency
+    above: 100
+    for:
+      minutes: 2
+action:
+  - service: openwrt.execute_command
+    data:
+      command: "wifi down && wifi up"
+      entry_id: <YOUR_OPENWRT_ENTRY_ID>
 ```
 </details>
 

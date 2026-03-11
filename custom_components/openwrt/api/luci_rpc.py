@@ -24,6 +24,9 @@ from .base import (
     IpNeighbor,
     NetworkInterface,
     OpenWrtClient,
+    OpenWrtPackages,
+    OpenWrtPermissions,
+    SqmStatus,
     SystemResources,
     WirelessInterface,
 )
@@ -250,6 +253,82 @@ class LuciRpcClient(OpenWrtClient):
 
         return info
 
+    async def check_permissions(self) -> OpenWrtPermissions:
+        """Check what permissions the current user has."""
+        from .base import OpenWrtPermissions
+        perms = OpenWrtPermissions()
+
+        async def can_read_uci(config: str) -> bool:
+            try:
+                await self._rpc_call("uci", "get_all", [config])
+                return True
+            except LuciRpcError as err:
+                return "Access denied" not in str(err)
+
+        async def can_write_uci(config: str) -> bool:
+            try:
+                # Calling set with missing args to test permission before validation
+                await self._rpc_call("uci", "set", [config])
+                return True
+            except LuciRpcError as err:
+                return "Access denied" not in str(err)
+
+        perms.read_system = await can_read_uci("system")
+        perms.write_system = await can_write_uci("system")
+        perms.read_network = await can_read_uci("network")
+        perms.write_network = await can_write_uci("network")
+        perms.read_firewall = await can_read_uci("firewall")
+        perms.write_firewall = await can_write_uci("firewall")
+        perms.read_wireless = await can_read_uci("wireless")
+        perms.write_wireless = await can_write_uci("wireless")
+        perms.read_sqm = await can_read_uci("sqm")
+        perms.write_sqm = await can_write_uci("sqm")
+        perms.read_vpn = perms.read_network
+        perms.read_mwan = await can_read_uci("mwan3")
+        perms.read_led = perms.read_system
+        perms.write_led = perms.write_system
+        perms.read_devices = await can_read_uci("dhcp") or perms.read_network
+
+        try:
+            await self._rpc_call("sys", "exec", ["ls"])
+            perms.read_services = True
+            perms.write_services = True
+            perms.write_devices = True
+        except LuciRpcError as err:
+            denied = "Access denied" in str(err)
+            perms.read_services = not denied
+            perms.write_services = not denied
+            perms.write_devices = not denied
+
+        perms.write_access_control = perms.write_firewall
+        return perms
+
+    async def check_packages(self) -> OpenWrtPackages:
+        """Check installed packages."""
+        packages = OpenWrtPackages()
+        try:
+            cmd = (
+                "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
+                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn; do "
+                "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
+            )
+            out = await self._rpc_call("sys", "exec", [cmd])
+            if out:
+                results = out.strip().split("\n")
+                if len(results) >= 5: # 5 if wireguard/openvpn might be missing from output
+                    packages.sqm_scripts = results[0] == "1"
+                    packages.mwan3 = results[1] == "1"
+                    packages.iwinfo = results[2] == "1"
+                    packages.etherwake = results[3] == "1"
+                    if len(results) >= 5:
+                        packages.wireguard = results[4] == "1"
+                    if len(results) >= 6:
+                        packages.openvpn = results[5] == "1"
+        except Exception as err:
+            _LOGGER.error("Failed to check packages via LuCI RPC: %s", err)
+            # We don't raise here to allow the rest of the flow to continue
+        return packages
+
     async def get_system_resources(self) -> SystemResources:
         """Get system resource usage."""
         resources = SystemResources()
@@ -463,7 +542,7 @@ class LuciRpcClient(OpenWrtClient):
                             if not line.strip() or "No information" in line:
                                 continue
                             parts = line.split()
-                            if len(parts) >= 1 and ":" in parts[0]:
+                            if len(parts) >= 1 and parts[0].count(":") == 5 and len(parts[0]) == 17:
                                 mac = parts[0].lower()
                                 if mac in devices:
                                     dev = devices[mac]
@@ -788,10 +867,40 @@ class LuciRpcClient(OpenWrtClient):
 
         sqm_instances: list[SqmStatus] = []
         try:
-            sqm_config = await self._rpc_call("uci", "get_all", ["sqm"])
-            if isinstance(sqm_config, dict):
-                for section_id, values in sqm_config.items():
-                    if isinstance(values, dict) and values.get(".type") == "queue":
+            resp = await self._rpc_call("uci", "get_all", ["sqm"])
+            # Fallback to shell if permission denied or failed
+            if not resp or (isinstance(resp, list) and len(resp) > 1 and resp[1] == "Permission denied"):
+                try:
+                    shell_out = await self.execute_command("uci show sqm 2>/dev/null")
+                    if shell_out:
+                        # Parsing uci show output (sqm.eth1=queue, sqm.eth1.enabled='1', etc.)
+                        sections: dict[str, dict[str, Any]] = {}
+                        for line in shell_out.strip().split("\n"):
+                            if "=" not in line:
+                                continue
+                            key, val = line.split("=", 1)
+                            parts = key.split(".")
+                            if len(parts) >= 2:
+                                section = parts[1]
+                                if section not in sections:
+                                    sections[section] = {}
+                                if len(parts) == 2:
+                                    sections[section][".type"] = val.strip("'")
+                                elif len(parts) == 3:
+                                    sections[section][parts[2]] = val.strip("'")
+                        values_dict = sections
+                    else:
+                        values_dict = {}
+                except Exception:
+                    values_dict = {}
+            else:
+                values_dict = resp.get("values", resp) if isinstance(resp, dict) else {}
+
+            if not isinstance(values_dict, dict):
+                return sqm_instances
+
+            for section_id, values in values_dict.items():
+                if isinstance(values, dict) and values.get(".type") == "queue":
                         sqm_instances.append(
                             SqmStatus(
                                 section_id=section_id,

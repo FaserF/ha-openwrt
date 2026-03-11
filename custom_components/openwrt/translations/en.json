@@ -48,6 +48,10 @@
           "use_ssl": "Use SSL (HTTPS)",
           "port": "Port (Optional)"
         }
+      },
+      "permissions": {
+        "title": "Permissions Summary",
+        "description": "Based on the credentials provided, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed if this is expected."
       }
     },
     "error": {
@@ -80,6 +84,10 @@
           "custom_firmware_repo": "Custom GitHub Firmware Repo (URL or owner/repo)",
           "asu_url": "Attended Sysupgrade Server URL"
         }
+      },
+      "permissions": {
+        "title": "Permissions Summary",
+        "description": "Based on your config, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed."
       }
     }
   },

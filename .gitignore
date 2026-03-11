@@ -172,3 +172,8 @@ cython_debug/
 # OpenWrt specific
 .openwrt_build
 custom_components/openwrt/__pycache__/
+tests/test_live.py
+ruff_errors.json
+*debug*.txt
+*result*.txt
+/dummy_ha

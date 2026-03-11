@@ -10,7 +10,7 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.fixture
 def ubus_client() -> UbusClient:
     """Fixture for Ubus client."""
-    return UbusClient(host="192.168.1.1", username="root", password="password")
+    return UbusClient(host="192.168.1.1", username="ha-user", password="password")
 
 
 class MockResponse:
@@ -127,3 +127,27 @@ async def test_ubus_set_sqm_config(ubus_client: UbusClient):
         mock_call.assert_any_call("uci", "set", {"config": "sqm", "section": "eth0", "values": {"download": "200000"}})
         # Check commit
         mock_call.assert_any_call("uci", "commit", {"config": "sqm"})
+
+
+@pytest.mark.asyncio
+async def test_ubus_check_permissions(ubus_client: UbusClient):
+    """Test checking permissions via ubus."""
+    ubus_client._session_id = "test_token"
+    from custom_components.openwrt.api.ubus import UbusPermissionError
+    
+    # Mock ubus 'session' list and 'uci' calls
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        def side_effect(obj, method, params=None):
+            if obj == "session" and method == "list":
+                # Return restricted permissions via session list
+                return {"values": {"access": {"system": {"read": True, "write": True}}}}
+            if obj == "uci" and method == "get":
+                raise UbusPermissionError("Access denied")
+            return {}
+        
+        mock_call.side_effect = side_effect
+        
+        perms = await ubus_client.check_permissions()
+        assert perms.read_system is True
+        assert perms.write_system is True
+        assert perms.read_network is False
