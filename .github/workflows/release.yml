@@ -55,7 +55,7 @@ jobs:
       - name: Generate Changelog
         if: steps.tag_check.outputs.count != '0'
         id: changelog
-        uses: mikepenz/release-changelog-builder-action@v5
+        uses: mikepenz/release-changelog-builder-action@v6
         with:
           configuration: ".github/changelog-config.json"
         env:
