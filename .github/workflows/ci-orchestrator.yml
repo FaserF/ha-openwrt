@@ -26,7 +26,7 @@ jobs:
     name: HACS Validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: HACS Action
         uses: hacs/action@main
         with:
@@ -38,7 +38,7 @@ jobs:
     if: ${{ always() && github.event_name == 'pull_request' }}
     needs: [lint, test, build, hacs]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       # The Bouncer: Auto-merge if bot/owner and all green
       - name: Auto-merge Green PRs
