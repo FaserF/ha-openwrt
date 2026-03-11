@@ -70,6 +70,7 @@
     "step": {
       "init": {
         "title": "OpenWrt Options",
+        "description": "Configure OpenWrt integration options.",
         "data": {
           "update_interval": "Update interval (seconds)",
           "track_devices": "Track connected devices",
@@ -184,6 +185,51 @@
       },
       "device_connection_type": {
         "name": "Connection Type"
+      },
+      "qmodem_manufacturer": {
+        "name": "Modem Manufacturer"
+      },
+      "qmodem_revision": {
+        "name": "Modem Revision"
+      },
+      "qmodem_temperature": {
+        "name": "Modem Temperature"
+      },
+      "qmodem_voltage": {
+        "name": "Modem Voltage"
+      },
+      "qmodem_connect_status": {
+        "name": "Modem Connect Status"
+      },
+      "qmodem_sim_status": {
+        "name": "SIM Status"
+      },
+      "qmodem_isp": {
+        "name": "Internet Service Provider"
+      },
+      "qmodem_sim_slot": {
+        "name": "SIM Slot"
+      },
+      "qmodem_lte_rsrp": {
+        "name": "LTE RSRP"
+      },
+      "qmodem_lte_rsrq": {
+        "name": "LTE RSRQ"
+      },
+      "qmodem_lte_rssi": {
+        "name": "LTE RSSI"
+      },
+      "qmodem_lte_sinr": {
+        "name": "LTE SINR"
+      },
+      "qmodem_nr5g_rsrp": {
+        "name": "5G NR RSRP"
+      },
+      "qmodem_nr5g_rsrq": {
+        "name": "5G NR RSRQ"
+      },
+      "qmodem_nr5g_sinr": {
+        "name": "5G NR SINR"
       }
     },
     "binary_sensor": {
@@ -224,6 +270,9 @@
       },
       "service_restart": {
         "name": "Restart {service}"
+      },
+      "kick_device": {
+        "name": "Kick Device"
       },
       "wake_on_lan": {
         "name": "Wake on LAN"
@@ -292,6 +341,54 @@
         "interface": {
           "name": "Interface",
           "description": "Optional interface to send the packet through (e.g. br-lan)."
+        }
+      }
+    },
+    "uci_get": {
+      "name": "Get UCI Value",
+      "description": "Retrieve a UCI configuration value and return it as a service response.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The config entry ID of the OpenWrt router."
+        },
+        "config": {
+          "name": "Config",
+          "description": "The UCI config name (e.g. firewall, wireless)."
+        },
+        "section": {
+          "name": "Section",
+          "description": "The UCI section name."
+        },
+        "option": {
+          "name": "Option",
+          "description": "The UCI option name."
+        }
+      }
+    },
+    "uci_set": {
+      "name": "Set UCI Value",
+      "description": "Set a UCI configuration value and commit the changes.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The config entry ID of the OpenWrt router."
+        },
+        "config": {
+          "name": "Config",
+          "description": "The UCI config name."
+        },
+        "section": {
+          "name": "Section",
+          "description": "The UCI section name."
+        },
+        "option": {
+          "name": "Option",
+          "description": "The UCI option name."
+        },
+        "value": {
+          "name": "Value",
+          "description": "The value to set."
         }
       }
     }

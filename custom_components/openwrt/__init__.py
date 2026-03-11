@@ -17,7 +17,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, ServiceResponse
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
@@ -31,8 +31,10 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_EXEC,
-    SERVICE_INIT,
     SERVICE_REBOOT,
+    SERVICE_WOL,
+    SERVICE_UCI_GET,
+    SERVICE_UCI_SET,
 )
 from .coordinator import OpenWrtDataCoordinator, create_client
 
@@ -144,6 +146,54 @@ def _register_services(hass: HomeAssistant) -> None:
             client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
             await client.manage_service(service_name, action)
 
+    async def _handle_uci_get(call: ServiceCall) -> ServiceResponse:
+        """Handle UCI get service call."""
+        entry_id = call.data["entry_id"]
+        config = call.data["config"]
+        section = call.data.get("section")
+        option = call.data.get("option")
+        
+        if entry_id not in hass.data[DOMAIN]:
+            raise vol.Invalid(f"Config entry {entry_id} not found")
+            
+        client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
+        
+        cmd_parts = ["uci", "get", config]
+        if section:
+            cmd_parts[-1] += f".{section}"
+            if option:
+                cmd_parts[-1] += f".{option}"
+                
+        cmd = " ".join(cmd_parts)
+        try:
+            result = await client.execute_command(cmd)
+            return {"value": result.strip() if result else ""}
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to get UCI value: {err}") from err
+
+    async def _handle_uci_set(call: ServiceCall) -> None:
+        """Handle UCI set service call."""
+        entry_id = call.data["entry_id"]
+        config = call.data["config"]
+        section = call.data["section"]
+        option = call.data.get("option")
+        value = call.data["value"]
+        
+        if entry_id not in hass.data[DOMAIN]:
+            raise vol.Invalid(f"Config entry {entry_id} not found")
+            
+        client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
+        
+        target = f"{config}.{section}"
+        if option:
+            target += f".{option}"
+            
+        cmd = f"uci set {target}='{value}' && uci commit {config} && reload_config"
+        try:
+            await client.execute_command(cmd)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to set UCI value: {err}") from err
+
     async def _handle_wol(call: ServiceCall) -> None:
         """Handle Wake-on-LAN service call."""
         entry_id = call.data["target"]
@@ -213,6 +263,36 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required("target"): cv.string,
                 vol.Required("mac"): cv.string,
                 vol.Optional("interface"): cv.string,
+            }
+        ),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_UCI_GET,
+        _handle_uci_get,
+        schema=vol.Schema(
+            {
+                vol.Required("entry_id"): cv.string,
+                vol.Required("config"): cv.string,
+                vol.Optional("section"): cv.string,
+                vol.Optional("option"): cv.string,
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_UCI_SET,
+        _handle_uci_set,
+        schema=vol.Schema(
+            {
+                vol.Required("entry_id"): cv.string,
+                vol.Required("config"): cv.string,
+                vol.Required("section"): cv.string,
+                vol.Optional("option"): cv.string,
+                vol.Required("value"): cv.string,
             }
         ),
     )

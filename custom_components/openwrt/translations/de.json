@@ -70,6 +70,7 @@
     "step": {
       "init": {
         "title": "OpenWrt Optionen",
+        "description": "OpenWrt Integrationsoptionen konfigurieren.",
         "data": {
           "update_interval": "Aktualisierungsintervall (Sekunden)",
           "track_devices": "Verbundene Geräte tracken (Device Tracker)",
@@ -184,6 +185,51 @@
       },
       "device_connection_type": {
         "name": "Verbindungstyp"
+      },
+      "qmodem_manufacturer": {
+        "name": "Modem Hersteller"
+      },
+      "qmodem_revision": {
+        "name": "Modem Revision"
+      },
+      "qmodem_temperature": {
+        "name": "Modem Temperatur"
+      },
+      "qmodem_voltage": {
+        "name": "Modem Spannung"
+      },
+      "qmodem_connect_status": {
+        "name": "Modem Verbindungsstatus"
+      },
+      "qmodem_sim_status": {
+        "name": "SIM Status"
+      },
+      "qmodem_isp": {
+        "name": "Internetanbieter"
+      },
+      "qmodem_sim_slot": {
+        "name": "SIM Steckplatz"
+      },
+      "qmodem_lte_rsrp": {
+        "name": "LTE RSRP"
+      },
+      "qmodem_lte_rsrq": {
+        "name": "LTE RSRQ"
+      },
+      "qmodem_lte_rssi": {
+        "name": "LTE RSSI"
+      },
+      "qmodem_lte_sinr": {
+        "name": "LTE SINR"
+      },
+      "qmodem_nr5g_rsrp": {
+        "name": "5G NR RSRP"
+      },
+      "qmodem_nr5g_rsrq": {
+        "name": "5G NR RSRQ"
+      },
+      "qmodem_nr5g_sinr": {
+        "name": "5G NR SINR"
       }
     },
     "binary_sensor": {
@@ -227,6 +273,9 @@
       },
       "wake_on_lan": {
         "name": "Wake-on-LAN"
+      },
+      "kick_device": {
+        "name": "Gerät trennen"
       }
     },
     "switch": {
@@ -292,6 +341,54 @@
         "interface": {
           "name": "Schnittstelle",
           "description": "Optionale Schnittstelle, über die das Paket gesendet werden soll (z.B. br-lan)."
+        }
+      }
+    },
+    "uci_get": {
+      "name": "Hole UCI-Wert",
+      "description": "Liest einen UCI-Konfigurationswert und gibt ihn als Service-Antwort zurück.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt Router."
+        },
+        "config": {
+          "name": "Konfiguration",
+          "description": "Der UCI-Konfigurationsname (z. B. firewall, wireless)."
+        },
+        "section": {
+          "name": "Abschnitt",
+          "description": "Der UCI-Abschnittsname."
+        },
+        "option": {
+          "name": "Option",
+          "description": "Der UCI-Optionsname."
+        }
+      }
+    },
+    "uci_set": {
+      "name": "Setze UCI-Wert",
+      "description": "Legt einen UCI-Konfigurationswert fest und speichert die Änderungen.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt Router."
+        },
+        "config": {
+          "name": "Konfiguration",
+          "description": "Der UCI-Konfigurationsname."
+        },
+        "section": {
+          "name": "Abschnitt",
+          "description": "Der UCI-Abschnittsname."
+        },
+        "option": {
+          "name": "Option",
+          "description": "Der UCI-Optionsname."
+        },
+        "value": {
+          "name": "Wert",
+          "description": "Der festzulegende Wert."
         }
       }
     }

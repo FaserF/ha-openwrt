@@ -95,7 +95,18 @@ class SshClient(OpenWrtClient):
                 except Exception:
                     pass
                 self._client = None
-            raise
+    async def get_installed_packages(self) -> list[str]:
+        """Get a list of installed packages."""
+        try:
+            output = await self._exec("opkg list-installed")
+            packages = []
+            for line in output.splitlines():
+                parts = line.split(" - ")
+                if parts:
+                    packages.append(parts[0].strip())
+            return packages
+        except Exception:
+            return []
 
     async def connect(self) -> bool:
         """Connect via SSH."""
@@ -549,7 +560,7 @@ class SshClient(OpenWrtClient):
             pass
 
         # Fallback to ubus if iwinfo is missing or returns nothing
-        if not devices:
+        if not any(d.is_wireless for d in devices.values()):
             try:
                 # Find all hostapd objects and get clients
                 cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"

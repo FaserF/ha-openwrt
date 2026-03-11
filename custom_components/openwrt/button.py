@@ -116,7 +116,7 @@ async def async_setup_entry(
                     )
                 )
 
-        # Add Wake on LAN buttons for each device
+        # Add Wake on LAN and Kick buttons for each device
         for device in coordinator.data.connected_devices:
             if device.mac:
                 entities.append(
@@ -128,6 +128,17 @@ async def async_setup_entry(
                         device.interface,
                     )
                 )
+                if device.is_wireless and device.interface:
+                    entities.append(
+                        OpenWrtKickButton(
+                            coordinator,
+                            entry,
+                            client,
+                            device.mac,
+                            device.interface,
+                            device.hostname or device.mac,
+                        )
+                    )
 
     async_add_entities(entities)
 
@@ -212,3 +223,44 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
                     "Please install the 'etherwake' package on OpenWrt."
                 ) from err
             raise HomeAssistantError(f"Failed to send WoL packet: {err}") from err
+
+
+class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity):
+    """Representation of an OpenWrt kick device button."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:account-cancel"
+    _attr_translation_key = "kick_device"
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        client: OpenWrtClient,
+        mac: str,
+        interface: str,
+        hostname: str,
+    ) -> None:
+        """Initialize the button."""
+        super().__init__(coordinator)
+        self._client = client
+        self._mac = mac
+        self._interface = interface
+        self._attr_name = f"Disconnect {hostname}"
+        self._attr_unique_id = f"{entry.entry_id}_{mac}_kick"
+        self._attr_device_info = {
+            "connections": {("mac", mac)},
+            "via_device": (DOMAIN, entry.data[CONF_HOST]),
+        }
+
+    async def async_press(self) -> None:
+        """Press the button to disconnect the device."""
+        try:
+            success = await self._client.kick_device(self._mac, self._interface)
+            if not success:
+                raise HomeAssistantError(
+                    f"Failed to disconnect {self._mac} from {self._interface}. Ensure hostapd is running."
+                )
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to execute device kick: {err}") from err
+        await self.coordinator.async_request_refresh()

@@ -67,8 +67,8 @@ async def test_ssh_get_connected_devices_iwinfo_fallback(ssh_client: SshClient):
     ssh_client._connected = True
     with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
         def exec_side_effect(command: str) -> str:
-            if "arp -an" in command:
-                return "? (192.168.1.5) at 00:11:22:33:44:55 [ether] on br-lan"
+            if "cat /proc/net/arp" in command:
+                return "IP address       HW type     Flags       HW address            Mask     Device\n192.168.1.5      0x1         0x2         00:11:22:33:44:55     *        br-lan"
             if "iwinfo" in command:
                 if "assoclist" in command:
                     return "No information"
@@ -94,15 +94,19 @@ async def test_ssh_get_connected_devices_iwinfo_fallback(ssh_client: SshClient):
 
 @pytest.mark.asyncio
 async def test_ssh_get_temperature_fallback(ssh_client: SshClient):
-    """Test SSH client fallback for temperature."""
+    """Test SSH client fallback for temperature within system resources."""
     ssh_client._connected = True
     with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
         def exec_side_effect(command: str) -> str:
             if "thermal_zone0" in command:
                 return "45000" if "temp" in command else "cpu-thermal"
+            if "loadavg" in command:
+                return "0.0 0.0 0.0 1/100 1234"
+            if "uptime" in command:
+                return "100.0"
             return ""
 
         mock_exec.side_effect = exec_side_effect
 
-        temp = await ssh_client.get_temperature()
-        assert temp == 45.0
+        resources = await ssh_client.get_system_resources()
+        assert resources.temperature == 45.0

@@ -78,8 +78,22 @@ sys.modules["homeassistant.const"] = MagicMock()
 sys.modules["homeassistant.helpers.entity"] = MagicMock()
 sys.modules["homeassistant.helpers.entity"].EntityDescription = MockEntityDescription
 sys.modules["homeassistant.helpers.entity"].Entity = MockEntity
+class MockDataUpdateCoordinator:
+    def __init__(self, *args, **kwargs):
+        self.data = None
+        self.name = kwargs.get("name", "Unknown")
+        self.config_entry = kwargs.get("config_entry")
+        self.hass = args[0] if args else kwargs.get("hass")
+    
+    async def async_config_entry_first_refresh(self):
+        pass
+
+    def __class_getitem__(cls, _):
+        return cls
+
 sys.modules["homeassistant.helpers.update_coordinator"] = MagicMock()
 sys.modules["homeassistant.helpers.update_coordinator"].CoordinatorEntity = MockCoordinatorEntity
+sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator
 
 ha_mocks = [
     "homeassistant.core",

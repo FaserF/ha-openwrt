@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import abc
+import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 _LOGGER = logging.getLogger(__name__)
@@ -156,6 +158,28 @@ class WpsStatus:
 
 
 @dataclass
+class QModemInfo:
+    """Cellular modem information (QModem)."""
+
+    enabled: bool = False
+    manufacturer: str = ""
+    revision: str = ""
+    temperature: float | None = None
+    voltage: int | None = None
+    connect_status: str = ""
+    sim_status: str = ""
+    isp: str = ""
+    sim_slot: str = ""
+    lte_rsrp: int | None = None
+    lte_rsrq: int | None = None
+    lte_rssi: int | None = None
+    lte_sinr: int | None = None
+    nr5g_rsrp: int | None = None
+    nr5g_rsrq: int | None = None
+    nr5g_sinr: int | None = None
+
+
+@dataclass
 class ServiceInfo:
     """System service information."""
 
@@ -226,6 +250,7 @@ class OpenWrtData:
     asu_update_available: bool = False
     asu_image_status: str = ""  # e.g. "available", "building", "failed"
     asu_image_url: str | None = None
+    qmodem_info: QModemInfo = field(default_factory=QModemInfo)
 
 
 class OpenWrtClient(abc.ABC):
@@ -298,6 +323,26 @@ class OpenWrtClient(abc.ABC):
     async def execute_command(self, command: str) -> str:
         """Execute a command on the device."""
 
+    async def kick_device(self, mac_address: str, interface: str) -> bool:
+        """Kick a wireless device from the network using hostapd."""
+        cmd_ubus = f"ubus call hostapd.{interface} del_client '{{\"addr\":\"{mac_address}\",\"reason\":5,\"deauth\":true,\"ban_time\":60000}}'"
+        try:
+            output = await self.execute_command(cmd_ubus)
+            if output and "Method not found" not in output and "Not found" not in output:
+                return True
+        except Exception:
+            pass
+
+        cmd_cli = f"hostapd_cli -i {interface} deauthenticate {mac_address}"
+        try:
+            output = await self.execute_command(cmd_cli)
+            if output and "OK" in output:
+                return True
+        except Exception:
+            pass
+
+        return False
+
     async def get_mwan_status(self) -> list[MwanStatus]:
         """Get MWAN3 status (optional, may not be installed)."""
         return []
@@ -364,6 +409,95 @@ class OpenWrtClient(abc.ABC):
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages on the device."""
 
+    async def get_qmodem_info(self) -> QModemInfo:
+        """Get cellular modem status from QModem's modem_ctrl ubus subsystem (if available)."""
+        info = QModemInfo()
+        try:
+            output = await self.execute_command("ubus call modem_ctrl info")
+            if not output or "Not found" in output or "Method not found" in output:
+                return info
+
+            try:
+                data = json.loads(output)
+            except json.JSONDecodeError:
+                return info
+            
+            info_list = data.get("info", [])
+            if not info_list:
+                return info
+
+            info.enabled = True
+
+            for info_item in info_list:
+                modem_info_list = info_item.get("modem_info", [])
+                
+                current_context = None
+                lte_signals = {}
+                nr5g_signals = {}
+                
+                for item in modem_info_list:
+                    class_origin = item.get("class_origin", "")
+                    item_key = item.get("key", "")
+                    value = item.get("value", "")
+                    item_type = item.get("type", "")
+
+                    if item_key == "LTE":
+                        current_context = "LTE"
+                    elif item_key.startswith("NR"):
+                        current_context = "NR5G"
+
+                    if class_origin == "Base Information":
+                        if item_key == "manufacturer":
+                            info.manufacturer = str(value) if value else ""
+                        elif item_key == "revision":
+                            info.revision = str(value) if value else ""
+                        elif item_key == "temperature":
+                            match = re.search(r"(\d+)", str(value))
+                            info.temperature = int(match.group(1)) if match else None
+                        elif item_key == "voltage":
+                            match = re.search(r"(\d+)", str(value))
+                            info.voltage = int(match.group(1)) if match else None
+                        elif item_key == "connect_status":
+                            info.connect_status = str(value) if value else ""
+                    elif class_origin == "SIM Information":
+                        if item_key == "SIM Status":
+                            info.sim_status = str(value).replace("\n", " ").strip() if value else ""
+                        elif item_key == "ISP":
+                            info.isp = str(value).replace("\n", " ").strip() if value else ""
+                        elif item_key == "SIM Slot":
+                            info.sim_slot = str(value).replace("\n", " ").strip() if value else ""
+
+                    elif item_type == "progress_bar" and class_origin == "Cell Information":
+                        if current_context == "LTE":
+                            lte_signals[item_key] = value
+                        elif current_context == "NR5G":
+                            nr5g_signals[item_key] = value
+
+                def extract_int(val: Any, pattern: str = r"(-?\d+)") -> int | None:
+                    match = re.search(pattern, str(val))
+                    return int(match.group(1)) if match else None
+
+                if "RSRP" in lte_signals:
+                    info.lte_rsrp = extract_int(lte_signals["RSRP"])
+                if "RSRQ" in lte_signals:
+                    info.lte_rsrq = extract_int(lte_signals["RSRQ"])
+                if "RSSI" in lte_signals:
+                    info.lte_rssi = extract_int(lte_signals["RSSI"])
+                if "SINR" in lte_signals:
+                    info.lte_sinr = extract_int(lte_signals["SINR"], r"(\d+)")
+
+                if "RSRP" in nr5g_signals:
+                    info.nr5g_rsrp = extract_int(nr5g_signals["RSRP"])
+                if "RSRQ" in nr5g_signals:
+                    info.nr5g_rsrq = extract_int(nr5g_signals["RSRQ"])
+                if "SINR" in nr5g_signals:
+                    info.nr5g_sinr = extract_int(nr5g_signals["SINR"], r"(\d+)")
+
+        except Exception as err:
+            _LOGGER.debug("Error retrieving QModem info: %s", err)
+            
+        return info
+
     async def get_all_data(self) -> OpenWrtData:
         """Get all data in one call.
 
@@ -397,6 +531,11 @@ class OpenWrtClient(abc.ABC):
             data.wps_status = await self.get_wps_status()
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Optional WPS status failed: %s", err)
+
+        try:
+            data.qmodem_info = await self.get_qmodem_info()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Optional QModem info failed: %s", err)
 
         try:
             data.services = await self.get_services()

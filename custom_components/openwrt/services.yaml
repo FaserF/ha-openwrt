@@ -74,3 +74,69 @@ wake_on_lan:
       required: false
       selector:
         text: {}
+
+uci_get:
+  name: "Get UCI Value"
+  description: Retrieve a UCI configuration value and return it as a service response.
+  fields:
+    entry_id:
+      description: The config entry ID of the OpenWrt router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        config_entry:
+          integration: openwrt
+    config:
+      description: The UCI config name (e.g. firewall, wireless).
+      example: "firewall"
+      required: true
+      selector:
+        text: {}
+    section:
+      description: The UCI section name.
+      example: "lan"
+      required: false
+      selector:
+        text: {}
+    option:
+      description: The UCI option name.
+      example: "ipaddr"
+      required: false
+      selector:
+        text: {}
+
+uci_set:
+  name: "Set UCI Value"
+  description: Set a UCI configuration value and commit the changes.
+  fields:
+    entry_id:
+      description: The config entry ID of the OpenWrt router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        config_entry:
+          integration: openwrt
+    config:
+      description: The UCI config name.
+      example: "firewall"
+      required: true
+      selector:
+        text: {}
+    section:
+      description: The UCI section name.
+      example: "@rule[0]"
+      required: true
+      selector:
+        text: {}
+    option:
+      description: The UCI option name.
+      example: "enabled"
+      required: false
+      selector:
+        text: {}
+    value:
+      description: The value to set.
+      example: "1"
+      required: true
+      selector:
+        text: {}
