@@ -55,6 +55,8 @@ class WirelessInterface:
     txpower: int = 0
     mesh_id: str = ""
     mesh_fwding: bool = False
+    ifname: str = ""
+    section: str = ""
 
 
 @dataclass

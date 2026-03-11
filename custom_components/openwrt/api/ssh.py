@@ -72,7 +72,7 @@ class SshClient(OpenWrtClient):
         self._ssh_key = ssh_key
         self._client: Any = None
 
-    async def _exec(self, command: str) -> str:
+    async def _exec(self, command: str, retry: bool = True) -> str:
         """Execute a command via SSH and return stdout."""
 
         loop = asyncio.get_event_loop()
@@ -105,6 +105,15 @@ class SshClient(OpenWrtClient):
                 except Exception:
                     pass
                 self._client = None
+
+            if retry:
+                _LOGGER.debug("Attempting to reconnect and retry SSH command...")
+                try:
+                    if await self.connect():
+                        return await self._exec(command, retry=False)
+                except Exception as reconnect_err:
+                    _LOGGER.debug("SSH reconnection failed during retry: %s", reconnect_err)
+
             return ""
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages."""

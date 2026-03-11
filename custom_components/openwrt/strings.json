@@ -334,9 +334,6 @@
       "interface_up": {
         "name": "{interface} Connected"
       },
-      "wps_active": {
-        "name": "WPS Active"
-      },
       "vpn_up": {
         "name": "VPN {interface} Connected"
       }

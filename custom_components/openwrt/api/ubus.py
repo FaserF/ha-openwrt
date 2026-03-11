@@ -164,6 +164,16 @@ class UbusClient(OpenWrtClient):
                 ) from err
             raise UbusError(f"HTTP error {err.status} from {self.host}") from err
         except aiohttp.ClientError as err:
+            if not reauthenticated:
+                _LOGGER.debug(
+                    "Ubus connection error (%s), retrying after session reset", err
+                )
+                if self._session and not self._session.closed:
+                    await self._session.close()
+                self._session = None
+                return await self._call(
+                    ubus_object, ubus_method, params, reauthenticated=True
+                )
             self._connected = False
             raise UbusError(f"Communication error with {self.host}: {err}") from err
 
@@ -1002,7 +1012,7 @@ class UbusClient(OpenWrtClient):
                     _LOGGER.debug("Requested odhcpd but 'dhcp' ubus object not found")
                     return []
 
-        # Try dnsmasq via file
+        # Parse dnsmasq leases from /tmp/dhcp.leases
         if self.dhcp_software in ("auto", "dnsmasq"):
             try:
                 result = await self._call(

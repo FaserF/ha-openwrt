@@ -146,7 +146,13 @@ async def async_setup_entry(
                     if device.hostname != router_hostname:
                         dev_name = device.hostname
 
-                if pkgs.etherwake is not False and not device.is_wireless:
+                is_wireless = device.is_wireless
+                if not is_wireless and device.interface:
+                    iface_lower = device.interface.lower()
+                    if "wlan" in iface_lower or "ap" in iface_lower or "radio" in iface_lower:
+                        is_wireless = True
+
+                if pkgs.etherwake is not False and not is_wireless:
                     entities.append(
                         OpenWrtWakeOnLanButton(
                             coordinator,

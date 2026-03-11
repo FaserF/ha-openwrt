@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONF_SSH_KEY, DATA_COORDINATOR, DOMAIN
 
-REDACT_KEYS = {CONF_PASSWORD, CONF_SSH_KEY, "password", "ssh_key"}
+REDACT_KEYS = {CONF_PASSWORD, CONF_SSH_KEY, "password", "ssh_key", "external_ip", "ipv4_address", "ipv6_address", "host", "mac"}
 
 
 async def async_get_config_entry_diagnostics(

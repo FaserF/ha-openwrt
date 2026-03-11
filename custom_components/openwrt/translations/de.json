@@ -168,7 +168,7 @@
         "name": "Clients"
       },
       "wifi_signal": {
-        "name": "Signal"
+        "name": "WLAN Signalstärke"
       },
       "wifi_channel": {
         "name": "Kanal"
@@ -190,6 +190,18 @@
       },
       "wifi_htmode": {
         "name": "HT Modus"
+      },
+      "wifi_hwmode": {
+        "name": "Hardware-Modus"
+      },
+      "wifi_quality": {
+        "name": "Signalqualität"
+      },
+      "wifi_bitrate": {
+        "name": "Bitrate"
+      },
+      "wifi_noise": {
+        "name": "Rauschpegel"
       },
       "net_rx_errors": {
         "name": "Empfangsfehler"
@@ -217,6 +229,9 @@
       },
       "device_tx_rate": {
         "name": "TX Rate"
+      },
+      "device_noise": {
+        "name": "Rauschpegel"
       },
       "net_rx_rate": {
         "name": "{interface} RX Rate"
@@ -318,9 +333,6 @@
       },
       "interface_up": {
         "name": "{interface} verbunden"
-      },
-      "wps_active": {
-        "name": "WPS Aktiv"
       },
       "vpn_up": {
         "name": "VPN {interface} verbunden"
@@ -440,6 +452,48 @@
     }
   },
   "services": {
+    "reboot": {
+      "name": "Router neustarten",
+      "description": "Startet den OpenWrt Router neu.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt Router, der neu gestartet werden soll."
+        }
+      }
+    },
+    "execute_command": {
+      "name": "Befehl ausführen",
+      "description": "Führt einen Shell-Befehl auf dem OpenWrt Router aus.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt Router."
+        },
+        "command": {
+          "name": "Befehl",
+          "description": "Der auszuführende Befehl (z.B. cat /proc/cpuinfo)."
+        }
+      }
+    },
+    "manage_service": {
+      "name": "Dienst verwalten",
+      "description": "Verwaltet einen init.d Dienst auf dem OpenWrt Router.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt Router."
+        },
+        "service_name": {
+          "name": "Dienstname",
+          "description": "Der Name des Dienstes (z.B. dnsmasq)."
+        },
+        "action": {
+          "name": "Aktion",
+          "description": "Die auszuführende Aktion (start, stop, restart, enable, disable)."
+        }
+      }
+    },
     "wake_on_lan": {
       "name": "Wake-on-LAN",
       "description": "Sende ein Wake-on-LAN Magic Packet an ein Gerät über den OpenWrt Router.",

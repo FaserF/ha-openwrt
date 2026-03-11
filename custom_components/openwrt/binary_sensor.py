@@ -46,13 +46,6 @@ BINARY_SENSORS: tuple[OpenWrtBinarySensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         is_on_fn=lambda data: data.firmware_upgradable,
     ),
-    OpenWrtBinarySensorDescription(
-        key="wps_active",
-        name="WPS Active",
-        translation_key="wps_active",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        is_on_fn=lambda data: data.wps_status.enabled,
-    ),
 )
 
 
@@ -74,8 +67,6 @@ async def async_setup_entry(
 
         for description in BINARY_SENSORS:
             if description.key == "firmware_update_available" and not perms.read_system:
-                continue
-            if description.key == "wps_active" and not perms.read_wireless:
                 continue
             entities.append(OpenWrtBinarySensorEntity(coordinator, entry, description))
         if perms.read_mwan and pkgs.mwan3 is not False:

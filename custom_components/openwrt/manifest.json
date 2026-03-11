@@ -50,8 +50,7 @@
   ],
   "dhcp": [
     {
-      "hostname": "openwrt*",
-      "macaddress": "pattern"
+      "hostname": "openwrt*"
     },
     {
       "hostname": "lede*"

@@ -17,22 +17,34 @@ Supports **OpenWrt 25.12** and newer (older versions may also work, but are not 
 - **VPN Monitoring**: 
   - Tracks status (Up/Down) for WireGuard and OpenVPN tunnels.
   - Monitors throughput (RX/TX) and WireGuard peer counts with handshake details.
-- **Network Health**: 
+- **Network & Connectivity**: 
   - **Latency/Ping**: Monitor network latency to a target (e.g. 8.8.8.8) with packet loss tracking.
   - **DHCP Monitoring**: Track the number of active DHCP leases.
+  - **Public IP**: Track your external WAN IP address with change detection.
   - **Advanced Interface Diagnostics**: Individual sensors/attributes for IPv6 addresses, link speed (Mbps), duplex mode, and interface uptime.
+- **4G/5G QModem Support (ModemManager integration)**: 
+  - Comprehensive signal diagnostics: RSRP, RSRQ, RSSI, SINR for LTE and 5G.
+  - Device health: Modem temperature, voltage, and ISP detection.
+  - SIM status: Tracking SIM slots and connectivity state.
 - **Configurable Control**:
   - **WiFi TX Power**: Native slider to control transmission power of WiFi radios.
   - **SQM (Smart Queue Management)**: 
     - Control enabled state of SQM instances.
     - Set download and upload limits (Mbps) via native number sliders.
     - Diagnostic sensors for configured interface, qdisc, and setup script.
-  - **Backup Service**: Trigger full router configuration backups (`sysupgrade -b`) directly from Home Assistant.
-- **Smart Events**: 
-  - Fires Home Assistant events (`openwrt_new_device`) when new, previously unknown MAC addresses connect to the network.
-- **HA Repairs**: Native repair integration for authentication failures, connection issues, and missing packages.
-- **Optimized Polling**: Parallel API calls, deduplicated wireless queries, and selective polling (slow-changing data like firewall rules is cached and refreshed less often) minimize router load.
-- **Full Localization**: All entities support Home Assistant's native translation framework with English and German included out of the box.
+  - **Service Management**: Monitor, start, stop, and restart system services (e.g., AdGuard Home, OpenVPN, Samba).
+  - **Backup & Commands**: Trigger configuration backups or execute arbitrary shell commands directly from HA.
+- **Parental Control & Device Management**:
+  - **Internet Access Control**: Per-device "Internet Access" switches to block/allow traffic (Fritz!Box style).
+  - **Wireless Management**: WPS control switches and buttons to kick (disconnect) specific wireless clients.
+- **Smart Tracking & Events**: 
+  - **Multi-source Device Tracking**: Combines DHCP leases with ARP/NDP tables (`ip neigh`) for instant and reliable presence detection.
+  - **New Device Event**: Fires `openwrt_new_device` when previously unknown MAC addresses are discovered.
+- **Optimized for Large Environments**: 
+  - Parallel API calls and background platform loading prevent Home Assistant blocking warnings and ensure smooth startup even with 100+ devices.
+- **Native Experience**:
+  - **Full Localization**: English and German translations included.
+  - **HA Repairs**: Integrated check for auth failures, missing packages, and permission issues.
 
 
 ## ❤️ Support This Project
@@ -132,13 +144,50 @@ Some features require additional OpenWrt packages to be installed on your router
 ## 🛠️ Options Flow
 
 After configuration, click **Configure** on the integration page to adjust:
-- **Update Interval**: How frequently to poll data (default 30s).
-- **Device Tracking**: Enable/disable device tracking and include/exclude wired devices.
-- **Consider Home**: Set the grace period (in seconds) for device presence detection to prevent "presence flickering".
-- **DHCP Software**: Manual selection of DHCP software (`dnsmasq`, `odhcpd`, or `auto-detect`) for more reliable device identification across different OpenWrt setups.
-- **Advanced Tracking**: Integration with `ip neigh` (ARP/NDP) to track connected devices even if they are not active in the DHCP lease table (e.g., static IPs or wired devices).
-- **Firewall Rule Control**: Expose named OpenWrt firewall rules as switches in Home Assistant. This allows for granular control over internet access, port forwards, and more directly from your dashboard.
-- **Custom Firmware Repo**: Provide a GitHub repo (e.g., `owner/repo`) if you use custom OpenWrt community builds.
+- **Update Interval**: How frequently to poll data (default 30s). Adjust based on your router's performance.
+- **Device Tracking**: Enable/disable device tracking.
+- **Track Wired Devices**: If enabled, Home Assistant will also track devices found in the ARP/Neighbor table, even if they aren't on WiFi.
+- **Consider Home**: Set the grace period (in seconds) for device presence detection (prevents devices from switching to "Away" during brief sleep cycles).
+- **DHCP Software**: 
+  - `Auto-detect`: Best for most users.
+  - `dnsmasq`: Uses `/tmp/dhcp.leases`.
+  - `odhcpd`: Uses `ubus call dhcp ipv4leases`.
+  - `none`: Disables dynamic IP/hostname resolution to save resources.
+- **Custom Firmware Repo**: Provide a GitHub repo (e.g., `owner/repo`) if you use custom OpenWrt community builds to check for updates.
+- **Attended Sysupgrade Server**: Configure the URL for the ASU server (default: `https://sysupgrade.openwrt.org`).
+
+## 🧱 Services
+
+The integration provides several powerful services for advanced control.
+
+### `openwrt.reboot`
+Reboots the OpenWrt router.
+- **`entry_id`**: (Optional) The config entry ID of the router to reboot.
+
+### `openwrt.manage_service`
+Manage system services (init.d) on the router.
+- **`service_name`**: The name of the service (e.g., `dnsmasq`).
+- **`action`**: One of `start`, `stop`, `restart`, `enable`, `disable`.
+
+### `openwrt.execute_command`
+Execute arbitrary shell commands on your router.
+- **`command`**: The command to run (e.g., `/etc/init.d/uhttpd restart`).
+
+### `openwrt.uci_get`
+Read a value from the UCI configuration. Returns the value as a service response.
+- **`config`**, **`section`**, **`option`**: The UCI path components.
+
+### `openwrt.uci_set`
+Modify any UCI setting and commit the change immediately.
+- **`config`**, **`section`**, **`option`**, **`value`**: The target setting. 
+
+### `openwrt.wake_on_lan`
+Send a Magic Packet through the router to wake up a device.
+- **`mac`**: Target MAC address.
+- **`interface`**: (Optional) The interface to use (e.g., `br-lan`).
+
+### `openwrt.create_backup`
+Triggers a configuration backup and returns the path to the backup file.
 
 ## 📖 Automation Examples
 
@@ -599,6 +648,41 @@ action:
       entry_id: <YOUR_OPENWRT_ENTRY_ID>
 ```
 </details>
+
+<details>
+<summary><strong>📶 Modem: SMS Notification on ISP Change</strong></summary>
+
+If you have a dual-SIM or roaming modem, get notified when the carrier changes.
+
+```yaml
+alias: "Modem: ISP Notfier"
+trigger:
+  - platform: state
+    entity_id: sensor.openwrt_qmodem_isp
+action:
+  - service: notify.notify
+    data:
+      title: "🌍 Modem Switched Network"
+      message: "The router is now connected via {{ states('sensor.openwrt_qmodem_isp') }}."
+```
+</details>
+
+## ❓ Troubleshooting & FAQ
+
+### "Access Denied" or Permission Errors
+OpenWrt's `rpcd` has very strict ACLs. Even `root` is sometimes restricted via the Ubus API.
+- **Solution 1**: Switch the connection method to **LuCI RPC** in the integration settings. It uses the same session as the web UI and often has more permissive defaults.
+- **Solution 2**: Check `/etc/config/rpcd` on your router and ensure your user has the required scopes.
+
+### Sensors show "Unavailable"
+- Check **Settings > System > Repairs** in Home Assistant. The integration will create a repair issue if there's a specific API or package error.
+- Ensure the required packages (like `iwinfo` or `uhttpd-mod-ubus`) are installed.
+
+### How do I use the "Internet Access" switches?
+The "Internet Access" switches in Home Assistant act as a toggle for the firewall. When turned off, the router creates a temporary firewall rule to drop all traffic from that specific device's MAC address. This provides simple, reliable parental control without complex VLANs.
+
+### Why are some Signal sensors hidden?
+The integration automatically hides "STA-style" sensors (Signal, Quality, Bitrate) if the WiFi interface is in **Master/AP mode**. These values only make sense when the router itself is acting as a client (Station) or Mesh node.
 
 ## 🧑‍💻 Development
 

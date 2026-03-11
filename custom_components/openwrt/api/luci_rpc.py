@@ -152,6 +152,12 @@ class LuciRpcClient(OpenWrtClient):
                 f"SSL error connecting to LuCI on {self.host}: {err}"
             ) from err
         except aiohttp.ClientError as err:
+            if not reauthenticated:
+                _LOGGER.debug(
+                    "LuCI RPC connection error (%s), retrying after session reset", err
+                )
+                await self.disconnect()
+                return await self._rpc_call(endpoint, method, params, reauthenticated=True)
             self._connected = False
             raise LuciRpcError(f"Communication error: {err}") from err
 
@@ -428,7 +434,7 @@ class LuciRpcClient(OpenWrtClient):
                         ipv4_addrs = iface_data.get("ipv4-address", [])
                         if ipv4_addrs:
                             return ipv4_addrs[0].get("address")
-        except LuciRpcError, json.JSONDecodeError:
+        except (LuciRpcError, json.JSONDecodeError):
             pass
         return None
 
@@ -445,20 +451,86 @@ class LuciRpcClient(OpenWrtClient):
         except LuciRpcError:
             pass
 
+        uci_to_sys, sys_to_uci = await self._get_wireless_mapping()
+        
         try:
             wireless_config = await self._rpc_call("uci", "get_all", ["wireless"])
             if isinstance(wireless_config, dict):
                 for section, values in wireless_config.items():
                     if isinstance(values, dict) and values.get(".type") == "wifi-iface":
-                        interfaces.append(
-                            WirelessInterface(
-                                name=section,
-                                ssid=values.get("ssid", ""),
-                                mode=values.get("mode", ""),
-                                encryption=values.get("encryption", ""),
-                                enabled=values.get("disabled", "0") != "1",
-                            )
+                        # Fallback: Find system name by SSID if reverse mapping is missing
+                        iface_name = uci_to_sys.get(section)
+                        if not iface_name:
+                            ssid = values.get("ssid", "")
+                            if ssid:
+                                try:
+                                    match_out = await self._rpc_call("sys", "exec", [f"iwinfo 2>/dev/null | grep -F '\"{ssid}\"' | awk '{{print $1}}'"])
+                                    if match_out:
+                                        iface_name = match_out.strip().splitlines()[0]
+                                except Exception:
+                                    pass
+                        
+                        sys_name = iface_name or section
+                        wifi = WirelessInterface(
+                            name=section,
+                            ifname=sys_name,
+                            section=section,
+                            ssid=values.get("ssid", ""),
+                            mode=values.get("mode", ""),
+                            encryption=values.get("encryption", ""),
+                            enabled=values.get("disabled", "0") != "1",
                         )
+
+                        # Fetch metrics via iwinfo
+                        if iface_name:
+                            try:
+                                iw_info = await self._rpc_call("sys", "exec", [f"iwinfo {iface_name} info 2>/dev/null"])
+                                if iw_info:
+                                    for line in iw_info.splitlines():
+                                        if "Channel:" in line:
+                                            try:
+                                                wifi.channel = int(line.split("Channel:")[1].strip().split()[0])
+                                            except (ValueError, IndexError):
+                                                pass
+                                        elif "Signal:" in line:
+                                            try:
+                                                wifi.signal = int(line.split("Signal:")[1].strip().split()[0])
+                                            except (ValueError, IndexError):
+                                                pass
+                                        elif "Noise:" in line:
+                                            try:
+                                                wifi.noise = int(line.split("Noise:")[1].strip().split()[0])
+                                            except (ValueError, IndexError):
+                                                pass
+                                        elif "Bit Rate:" in line:
+                                            try:
+                                                wifi.bitrate = float(line.split("Bit Rate:")[1].strip().split()[0])
+                                            except (ValueError, IndexError):
+                                                pass
+
+                                assoc = await self._rpc_call("sys", "exec", [f"iwinfo {iface_name} assoclist 2>/dev/null"])
+                                if assoc and "No information" not in assoc:
+                                    wifi.clients_count = len([l for l in assoc.strip().splitlines() if l.strip() and ":" in l.split()[0]])
+                                
+                                # Fallback: hostapd ubus call
+                                if wifi.clients_count == 0:
+                                    hostapd_out = await self._rpc_call("sys", "exec", [f"ubus call hostapd.{iface_name} get_clients 2>/dev/null"])
+                                    if hostapd_out and hostapd_out.strip().startswith("{"):
+                                        try:
+                                            h_data = json.loads(hostapd_out)
+                                            if "clients" in h_data:
+                                                wifi.clients_count = len(h_data["clients"])
+                                        except Exception:
+                                            pass
+                            except Exception:
+                                pass
+
+                        interfaces.append(wifi)
+                    
+                    # Store mapping for other calls
+                    self._sys_to_uci = sys_to_uci
+                    self._uci_to_sys = uci_to_sys
+
         except LuciRpcError:
             pass
 
@@ -468,6 +540,33 @@ class LuciRpcClient(OpenWrtClient):
         """Get network interfaces."""
         interfaces: list[NetworkInterface] = []
 
+        try:
+            dump = await self._rpc_call("sys", "exec", ["ubus call network.interface dump 2>/dev/null"])
+            if dump and dump.strip().startswith("{"):
+                data = json.loads(dump)
+                for iface_data in data.get("interface", []):
+                    iface = NetworkInterface(
+                        name=iface_data.get("interface", ""),
+                        up=iface_data.get("up", False),
+                        protocol=iface_data.get("proto", ""),
+                        device=iface_data.get("l3_device", iface_data.get("device", "")),
+                        uptime=iface_data.get("uptime", 0),
+                    )
+                    ipv4 = iface_data.get("ipv4-address", [])
+                    if ipv4:
+                        iface.ipv4_address = ipv4[0].get("address", "")
+                    ipv6 = iface_data.get("ipv6-address", [])
+                    if ipv6:
+                        iface.ipv6_address = ipv6[0].get("address", "")
+                    iface.dns_servers = iface_data.get("dns-server", [])
+                    interfaces.append(iface)
+
+            if interfaces:
+                return interfaces
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Fallback to UCI config if ubus dump fails
         net_config = await self._rpc_call("uci", "get_all", ["network"])
         if isinstance(net_config, dict):
             for section, values in net_config.items():
@@ -483,6 +582,8 @@ class LuciRpcClient(OpenWrtClient):
 
     async def get_connected_devices(self) -> list[ConnectedDevice]:
         """Get connected devices by combining DHCP, ARP and wireless station info via sys.exec."""
+        # Ensure mapping is available
+        await self._get_wireless_mapping()
         devices: dict[str, ConnectedDevice] = {}
 
         # 1. DHCP Leases
@@ -555,7 +656,8 @@ class LuciRpcClient(OpenWrtClient):
                                     devices[mac] = dev
 
                                 dev.is_wireless = True
-                                dev.interface = iface
+                                # Map system interface name to UCI section if possible
+                                dev.interface = getattr(self, "_sys_to_uci", {}).get(iface, iface)
                                 if len(parts) >= 2:
                                     dev.signal = (
                                         int(parts[1])
@@ -572,7 +674,91 @@ class LuciRpcClient(OpenWrtClient):
         except LuciRpcError:
             pass
 
+            # Fallback: Discovery of all hostapd objects
+            cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
+            stdout = await self._rpc_call("sys", "exec", [cmd])
+            if stdout:
+                for line in stdout.splitlines():
+                    if not line.strip():
+                        continue
+                    parts = line.split(" ", 1)
+                    if len(parts) < 2:
+                        continue
+                    obj_name, data_str = parts
+                    iface_name = obj_name.split(".", 1)[1] if "." in obj_name else obj_name
+                    try:
+                        data = json.loads(data_str)
+                        if "clients" in data:
+                            for mac, info in data["clients"].items():
+                                mac = mac.lower()
+                                if mac in devices:
+                                    dev = devices[mac]
+                                else:
+                                    dev = ConnectedDevice(mac=mac, connected=True)
+                                    devices[mac] = dev
+
+                                dev.is_wireless = True
+                                # Map system interface name to UCI section if possible
+                                dev.interface = getattr(self, "_sys_to_uci", {}).get(iface_name, iface_name)
+                                if not dev.signal:
+                                    dev.signal = info.get("signal", 0)
+
+                                if "5g" in iface_name.lower():
+                                    dev.connection_type = "5GHz"
+                                elif "2g" in iface_name.lower():
+                                    dev.connection_type = "2.4GHz"
+                                elif not dev.connection_type:
+                                    dev.connection_type = "wireless"
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+        except LuciRpcError:
+            pass
+
         return list(devices.values())
+
+    async def _get_wireless_mapping(self) -> tuple[dict[str, str], dict[str, str]]:
+        """Get mapping of UCI sections to system names and vice-versa."""
+        uci_to_sys: dict[str, str] = {}
+        try:
+            # Discovery of wireless interfaces via ubus
+            wireless_status = await self._rpc_call("sys", "exec", ["ubus call network.wireless status 2>/dev/null"])
+            if wireless_status:
+                try:
+                    ws_data = json.loads(wireless_status)
+                    for radio_data in ws_data.values():
+                        if not isinstance(radio_data, dict):
+                            continue
+                        for iface in radio_data.get("interfaces", []):
+                            if "section" in iface and "ifname" in iface:
+                                uci_to_sys[iface["section"]] = iface["ifname"]
+                except Exception:
+                    pass
+
+            # Fallback: Discovery of all hostapd objects via ubus
+            if not uci_to_sys:
+                try:
+                    hostapd_list = await self._rpc_call("sys", "exec", ["ubus list 'hostapd.*'"])
+                    if hostapd_list:
+                        for obj in hostapd_list.splitlines():
+                            if "." in obj:
+                                iface = obj.split(".", 1)[1]
+                                # Check if we can find this iface in wireless config via SSID
+                                # We'll do this mapping in get_wireless_interfaces
+                                pass
+                except Exception:
+                    pass
+        except LuciRpcError:
+            pass
+
+        sys_to_uci = {v: k for k, v in uci_to_sys.items()}
+        self._uci_to_sys = uci_to_sys
+        self._sys_to_uci = sys_to_uci
+        return uci_to_sys, sys_to_uci
+
+    async def kick_device(self, mac_address: str, interface: str) -> bool:
+        """Kick a device, mapping UCI section back to system name if needed."""
+        sys_iface = getattr(self, "_uci_to_sys", {}).get(interface, interface)
+        return await super().kick_device(mac_address, sys_iface)
 
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         """Get DHCP leases via LuCI RPC."""
@@ -584,7 +770,6 @@ class LuciRpcClient(OpenWrtClient):
         # Try odhcpd via ubus call over sys.exec if enabled
         if self.dhcp_software in ("auto", "odhcpd"):
             try:
-                # Some OpenWrt versions allow calling ubus via sys.exec
                 stdout = await self._rpc_call("sys", "exec", ["ubus call dhcp ipv4leases 2>/dev/null"])
                 if stdout and stdout.strip().startswith("{"):
                     data = json.loads(stdout)
@@ -604,7 +789,7 @@ class LuciRpcClient(OpenWrtClient):
                     _LOGGER.debug("Requested odhcpd but 'ubus call dhcp' failed via LuCI RPC")
                     return []
 
-        # Try dnsmasq via file over LuCI RPC
+        # Parse dnsmasq leases from /tmp/dhcp.leases
         if self.dhcp_software in ("auto", "dnsmasq"):
             try:
                 leases_str = await self._rpc_call("sys", "exec", ["cat /tmp/dhcp.leases 2>/dev/null"])
@@ -877,7 +1062,7 @@ class LuciRpcClient(OpenWrtClient):
                 try:
                     shell_out = await self.execute_command("uci show sqm 2>/dev/null")
                     if shell_out:
-                        # Parsing uci show output (sqm.eth1=queue, sqm.eth1.enabled='1', etc.)
+                        # Parse uci output
                         sections: dict[str, dict[str, Any]] = {}
                         for line in shell_out.strip().split("\n"):
                             if "=" not in line:

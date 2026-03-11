@@ -1,7 +1,7 @@
 """Config flow for OpenWrt integration.
 
 Supports three connection methods:
-- ubus (HTTP/HTTPS JSON-RPC) - recommended
+- ubus (HTTP/HTTPS JSON-RPC)
 - LuCI RPC (via LuCI web interface)
 - SSH (password or key-based authentication)
 
@@ -89,7 +89,7 @@ _LOGGER = logging.getLogger(__name__)
 
 CONNECTION_TYPE_MAP = {
     CONNECTION_TYPE_UBUS: "ubus (HTTP/HTTPS)",
-    CONNECTION_TYPE_LUCI_RPC: "LuCI RPC (Web Interface)",
+    CONNECTION_TYPE_LUCI_RPC: "LuCI RPC",
     CONNECTION_TYPE_SSH: "SSH",
 }
 
