@@ -52,6 +52,7 @@ def _bytes_to_mb(value: int) -> float:
 SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     OpenWrtSensorDescription(
         key="public_ip",
+        name="Public IP",
         translation_key="public_ip",
         icon="mdi:earth",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -59,6 +60,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="memory_usage",
+        name="Memory Usage",
         translation_key="memory_usage",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -84,6 +86,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="memory_used",
+        name="Memory Used",
         translation_key="memory_used",
         native_unit_of_measurement=UnitOfInformation.MEGABYTES,
         device_class=SensorDeviceClass.DATA_SIZE,
@@ -94,6 +97,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="swap_usage",
+        name="Swap Usage",
         translation_key="swap_usage",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -113,6 +117,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="load_1min",
+        name="Load (1m)",
         translation_key="load_1min",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -121,6 +126,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="load_5min",
+        name="Load (5m)",
         translation_key="load_5min",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -130,6 +136,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="load_15min",
+        name="Load (15m)",
         translation_key="load_15min",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -139,12 +146,14 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="uptime",
+        name="Uptime",
         translation_key="uptime",
         device_class=SensorDeviceClass.DURATION,
-        native_unit_of_measurement=UnitOfTime.SECONDS,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.system_resources.uptime,
+        suggested_display_precision=1,
+        value_fn=lambda data: round(data.system_resources.uptime / 60, 1),
         attrs_fn=lambda data: {
             "days": data.system_resources.uptime // 86400,
             "hours": (data.system_resources.uptime % 86400) // 3600,
@@ -153,6 +162,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="temperature",
+        name="Temperature",
         translation_key="temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -164,6 +174,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="storage_usage",
+        name="Storage Usage",
         translation_key="storage_usage",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -187,6 +198,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="firmware_version",
+        name="Firmware Version",
         translation_key="firmware_version",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: data.device_info.firmware_version,
@@ -202,6 +214,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="kernel_version",
+        name="Kernel Version",
         translation_key="kernel_version",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
@@ -209,6 +222,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="architecture",
+        name="Architecture",
         translation_key="architecture",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
@@ -216,6 +230,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="connected_clients",
+        name="Connected Clients",
         translation_key="connected_clients",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: len(data.connected_devices),
@@ -226,6 +241,7 @@ SYSTEM_SENSORS: tuple[OpenWrtSensorDescription, ...] = (
     ),
     OpenWrtSensorDescription(
         key="wireless_clients",
+        name="Wireless Clients",
         translation_key="wireless_clients",
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
@@ -288,6 +304,7 @@ async def async_setup_entry(
                     device.mac,
                     SensorEntityDescription(
                         key=f"device_{device.mac}_signal",
+                        name="Signal Strength",
                         translation_key="device_signal",
                         native_unit_of_measurement="dBm",
                         state_class=SensorStateClass.MEASUREMENT,
@@ -309,6 +326,7 @@ async def async_setup_entry(
                     device.mac,
                     SensorEntityDescription(
                         key=f"device_{device.mac}_rx_rate",
+                        name="RX Rate",
                         translation_key="device_rx_rate",
                         native_unit_of_measurement="Mbps",
                         state_class=SensorStateClass.MEASUREMENT,
@@ -335,6 +353,7 @@ async def async_setup_entry(
                     device.mac,
                     SensorEntityDescription(
                         key=f"device_{device.mac}_connection_type",
+                        name="Connection Type",
                         translation_key="device_connection_type",
                         entity_category=EntityCategory.DIAGNOSTIC,
                         entity_registry_enabled_default=False,
@@ -476,8 +495,8 @@ def _create_net_sensors(
             entry,
             OpenWrtSensorDescription(
                 key=f"net_{iface_name}_rx",
-                translation_key="net_rx",
                 name=f"{iface_name} RX",
+                translation_key="net_rx",
                 native_unit_of_measurement=UnitOfInformation.MEGABYTES,
                 device_class=SensorDeviceClass.DATA_SIZE,
                 state_class=SensorStateClass.TOTAL_INCREASING,
@@ -514,8 +533,8 @@ def _create_net_sensors(
             entry,
             OpenWrtSensorDescription(
                 key=f"net_{iface_name}_tx",
-                translation_key="net_tx",
                 name=f"{iface_name} TX",
+                translation_key="net_tx",
                 native_unit_of_measurement=UnitOfInformation.MEGABYTES,
                 device_class=SensorDeviceClass.DATA_SIZE,
                 state_class=SensorStateClass.TOTAL_INCREASING,
@@ -552,8 +571,9 @@ def _create_net_sensors(
             entry,
             OpenWrtSensorDescription(
                 key=f"net_{iface_name}_ipv4",
+                name=f"{iface_name} IPv4 Address",
                 translation_key="net_ipv4",
-                name=f"{iface_name} IPv4",
+                translation_placeholders={"interface": iface_name},
                 entity_category=EntityCategory.DIAGNOSTIC,
                 value_fn=lambda data, n=iface_name: next(
                     (i.ipv4_address for i in data.network_interfaces if i.name == n),
@@ -569,8 +589,8 @@ def _create_net_sensors(
             entry,
             OpenWrtSensorDescription(
                 key=f"net_{iface_name}_rx_rate",
-                translation_key="net_rx_rate",
                 name=f"{iface_name} RX Rate",
+                translation_key="net_rx_rate",
                 native_unit_of_measurement="Mbps",
                 state_class=SensorStateClass.MEASUREMENT,
                 entity_registry_enabled_default=False,
@@ -587,8 +607,8 @@ def _create_net_sensors(
             entry,
             OpenWrtSensorDescription(
                 key=f"net_{iface_name}_tx_rate",
-                translation_key="net_tx_rate",
                 name=f"{iface_name} TX Rate",
+                translation_key="net_tx_rate",
                 native_unit_of_measurement="Mbps",
                 state_class=SensorStateClass.MEASUREMENT,
                 entity_registry_enabled_default=False,

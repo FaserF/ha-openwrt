@@ -15,6 +15,7 @@ from typing import Any
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import issue_registry as ir
 
 from .const import DOMAIN
@@ -156,12 +157,12 @@ class AuthFailedRepairFlow(RepairsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    ) -> FlowResult:
         """Handle the init step - redirect to reauth."""
         if user_input is not None:
             entry_id = self.data.get("entry_id") if self.data else None
             if entry_id:
-                entry = self.hass.config_entries.async_get_entry(entry_id)
+                entry = self.hass.config_entries.async_get_entry(str(entry_id))
                 if entry:
                     entry.async_start_reauth(self.hass)
             return self.async_abort(reason="reauth_started")

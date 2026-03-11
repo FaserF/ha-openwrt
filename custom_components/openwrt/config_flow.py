@@ -18,6 +18,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import voluptuous as vol
+from homeassistant.components.ssdp import SsdpServiceInfo
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -169,12 +170,12 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
+            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
                 continue
 
         return False
 
-    async def async_step_ssdp(self, discovery_info: dict[str, Any]) -> ConfigFlowResult:
+    async def async_step_ssdp(self, discovery_info: SsdpServiceInfo) -> ConfigFlowResult:
         """Handle SSDP auto-discovery."""
         ssdp_location = discovery_info.get("ssdp_location", "")
         parsed = urlparse(ssdp_location)
@@ -479,6 +480,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_CUSTOM_FIRMWARE_REPO,
                     default=current.get(CONF_CUSTOM_FIRMWARE_REPO, ""),
+                ): str,
+                vol.Optional(
+                    CONF_ASU_URL,
+                    default=current.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org"),
                 ): str,
             }
         )

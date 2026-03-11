@@ -32,6 +32,7 @@ class OpenWrtBinarySensorDescription(BinarySensorEntityDescription):
 BINARY_SENSORS: tuple[OpenWrtBinarySensorDescription, ...] = (
     OpenWrtBinarySensorDescription(
         key="device_connected",
+        name="Connected",
         translation_key="device_connected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -39,6 +40,7 @@ BINARY_SENSORS: tuple[OpenWrtBinarySensorDescription, ...] = (
     ),
     OpenWrtBinarySensorDescription(
         key="firmware_update_available",
+        name="Firmware Update Available",
         translation_key="firmware_update_available",
         device_class=BinarySensorDeviceClass.UPDATE,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -46,6 +48,7 @@ BINARY_SENSORS: tuple[OpenWrtBinarySensorDescription, ...] = (
     ),
     OpenWrtBinarySensorDescription(
         key="wps_active",
+        name="WPS Active",
         translation_key="wps_active",
         entity_category=EntityCategory.DIAGNOSTIC,
         is_on_fn=lambda data: data.wps_status.enabled,
@@ -76,6 +79,7 @@ async def async_setup_entry(
                     entry,
                     OpenWrtBinarySensorDescription(
                         key=f"mwan_{mwan.interface_name}_online",
+                        name=f"MWAN {mwan.interface_name} Online",
                         translation_key="mwan_online",
                         translation_placeholders={"interface": mwan.interface_name},
                         device_class=BinarySensorDeviceClass.CONNECTIVITY,
@@ -96,6 +100,7 @@ async def async_setup_entry(
                         entry,
                         OpenWrtBinarySensorDescription(
                             key=f"interface_{iface.name}_up",
+                            name=f"{iface.name.upper()} Connected",
                             translation_key="interface_up",
                             translation_placeholders={"interface": iface.name.upper()},
                             device_class=BinarySensorDeviceClass.CONNECTIVITY,

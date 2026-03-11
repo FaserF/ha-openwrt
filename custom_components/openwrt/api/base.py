@@ -221,6 +221,11 @@ class OpenWrtData:
     firmware_release_url: str = ""
     firmware_checksum: str = ""
     is_custom_build: bool = False
+    installed_packages: list[str] = field(default_factory=list)
+    asu_supported: bool = False
+    asu_update_available: bool = False
+    asu_image_status: str = ""  # e.g. "available", "building", "failed"
+    asu_image_url: str | None = None
 
 
 class OpenWrtClient(abc.ABC):
@@ -354,6 +359,10 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def install_firmware(self, url: str) -> None:
         """Install firmware from the given URL."""
+
+    @abc.abstractmethod
+    async def get_installed_packages(self) -> list[str]:
+        """Get a list of installed packages on the device."""
 
     async def get_all_data(self) -> OpenWrtData:
         """Get all data in one call.

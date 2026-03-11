@@ -16,6 +16,7 @@ from homeassistant.components.device_tracker import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -99,11 +100,11 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         self._mac = mac
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_tracker_{mac.replace(':', '_')}"
-        self._attr_device_info = {
-            "connections": {("mac", mac)},
-            "name": self.name,
-            "via_device": (DOMAIN, entry.data[CONF_HOST]),
-        }
+        self._attr_device_info = DeviceInfo(
+            connections={("mac", mac)},
+            name=self.name,
+            via_device=(DOMAIN, entry.data[CONF_HOST]),
+        )
         self._consider_home = entry.options.get(
             CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME
         )

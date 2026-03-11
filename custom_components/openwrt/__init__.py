@@ -144,6 +144,28 @@ def _register_services(hass: HomeAssistant) -> None:
             client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
             await client.manage_service(service_name, action)
 
+    async def _handle_wol(call: ServiceCall) -> None:
+        """Handle Wake-on-LAN service call."""
+        entry_id = call.data["target"]
+        mac = call.data["mac"]
+        interface = call.data.get("interface")
+
+        if entry_id not in hass.data[DOMAIN]:
+            raise vol.Invalid(f"Config entry {entry_id} not found")
+
+        client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
+        command = f"ether-wake {mac}"
+        if interface:
+            command = f"ether-wake -i {interface} {mac}"
+
+        try:
+            output = await client.execute_command(command)
+            if output and "not found" in output.lower():
+                command = command.replace("ether-wake", "etherwake")
+                await client.execute_command(command)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to send WoL packet: {err}") from err
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_REBOOT,
@@ -178,6 +200,19 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required("action"): vol.In(
                     ["start", "stop", "restart", "enable", "disable"]
                 ),
+            }
+        ),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_WOL,
+        _handle_wol,
+        schema=vol.Schema(
+            {
+                vol.Required("target"): cv.string,
+                vol.Required("mac"): cv.string,
+                vol.Optional("interface"): cv.string,
             }
         ),
     )

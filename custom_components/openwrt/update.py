@@ -48,6 +48,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
     """Representation of an OpenWrt firmware update."""
 
     _attr_has_entity_name = True
+    _attr_name = "Firmware"
     _attr_translation_key = "firmware_update"
     _attr_device_class = UpdateDeviceClass.FIRMWARE
     _attr_supported_features = (
@@ -102,7 +103,12 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             "is_custom_build": data.is_custom_build,
             "target": data.device_info.target,
             "board_name": data.device_info.board_name,
+            "asu_supported": data.asu_supported,
+            "asu_update_available": data.asu_update_available,
         }
+
+        if data.asu_image_status:
+            attrs["asu_image_status"] = data.asu_image_status
 
         if data.firmware_checksum:
             attrs["sha256_checksum"] = data.firmware_checksum
@@ -139,13 +145,49 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         self, version: str | None, backup: bool, **kwargs: Any
     ) -> None:
         """Install the latest firmware version."""
-        if not self.release_url:
+        data = self.coordinator.data
+        if not data:
+            raise HomeAssistantError("No data available to process firmware update.")
+
+        if not self.release_url and not data.asu_supported:
             raise ValueError("No firmware URL available for installation.")
 
-        _LOGGER.info("Initiating firmware installation from: %s", self.release_url)
+        # ASU Update Flow
+        if data.asu_supported and data.asu_update_available:
+            _LOGGER.info("Initiating ASU custom firmware build for %s", data.firmware_latest_version)
+            try:
+                from .const import CONF_ASU_URL
+                from .helpers.asu import AsuClient
+                
+                asu_url = self.coordinator.config_entry.options.get(
+                    CONF_ASU_URL, "https://sysupgrade.openwrt.org"
+                )
+                asu_client = AsuClient(self.hass, asu_url)
+                
+                request_hash = await asu_client.request_build(
+                    version=data.firmware_latest_version,
+                    target=data.device_info.target,
+                    board_name=data.device_info.board_name,
+                    packages=data.installed_packages,
+                    client_name=f"Home Assistant OpenWrt Integration ({self.coordinator.name})"
+                )
+                
+                _LOGGER.info("ASU build requested (hash: %s). Waiting for image...", request_hash)
+                download_url = await asu_client.poll_build_status(request_hash)
+                
+                _LOGGER.info("ASU build complete. Flashing image from: %s", download_url)
+                await self.coordinator.client.install_firmware(download_url)
+                
+            except Exception as err:
+                _LOGGER.error("ASU firmware update failed: %s", err)
+                raise HomeAssistantError(f"ASU firmware update failed: {err}") from err
+            
+            return
+
+        # Standard Update Flow
+        _LOGGER.info("Initiating standard firmware installation from: %s", self.release_url)
         try:
             await self.coordinator.client.install_firmware(self.release_url)
         except Exception as err:
-            raise HomeAssistantError(
-                f"Failed to initiate firmware installation: {err}"
-            ) from err
+            raise HomeAssistantError(f"Failed to initiate firmware installation: {err}") from err
+

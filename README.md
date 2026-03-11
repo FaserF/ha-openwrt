@@ -13,7 +13,7 @@ Supports **OpenWrt 25.12** and newer (older versions may also work, but are not 
 
 - **Multiple Connection Methods**: Ubus (recommended), LuCI RPC, or SSH (password & key-based).
 - **Comprehensive Monitoring**:
-  - System: CPU Load, Memory, Storage, Uptime, Temperature.
+  - System: CPU Load, Memory, Storage, Uptime (minutes), Temperature.
   - Network: Interface RX/TX, IPv4 addresses, WAN connectivity.
   - Wireless: Signal strength, clients count, channels per radio.
   - Multi-WAN (MWAN3): Interface online ratio and status tracking.
@@ -22,8 +22,12 @@ Supports **OpenWrt 25.12** and newer (older versions may also work, but are not 
   - Toggle WPS, WiFi radios, and system services (enable/disable/restart).
   - Execute custom commands on the router via Home Assistant services.
 - **Device Tracking**: Track both wired and wireless devices with configurable "Consider Home" delays. Native `device_tracker` integration.
+- **Wake-on-LAN (WoL)**: 
+  - Automated "Wake on LAN" buttons for all tracked devices.
+  - Global `wake_on_lan` service to wake any device by MAC address via the router.
 - **Firmware Updates (Native HA)**:
   - Tracks and installs official OpenWrt releases directly via Home Assistant.
+  - **Attended Sysupgrade (ASU)**: Custom firmware build generation preserving your router's installed packages. Automatically builds and flashes right from the UI.
   - **Custom Repo Support**: Track custom GitHub release repositories with automatic `sysupgrade.bin` detection (by target/board) and SHA256 verification.
 - **HA Repairs**: Native repair integration for authentication failures, connection issues, and missing packages.
 
@@ -101,7 +105,7 @@ condition:
 action:
   - device_id: <YOUR_OPENWRT_DEVICE_ID>
     domain: button
-    entity_id: button.openwrt_reboot
+    entity_id: button.openwrt_reboot_router
     type: press
 ```
 </details>
@@ -132,14 +136,14 @@ action:
 alias: "Router: Firmware Update Available"
 trigger:
   - platform: state
-    entity_id: update.openwrt_firmware_update
+    entity_id: update.openwrt_firmware
     attribute: latest_version
 action:
   - service: notify.notify
     data:
       title: "🔄 OpenWrt Update Available"
       message: >-
-        A new firmware update ({{ state_attr('update.openwrt_firmware_update', 'latest_version') }})
+        A new firmware update ({{ state_attr('update.openwrt_firmware', 'latest_version') }})
         is available for your router!
 ```
 </details>
@@ -155,7 +159,7 @@ trigger:
 action:
   - service: switch.turn_{{ trigger.to_state.state }}
     target:
-      entity_id: switch.openwrt_wifi_guest
+      entity_id: switch.openwrt_wireless_guest
 ```
 </details>
 
@@ -192,7 +196,7 @@ action:
       entity_id:
         - light.openwrt_led_power
         - light.openwrt_led_wan
-        - light.openwrt_led_wlan
+        - light.openwrt_led_wireless
 
 ---
 
@@ -206,7 +210,7 @@ action:
       entity_id:
         - light.openwrt_led_power
         - light.openwrt_led_wan
-        - light.openwrt_led_wlan
+        - light.openwrt_led_wireless
 ```
 </details>
 
@@ -282,7 +286,7 @@ trigger:
 action:
   - service: button.press
     target:
-      entity_id: button.openwrt_wan_reconnect
+      entity_id: button.openwrt_reconnect_wan
 ```
 </details>
 
@@ -304,11 +308,6 @@ action:
 ```
 </details>
 
-<details>
-<summary><strong>⚠️ High Network Error Rate Alert</strong></summary>
-
-Get notified if network errors accumulate (monitored via the consolidated attributes).
-
 ```yaml
 alias: "Router: Network Error Alert"
 trigger:
@@ -321,6 +320,25 @@ action:
       message: >-
         More than 100 RX errors detected on WAN.
         This may indicate cable or hardware issues.
+```
+</details>
+
+<details>
+<summary><strong>🖥️ Wake on LAN: Wake PC via OpenWrt</strong></summary>
+
+Wakes up your PC when you arrive home or via an input button.
+
+```yaml
+alias: "Automation: Wake Gaming PC"
+trigger:
+  - platform: state
+    entity_id: input_button.wake_pc
+action:
+  - service: openwrt.wake_on_lan
+    data:
+      target: <YOUR_OPENWRT_ENTRY_ID>
+      mac: "AA:BB:CC:DD:EE:FF"
+      interface: "br-lan"
 ```
 </details>
 

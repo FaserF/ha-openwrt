@@ -59,3 +59,50 @@ async def test_ssh_get_device_info(ssh_client: SshClient):
         assert info.release_version == "25.12"
         assert info.release_revision == "r2"
         assert info.hostname == "OpenWrt"
+
+
+@pytest.mark.asyncio
+async def test_ssh_get_connected_devices_iwinfo_fallback(ssh_client: SshClient):
+    """Test SSH client fallback to ubus hostapd for wifi clients when iwinfo fails."""
+    ssh_client._connected = True
+    with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
+        def exec_side_effect(command: str) -> str:
+            if "arp -an" in command:
+                return "? (192.168.1.5) at 00:11:22:33:44:55 [ether] on br-lan"
+            if "iwinfo" in command:
+                if "assoclist" in command:
+                    return "No information"
+                return "wlan0"
+            if "ubus list 'hostapd.*'" in command:
+                return 'hostapd.wlan0 {"clients": {"aa:bb:cc:dd:ee:ff": {"signal": -50}}}'
+            return ""
+
+        mock_exec.side_effect = exec_side_effect
+
+        devices = await ssh_client.get_connected_devices()
+        assert len(devices) == 2
+        
+        # ARP device
+        dev1 = next(d for d in devices if d.mac == "00:11:22:33:44:55")
+        assert dev1.ip == "192.168.1.5"
+        
+        # Ubus fallback device
+        dev2 = next(d for d in devices if d.mac == "aa:bb:cc:dd:ee:ff")
+        assert dev2.is_wireless is True
+        assert dev2.signal == -50
+
+
+@pytest.mark.asyncio
+async def test_ssh_get_temperature_fallback(ssh_client: SshClient):
+    """Test SSH client fallback for temperature."""
+    ssh_client._connected = True
+    with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
+        def exec_side_effect(command: str) -> str:
+            if "thermal_zone0" in command:
+                return "45000" if "temp" in command else "cpu-thermal"
+            return ""
+
+        mock_exec.side_effect = exec_side_effect
+
+        temp = await ssh_client.get_temperature()
+        assert temp == 45.0

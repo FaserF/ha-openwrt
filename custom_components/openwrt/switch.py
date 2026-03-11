@@ -83,6 +83,7 @@ class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
     """Switch to control WPS."""
 
     _attr_has_entity_name = True
+    _attr_name = "WPS"
     _attr_translation_key = "wps"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_device_class = SwitchDeviceClass.SWITCH

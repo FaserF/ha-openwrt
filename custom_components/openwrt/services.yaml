@@ -51,3 +51,26 @@ manage_service:
             - "restart"
             - "enable"
             - "disable"
+
+wake_on_lan:
+  description: Sends a Wake on LAN magic packet to a device via the OpenWrt router.
+  fields:
+    target:
+      description: The config entry ID of the OpenWrt router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        config_entry:
+          integration: openwrt
+    mac:
+      description: The MAC address of the device to wake up.
+      example: "AA:BB:CC:DD:EE:FF"
+      required: true
+      selector:
+        text: {}
+    interface:
+      description: Optional interface to send the packet through (e.g. br-lan).
+      example: "br-lan"
+      required: false
+      selector:
+        text: {}

@@ -69,14 +69,15 @@
   "options": {
     "step": {
       "init": {
-        "title": "OpenWrt Options",
         "data": {
-          "update_interval": "Update interval (seconds)",
-          "track_devices": "Track connected devices",
-          "track_wired": "Include wired devices in tracking",
-          "consider_home": "Seconds to wait before marking a device as away",
-          "custom_firmware_repo": "Custom GitHub Firmware Repo (URL or owner/repo)"
-        }
+          "update_interval": "Update Interval (seconds)",
+          "track_devices": "Track Network Devices",
+          "track_wired": "Include Wired Devices in Tracking",
+          "consider_home": "Device 'Consider Home' Delay (seconds)",
+          "custom_firmware_repo": "Custom Firmware GitHub Repo (owner/repo)",
+          "asu_url": "Attended Sysupgrade Server URL"
+        },
+        "description": "Configure OpenWrt integration options."
       }
     }
   },
@@ -143,7 +144,7 @@
         "name": "TX"
       },
       "net_ipv4": {
-        "name": "IPv4 Address"
+        "name": "{interface} IPv4 Address"
       },
       "mwan_ratio": {
         "name": "Online Ratio"

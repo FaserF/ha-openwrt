@@ -321,48 +321,70 @@ class UbusClient(OpenWrtClient):
 
             # Fallback to df if ubus disk info is missing
             if resources.filesystem_total == 0:
+                # Busybox df -k returns blocks in 1K
                 result = await self._call(
-                    "file", "exec", {"command": "df", "params": ["/"]}
+                    "file", "exec", {"command": "df", "params": ["-k"]}
                 )
                 stdout = result.get("stdout", "")
-                lines = stdout.strip().split("\n")
-                if len(lines) > 1:
-                    parts = lines[1].split()
-                    if len(parts) >= 4:
-                        # df returns blocks (typically 1K)
-                        resources.filesystem_total = int(parts[1]) * 1024
-                        resources.filesystem_used = int(parts[2]) * 1024
-                        resources.filesystem_free = int(parts[3]) * 1024
-        except UbusError, ValueError, IndexError:
+                for line in stdout.strip().split("\n"):
+                    parts = line.split()
+                    # Match overlay or mount point /
+                    if len(parts) >= 6 and (parts[5] == "/" or parts[0] == "overlay"):
+                        try:
+                            resources.filesystem_total = int(parts[1]) * 1024
+                            resources.filesystem_used = int(parts[2]) * 1024
+                            resources.filesystem_free = int(parts[3]) * 1024
+                            break
+                        except (ValueError, IndexError):
+                            continue
+        except (UbusError, ValueError, IndexError):
             pass
 
         # Temperature fetching
         try:
-            # Try thermal zones first
-            for zone in range(3):
+            # Try various common paths for thermal sensors
+            temp_paths = [
+                "/sys/class/thermal/thermal_zone0/temp",
+                "/sys/class/thermal/thermal_zone1/temp",
+                "/sys/class/thermal/thermal_zone2/temp",
+                "/sys/class/hwmon/hwmon0/temp1_input",
+                "/sys/class/hwmon/hwmon0/device/temp1_input",
+                "/sys/devices/virtual/thermal/thermal_zone0/temp",
+                "/sys/devices/virtual/thermal/thermal_zone1/temp",
+                "/sys/devices/virtual/thermal/thermal_zone2/temp",
+            ]
+            for path in temp_paths:
                 try:
-                    res = await self._call(
-                        "file",
-                        "read",
-                        {"path": f"/sys/class/thermal/thermal_zone{zone}/temp"},
-                    )
+                    res = await self._call("file", "read", {"path": path})
                     temp_raw = res.get("data", "").strip()
                     if temp_raw.isdigit():
-                        resources.temperature = float(temp_raw) / 1000.0
-                        break
+                        temp = float(temp_raw)
+                        if temp > 200:  # Usually millidegrees
+                            temp /= 1000.0
+                        if 0 < temp < 150:  # Sanity check
+                            resources.temperature = temp
+                            break
                 except UbusError:
                     continue
 
-            # Fallback to board-specific temp via uci or generic system call if needed
+            # Fallback to execute_command if file.read failed or missing paths
             if resources.temperature is None:
-                # Some routers have it in /sys/class/hwmon/hwmon0/temp1_input
-                res = await self._call(
-                    "file", "read", {"path": "/sys/class/hwmon/hwmon0/temp1_input"}
-                )
-                temp_raw = res.get("data", "").strip()
-                if temp_raw.isdigit():
-                    resources.temperature = float(temp_raw) / 1000.0
-        except UbusError, ValueError:
+                try:
+                    # Some devices need explicit shell cat
+                    out = await self.execute_command(
+                        "cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null"
+                    )
+                    if out:
+                        temp_raw = out.split("\n")[0].strip()
+                        if temp_raw.isdigit():
+                            temp = float(temp_raw)
+                            if temp > 200:
+                                temp /= 1000.0
+                            if 0 < temp < 150:
+                                resources.temperature = temp
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
             pass
 
         return resources
@@ -518,7 +540,7 @@ class UbusClient(OpenWrtClient):
                     is_wireless=False,
                     connected=True,
                 )
-        except UbusError, Exception:  # noqa: BLE001
+        except (UbusError, Exception):  # noqa: BLE001
             pass
 
         try:
@@ -623,8 +645,51 @@ class UbusClient(OpenWrtClient):
 
                     except UbusError:
                         pass
-        except UbusError:
-            pass
+        except Exception as err:
+            _LOGGER.debug("Error fetching wireless status: %s", err)
+            # Fallback: list all hostapd objects directly
+            try:
+                ubus_objects = await self._call("ubus", "list")
+                if isinstance(ubus_objects, dict):
+                    for obj_name in ubus_objects:
+                        if obj_name.startswith("hostapd."):
+                            iface_name = obj_name.split(".", 1)[1]
+                            try:
+                                hostapd_data = await self._call(obj_name, "get_clients")
+                                for mac_addr, client_data in hostapd_data.get(
+                                    "clients", {}
+                                ).items():
+                                    mac = mac_addr.lower()
+                                    if mac in devices:
+                                        dev = devices[mac]
+                                    else:
+                                        dev = ConnectedDevice(mac=mac, connected=True)
+                                        devices[mac] = dev
+                                    dev.is_wireless = True
+                                    dev.interface = iface_name
+                                    dev.rx_bytes = (
+                                        client_data.get("bytes", {}).get("rx", 0)
+                                        if isinstance(client_data.get("bytes"), dict)
+                                        else 0
+                                    )
+                                    dev.tx_bytes = (
+                                        client_data.get("bytes", {}).get("tx", 0)
+                                        if isinstance(client_data.get("bytes"), dict)
+                                        else 0
+                                    )
+                                    if (
+                                        not dev.connection_type
+                                        or dev.connection_type == "wired"
+                                    ):
+                                        dev.connection_type = "wireless"
+                                        if "5g" in iface_name.lower():
+                                            dev.connection_type = "5GHz"
+                                        elif "2g" in iface_name.lower():
+                                            dev.connection_type = "2.4GHz"
+                            except UbusError:
+                                continue
+            except Exception as list_err:
+                _LOGGER.debug("Error listing ubus objects for fallback: %s", list_err)
 
         for dev in devices.values():
             if not dev.connection_type:
@@ -849,6 +914,15 @@ class UbusClient(OpenWrtClient):
             _LOGGER.error("Failed to initiate firmware upgrade via Ubus: %s", err)
             raise UbusError(f"Upgrade failed: {err}") from err
 
+    async def get_installed_packages(self) -> list[str]:
+        """Get a list of installed packages via opkg."""
+        try:
+            output = await self.execute_command("opkg list-installed | cut -d' ' -f1")
+            return [line.strip() for line in output.splitlines() if line.strip()]
+        except UbusError:
+            _LOGGER.debug("Failed to list installed packages via Ubus")
+            return []
+
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable or disable a wireless radio via UCI."""
         try:
@@ -1064,22 +1138,56 @@ class UbusClient(OpenWrtClient):
 
         return leds
 
-    async def set_led(self, name: str, brightness: int) -> bool:
-        """Set LED brightness via file.exec."""
+    async def reboot(self) -> bool:
+        """Reboot the device via ubus."""
         try:
-            await self._call(
-                "file",
-                "exec",
-                {
-                    "command": "/bin/sh",
-                    "params": [
-                        "-c",
-                        f"echo {brightness} > /sys/class/leds/{name}/brightness",
-                    ],
-                    "env": {},
-                },
-            )
+            await self._call("system", "reboot")
             return True
+        except UbusError:
+            # Fallback to shell if system.reboot is not available
+            try:
+                await self.execute_command("reboot")
+                return True
+            except Exception:
+                return False
+
+    async def execute_command(self, command: str) -> str:
+        """Execute a command via ubus (file.exec)."""
+        try:
+            result = await self._call(
+                "file", "exec", {"command": "/bin/sh", "params": ["-c", command]}
+            )
+            return result.get("stdout", "")
         except UbusError as err:
-            _LOGGER.error("Failed to set LED %s: %s", name, err)
+            _LOGGER.error("Failed to execute command via ubus: %s", err)
+            raise
+
+    async def manage_interface(self, name: str, action: str) -> bool:
+        """Manage a network interface (up/down/reconnect) via ubus."""
+        try:
+            if action == "reconnect":
+                await self._call("network.interface", "up", {"interface": name})
+            elif action == "up":
+                await self._call("network.interface", "up", {"interface": name})
+            elif action == "down":
+                await self._call("network.interface", "down", {"interface": name})
+            return True
+        except UbusError:
             return False
+
+    async def install_firmware(self, url: str) -> None:
+        """Install firmware from the given URL via ubus."""
+        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade /tmp/firmware.bin"
+        try:
+            _LOGGER.info("Initiating firmware installation via ubus from: %s", url)
+            await self.execute_command(cmd)
+        except Exception as err:
+            # If it's a connection error, it's likely the router rebooting
+            err_msg = str(err).lower()
+            if any(
+                msg in err_msg
+                for msg in ["connection reset", "broken pipe", "closed", "eof", "timeout"]
+            ):
+                _LOGGER.info("Ubus connection lost during sysupgrade - device is rebooting")
+                return
+            _LOGGER.warning("Sysupgrade command might have failed or disconnected: %s", err)

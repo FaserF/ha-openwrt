@@ -75,7 +75,8 @@
           "track_devices": "Verbundene Geräte tracken (Device Tracker)",
           "track_wired": "Kabelgebundene Geräte in Tracking einschließen",
           "consider_home": "Sekunden bevor ein Gerät auf 'abwesend' gesetzt wird",
-          "custom_firmware_repo": "Eigenes GitHub Firmware Repo (URL oder owner/repo)"
+          "custom_firmware_repo": "Eigenes GitHub Firmware Repo (URL oder owner/repo)",
+          "asu_url": "Attended Sysupgrade Server URL"
         }
       }
     }
@@ -143,7 +144,7 @@
         "name": "Upload (TX)"
       },
       "net_ipv4": {
-        "name": "IPv4 Adresse"
+        "name": "{interface} IPv4 Adresse"
       },
       "mwan_ratio": {
         "name": "Online Quote"
@@ -223,6 +224,9 @@
       },
       "service_restart": {
         "name": "{service} neustarten"
+      },
+      "wake_on_lan": {
+        "name": "Wake-on-LAN"
       }
     },
     "switch": {
@@ -270,6 +274,26 @@
     "firmware_outdated": {
       "title": "OpenWrt Firmware ist veraltet auf {host}",
       "description": "Der OpenWrt Router {host} verwendet Version {current_version}, aber Version {latest_version} ist verfügbar.\n\nEs wird dringend empfohlen, die Firmware des Routers aus Sicherheitsgründen aktuell zu halten. Die neueste Version kann [hier]({release_url}) heruntergeladen werden."
+    }
+  },
+  "services": {
+    "wake_on_lan": {
+      "name": "Wake-on-LAN",
+      "description": "Sende ein Wake-on-LAN Magic Packet an ein Gerät über den OpenWrt Router.",
+      "fields": {
+        "target": {
+          "name": "Ziel-Router",
+          "description": "Der OpenWrt Router, von dem das Paket gesendet werden soll."
+        },
+        "mac": {
+          "name": "MAC-Adresse",
+          "description": "Die MAC-Adresse des Geräts, das aufgeweckt werden soll."
+        },
+        "interface": {
+          "name": "Schnittstelle",
+          "description": "Optionale Schnittstelle, über die das Paket gesendet werden soll (z.B. br-lan)."
+        }
+      }
     }
   }
 }

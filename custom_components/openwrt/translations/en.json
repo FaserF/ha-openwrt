@@ -75,7 +75,8 @@
           "track_devices": "Track connected devices",
           "track_wired": "Include wired devices in tracking",
           "consider_home": "Seconds to wait before marking a device as away",
-          "custom_firmware_repo": "Custom GitHub Firmware Repo (URL or owner/repo)"
+          "custom_firmware_repo": "Custom GitHub Firmware Repo (URL or owner/repo)",
+          "asu_url": "Attended Sysupgrade Server URL"
         }
       }
     }
@@ -143,7 +144,7 @@
         "name": "TX"
       },
       "net_ipv4": {
-        "name": "IPv4 Address"
+        "name": "{interface} IPv4 Address"
       },
       "mwan_ratio": {
         "name": "Online Ratio"
@@ -223,6 +224,9 @@
       },
       "service_restart": {
         "name": "Restart {service}"
+      },
+      "wake_on_lan": {
+        "name": "Wake on LAN"
       }
     },
     "switch": {
@@ -270,6 +274,26 @@
     "firmware_outdated": {
       "title": "OpenWrt firmware is outdated on {host}",
       "description": "The OpenWrt router {host} is running version {current_version}, but version {latest_version} is available.\n\nIt is highly recommended to keep your router's firmware up to date for security reasons. You can download the latest release [here]({release_url})."
+    }
+  },
+  "services": {
+    "wake_on_lan": {
+      "name": "Wake on LAN",
+      "description": "Send a Wake on LAN magic packet to a device via the OpenWrt router.",
+      "fields": {
+        "target": {
+          "name": "Target Router",
+          "description": "The OpenWrt router to send the packet from."
+        },
+        "mac": {
+          "name": "MAC Address",
+          "description": "The MAC address of the device to wake up."
+        },
+        "interface": {
+          "name": "Interface",
+          "description": "Optional interface to send the packet through (e.g. br-lan)."
+        }
+      }
     }
   }
 }

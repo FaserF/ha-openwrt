@@ -285,17 +285,39 @@ class SshClient(OpenWrtClient):
                 resources.processes = (
                     int(parts[3].split("/")[1]) if "/" in parts[3] else 0
                 )
-        except Exception:  # noqa: BLE001
+        except (ValueError, Exception):  # noqa: BLE001
             pass
+
+        # Memory fallback if needed
+        if resources.memory_total == 0:
+            try:
+                stdout = await self._exec("ubus call system info")
+                data = json.loads(stdout)
+                mem = data.get("memory", {})
+                resources.memory_total = mem.get("total", 0)
+                resources.memory_free = mem.get("free", 0)
+                resources.memory_cached = mem.get("cached", 0)
+                resources.memory_buffered = mem.get("buffered", 0)
+                resources.memory_used = (
+                    resources.memory_total
+                    - resources.memory_free
+                    - resources.memory_cached
+                    - resources.memory_buffered
+                )
+            except Exception:
+                pass
 
         try:
             uptime_str = await self._exec("cat /proc/uptime")
             resources.uptime = int(float(uptime_str.strip().split()[0]))
-        except Exception:  # noqa: BLE001
+        except (ValueError, Exception):  # noqa: BLE001
             pass
 
         for thermal_path in [
             "/sys/class/thermal/thermal_zone0/temp",
+            "/sys/class/thermal/thermal_zone1/temp",
+            "/sys/devices/virtual/thermal/thermal_zone0/temp",
+            "/sys/devices/virtual/thermal/thermal_zone1/temp",
             "/sys/class/hwmon/hwmon0/temp1_input",
         ]:
             try:
@@ -525,6 +547,48 @@ class SshClient(OpenWrtClient):
 
         except Exception:  # noqa: BLE001
             pass
+
+        # Fallback to ubus if iwinfo is missing or returns nothing
+        if not devices:
+            try:
+                # Find all hostapd objects and get clients
+                cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
+                stdout = await self._exec(cmd) # Changed from _exec_command to _exec
+                for line in stdout.splitlines():
+                    if not line.strip():
+                        continue
+                    parts = line.split(" ", 1)
+                    if len(parts) < 2:
+                        continue
+                    obj_name, data_str = parts
+                    iface_name = obj_name.split(".", 1)[1]
+                    try:
+                        data = json.loads(data_str)
+                        if "clients" in data:
+                            for mac, info in data["clients"].items():
+                                # Create ConnectedDevice object from ubus data
+                                if mac.lower() not in devices:
+                                    dev = ConnectedDevice(mac=mac.lower(), connected=True)
+                                    devices[mac.lower()] = dev
+                                else:
+                                    dev = devices[mac.lower()]
+
+                                dev.is_wireless = True
+                                dev.interface = iface_name
+                                dev.signal = info.get("signal", 0)
+                                # ubus hostapd get_clients doesn't directly provide 2.4/5GHz info
+                                # We can infer from interface name if it contains '2g' or '5g'
+                                if "5g" in iface_name.lower():
+                                    dev.connection_type = "5GHz"
+                                elif "2g" in iface_name.lower():
+                                    dev.connection_type = "2.4GHz"
+                                else:
+                                    dev.connection_type = "wireless"
+
+                    except Exception:
+                        continue
+            except Exception:
+                pass
 
         return list(devices.values())
 
@@ -820,3 +884,23 @@ class SshClient(OpenWrtClient):
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to manage interface %s: %s", name, err)
             return False
+
+    async def install_firmware(self, url: str) -> None:
+        """Install firmware from the given URL via SSH."""
+        # Use sysupgrade for installation
+        # Download to /tmp and then run sysupgrade
+        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade /tmp/firmware.bin"
+        try:
+            _LOGGER.info("Initiating firmware installation via SSH from: %s", url)
+            # We expect this to eventually fail or disconnect as the router reboots
+            await self._exec(cmd)
+        except Exception as err:
+            # If it's a connection error, it's likely the router rebooting
+            err_msg = str(err).lower()
+            if any(
+                msg in err_msg
+                for msg in ["connection reset", "broken pipe", "closed", "eof"]
+            ):
+                _LOGGER.info("SSH connection lost during sysupgrade - device is likely rebooting")
+                return
+            _LOGGER.warning("Sysupgrade command might have failed or disconnected: %s", err)

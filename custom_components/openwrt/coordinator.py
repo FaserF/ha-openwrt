@@ -196,6 +196,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 _LOGGER.debug("Successfully fetched data on retry")
             except Exception as retry_err:
                 _LOGGER.warning("Updating data failed for %s: %s", self.name, retry_err)
+                if self.data:
+                    _LOGGER.info("Using stale data for %s", self.name)
+                    return self.data
                 self.client._connected = False  # Force reconnection next time
                 async_create_connection_lost_repair(self.hass, self.config_entry)
                 raise UpdateFailed(f"Error fetching data: {retry_err}") from retry_err
@@ -254,6 +257,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             await self._check_custom_firmware_update(data, custom_repo)
         else:
             await self._check_official_firmware_update(data)
+            await self._check_asu_update(data)
 
     async def _check_official_firmware_update(self, data: OpenWrtData) -> None:
         """Check for firmware updates from the OpenWrt release API."""
@@ -292,11 +296,82 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         data.firmware_upgradable = self._version_is_newer(
                             current_version, latest_stable
                         )
-                        data.firmware_release_url = (
-                            f"https://openwrt.org/releases/{latest_stable}"
-                        )
+
+                        # Try to build a direct sysupgrade URL if we have target/board
+                        info = data.device_info
+                        if info.target and info.board_name:
+                            target = info.target
+                            board = info.board_name.replace("_", "-").replace(",", "-")
+                            dist = info.release_distribution or "openwrt"
+                            # Standard OpenWrt sysupgrade URL pattern
+                            data.firmware_release_url = (
+                                f"https://downloads.openwrt.org/releases/{latest_stable}/targets/{target}/"
+                                f"{dist}-{latest_stable}-{target.replace('/', '-')}-{board}-squashfs-sysupgrade.bin"
+                            )
+                        else:
+                            data.firmware_release_url = (
+                                f"https://openwrt.org/releases/{latest_stable}"
+                            )
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Failed to check official firmware updates")
+
+    async def _check_asu_update(self, data: OpenWrtData) -> None:
+        """Check for updates via the ASU (Attended Sysupgrade) API."""
+        if not data.device_info.target or not data.device_info.board_name:
+            return
+
+        # Prepare request to ASU
+        target = data.device_info.target
+        model = data.device_info.board_name
+        
+        asu_url = self.config_entry.options.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org")
+
+        session = async_get_clientsession(self.hass)
+
+        try:
+            # Check for latest available version for this target on ASU
+            # ASU API: GET https://sysupgrade.openwrt.org/api/v1/info?target={target}&model={model}
+            url = f"{asu_url.rstrip('/')}/api/v1/info?target={target}&model={model}"
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 200:
+                    asu_info = await resp.json()
+                    latest_version = asu_info.get("version", "")
+                    if latest_version and self._version_is_newer(
+                        data.device_info.release_version, latest_version
+                    ):
+                        data.asu_update_available = True
+                        data.asu_supported = True
+                        
+                        try:
+                            # Fetch installed packages for the update request
+                            data.installed_packages = await self.client.get_installed_packages()
+                        except Exception as e:
+                            _LOGGER.debug("Failed to fetch installed packages for ASU: %s", e)
+                            
+                        # If ASU has a newer version than official version check, use it
+                        if self._version_is_newer(
+                            data.firmware_latest_version or "0.0.0", latest_version
+                        ):
+                            data.firmware_latest_version = latest_version
+                            data.firmware_upgradable = True
+                            
+                            # Try to get direct image URL from ASU for this version
+                            images = asu_info.get("images", [])
+                            for img in images:
+                                if "sysupgrade" in img.get("name", ""):
+                                    # ASU URLs are often relative or specific
+                                    # We'll use the official releases URL as fallback
+                                    # But ASU might provide a direct one if we requested a build
+                                    pass
+                            
+                            data.firmware_release_url = (
+                                f"https://openwrt.org/releases/{latest_version}"
+                            )
+                        _LOGGER.debug("ASU update found: %s", latest_version)
+                    elif latest_version:
+                        data.asu_supported = True
+        except Exception as err:
+            _LOGGER.debug("ASU check failed: %s", err)
 
     async def _check_custom_firmware_update(
         self, data: OpenWrtData, repo_input: str

@@ -576,15 +576,76 @@ class LuciRpcClient(OpenWrtClient):
 
         return leds
 
-    async def set_led(self, name: str, brightness: int) -> bool:
-        """Set LED brightness via LuCI RPC sys.exec."""
+    async def reboot(self) -> bool:
+        """Reboot the device via LuCI RPC."""
         try:
-            await self._rpc_call(
-                "sys",
-                "exec",
-                [f"echo {brightness} > /sys/class/leds/{name}/brightness"],
-            )
+            await self._rpc_call("sys", "reboot")
             return True
+        except LuciRpcError:
+            try:
+                await self.execute_command("reboot")
+                return True
+            except Exception:
+                return False
+
+    async def execute_command(self, command: str) -> str:
+        """Execute a command via LuCI RPC (sys.exec)."""
+        try:
+            return await self._rpc_call("sys", "exec", [command]) or ""
         except LuciRpcError as err:
-            _LOGGER.error("Failed to set LED %s: %s", name, err)
+            _LOGGER.error("Failed to execute command via LuCI RPC: %s", err)
+            raise
+
+    async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
+        """Enable or disable a wireless radio via UCI."""
+        try:
+            action = "0" if enabled else "1"
+            cmd = (
+                f"uci set wireless.{interface}.disabled={action} && "
+                "uci commit wireless && "
+                "wifi reload"
+            )
+            await self.execute_command(cmd)
+            return True
+        except Exception:
             return False
+
+    async def manage_interface(self, name: str, action: str) -> bool:
+        """Manage a network interface via LuCI RPC."""
+        try:
+            if action == "reconnect":
+                await self.execute_command(f"ifdown {name} && ifup {name}")
+            elif action == "up":
+                await self.execute_command(f"ifup {name}")
+            elif action == "down":
+                await self.execute_command(f"ifdown {name}")
+            return True
+        except Exception:
+            return False
+
+    async def install_firmware(self, url: str) -> None:
+        """Install firmware from the given URL via LuCI RPC."""
+        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade /tmp/firmware.bin"
+        try:
+            _LOGGER.info("Initiating firmware installation via LuCI RPC from: %s", url)
+            await self.execute_command(cmd)
+        except Exception as err:
+            # If it's a connection error, it's likely the router rebooting
+            err_msg = str(err).lower()
+            if any(
+                msg in err_msg
+                for msg in ["connection reset", "broken pipe", "closed", "eof", "timeout"]
+            ):
+                _LOGGER.info("LuCI RPC connection lost during sysupgrade - device is rebooting")
+            else:
+                _LOGGER.error("Failed to execute sysupgrade via LuCI RPC: %s", err)
+                raise LuciRpcError(f"sysupgrade execution failed: {err}") from err
+
+    async def get_installed_packages(self) -> list[str]:
+        """Get a list of installed packages via opkg."""
+        try:
+            output = await self.execute_command("opkg list-installed | cut -d' ' -f1")
+            return [line.strip() for line in output.splitlines() if line.strip()]
+        except LuciRpcError:
+            _LOGGER.debug("Failed to list installed packages via LuCI RPC")
+            return []
