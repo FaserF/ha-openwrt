@@ -59,6 +59,10 @@ async def async_setup_entry(
         if coordinator.data is None:
             return
 
+        perms = coordinator.data.permissions
+        if not perms.read_network and not perms.read_wireless:
+            return
+
         new_entities: list[OpenWrtDeviceTracker] = []
 
         for device in coordinator.data.connected_devices:
@@ -101,15 +105,34 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         self._mac = mac
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_tracker_{mac.replace(':', '_')}"
-        self._attr_device_info = DeviceInfo(
-            connections={("mac", mac)},
-            name=self.name,
-            via_device=(DOMAIN, entry.data[CONF_HOST]),
-        )
+
+        # Initial device name fallback
+        self._initial_name = mac
+        if coordinator.data:
+            for device in coordinator.data.connected_devices:
+                if device.mac == mac and device.hostname:
+                    self._initial_name = device.hostname
+                    break
         self._consider_home = timedelta(
             seconds=entry.options.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME)
         )
         self._last_seen: datetime | None = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        via_device = (DOMAIN, self._entry.data[CONF_HOST])
+        if self.coordinator.data:
+            for device in self.coordinator.data.connected_devices:
+                if device.mac == self._mac and device.is_wireless and device.interface:
+                    via_device = (DOMAIN, f"{self._entry.data[CONF_HOST]}_ap_{device.interface}")
+                    break
+
+        return DeviceInfo(
+            connections={("mac", self._mac)},
+            name=self.name or self._initial_name,
+            via_device=via_device,
+        )
 
     @property
     def source_type(self) -> SourceType:
@@ -172,8 +195,15 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     def name(self) -> str:
         """Return the name of the device."""
         hostname = self.hostname
-        if hostname:
-            return hostname
+        if hostname and hostname != "*":
+            # Avoid using the router's hostname as a generic fallback for other devices
+            router_hostname = ""
+            if self.coordinator.data and self.coordinator.data.device_info:
+                router_hostname = self.coordinator.data.device_info.hostname
+
+            if hostname != router_hostname:
+                return hostname
+
         return self._mac
 
     @property

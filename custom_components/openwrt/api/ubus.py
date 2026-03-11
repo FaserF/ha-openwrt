@@ -65,7 +65,7 @@ class UbusPackageMissingError(UbusError):
 
 
 class UbusPermissionError(UbusError):
-    """Insufficient RPC permissions (e.g. 403 or ACL error)."""
+    """Insufficient RPC permissions (e.g. 403 or ACL error). Consider switching to LuCI RPC for better accessibility."""
 
 
 class UbusClient(OpenWrtClient):
@@ -160,7 +160,7 @@ class UbusClient(OpenWrtClient):
                 ) from err
             if err.status == 403:
                 raise UbusPermissionError(
-                    f"Access denied to ubus on {self.host}. Check RPC permissions."
+                    f"Access denied to ubus on {self.host}. Check RPC permissions or switch to LuCI RPC."
                 ) from err
             raise UbusError(f"HTTP error {err.status} from {self.host}") from err
         except aiohttp.ClientError as err:
@@ -184,9 +184,9 @@ class UbusClient(OpenWrtClient):
                     raise UbusError(
                         f"RPC Error ({code}): Invalid command or object '{ubus_object}'"
                     )
-                if code == 3:
+                if code in (3, 6):
                     raise UbusPermissionError(
-                        f"RPC Error ({code}): Access denied to '{ubus_object}.{ubus_method}'"
+                        f"RPC Error ({code}): Access denied to '{ubus_object}.{ubus_method}'. Consider switching to LuCI RPC."
                     )
                 raise UbusError(
                     f"ubus error code {code} for {ubus_object}.{ubus_method}"
@@ -444,6 +444,7 @@ class UbusClient(OpenWrtClient):
                     up=radio_data.get("up", False),
                     radio=_radio_name,
                     htmode=radio_data.get("config", {}).get("htmode", ""),
+                    hwmode=radio_data.get("config", {}).get("hwmode", ""),
                     txpower=radio_data.get("config", {}).get("txpower", 0),
                     mesh_id=iface_config.get("mesh_id", ""),
                     mesh_fwding=iface_config.get("mesh_fwding", False),
@@ -463,6 +464,17 @@ class UbusClient(OpenWrtClient):
                             if iwinfo.get("bitrate")
                             else 0.0
                         )
+                        q_val = iwinfo.get("quality")
+                        q_max = iwinfo.get("quality_max", 100)
+                        if q_val is not None and q_max:
+                            wifi.quality = round((q_val / q_max) * 100, 1)
+                        if "hwmode" in iwinfo and not wifi.hwmode:
+                            if isinstance(iwinfo["hwmode"], list):
+                                wifi.hwmode = "/".join(iwinfo["hwmode"])
+                            else:
+                                wifi.hwmode = str(iwinfo["hwmode"])
+                        if "htmode" in iwinfo and not wifi.htmode:
+                            wifi.htmode = str(iwinfo["htmode"])
                 except UbusError:
                     pass
 
@@ -720,14 +732,17 @@ class UbusClient(OpenWrtClient):
 
     async def check_permissions(self) -> OpenWrtPermissions:
         """Check user permissions via ubus session list and uci tests."""
+        import dataclasses
+
         from .base import OpenWrtPermissions
+
         perms = OpenWrtPermissions()
         try:
             # Check if we are root user - root usually has full access even if ACL list is empty or restricted
             if self.username == "root":
-                for attr in perms.__dict__:
-                    if not attr.startswith("_"):
-                        setattr(perms, attr, True)
+                for field in dataclasses.fields(perms):
+                    if not field.name.startswith("_"):
+                        setattr(perms, field.name, True)
                 return perms
 
             # Check session access list - this is the most definitive way
@@ -810,29 +825,60 @@ class UbusClient(OpenWrtClient):
         """Check installed packages."""
         packages = OpenWrtPackages()
         try:
-            cmd = (
-                "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
-                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn; do "
-                "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
-            )
-            result = await self._call(
-                "file", "exec", {"command": "sh", "params": ["-c", cmd]}
-            )
-            out = result.get("stdout", "")
-            results = out.strip().split("\n")
-            if results:
-                if len(results) >= 1:
-                    packages.sqm_scripts = results[0] == "1"
-                if len(results) >= 2:
-                    packages.mwan3 = results[1] == "1"
-                if len(results) >= 3:
-                    packages.iwinfo = results[2] == "1"
-                if len(results) >= 4:
-                    packages.etherwake = results[3] == "1"
-                if len(results) >= 5:
-                    packages.wireguard = results[4] == "1"
-                if len(results) >= 6:
-                    packages.openvpn = results[5] == "1"
+            # Method 1: Try executing a small script to check all files at once (fastest)
+            try:
+                cmd = (
+                    "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
+                    "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn; do "
+                    "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
+                )
+                result = await self._call(
+                    "file", "exec", {"command": "sh", "params": ["-c", cmd]}
+                )
+                out = result.get("stdout", "")
+                results = out.strip().split("\n")
+
+                # Map results to package status
+                def detect_status(idx: int) -> bool:
+                    return len(results) > idx and results[idx].strip() == "1"
+
+                packages.sqm_scripts = detect_status(0)
+                packages.mwan3 = detect_status(1)
+                packages.iwinfo = detect_status(2)
+                packages.etherwake = detect_status(3)
+                packages.wireguard = detect_status(4)
+                packages.openvpn = detect_status(5)
+            except Exception as err:
+                _LOGGER.debug("Package check via file.exec failed (this is expected on restricted routers): %s", err)
+                # Initialize to False for fallback if not already True (from some other source)
+                # This ensures we don't stay at 'None' if detection is possible via stat
+                for attr in ["sqm_scripts", "mwan3", "iwinfo", "etherwake", "wireguard", "openvpn"]:
+                    if getattr(packages, attr) is None:
+                        setattr(packages, attr, False)
+
+            # Method 2: Fallback to file.stat for any package still False
+            # Some routers restrict file.exec but allow file.stat
+            check_list = [
+                ("/etc/init.d/sqm", "sqm_scripts"),
+                ("/etc/init.d/mwan3", "mwan3"),
+                ("/usr/bin/iwinfo", "iwinfo"),
+                ("/usr/bin/etherwake", "etherwake"),
+                ("/usr/bin/wg", "wireguard"),
+                ("/usr/sbin/openvpn", "openvpn"),
+            ]
+
+            for path, attr in check_list:
+                if getattr(packages, attr) is not True:
+                    try:
+                        stat = await self._call("file", "stat", {"path": path})
+                        if stat and "type" in stat:
+                            setattr(packages, attr, True)
+                            _LOGGER.debug("Detected package via file.stat: %s", path)
+                    except Exception as err:
+                        _LOGGER.debug("Package check via file.stat failed for %s: %s", path, err)
+                        if getattr(packages, attr) is None:
+                            setattr(packages, attr, False)
+
         except Exception as err:
             _LOGGER.error("Failed to check packages via ubus: %s", err)
             # We don't raise here to allow the rest of the flow to continue
@@ -1074,6 +1120,9 @@ class UbusClient(OpenWrtClient):
         try:
             await self._call("rc", "init", {"name": name, "action": action})
             return True
+        except UbusPermissionError as err:
+            _LOGGER.debug("Service %s via ubus denied (permissions): %s", action, err)
+            return False
         except UbusError as err:
             _LOGGER.error("Failed to %s service %s: %s", action, name, err)
             return False
@@ -1358,6 +1407,9 @@ class UbusClient(OpenWrtClient):
                 "file", "exec", {"command": "/bin/sh", "params": ["-c", command]}
             )
             return result.get("stdout", "")
+        except UbusPermissionError as err:
+            _LOGGER.debug("Command execution via ubus denied (permissions): %s", err)
+            raise
         except UbusError as err:
             _LOGGER.error("Failed to execute command via ubus: %s", err)
             raise
@@ -1435,6 +1487,9 @@ class UbusClient(OpenWrtClient):
             await self._call("uci", "commit", {"config": "sqm"})
             await self._call("file", "exec", {"command": "/etc/init.d/sqm", "params": ["reload"]})
             return True
+        except UbusPermissionError as err:
+            _LOGGER.debug("SQM config via ubus denied (permissions): %s", err)
+            return False
         except Exception as err:
             _LOGGER.error("Failed to set SQM config: %s", err)
             return False

@@ -41,7 +41,10 @@ async def async_setup_entry(
         DATA_COORDINATOR
     ]
 
-    async_add_entities([OpenWrtUpdateEntity(coordinator, entry)])
+    if coordinator.data:
+        perms = coordinator.data.permissions
+        if perms.read_system:
+            async_add_entities([OpenWrtUpdateEntity(coordinator, entry)])
 
 
 class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntity):

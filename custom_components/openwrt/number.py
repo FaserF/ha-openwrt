@@ -13,6 +13,7 @@ from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -36,20 +37,25 @@ async def async_setup_entry(
 
     # TX Power per wireless interface
     if coordinator.data:
-        for wifi in coordinator.data.wireless_interfaces:
-            if wifi.name and wifi.txpower > 0:
-                entities.append(
-                    OpenWrtTxPowerNumber(coordinator, entry, wifi.name, wifi.ssid)
-                )
+        perms = coordinator.data.permissions
+        pkgs = coordinator.data.packages
 
-        for sqm in coordinator.data.sqm:
-            if sqm.section_id:
-                entities.append(
-                    OpenWrtSqmDownloadNumber(coordinator, entry, sqm.section_id, sqm.name)
-                )
-                entities.append(
-                    OpenWrtSqmUploadNumber(coordinator, entry, sqm.section_id, sqm.name)
-                )
+        if perms.write_wireless:
+            for wifi in coordinator.data.wireless_interfaces:
+                if wifi.name and wifi.txpower > 0:
+                    entities.append(
+                        OpenWrtTxPowerNumber(coordinator, entry, wifi.name, wifi.ssid)
+                    )
+
+        if perms.write_sqm and pkgs.sqm_scripts is not False:
+            for sqm in coordinator.data.sqm:
+                if sqm.section_id:
+                    entities.append(
+                        OpenWrtSqmDownloadNumber(coordinator, entry, sqm.section_id, sqm.name)
+                    )
+                    entities.append(
+                        OpenWrtSqmUploadNumber(coordinator, entry, sqm.section_id, sqm.name)
+                    )
 
     async_add_entities(entities)
 
@@ -83,9 +89,13 @@ class OpenWrtTxPowerNumber(
         label = ssid or iface_name
         self._attr_name = f"{label} TX Power"
         self._attr_unique_id = f"{entry.entry_id}_txpower_{iface_name}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{iface_name}")},
+            name=f"AP {label}",
+            manufacturer="OpenWrt",
+            model="Access Point",
+            via_device=(DOMAIN, entry.data[CONF_HOST]),
+        )
 
     @property
     def native_value(self) -> float | None:

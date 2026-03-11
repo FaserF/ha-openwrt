@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect to OpenWrt Router",
-        "description": "Select the connection method for your OpenWrt router. Ubus is highly recommended as it supports all features. [Learn more]({docs_url}).",
+        "description": "Select the connection method for your OpenWrt router. [Learn more]({docs_url}).",
         "data": {
           "host": "Host (IP address or hostname)",
           "connection_type": "Connection Type"
@@ -52,6 +52,14 @@
       "permissions": {
         "title": "Permissions Summary",
         "description": "Based on the credentials provided, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed if this is expected."
+      },
+      "permissions_ubus": {
+        "title": "Permissions Summary",
+        "description": "Based on the credentials provided, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions) can be very restrictive, often blocking 'DHCP Leases' or 'System Temperature'. If features are missing or sensors show 0, try switching to **LuCI RPC** in the integration settings.\n\nYou can proceed if this is expected."
+      },
+      "packages": {
+        "title": "Packages Summary",
+        "description": "The following optional packages were detected on your router. Some features may be limited if packages are missing:\n\n{packages_table}\n\nYou can proceed if this is expected."
       }
     },
     "error": {
@@ -88,6 +96,14 @@
       "permissions": {
         "title": "Permissions Summary",
         "description": "Based on your config, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed."
+      },
+      "permissions_ubus": {
+        "title": "Permissions Summary",
+        "description": "Based on your config, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions) can be very restrictive, often blocking 'DHCP Leases' or 'System Temperature'. If features are missing or sensors show 0, try switching to **LuCI RPC** in the integration settings.\n\nYou can proceed."
+      },
+      "packages": {
+        "title": "Packages Summary",
+        "description": "Based on your config, the following packages were detected:\n\n{packages_table}\n\nYou can proceed."
       }
     }
   },
@@ -175,6 +191,18 @@
       "wifi_htmode": {
         "name": "HT Mode"
       },
+      "wifi_hwmode": {
+        "name": "Hardware Mode"
+      },
+      "wifi_quality": {
+        "name": "Signal Quality"
+      },
+      "wifi_bitrate": {
+        "name": "Bitrate"
+      },
+      "wifi_noise": {
+        "name": "Noise Level"
+      },
       "net_rx_errors": {
         "name": "RX Errors"
       },
@@ -201,6 +229,9 @@
       },
       "device_tx_rate": {
         "name": "TX Rate"
+      },
+      "device_noise": {
+        "name": "Noise Level"
       },
       "net_rx_rate": {
         "name": "{interface} RX Rate"

@@ -151,3 +151,18 @@ async def test_ubus_check_permissions(ubus_client: UbusClient):
         assert perms.read_system is True
         assert perms.write_system is True
         assert perms.read_network is False
+
+
+@pytest.mark.asyncio
+async def test_ubus_check_permissions_root(ubus_client: UbusClient):
+    """Test checking permissions for root user."""
+    ubus_client.username = "root"
+    ubus_client._session_id = "test_token"
+    
+    perms = await ubus_client.check_permissions()
+    # Check a few key permissions that should be True for root
+    assert perms.read_system is True
+    assert perms.write_system is True
+    assert perms.read_network is True
+    assert perms.read_wireless is True
+    assert perms.write_firewall is True

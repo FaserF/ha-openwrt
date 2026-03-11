@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Verbindung zum OpenWrt Router",
-        "description": "Wähle die Verbindungsmethode für deinen OpenWrt Router. Ubus wird dringend empfohlen, da es alle Funktionen unterstützt. [Mehr erfahren]({docs_url}).",
+        "description": "Wähle die Verbindungsmethode für deinen OpenWrt Router. [Mehr erfahren]({docs_url}).",
         "data": {
           "host": "Host (IP-Adresse oder Hostname)",
           "connection_type": "Verbindungstyp"
@@ -52,6 +52,14 @@
       "permissions": {
         "title": "Berechtigungsübersicht",
         "description": "Basierend auf den Anmeldedaten wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies erwartet wird."
+      },
+      "permissions_ubus": {
+        "title": "Berechtigungsübersicht",
+        "description": "Basierend auf den Anmeldedaten wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen) sehr restriktiv sein und blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur'. Falls Funktionen fehlen oder Sensoren 0 anzeigen, versuche auf **LuCI RPC** in den Integrations-Einstellungen umzuschalten.\n\nDu kannst fortfahren, wenn dies erwartet wird."
+      },
+      "packages": {
+        "title": "Paketübersicht",
+        "description": "Die folgenden optionalen Pakete wurden auf deinem Router erkannt. Einige Funktionen können eingeschränkt sein, wenn Pakete fehlen:\n\n{packages_table}\n\nDu kannst fortfahren, wenn dies erwartet wird."
       }
     },
     "error": {
@@ -88,6 +96,14 @@
       "permissions": {
         "title": "Berechtigungsübersicht",
         "description": "Basierend auf der Konfiguration wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren."
+      },
+      "permissions_ubus": {
+        "title": "Berechtigungsübersicht",
+        "description": "Basierend auf der Konfiguration wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen) sehr restriktiv sein und blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur'. Falls Funktionen fehlen oder Sensoren 0 anzeigen, versuche auf **LuCI RPC** in den Integrations-Einstellungen umzuschalten.\n\nDu kannst fortfahren."
+      },
+      "packages": {
+        "title": "Paketübersicht",
+        "description": "Basierend auf der Konfiguration wurden folgende Pakete erkannt:\n\n{packages_table}\n\nDu kannst fortfahren."
       }
     }
   },

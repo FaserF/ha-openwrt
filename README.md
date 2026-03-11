@@ -82,9 +82,20 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
 
 ### Supported Connection Methods
 
-- **Ubus (Recommended)**: Uses native JSON-RPC over HTTP/HTTPS. Fast and fully featured.
-- **LuCI RPC**: Uses the LuCI web interface API. A good fallback if Ubus isn't exposed.
-- **SSH**: Uses an SSH connection (Password or Private Key). Extremely compatible but slower than HTTP-based methods.
+| Feature | **Ubus (Recommended)** | **LuCI RPC** | **SSH** |
+|:--- |:---:|:---:|:---:|
+| **Performance** | 🚀 Very Fast | 🚄 Fast | 🐌 Slow |
+| **Ease of Setup** | ✅ Easy | ✅ Easy | ⚠️ Complex |
+| **Permissions** | 🛡️ Strict (ACLs) | 🔓 Permissive | 👑 Full (Root) |
+| **Reliability** | ✅ High | ✅ High | ⚠️ Moderate |
+| **Device Tracking** | ✅ Instant | ✅ Instant | ✅ Fast |
+| **Backups/Update** | ✅ Full | ✅ Full | ❌ Limited |
+
+#### 🔑 Which method should I choose?
+
+1.  **Ubus (HTTP/HTTPS)**: The gold standard. If your router supports it and permissions are set up correctly, use this. It's the most stable and efficient.
+2.  **LuCI RPC**: The perfect fallback. If Ubus is giving you "Access Denied" errors (common on newer OpenWrt SNAPSHOTs or restricted firmware), **switch to LuCI RPC**. It often has more permissive default access to system sensors like temperature and client lists.
+3.  **SSH**: Use only if HTTP/HTTPS is not possible or if you need to bypass all RPC restictions entirely. Note that SSH causes higher CPU load on the router during polling.
 
 ### Required Permissions
 

@@ -44,6 +44,8 @@ class WirelessInterface:
     signal: int = 0
     noise: int = 0
     bitrate: float = 0.0
+    quality: float = 0.0
+    hwmode: str = ""
     encryption: str = ""
     clients_count: int = 0
     enabled: bool = True
@@ -357,6 +359,8 @@ class OpenWrtData:
     asu_image_url: str | None = None
     qmodem_info: QModemInfo = field(default_factory=QModemInfo)
     sqm: list[SqmStatus] = field(default_factory=list)
+    permissions: OpenWrtPermissions = field(default_factory=OpenWrtPermissions)
+    packages: OpenWrtPackages = field(default_factory=OpenWrtPackages)
 
 
 class OpenWrtClient(abc.ABC):
@@ -833,7 +837,7 @@ class OpenWrtClient(abc.ABC):
         data.latency = get_val(fast_results[7], LatencyResult(), "latency")
         data.external_ip = get_val(fast_results[8], None, "external IP")
 
-        # Slow-changing optional data (services, LEDs, firewall, access control)
+        # Slow-changing optional data (services, LEDs, firewall, access control, packages, permissions)
         if is_full_poll:
             slow_optional_tasks = [
                 self.get_services(),
@@ -842,6 +846,8 @@ class OpenWrtClient(abc.ABC):
                 self.get_firewall_rules(),
                 self.get_access_control(),
                 self.get_sqm_status(),
+                self.check_packages(),
+                self.check_permissions(),
             ]
             slow_results = await asyncio.gather(*slow_optional_tasks, return_exceptions=True)
 
@@ -851,6 +857,8 @@ class OpenWrtClient(abc.ABC):
             data.firewall_rules = get_val(slow_results[3], [], "firewall rules")
             data.access_control = get_val(slow_results[4], [], "access control")
             data.sqm = get_val(slow_results[5], [], "SQM")
+            data.packages = get_val(slow_results[6], OpenWrtPackages(), "packages")
+            data.permissions = get_val(slow_results[7], OpenWrtPermissions(), "permissions")
 
             # Cache slow results
             self._cached_slow_data = {
@@ -860,6 +868,8 @@ class OpenWrtClient(abc.ABC):
                 "firewall_rules": data.firewall_rules,
                 "access_control": data.access_control,
                 "sqm": data.sqm,
+                "packages": data.packages,
+                "permissions": data.permissions,
             }
             _LOGGER.debug("Full poll cycle %d: refreshed slow-changing data", self._poll_count)
         else:
@@ -871,5 +881,7 @@ class OpenWrtClient(abc.ABC):
             data.firewall_rules = cached.get("firewall_rules", [])
             data.access_control = cached.get("access_control", [])
             data.sqm = cached.get("sqm", [])
+            data.packages = cached.get("packages", OpenWrtPackages())
+            data.permissions = cached.get("permissions", OpenWrtPermissions())
 
         return data

@@ -13,6 +13,7 @@ Provides deep integration with OpenWrt routers including:
 from __future__ import annotations
 
 import logging
+import importlib
 from typing import Any
 
 import voluptuous as vol
@@ -29,7 +30,7 @@ from homeassistant.exceptions import (
     ConfigEntryNotReady,
     HomeAssistantError,
 )
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 
 from .api.luci_rpc import LuciRpcAuthError, LuciRpcError
 from .api.ssh import SshAuthError, SshError
@@ -91,11 +92,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
             configuration_url=f"http://{entry.data[CONF_HOST]}",
         )
 
+        # Register AP devices to ensure via_device references in platforms are valid
+        if coordinator.data:
+            for wifi in coordinator.data.wireless_interfaces:
+                if not wifi.name:
+                    continue
+                device_registry.async_get_or_create(
+                    config_entry_id=entry.entry_id,
+                    identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{wifi.name}")},
+                    name=f"AP {wifi.ssid or wifi.name}",
+                    manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
+                    model="Access Point",
+                    via_device=(DOMAIN, entry.data[CONF_HOST]),
+                )
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         DATA_COORDINATOR: coordinator,
         DATA_CLIENT: client,
     }
+
+    # Pre-import platforms in the background to avoid blocking the event loop
+    # during async_forward_entry_setups which calls sync import_module
+    for platform in PLATFORMS:
+        hass.async_add_import_executor_job(
+            importlib.import_module, f"custom_components.{DOMAIN}.{platform}"
+        )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -128,7 +150,6 @@ async def _async_update_listener(
 
 def _register_services(hass: HomeAssistant) -> None:
     """Register integration services."""
-    from homeassistant.helpers import config_validation as cv  # noqa: PLC0415
 
     async def _handle_reboot(call: ServiceCall) -> None:
         """Handle reboot service call."""

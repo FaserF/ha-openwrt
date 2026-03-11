@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -76,32 +77,41 @@ async def async_setup_entry(
 
     entities: list[OpenWrtButtonEntity] = []
 
-    for description in BUTTONS:
-        entities.append(OpenWrtButtonEntity(coordinator, entry, description, client))
-
     if coordinator.data:
-        for service in coordinator.data.services:
-            if not service.name:
+        perms = coordinator.data.permissions
+        pkgs = coordinator.data.packages
+
+        for description in BUTTONS:
+            if description.key == "reboot" and not perms.write_system:
                 continue
-            entities.append(
-                OpenWrtButtonEntity(
-                    coordinator,
-                    entry,
-                    OpenWrtButtonDescription(
-                        key=f"restart_{service.name}",
-                        name=f"Restart {service.name}",
-                        translation_key="service_restart",
-                        translation_placeholders={"service": service.name},
-                        device_class=ButtonDeviceClass.RESTART,
-                        entity_category=EntityCategory.CONFIG,
-                        entity_registry_enabled_default=False,
-                        press_fn=lambda c, n=service.name: c.manage_service(
-                            n, "restart"
+            if description.key in ("wps_start", "wps_cancel") and not perms.write_wireless:
+                continue
+            if description.key == "create_backup" and not perms.write_system:
+                continue
+            entities.append(OpenWrtButtonEntity(coordinator, entry, description, client))
+        if perms.read_services:
+            for service in coordinator.data.services:
+                if not service.name:
+                    continue
+                entities.append(
+                    OpenWrtButtonEntity(
+                        coordinator,
+                        entry,
+                        OpenWrtButtonDescription(
+                            key=f"restart_{service.name}",
+                            name=f"Restart {service.name}",
+                            translation_key="service_restart",
+                            translation_placeholders={"service": service.name},
+                            device_class=ButtonDeviceClass.RESTART,
+                            entity_category=EntityCategory.CONFIG,
+                            entity_registry_enabled_default=False,
+                            press_fn=lambda c, n=service.name: c.manage_service(
+                                n, "restart"
+                            ),
                         ),
-                    ),
-                    client,
+                        client,
+                    )
                 )
-            )
 
         for iface in coordinator.data.network_interfaces:
             if iface.name in ("wan", "wan6"):
@@ -126,16 +136,28 @@ async def async_setup_entry(
         # Add Wake on LAN and Kick buttons for each device
         for device in coordinator.data.connected_devices:
             if device.mac:
-                entities.append(
-                    OpenWrtWakeOnLanButton(
-                        coordinator,
-                        entry,
-                        client,
-                        device.mac,
-                        device.interface,
+                # Determine initial device name and sanitize hostname
+                dev_name = device.mac
+                if device.hostname and device.hostname != "*":
+                    router_hostname = ""
+                    if coordinator.data.device_info:
+                        router_hostname = coordinator.data.device_info.hostname
+
+                    if device.hostname != router_hostname:
+                        dev_name = device.hostname
+
+                if pkgs.etherwake is not False and not device.is_wireless:
+                    entities.append(
+                        OpenWrtWakeOnLanButton(
+                            coordinator,
+                            entry,
+                            client,
+                            device.mac,
+                            dev_name,
+                            device.interface,
+                        )
                     )
-                )
-                if device.is_wireless and device.interface:
+                if perms.read_wireless and device.is_wireless and device.interface and pkgs.iwinfo is not False:
                     entities.append(
                         OpenWrtKickButton(
                             coordinator,
@@ -143,7 +165,7 @@ async def async_setup_entry(
                             client,
                             device.mac,
                             device.interface,
-                            device.hostname or device.mac,
+                            dev_name,
                         )
                     )
 
@@ -196,6 +218,7 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
         entry: ConfigEntry,
         client: OpenWrtClient,
         mac: str,
+        name: str,
         interface: str | None = None,
     ) -> None:
         """Initialize the button."""
@@ -204,10 +227,24 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
         self._mac = mac
         self._interface = interface
         self._attr_unique_id = f"{entry.entry_id}_{mac}_wol"
-        self._attr_device_info = {
-            "connections": {("mac", mac)},
-            "via_device": (DOMAIN, entry.data[CONF_HOST]),
-        }
+        self._entry = entry
+        self._initial_name = name
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        via_device = (DOMAIN, self._entry.data[CONF_HOST])
+        if self.coordinator.data:
+            for device in self.coordinator.data.connected_devices:
+                if device.mac == self._mac and device.is_wireless and device.interface:
+                    via_device = (DOMAIN, f"{self._entry.data[CONF_HOST]}_ap_{device.interface}")
+                    break
+
+        return DeviceInfo(
+            connections={("mac", self._mac)},
+            name=self._initial_name,
+            via_device=via_device,
+        )
 
     async def async_press(self) -> None:
         """Press the button."""
@@ -255,10 +292,24 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
         self._interface = interface
         self._attr_name = f"Disconnect {hostname}"
         self._attr_unique_id = f"{entry.entry_id}_{mac}_kick"
-        self._attr_device_info = {
-            "connections": {("mac", mac)},
-            "via_device": (DOMAIN, entry.data[CONF_HOST]),
-        }
+        self._entry = entry
+        self._initial_name = hostname
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        via_device = (DOMAIN, self._entry.data[CONF_HOST])
+        if self.coordinator.data:
+            for device in self.coordinator.data.connected_devices:
+                if device.mac == self._mac and device.is_wireless and device.interface:
+                    via_device = (DOMAIN, f"{self._entry.data[CONF_HOST]}_ap_{device.interface}")
+                    break
+
+        return DeviceInfo(
+            connections={("mac", self._mac)},
+            name=self._initial_name,
+            via_device=via_device,
+        )
 
     async def async_press(self) -> None:
         """Press the button to disconnect the device."""

@@ -31,7 +31,10 @@ async def async_setup_entry(
         DATA_COORDINATOR
     ]
 
-    async_add_entities([OpenWrtNewDeviceEvent(coordinator, entry)])
+    if coordinator.data:
+        perms = coordinator.data.permissions
+        if perms.read_network or perms.read_wireless:
+            async_add_entities([OpenWrtNewDeviceEvent(coordinator, entry)])
 
 
 class OpenWrtNewDeviceEvent(

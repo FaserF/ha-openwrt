@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -33,63 +34,81 @@ async def async_setup_entry(
 
     entities: list[SwitchEntity] = []
 
-    entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
-
     if coordinator.data:
-        for wifi in coordinator.data.wireless_interfaces:
-            if wifi.name:
+        perms = coordinator.data.permissions
+        pkgs = coordinator.data.packages
+
+        if perms.write_wireless:
+            entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
+            for wifi in coordinator.data.wireless_interfaces:
+                if wifi.name:
+                    entities.append(
+                        OpenWrtWirelessSwitch(
+                            coordinator, entry, client, wifi.name, wifi.ssid
+                        )
+                    )
+
+        if perms.write_services:
+            for service in coordinator.data.services:
+                if service.name:
+                    entities.append(
+                        OpenWrtServiceSwitch(coordinator, entry, client, service.name)
+                    )
+
+        if perms.write_firewall:
+            for redirect in coordinator.data.firewall_redirects:
+                if redirect.section_id:
+                    entities.append(
+                        OpenWrtFirewallSwitch(
+                            coordinator, entry, client, redirect.section_id, redirect.name
+                        )
+                    )
+
+            for rule in coordinator.data.firewall_rules:
+                # Only expose named rules to avoid clutter and potentially accidental system changes
+                if rule.name and rule.section_id and not rule.name.startswith("cfg"):
+                    entities.append(
+                        OpenWrtFirewallRuleSwitch(
+                            coordinator, entry, client, rule.section_id, rule.name
+                        )
+                    )
+
+        if perms.write_access_control:
+            for device in coordinator.data.connected_devices:
+                if not device.mac:
+                    continue
+
+                # Determine initial device name and sanitize hostname
+                dev_name = device.mac
+                if device.hostname and device.hostname != "*":
+                    router_hostname = ""
+                    if coordinator.data.device_info:
+                        router_hostname = coordinator.data.device_info.hostname
+
+                    if device.hostname != router_hostname:
+                        dev_name = device.hostname
+
+                rule = next(
+                    (r for r in coordinator.data.access_control if r.mac == device.mac),
+                    None,
+                )
                 entities.append(
-                    OpenWrtWirelessSwitch(
-                        coordinator, entry, client, wifi.name, wifi.ssid
+                    OpenWrtAccessControlSwitch(
+                        coordinator,
+                        entry,
+                        client,
+                        device.mac,
+                        dev_name,
+                        rule.section_id if rule else None,
                     )
                 )
 
-        for service in coordinator.data.services:
-            if service.name:
-                entities.append(
-                    OpenWrtServiceSwitch(coordinator, entry, client, service.name)
-                )
-
-        for redirect in coordinator.data.firewall_redirects:
-            if redirect.section_id:
-                entities.append(
-                    OpenWrtFirewallSwitch(
-                        coordinator, entry, client, redirect.section_id, redirect.name
+        if perms.write_sqm and pkgs.sqm_scripts is not False:
+            for sqm in coordinator.data.sqm:
+                if sqm.section_id:
+                    entities.append(
+                        OpenWrtSqmSwitch(coordinator, entry, client, sqm.section_id, sqm.name)
                     )
-                )
-
-        for rule in coordinator.data.firewall_rules:
-            # Only expose named rules to avoid clutter and potentially accidental system changes
-            if rule.name and rule.section_id and not rule.name.startswith("cfg"):
-                entities.append(
-                    OpenWrtFirewallRuleSwitch(
-                        coordinator, entry, client, rule.section_id, rule.name
-                    )
-                )
-
-        for device in coordinator.data.connected_devices:
-            if not device.mac:
-                continue
-            rule = next(
-                (r for r in coordinator.data.access_control if r.mac == device.mac),
-                None,
-            )
-            entities.append(
-                OpenWrtAccessControlSwitch(
-                    coordinator,
-                    entry,
-                    client,
-                    device.mac,
-                    device.hostname or device.mac,
-                    rule.section_id if rule else None,
-                )
-            )
-
-        for sqm in coordinator.data.sqm:
-            if sqm.section_id:
-                entities.append(
-                    OpenWrtSqmSwitch(coordinator, entry, client, sqm.section_id, sqm.name)
-                )
 
     async_add_entities(entities)
 
@@ -163,9 +182,13 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         self._attr_unique_id = f"{entry.entry_id}_wireless_{iface_name}"
         self._attr_name = f"Wireless {ssid or iface_name}"
         self._attr_translation_key = "wireless_radio"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{iface_name}")},
+            name=f"AP {ssid or iface_name}",
+            manufacturer="OpenWrt",
+            model="Access Point",
+            via_device=(DOMAIN, entry.data[CONF_HOST]),
+        )
 
     @property
     def is_on(self) -> bool | None:
@@ -345,6 +368,7 @@ class OpenWrtAccessControlSwitch(
         self._attr_translation_key = "device_access"
         self._attr_device_info = {
             "connections": {("mac", mac)},
+            "name": name,
             "via_device": (DOMAIN, entry.data[CONF_HOST]),
         }
 

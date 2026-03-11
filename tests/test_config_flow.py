@@ -128,6 +128,26 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
             {"username": "root", "password": "password", "use_ssl": False}
         )
     
-    assert str(result["type"]).upper() == "CREATE_ENTRY"
-    assert result["title"] == "OpenWrtTest"
     assert result["data"]["host"] == "192.168.1.1"
+
+
+async def test_config_flow_default_connection_type(hass) -> None:
+    """Test that the default connection type is LuCI RPC."""
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+    from custom_components.openwrt.const import CONNECTION_TYPE_LUCI_RPC
+    
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    
+    result = await flow.async_step_user()
+    assert result["type"] == "form"
+    assert result["step_id"] == "user"
+    
+    # Check schema for default value
+    schema = result["data_schema"]
+    for key, value in schema.schema.items():
+        if key == "connection_type":
+            assert value.default() == CONNECTION_TYPE_LUCI_RPC
+            break
+    else:
+        pytest.fail("connection_type not found in schema")

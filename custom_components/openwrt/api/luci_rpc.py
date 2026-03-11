@@ -314,19 +314,23 @@ class LuciRpcClient(OpenWrtClient):
             )
             out = await self._rpc_call("sys", "exec", [cmd])
             if out:
-                results = out.strip().split("\n")
-                if len(results) >= 5: # 5 if wireguard/openvpn might be missing from output
-                    packages.sqm_scripts = results[0] == "1"
-                    packages.mwan3 = results[1] == "1"
-                    packages.iwinfo = results[2] == "1"
-                    packages.etherwake = results[3] == "1"
-                    if len(results) >= 5:
-                        packages.wireguard = results[4] == "1"
-                    if len(results) >= 6:
-                        packages.openvpn = results[5] == "1"
+                results = out.strip().splitlines()
+
+                def detect_status(idx: int) -> bool:
+                    return len(results) > idx and results[idx].strip() == "1"
+
+                packages.sqm_scripts = detect_status(0)
+                packages.mwan3 = detect_status(1)
+                packages.iwinfo = detect_status(2)
+                packages.etherwake = detect_status(3)
+                packages.wireguard = detect_status(4)
+                packages.openvpn = detect_status(5)
         except Exception as err:
             _LOGGER.error("Failed to check packages via LuCI RPC: %s", err)
-            # We don't raise here to allow the rest of the flow to continue
+            # Initialize to False if we failed (to avoid staying at None)
+            for attr in ["sqm_scripts", "mwan3", "iwinfo", "etherwake", "wireguard", "openvpn"]:
+                if getattr(packages, attr) is None:
+                    setattr(packages, attr, False)
         return packages
 
     async def get_system_resources(self) -> SystemResources:

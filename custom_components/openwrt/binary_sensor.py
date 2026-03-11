@@ -68,71 +68,84 @@ async def async_setup_entry(
 
     entities: list[OpenWrtBinarySensorEntity] = []
 
-    for description in BINARY_SENSORS:
-        entities.append(OpenWrtBinarySensorEntity(coordinator, entry, description))
-
     if coordinator.data:
-        for mwan in coordinator.data.mwan_status:
-            entities.append(
-                OpenWrtBinarySensorEntity(
-                    coordinator,
-                    entry,
-                    OpenWrtBinarySensorDescription(
-                        key=f"mwan_{mwan.interface_name}_online",
-                        name=f"MWAN {mwan.interface_name} Online",
-                        translation_key="mwan_online",
-                        translation_placeholders={"interface": mwan.interface_name},
-                        device_class=BinarySensorDeviceClass.CONNECTIVITY,
-                        is_on_fn=lambda data, n=mwan.interface_name: any(
-                            m.status == "online"
-                            for m in data.mwan_status
-                            if m.interface_name == n
-                        ),
-                    ),
-                )
-            )
+        perms = coordinator.data.permissions
+        pkgs = coordinator.data.packages
 
-        for iface in coordinator.data.network_interfaces:
-            if iface.name in ("wan", "wan6"):
+        for description in BINARY_SENSORS:
+            if description.key == "firmware_update_available" and not perms.read_system:
+                continue
+            if description.key == "wps_active" and not perms.read_wireless:
+                continue
+            entities.append(OpenWrtBinarySensorEntity(coordinator, entry, description))
+        if perms.read_mwan and pkgs.mwan3 is not False:
+            for mwan in coordinator.data.mwan_status:
                 entities.append(
                     OpenWrtBinarySensorEntity(
                         coordinator,
                         entry,
                         OpenWrtBinarySensorDescription(
-                            key=f"interface_{iface.name}_up",
-                            name=f"{iface.name.upper()} Connected",
-                            translation_key="interface_up",
-                            translation_placeholders={"interface": iface.name.upper()},
+                            key=f"mwan_{mwan.interface_name}_online",
+                            name=f"MWAN {mwan.interface_name} Online",
+                            translation_key="mwan_online",
+                            translation_placeholders={"interface": mwan.interface_name},
                             device_class=BinarySensorDeviceClass.CONNECTIVITY,
-                            is_on_fn=lambda data, n=iface.name: any(
-                                i.up for i in data.network_interfaces if i.name == n
+                            is_on_fn=lambda data, n=mwan.interface_name: any(
+                                m.status == "online"
+                                for m in data.mwan_status
+                                if m.interface_name == n
                             ),
                         ),
                     )
                 )
 
+        if perms.read_network:
+            for iface in coordinator.data.network_interfaces:
+                if iface.name in ("wan", "wan6"):
+                    entities.append(
+                        OpenWrtBinarySensorEntity(
+                            coordinator,
+                            entry,
+                            OpenWrtBinarySensorDescription(
+                                key=f"interface_{iface.name}_up",
+                                name=f"{iface.name.upper()} Connected",
+                                translation_key="interface_up",
+                                translation_placeholders={"interface": iface.name.upper()},
+                                device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                                is_on_fn=lambda data, n=iface.name: any(
+                                    i.up for i in data.network_interfaces if i.name == n
+                                ),
+                            ),
+                        )
+                    )
+
         # VPN tunnel binary sensors
-        for vpn in coordinator.data.vpn_interfaces:
-            if not vpn.name:
-                continue
-            entities.append(
-                OpenWrtBinarySensorEntity(
-                    coordinator,
-                    entry,
-                    OpenWrtBinarySensorDescription(
-                        key=f"vpn_{vpn.name}_up",
-                        name=f"VPN {vpn.name} Connected",
-                        translation_key="vpn_up",
-                        translation_placeholders={"interface": vpn.name},
-                        device_class=BinarySensorDeviceClass.CONNECTIVITY,
-                        entity_category=EntityCategory.DIAGNOSTIC,
-                        entity_registry_enabled_default=False,
-                        is_on_fn=lambda data, n=vpn.name: any(
-                            v.up for v in data.vpn_interfaces if v.name == n
+        if perms.read_vpn:
+            for vpn in coordinator.data.vpn_interfaces:
+                if not vpn.name:
+                    continue
+                if vpn.type == "wireguard" and pkgs.wireguard is False:
+                    continue
+                if vpn.type == "openvpn" and pkgs.openvpn is False:
+                    continue
+                entities.append(
+                    OpenWrtBinarySensorEntity(
+                        coordinator,
+                        entry,
+                        OpenWrtBinarySensorDescription(
+                            key=f"vpn_{vpn.name}_up",
+                            name=f"VPN {vpn.name} Connected",
+                            translation_key="vpn_up",
+                            translation_placeholders={"interface": vpn.name},
+                            device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                            entity_registry_enabled_default=False,
+                            is_on_fn=lambda data, n=vpn.name: any(
+                                v.up for v in data.vpn_interfaces if v.name == n
+                            ),
                         ),
-                    ),
+                    )
                 )
-            )
 
     async_add_entities(entities)
 
