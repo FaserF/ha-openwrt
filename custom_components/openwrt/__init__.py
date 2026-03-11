@@ -40,6 +40,7 @@ from .const import (
     DATA_COORDINATOR,
     DOMAIN,
     PLATFORMS,
+    SERVICE_BACKUP,
     SERVICE_EXEC,
     SERVICE_INIT,
     SERVICE_REBOOT,
@@ -305,4 +306,29 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required("value"): cv.string,
             }
         ),
+    )
+
+    async def _handle_backup(call: ServiceCall) -> ServiceResponse:
+        """Handle create backup service call."""
+        entry_id = call.data["entry_id"]
+        if entry_id not in hass.data[DOMAIN]:
+            raise vol.Invalid(f"Config entry {entry_id} not found")
+
+        client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
+        try:
+            backup_path = await client.create_backup()
+            return {"backup_path": backup_path}
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to create backup: {err}") from err
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_BACKUP,
+        _handle_backup,
+        schema=vol.Schema(
+            {
+                vol.Required("entry_id"): cv.string,
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
     )

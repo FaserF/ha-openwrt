@@ -53,6 +53,13 @@ BUTTONS: tuple[OpenWrtButtonDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
         press_fn=lambda client: client.set_wps(False),
     ),
+    OpenWrtButtonDescription(
+        key="create_backup",
+        name="Create Backup",
+        translation_key="create_backup",
+        entity_category=EntityCategory.CONFIG,
+        press_fn=lambda client: client.create_backup(),
+    ),
 )
 
 

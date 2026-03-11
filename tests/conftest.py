@@ -48,6 +48,12 @@ class MockEntity:
     _attr_name: str | None = None
     _attr_device_info: Any | None = None
     _attr_extra_state_attributes: dict[str, Any] | None = None
+    @property
+    def unique_id(self) -> str | None:
+        return self._attr_unique_id
+    @property
+    def name(self) -> str | None:
+        return self._attr_name
     def __init__(self, *args, **kwargs):
         pass
     def async_write_ha_state(self):
@@ -71,7 +77,7 @@ def create_mock_class(base_class):
     return mock
 
 # Pre-populate sys.modules with proper classes BEFORE any imports
-platforms = ["sensor", "binary_sensor", "switch", "button", "light", "update", "device_tracker"]
+platforms = ["sensor", "binary_sensor", "switch", "button", "light", "update", "device_tracker", "event", "number"]
 for platform in platforms:
     module_name = f"homeassistant.components.{platform}"
     mock_module = MagicMock()

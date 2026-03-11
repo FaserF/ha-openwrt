@@ -247,6 +247,31 @@ class AccessControl:
 
 
 @dataclass
+class VpnInterface:
+    """VPN tunnel interface information."""
+
+    name: str = ""
+    type: str = ""  # "wireguard", "openvpn"
+    up: bool = False
+    rx_bytes: int = 0
+    tx_bytes: int = 0
+    peers: int = 0
+    latest_handshake: int = 0  # unix timestamp
+    endpoint: str = ""
+    public_key: str = ""
+
+
+@dataclass
+class LatencyResult:
+    """Network latency measurement result."""
+
+    target: str = ""
+    latency_ms: float | None = None
+    packet_loss: float = 0.0  # percentage
+    available: bool = False
+
+
+@dataclass
 class OpenWrtData:
     """Aggregated data from an OpenWrt device."""
 
@@ -264,6 +289,8 @@ class OpenWrtData:
     firewall_redirects: list[FirewallRedirect] = field(default_factory=list)
     firewall_rules: list[FirewallRule] = field(default_factory=list)
     access_control: list[AccessControl] = field(default_factory=list)
+    vpn_interfaces: list[VpnInterface] = field(default_factory=list)
+    latency: LatencyResult = field(default_factory=LatencyResult)
     external_ip: str | None = None
     firmware_upgradable: bool = False
     firmware_latest_version: str = ""
@@ -449,6 +476,116 @@ class OpenWrtClient(abc.ABC):
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages on the device."""
 
+    async def get_vpn_status(self) -> list[VpnInterface]:
+        """Get VPN tunnel status (WireGuard/OpenVPN)."""
+        vpn_interfaces: list[VpnInterface] = []
+        try:
+            # Try WireGuard first
+            output = await self.execute_command("wg show all dump 2>/dev/null")
+            if output and "not found" not in output.lower():
+                current_iface = ""
+                for line in output.strip().splitlines():
+                    parts = line.split("\t")
+                    if len(parts) >= 4:
+                        iface_name = parts[0]
+                        if iface_name != current_iface:
+                            current_iface = iface_name
+                            # First line per interface is the interface itself
+                            vpn = VpnInterface(
+                                name=iface_name,
+                                type="wireguard",
+                            )
+                            # Check if interface is up
+                            ip_out = await self.execute_command(f"ip link show {iface_name} 2>/dev/null")
+                            vpn.up = bool(ip_out and "UP" in ip_out)
+
+                            # Get RX/TX bytes
+                            rx_out = await self.execute_command(f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null")
+                            tx_out = await self.execute_command(f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null")
+                            try:
+                                vpn.rx_bytes = int(rx_out.strip()) if rx_out and rx_out.strip().isdigit() else 0
+                                vpn.tx_bytes = int(tx_out.strip()) if tx_out and tx_out.strip().isdigit() else 0
+                            except (ValueError, AttributeError):
+                                pass
+
+                            vpn_interfaces.append(vpn)
+                        else:
+                            # Subsequent lines are peers
+                            for vpn in vpn_interfaces:
+                                if vpn.name == current_iface:
+                                    vpn.peers += 1
+                                    # parts[4] = latest-handshake
+                                    if len(parts) > 4 and parts[4].isdigit():
+                                        handshake = int(parts[4])
+                                        if handshake > vpn.latest_handshake:
+                                            vpn.latest_handshake = handshake
+                                    break
+        except Exception as err:
+            _LOGGER.debug("WireGuard status check failed: %s", err)
+
+        try:
+            # Try OpenVPN
+            output = await self.execute_command("pgrep -a openvpn 2>/dev/null")
+            if output and "not found" not in output.lower() and output.strip():
+                # OpenVPN is running – check interfaces
+                tun_output = await self.execute_command("ip -br link show type tun 2>/dev/null")
+                if tun_output:
+                    for line in tun_output.strip().splitlines():
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            iface_name = parts[0]
+                            state = parts[1]
+                            vpn = VpnInterface(
+                                name=iface_name,
+                                type="openvpn",
+                                up=state == "UP",
+                            )
+                            # Get RX/TX bytes
+                            rx_out = await self.execute_command(f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null")
+                            tx_out = await self.execute_command(f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null")
+                            try:
+                                vpn.rx_bytes = int(rx_out.strip()) if rx_out and rx_out.strip().isdigit() else 0
+                                vpn.tx_bytes = int(tx_out.strip()) if tx_out and tx_out.strip().isdigit() else 0
+                            except (ValueError, AttributeError):
+                                pass
+                            vpn_interfaces.append(vpn)
+        except Exception as err:
+            _LOGGER.debug("OpenVPN status check failed: %s", err)
+
+        return vpn_interfaces
+
+    async def get_latency(self, target: str = "8.8.8.8") -> LatencyResult:
+        """Measure network latency via ping."""
+        result = LatencyResult(target=target)
+        try:
+            output = await self.execute_command(f"ping -c 3 -W 2 {target} 2>/dev/null")
+            if output:
+                result.available = True
+                # Parse avg from "min/avg/max/mdev = x/y/z/w ms"
+                for line in output.splitlines():
+                    if "min/avg/max" in line:
+                        stats = line.split("=")[-1].strip().split("/")
+                        if len(stats) >= 2:
+                            result.latency_ms = round(float(stats[1]), 1)
+                    if "packet loss" in line:
+                        match = re.search(r"(\d+)%", line)
+                        if match:
+                            result.packet_loss = float(match.group(1))
+        except Exception as err:
+            _LOGGER.debug("Latency check failed: %s", err)
+        return result
+
+    async def create_backup(self) -> str:
+        """Create a configuration backup on the router. Returns the backup file path."""
+        try:
+            output = await self.execute_command(
+                "sysupgrade -b /tmp/backup-ha-$(date +%Y%m%d-%H%M%S).tar.gz && ls -t /tmp/backup-ha-*.tar.gz | head -1"
+            )
+            return output.strip() if output else ""
+        except Exception as err:
+            _LOGGER.error("Backup creation failed: %s", err)
+            raise
+
     async def get_qmodem_info(self) -> QModemInfo:
         """Get cellular modem status from QModem's modem_ctrl ubus subsystem (if available)."""
         info = QModemInfo()
@@ -606,6 +743,16 @@ class OpenWrtClient(abc.ABC):
             data.access_control = await self.get_access_control()
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Optional access control info failed: %s", err)
+
+        try:
+            data.vpn_interfaces = await self.get_vpn_status()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Optional VPN status check failed: %s", err)
+
+        try:
+            data.latency = await self.get_latency()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Optional latency check failed: %s", err)
 
         try:
             data.external_ip = await self.get_external_ip()

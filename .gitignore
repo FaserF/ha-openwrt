@@ -53,6 +53,8 @@ cover/
 *pytest*.txt
 *mypy*.txt
 *ruff*.txt
+*test*.txt
+*output*.txt
 
 # Translations
 *.mo

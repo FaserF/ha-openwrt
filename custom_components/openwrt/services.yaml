@@ -140,3 +140,14 @@ uci_set:
       required: true
       selector:
         text: {}
+
+create_backup:
+  description: Creates a configuration backup on the OpenWrt router using sysupgrade.
+  fields:
+    entry_id:
+      description: The config entry ID of the OpenWrt router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        config_entry:
+          integration: openwrt

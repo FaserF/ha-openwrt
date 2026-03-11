@@ -14,28 +14,18 @@ Supports **OpenWrt 25.12** and newer (older versions may also work, but are not 
 
 ## ✨ Features
 
-- **Multiple Connection Methods**: Ubus (recommended), LuCI RPC, or SSH (password & key-based).
-- **Comprehensive Monitoring**:
-  - System: CPU Load, Memory, Storage, Uptime (minutes), Temperature.
-  - Network: Interface RX/TX, IPv4 addresses, WAN connectivity.
-  - Wireless: Signal strength, clients count, channels per radio.
-  - Multi-WAN (MWAN3): Interface online ratio and status tracking.
-- **Control & Automation**:
-  - Reboot router.
-  - Toggle WPS, WiFi radios, and system services (enable/disable/restart).
-  - Execute custom commands on the router via Home Assistant services.
-- **Device Tracking**: 
-  - Tracks both wired and wireless devices using DHCP, ARP, and NDP.
-  - **`ip neigh` Integration**: Uses modern Linux neighbor tracking for more reliable device detection, including IPv6 support.
-  - **Configurable "Consider Home"**: Set a custom grace period (up to 1 hour) to prevent devices from flickering between "Home" and "Away".
-  - Native `device_tracker` integration with detailed device attributes.
-- **Wake-on-LAN (WoL)**: 
-  - Automated "Wake on LAN" buttons for all tracked devices.
-  - Global `wake_on_lan` service to wake any device by MAC address via the router.
-- **Firmware Updates (Native HA)**:
-  - Tracks and installs official OpenWrt releases directly via Home Assistant.
-  - **Attended Sysupgrade (ASU)**: Custom firmware build generation preserving your router's installed packages. Automatically builds and flashes right from the UI.
-  - **Custom Repo Support**: Track custom GitHub release repositories with automatic `sysupgrade.bin` detection (by target/board) and SHA256 verification.
+- **VPN Monitoring**: 
+  - Tracks status (Up/Down) for WireGuard and OpenVPN tunnels.
+  - Monitors throughput (RX/TX) and WireGuard peer counts with handshake details.
+- **Network Health**: 
+  - **Latency/Ping**: Monitor network latency to a target (e.g. 8.8.8.8) with packet loss tracking.
+  - **DHCP Monitoring**: Track the number of active DHCP leases.
+  - **Advanced Interface Diagnostics**: Individual sensors/attributes for IPv6 addresses, link speed (Mbps), duplex mode, and interface uptime.
+- **Configurable Control**:
+  - **WiFi TX Power**: Native slider to control transmission power of WiFi radios.
+  - **Backup Service**: Trigger full router configuration backups (`sysupgrade -b`) directly from Home Assistant.
+- **Smart Events**: 
+  - Fires Home Assistant events (`openwrt_new_device`) when new, previously unknown MAC addresses connect to the network.
 - **HA Repairs**: Native repair integration for authentication failures, connection issues, and missing packages.
 
 
@@ -417,6 +407,84 @@ action:
   - service: button.press
     target:
       entity_id: button.openwrt_reboot_router
+```
+</details>
+
+<details>
+<summary><strong>🔐 VPN Failure Alert</strong></summary>
+
+Get notified immediately if a specific VPN tunnel (WireGuard or OpenVPN) goes down.
+
+```yaml
+alias: "Security: VPN Tunnel Down"
+trigger:
+  - platform: state
+    entity_id: binary_sensor.openwrt_vpn_wg0_up
+    to: "off"
+    for:
+      seconds: 30
+action:
+  - service: notify.notify
+    data:
+      title: "🔐 VPN Outage"
+      message: "VPN Interface wg0 has disconnected!"
+```
+</details>
+
+<details>
+<summary><strong>📡 New Device Connection Alert</strong></summary>
+
+Use the `openwrt_new_device` event to get notified whenever a new, previously unknown device connects to your network for the first time.
+
+```yaml
+alias: "Security: New Device Detected"
+trigger:
+  - platform: event
+    event_type: openwrt_new_device
+action:
+  - service: notify.notify
+    data:
+      title: "📡 New Device Found"
+      message: "A new device with MAC {{ trigger.event.data.mac }} connected to {{ trigger.event.data.host }}."
+```
+</details>
+
+<details>
+<summary><strong>📦 Automatic Backup Before Update</strong></summary>
+
+Automatically trigger a configuration backup right before a firmware update to ensure you can always restore your settings even if a flash goes wrong.
+
+```yaml
+alias: "System: Auto-Backup on Update"
+trigger:
+  - platform: state
+    entity_id: update.openwrt_firmware
+    to: "installing"
+action:
+  - service: openwrt.create_backup
+    data:
+      entry_id: <YOUR_OPENWRT_ENTRY_ID>
+```
+</details>
+
+<details>
+<summary><strong>📉 High Latency Notification</strong></summary>
+
+Monitor your internet connection quality and get notified if latency increases significantly, which might indicate ISP issues or network congestion.
+
+```yaml
+alias: "Health: High WAN Latency"
+trigger:
+  - platform: numeric_state
+    entity_id: sensor.openwrt_wan_latency
+    above: 50
+    for:
+      minutes: 5
+action:
+  - service: notify.notify
+    data:
+      title: "📉 Network Latency Spike"
+      message: "Current WAN latency is {{ states('sensor.openwrt_wan_latency') }}ms."
 ```
 </details>
 

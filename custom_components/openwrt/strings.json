@@ -241,6 +241,30 @@
       },
       "qmodem_nr5g_sinr": {
         "name": "5G NR SINR"
+      },
+      "dhcp_lease_count": {
+        "name": "DHCP Leases"
+      },
+      "wan_latency": {
+        "name": "WAN Latency"
+      },
+      "vpn_rx": {
+        "name": "VPN RX"
+      },
+      "vpn_tx": {
+        "name": "VPN TX"
+      },
+      "vpn_peers": {
+        "name": "VPN Peers"
+      },
+      "net_ipv6": {
+        "name": "{interface} IPv6 Address"
+      },
+      "net_speed": {
+        "name": "{interface} Link Speed"
+      },
+      "net_uptime": {
+        "name": "{interface} Uptime"
       }
     },
     "binary_sensor": {
@@ -258,6 +282,9 @@
       },
       "wps_active": {
         "name": "WPS Active"
+      },
+      "vpn_up": {
+        "name": "VPN {interface} Connected"
       }
     },
     "button": {
@@ -287,6 +314,9 @@
       },
       "wake_on_lan": {
         "name": "Wake on LAN"
+      },
+      "create_backup": {
+        "name": "Create Backup"
       }
     },
     "switch": {
@@ -317,6 +347,25 @@
     "light": {
       "led": {
         "name": "LED"
+      }
+    },
+    "event": {
+      "new_device": {
+        "name": "New Device",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "new_device_connected": "New device connected",
+              "device_connected": "Device connected",
+              "device_disconnected": "Device disconnected"
+            }
+          }
+        }
+      }
+    },
+    "number": {
+      "wifi_txpower_control": {
+        "name": "TX Power"
       }
     }
   },
@@ -406,6 +455,16 @@
         "value": {
           "name": "Value",
           "description": "The value to set."
+        }
+      }
+    },
+    "create_backup": {
+      "name": "Create Backup",
+      "description": "Creates a configuration backup on the OpenWrt router.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The config entry ID of the OpenWrt router."
         }
       }
     }

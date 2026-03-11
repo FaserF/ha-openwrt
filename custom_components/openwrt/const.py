@@ -56,7 +56,9 @@ PLATFORMS: Final = [
     "binary_sensor",
     "button",
     "device_tracker",
+    "event",
     "light",
+    "number",
     "sensor",
     "switch",
     "update",
@@ -94,3 +96,4 @@ SERVICE_INIT: Final = "manage_service"
 SERVICE_WOL: Final = "wake_on_lan"
 SERVICE_UCI_GET: Final = "uci_get"
 SERVICE_UCI_SET: Final = "uci_set"
+SERVICE_BACKUP: Final = "create_backup"

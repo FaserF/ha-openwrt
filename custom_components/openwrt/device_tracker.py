@@ -206,6 +206,8 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                     attrs["uptime"] = device.uptime
                 if device.neighbor_state:
                     attrs["neighbor_state"] = device.neighbor_state
+                if device.connection_info:
+                    attrs["connection_info"] = device.connection_info
                 return attrs
 
         return {}

@@ -111,6 +111,29 @@ async def async_setup_entry(
                     )
                 )
 
+        # VPN tunnel binary sensors
+        for vpn in coordinator.data.vpn_interfaces:
+            if not vpn.name:
+                continue
+            entities.append(
+                OpenWrtBinarySensorEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtBinarySensorDescription(
+                        key=f"vpn_{vpn.name}_up",
+                        name=f"VPN {vpn.name} Connected",
+                        translation_key="vpn_up",
+                        translation_placeholders={"interface": vpn.name},
+                        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        entity_registry_enabled_default=False,
+                        is_on_fn=lambda data, n=vpn.name: any(
+                            v.up for v in data.vpn_interfaces if v.name == n
+                        ),
+                    ),
+                )
+            )
+
     async_add_entities(entities)
 
 

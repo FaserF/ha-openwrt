@@ -76,9 +76,20 @@
           "track_devices": "Verbundene Geräte tracken (Device Tracker)",
           "track_wired": "Kabelgebundene Geräte in Tracking einschließen",
           "consider_home": "Sekunden bevor ein Gerät auf 'abwesend' gesetzt wird",
+          "dhcp_software": "DHCP-Software",
           "custom_firmware_repo": "Eigenes GitHub Firmware Repo (URL oder owner/repo)",
           "asu_url": "Attended Sysupgrade Server URL"
         }
+      }
+    }
+  },
+  "selector": {
+    "dhcp_software": {
+      "options": {
+        "auto": "Automatisch erkennen",
+        "dnsmasq": "dnsmasq (/tmp/dhcp.leases)",
+        "odhcpd": "odhcpd (ubus dhcp ipv4leases)",
+        "none": "Keine (deaktiviert)"
       }
     }
   },
@@ -230,6 +241,30 @@
       },
       "qmodem_nr5g_sinr": {
         "name": "5G NR SINR"
+      },
+      "dhcp_lease_count": {
+        "name": "DHCP Leases"
+      },
+      "wan_latency": {
+        "name": "WAN Latenz"
+      },
+      "vpn_rx": {
+        "name": "VPN RX"
+      },
+      "vpn_tx": {
+        "name": "VPN TX"
+      },
+      "vpn_peers": {
+        "name": "VPN Peers"
+      },
+      "net_ipv6": {
+        "name": "{interface} IPv6 Adresse"
+      },
+      "net_speed": {
+        "name": "{interface} Link-Geschwindigkeit"
+      },
+      "net_uptime": {
+        "name": "{interface} Betriebszeit"
       }
     },
     "binary_sensor": {
@@ -247,6 +282,9 @@
       },
       "wps_active": {
         "name": "WPS Aktiv"
+      },
+      "vpn_up": {
+        "name": "VPN {interface} verbunden"
       }
     },
     "button": {
@@ -276,6 +314,9 @@
       },
       "kick_device": {
         "name": "Gerät trennen"
+      },
+      "create_backup": {
+        "name": "Backup erstellen"
       }
     },
     "switch": {
@@ -287,6 +328,12 @@
       },
       "service_toggle": {
         "name": "Dienst"
+      },
+      "firewall_port_forward": {
+        "name": "Portweiterleitung"
+      },
+      "firewall_rule": {
+        "name": "Firewall-Regel"
       }
     },
     "update": {
@@ -300,6 +347,25 @@
     "light": {
       "led": {
         "name": "LED"
+      }
+    },
+    "event": {
+      "new_device": {
+        "name": "Neues Gerät",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "new_device_connected": "Neues Gerät verbunden",
+              "device_connected": "Gerät verbunden",
+              "device_disconnected": "Gerät getrennt"
+            }
+          }
+        }
+      }
+    },
+    "number": {
+      "wifi_txpower_control": {
+        "name": "Sendeleistung"
       }
     }
   },
@@ -389,6 +455,16 @@
         "value": {
           "name": "Wert",
           "description": "Der festzulegende Wert."
+        }
+      }
+    },
+    "create_backup": {
+      "name": "Backup erstellen",
+      "description": "Erstellt ein Konfigurations-Backup auf dem OpenWrt Router.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt Router."
         }
       }
     }
