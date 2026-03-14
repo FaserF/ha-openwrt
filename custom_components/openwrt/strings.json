@@ -18,7 +18,8 @@
           "use_ssl": "Use SSL/HTTPS",
           "verify_ssl": "Verify SSL Certificate",
           "port": "Port",
-          "ubus_path": "Ubus Path (e.g. /ubus)"
+          "ubus_path": "Ubus Path (e.g. /ubus)",
+          "dhcp_software": "DHCP Software"
         }
       },
       "ssh": {
@@ -28,7 +29,8 @@
           "username": "Username",
           "password": "Password",
           "ssh_key": "Private SSH Key (Optional, leaves password blank if used)",
-          "port": "Port"
+          "port": "Port",
+          "dhcp_software": "DHCP Software"
         }
       },
       "reauth_confirm": {
@@ -46,29 +48,56 @@
           "username": "Username",
           "password": "Password",
           "use_ssl": "Use SSL (HTTPS)",
-          "port": "Port (Optional)"
+          "port": "Port (Optional)",
+          "dhcp_software": "DHCP Software"
         }
       },
       "permissions": {
         "title": "Permissions Summary",
-        "description": "Based on the credentials provided, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed if this is expected."
+        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed if this is expected."
       },
       "permissions_ubus": {
         "title": "Permissions Summary",
-        "description": "Based on the credentials provided, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions) can be very restrictive, often blocking 'DHCP Leases' or 'System Temperature'. If features are missing or sensors show 0, try switching to **LuCI RPC** in the integration settings.\n\nYou can proceed if this is expected."
+        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions) can be very restrictive, often blocking 'DHCP Leases' or 'System Temperature'. If features are missing or sensors show 0, try switching to **LuCI RPC** in the integration settings.\n\nYou can proceed if this is expected."
       },
       "packages": {
         "title": "Packages Summary",
         "description": "The following optional packages were detected on your router. Some features may be limited if packages are missing:\n\n{packages_table}\n\nYou can proceed if this is expected."
+      },
+      "provision_user": {
+        "title": "Secure User Provisioning",
+        "description": "You are currently connecting as **root**. For better security, it is highly recommended to create a dedicated, least-privilege user for Home Assistant.\n\n{user_exists_info}\n\n[Security Best Practices]({security_link})",
+        "data": {
+            "mode": "How would you like to proceed?"
+        }
+      },
+      "reuse_user": {
+        "title": "Existing User Credentials",
+        "description": "Please enter the password for the existing **homeassistant** user on your router.",
+        "data": {
+            "password": "Password"
+        }
+      },
+      "display_new_user": {
+        "title": "User Created Successfully",
+        "description": "A new user has been created on your OpenWrt router:\n\n**Username:** {username}\n**Password:** {password}\n\n**IMPORTANT:** Please document/write down this password, as you will need it again if you set up the integration from scratch. If you choose to use this user, Home Assistant will switch to these credentials now.",
+        "data": {
+          "use_new_user": "Switch to new user now"
+        }
+      },
+      "provision_failed": {
+        "title": "Provisioning Failed",
+        "description": "The automatic user provisioning failed with the following error:\n\n`{error}`\n\nYou can still proceed with the current credentials, but we recommend checking your router settings."
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to the router. Check the IP/Host and ensure the selected service (ubus/LuCI/SSH) is running.",
-      "invalid_auth": "Invalid authentication credentials (Username, Password or SSH Key).",
+      "invalid_auth": "Invalid authentication credentials (Username, Password or SSH Key). Ensure the service (ubus/LuCI) is enabled and your user has sufficient ACL permissions.",
       "timeout": "Connection timed out. Check if the router is reachable and the port is correct.",
       "ssl_error": "SSL verification failed. If using self-signed certs, disable 'Verify SSL Certificate'.",
       "package_missing": "Required OpenWrt package is missing. For ubus: 'uhttpd-mod-ubus'. For LuCI: 'luci-mod-rpc'. Install via SSH: 'opkg update && opkg install package'.",
       "permission_error": "Insufficient RPC permissions. Check your user ACLs in /etc/config/rpcd or LuCI permissions.",
+      "provision_failed": "Failed to automatically create the dedicated user. Ensure you are connected as root and have enough free space on the router for 'rpcd' ACL files.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
@@ -95,11 +124,11 @@
       },
       "permissions": {
         "title": "Permissions Summary",
-        "description": "Based on your config, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed."
+        "description": "Based on your config for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed."
       },
       "permissions_ubus": {
         "title": "Permissions Summary",
-        "description": "Based on your config, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions) can be very restrictive, often blocking 'DHCP Leases' or 'System Temperature'. If features are missing or sensors show 0, try switching to **LuCI RPC** in the integration settings.\n\nYou can proceed."
+        "description": "Based on your config for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions) can be very restrictive, often blocking 'DHCP Leases' or 'System Temperature'. If features are missing or sensors show 0, try switching to **LuCI RPC** in the integration settings.\n\nYou can proceed."
       },
       "packages": {
         "title": "Packages Summary",
@@ -114,6 +143,14 @@
         "dnsmasq": "dnsmasq (/tmp/dhcp.leases)",
         "odhcpd": "odhcpd (ubus dhcp ipv4leases)",
         "none": "None (disabled)"
+      }
+    },
+    "provision_mode": {
+      "options": {
+        "create": "Create new 'homeassistant' user",
+        "reset": "Reset existing user (new password & permissions)",
+        "reuse": "Use existing 'homeassistant' user",
+        "skip": "Keep using root (not recommended)"
       }
     }
   },

@@ -13,6 +13,7 @@ import logging
 from typing import Any
 
 from .base import (
+    PROVISION_SCRIPT_TEMPLATE,
     AccessControl,
     ConnectedDevice,
     DeviceInfo,
@@ -119,6 +120,21 @@ class SshClient(OpenWrtClient):
                     )
 
             return ""
+    async def execute_command(self, command: str) -> str:
+        """Execute a command via SSH."""
+        return await self._exec(command)
+
+    async def provision_user(self, username: str, password: str) -> bool:
+        """Create a dedicated system user and configure RPC permissions via SSH."""
+        # Use the harmonized provisioning script from base
+        script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
+        try:
+            output = await self._exec(script)
+            _LOGGER.debug("Provisioning output: %s", output)
+            return "Provisioning SUCCESS" in output
+        except Exception as err:
+            _LOGGER.error("Failed to provision user %s via SSH: %s", username, err)
+            return False
 
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages."""
@@ -687,6 +703,7 @@ class SshClient(OpenWrtClient):
             _LOGGER.error("Failed to %s service %s: %s", action, name, err)
             return False
 
+
     async def reboot(self) -> bool:
         """Reboot the device."""
         try:
@@ -696,12 +713,6 @@ class SshClient(OpenWrtClient):
             _LOGGER.error("Failed to reboot: %s", err)
             return False
 
-    async def execute_command(self, command: str) -> str:
-        """Execute a command."""
-        try:
-            return await self._exec(command)
-        except Exception as err:  # noqa: BLE001
-            return f"Error: {err}"
 
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable/disable a wireless interface."""
@@ -714,6 +725,7 @@ class SshClient(OpenWrtClient):
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set wireless %s: %s", interface, err)
             return False
+
 
     async def get_leds(self) -> list:
         """Get LEDs from /sys/class/leds."""

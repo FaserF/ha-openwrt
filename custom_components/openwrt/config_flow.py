@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import socket
 from typing import Any
 from urllib.parse import urlparse
@@ -26,6 +27,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
@@ -160,10 +162,12 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize flow."""
         self._data: dict[str, Any] = {}
         self._device_info: dict[str, Any] = {}
-        self._discovered_host: str | None = None
         self._discovered_name: str | None = None
         self._permissions: Any = None
         self._packages: Any = None
+        self._homeassistant_user_exists: bool = False
+        self._provision_error: str | None = None
+        self._generated_password: str | None = None
 
     @staticmethod
     @callback
@@ -206,7 +210,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         """Return the schema for the user step."""
         return vol.Schema(
             {
-                vol.Required(CONF_HOST): str,
+                vol.Required(CONF_HOST, default="192.168.1.1"): str,
                 vol.Required(
                     CONF_CONNECTION_TYPE, default=CONNECTION_TYPE_LUCI_RPC
                 ): vol.In(CONNECTION_TYPE_MAP),
@@ -234,7 +238,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
+            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
                 continue
 
         return False
@@ -377,6 +381,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     },
                 )
 
+            if self._data.get(CONF_USERNAME) == "root":
+                return await self.async_step_provision_user()
             return await self.async_step_permissions()
 
         return self.async_show_form(
@@ -414,6 +420,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
+                if self._data.get(CONF_USERNAME) == "root":
+                    return await self.async_step_provision_user()
                 return await self.async_step_permissions()
 
         connection_type = self._data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_UBUS)
@@ -424,8 +432,12 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_PASSWORD): str,
             vol.Required(CONF_USE_SSL, default=DEFAULT_USE_SSL): bool,
             vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
-            vol.Optional(CONF_DHCP_SOFTWARE, default="auto"): vol.In(
-                ["auto", "dnsmasq", "odhcpd", "none"]
+            vol.Optional(CONF_DHCP_SOFTWARE, default="auto"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["auto", "dnsmasq", "odhcpd", "none"],
+                    translation_key="dhcp_software",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
             ),
             vol.Optional(CONF_PORT): int,
         }
@@ -461,6 +473,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
+                if self._data.get(CONF_USERNAME) == "root":
+                    return await self.async_step_provision_user()
                 return await self.async_step_permissions()
 
         schema = vol.Schema(
@@ -535,6 +549,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             async with asyncio.timeout(15):
                 await client.connect()
+                self._homeassistant_user_exists = False
+                if data.get(CONF_USERNAME) == "root":
+                    try:
+                        self._homeassistant_user_exists = await client.user_exists(
+                            "homeassistant"
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
                 device_info = await client.get_device_info()
                 self._device_info = {
                     "hostname": device_info.hostname,
@@ -580,8 +602,181 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             _LOGGER.warning("API error during connection test: %s", err)
             return "cannot_connect"
         except Exception as err:  # noqa: BLE001
-            _LOGGER.exception("Unexpected error during connection test: %s", err)
+            _LOGGER.exception("Unexpected error during connection test for %s: %s", data.get(CONF_USERNAME), err)
             return "unknown"
+
+    async def async_step_provision_user(
+        self, user_input: dict[str, Any] | None = None, errors: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
+        """Step to ask if user wants to provision a dedicated user."""
+        _LOGGER.info("Entering async_step_provision_user: input=%s, errors=%s", user_input, errors)
+        if user_input is not None:
+            mode = user_input.get("mode")
+            if mode == "create" or mode == "reset":
+                return await self.async_step_do_provision()
+            if mode == "reuse":
+                return await self.async_step_reuse_user()
+            return await self.async_step_permissions()
+
+        options = ["create", "skip"]
+        default_mode = "create"
+        user_exists_info = ""
+
+        if self._homeassistant_user_exists:
+            options = ["reuse", "reset", "skip"]
+            default_mode = "reuse"
+            user_exists_info = "An existing **homeassistant** user was detected on your router. You can either reuse it or reset it with a new password and freshly generated permissions."
+
+        return self.async_show_form(
+            step_id="provision_user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("mode", default=default_mode): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options,
+                            translation_key="provision_mode",
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+            errors=errors or {},
+            description_placeholders={
+                "security_link": "https://github.com/FaserF/ha-openwrt/blob/main/SECURITY.md",
+                "user_exists_info": user_exists_info,
+            },
+        )
+
+    async def async_step_reuse_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step to ask for existing user password."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            test_data = self._data.copy()
+            test_data[CONF_USERNAME] = "homeassistant"
+            test_data[CONF_PASSWORD] = user_input[CONF_PASSWORD]
+
+            error = await self._test_connection(test_data)
+            if not error:
+                self._data.update(test_data)
+                return await self.async_step_permissions()
+            errors["base"] = error
+
+        return self.async_show_form(
+            step_id="reuse_user",
+            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
+            errors=errors,
+        )
+
+    async def async_step_do_provision(self) -> ConfigFlowResult:
+        """Perform the actual provisioning."""
+        self._generated_password = secrets.token_hex(16)
+        client = create_client(self._data)
+        success = False
+        self._provision_error = None
+
+        try:
+            async with asyncio.timeout(45):
+                await client.connect()
+                # The provisioning script will restart services in background
+                # it's possible the connection drops exactly when/after sending SUCCESS
+                success = await client.provision_user("homeassistant", self._generated_password)
+                if not success:
+                    self._provision_error = "Provisioning script returned failure. Check router logs (logread)."
+                await client.disconnect()
+        except TimeoutError:
+            _LOGGER.warning("Provisioning timed out for %s. It might have succeeded if services are restarting.", self._data.get(CONF_HOST))
+            # We don't mark as success here, but if the script worked,
+            # the next step (testing new user) might still work
+            self._provision_error = "Timeout during provisioning. The router might be slow or restarting services."
+        except Exception as err:
+            err_msg = str(err).lower()
+            # If we get a connection drop, it's highly likely service restarts triggered it
+            if any(m in err_msg for m in ["connection reset", "broken pipe", "closed", "eof"]):
+                _LOGGER.info("Connection dropped during provisioning for %s - this is expected during service restarts.", self._data.get(CONF_HOST))
+                # We assume success if the command was at least sent and no explicit error returned
+                # The next step 'display_new_user' does a thorough re-connect test
+                success = True
+            else:
+                _LOGGER.error("Provisioning failed for %s: %s", self._data.get(CONF_HOST), err)
+                self._provision_error = str(err)
+
+        if success:
+            # Wait for rpcd to fully restart and apply ACLs
+            # We already changed the script to background restart with sleep,
+            # but we wait here too for a good first attempt in the next step
+            await asyncio.sleep(5)
+            return await self.async_step_display_new_user()
+
+        return self.async_show_form(
+            step_id="provision_failed",
+            errors={"base": "provision_failed"},
+            description_placeholders={"error": self._provision_error or "Unknown error"},
+        )
+
+    async def async_step_provision_failed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle provisioning failure (only skip available)."""
+        return await self.async_step_permissions()
+
+    async def async_step_display_new_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Display the new user credentials and ask to use them."""
+        if user_input is not None:
+            if user_input.get("use_new_user"):
+                self._data[CONF_USERNAME] = "homeassistant"
+                self._data[CONF_PASSWORD] = self._generated_password
+
+                # Wait for services to fully restart after provisioning
+                # Slower devices need more time for rpcd to come back up
+                # We wait 10s now initially as it's a critical phase
+                _LOGGER.info("Provisioning finished. Waiting 10s for router services to restart...")
+                await asyncio.sleep(10)
+
+                # Re-check permissions with new user with retries
+                new_user_success = False
+                for attempt in range(10):
+                    _LOGGER.info(
+                        "Testing connection with new user 'homeassistant' (attempt %s/10)",
+                        attempt + 1
+                    )
+                    # Use a fresh connection test to avoid session leakage
+                    error = await self._test_connection(self._data)
+                    if not error:
+                        _LOGGER.info("Connection with new user successful on attempt %s", attempt + 1)
+                        new_user_success = True
+                        break
+
+                    _LOGGER.warning(
+                        "Auth attempt %s failed for %s: %s. Router might still be restarting services. Waiting 5s...",
+                        attempt + 1, self._data.get(CONF_HOST), error
+                    )
+                    await asyncio.sleep(5)
+
+                if not new_user_success:
+                    _LOGGER.error(
+                        "Failed to connect with new user 'homeassistant' after 10 attempts at %s. "
+                        "Config might have applied but services didn't pick it up or user creation failed. "
+                        "Check your router logs for 'ha-openwrt' tags. Last error: %s",
+                        self._data.get(CONF_HOST),
+                        error
+                    )
+                    return await self.async_step_provision_user(
+                        errors={"base": error or "invalid_auth"}
+                    )
+            return await self.async_step_permissions()
+
+        return self.async_show_form(
+            step_id="display_new_user",
+            data_schema=vol.Schema({vol.Required("use_new_user", default=True): bool}),
+            description_placeholders={
+                "username": "homeassistant",
+                "password": self._generated_password or "",
+            },
+        )
 
     async def async_step_permissions(
         self, user_input: dict[str, Any] | None = None
@@ -606,7 +801,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id=step_id,
             data_schema=vol.Schema({}),
-            description_placeholders={"permissions_table": table},
+            description_placeholders={
+                "permissions_table": table,
+                "username": self._data.get(CONF_USERNAME, ""),
+            },
         )
 
     async def async_step_permissions_ubus(
@@ -694,7 +892,13 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_DHCP_SOFTWARE,
                     default=current.get(CONF_DHCP_SOFTWARE, "auto"),
-                ): vol.In(["auto", "dnsmasq", "odhcpd", "none"]),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=["auto", "dnsmasq", "odhcpd", "none"],
+                        translation_key="dhcp_software",
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
             }
         )
 
@@ -740,7 +944,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id=step_id,
             data_schema=vol.Schema({}),
-            description_placeholders={"permissions_table": table},
+            description_placeholders={
+                "permissions_table": table,
+                "username": self._config_entry.data.get(CONF_USERNAME, ""),
+            },
         )
 
     async def async_step_permissions_ubus(

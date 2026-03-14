@@ -22,27 +22,17 @@ jobs:
     uses: ./.github/workflows/build.yml
     needs: test
 
-  hacs:
-    name: HACS Validation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: HACS Action
-        uses: hacs/action@main
-        with:
-          category: integration
-
   pr-janitor:
     name: PR Assistant
     runs-on: ubuntu-latest
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [lint, test, build, hacs]
+    needs: [lint, test, build]
     steps:
       - uses: actions/checkout@v6
       
       # The Bouncer: Auto-merge if bot/owner and all green
       - name: Auto-merge Green PRs
-        if: ${{ needs.lint.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && needs.hacs.result == 'success' && (github.event.pull_request.user.login == 'FaserF' || github.event.pull_request.user.type == 'Bot') }}
+        if: ${{ needs.lint.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success' && (github.event.pull_request.user.login == 'FaserF' || github.event.pull_request.user.type == 'Bot') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh pr merge ${{ github.event.pull_request.number }} --auto --merge

@@ -112,9 +112,7 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
         )
 
 
-class OpenWrtQModemSensorEntity(
-    CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity
-):
+class OpenWrtQModemSensorEntity(OpenWrtSensorEntity):
     """Representation of an OpenWrt QModem sensor."""
 
     entity_description: OpenWrtSensorDescription
@@ -127,21 +125,20 @@ class OpenWrtQModemSensorEntity(
         description: OpenWrtSensorDescription,
     ) -> None:
         """Initialize the QModem sensor."""
-        super().__init__(coordinator)
-        self.entity_description = description
+        super().__init__(coordinator, entry, description)
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
 
         manufacturer = coordinator.data.qmodem_info.manufacturer or "Unknown"
         revision = coordinator.data.qmodem_info.revision
         model = f"QModem {revision}" if revision else "QModem Device"
 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, f"{entry.data[CONF_HOST]}_qmodem")},
-            "name": f"QModem ({entry.data[CONF_HOST]})",
-            "manufacturer": manufacturer,
-            "model": model,
-            "via_device": (DOMAIN, entry.data[CONF_HOST]),
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_qmodem")},
+            name=f"QModem ({entry.data[CONF_HOST]})",
+            manufacturer=manufacturer,
+            model=model,
+            via_device=(DOMAIN, str(entry.data[CONF_HOST])),
+        )
 
     @property
     def native_value(self) -> StateType:

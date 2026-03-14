@@ -151,3 +151,24 @@ async def test_ssh_set_sqm_config(ssh_client: SshClient):
         assert "uci set sqm.eth0.download='200000'" in calls
         assert "uci commit sqm" in calls
         assert "/etc/init.d/sqm reload" in calls
+
+
+@pytest.mark.asyncio
+async def test_ssh_provision_user(ssh_client: SshClient):
+    """Test user provisioning via SSH."""
+    ssh_client._connected = True
+    with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = "LOG: Provisioning SUCCESS"
+
+        success = await ssh_client.provision_user("homeassistant", "new-password")
+
+        assert success is True
+        script = mock_exec.call_args[0][0]
+        assert "USER=$(cat <<'EOF'\nhomeassistant\nEOF\n)" in script
+        assert "PASS=$(cat <<'EOF'\nnew-password\nEOF\n)" in script
+        assert 'uci set rpcd.homeassistant=login' in script
+        assert 'uci set rpcd.homeassistant.password="\\$p\\$$USER"' in script
+        assert 'uci add_list rpcd.homeassistant.read="homeassistant"' in script
+        assert 'chpasswd' in script
+        assert 'passwd' in script
+        assert '/etc/init.d/rpcd restart' in script

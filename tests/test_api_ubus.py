@@ -175,3 +175,21 @@ async def test_ubus_check_permissions_root(ubus_client: UbusClient):
     assert perms.read_network is True
     assert perms.read_wireless is True
     assert perms.write_firewall is True
+
+
+@pytest.mark.asyncio
+async def test_ubus_provision_user(ubus_client: UbusClient):
+    """Test user provisioning via ubus."""
+    ubus_client._session_id = "test_token"
+    with patch.object(ubus_client, "execute_command", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = "LOG: Provisioning SUCCESS"
+
+        success = await ubus_client.provision_user("homeassistant", "new-password")
+
+        assert success is True
+        script = mock_exec.call_args[0][0]
+        assert "USER=$(cat <<'EOF'\nhomeassistant\nEOF\n)" in script
+        assert "PASS=$(cat <<'EOF'\nnew-password\nEOF\n)" in script
+        assert 'uci set rpcd.homeassistant=login' in script
+        assert 'uci set rpcd.homeassistant.password="\\$p\\$$USER"' in script
+        assert '/etc/init.d/rpcd restart' in script

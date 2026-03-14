@@ -15,7 +15,18 @@ When integrating your OpenWrt router with Home Assistant, it is highly recommend
 When using the recommended Ubus connection, OpenWrt allows you to define strict **Access Control Lists (ACLs)** using the `rpcd` daemon.
 Instead of adding your `homeassistant` user to the `root` group, you should define a custom read/write ACL group that only allows access to the specific Ubus namespaces the integration needs.
 
-### Example: Creating a Restricted Ubus User
+### Automated Secure Provisioning (Recommended)
+The Home Assistant OpenWrt integration includes an **automated provisioning feature**. When you first connect as `root`, the integration will offer to automatically:
+1. Create a dedicated `homeassistant` system user.
+2. Generate a secure, unique password.
+3. Create the necessary ACL files at `/usr/share/rpcd/acl.d/homeassistant.json`.
+4. Configure UCI and RPC permissions.
+5. Restart the required services (`rpcd` and `uhttpd`) to apply the changes.
+
+This is the easiest and recommended way to secure your integration without manually editing configuration files via SSH.
+
+### Manual Alternative: Creating a Restricted Ubus User
+If you prefer to set up the permissions manually, follow these steps:
 
 1. **Create the user** on your OpenWrt router (you may need to install `shadow-useradd` first, or manually edit `/etc/passwd` and `/etc/shadow`):
    ```bash

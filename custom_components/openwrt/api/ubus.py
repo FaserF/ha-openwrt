@@ -14,6 +14,7 @@ from typing import Any
 import aiohttp
 
 from .base import (
+    PROVISION_SCRIPT_TEMPLATE,
     AccessControl,
     ConnectedDevice,
     DeviceInfo,
@@ -1478,18 +1479,28 @@ class UbusClient(OpenWrtClient):
                 return False
 
     async def execute_command(self, command: str) -> str:
-        """Execute a command via ubus (file.exec)."""
+        """Execute a command via ubus file.exec."""
         try:
-            result = await self._call(
-                "file", "exec", {"command": "/bin/sh", "params": ["-c", command]}
+            # Split command and params if needed, but ubus file.exec expects base command and params list
+            # For simplicity, we wrap in shell
+            res = await self._call(
+                "file", "exec", {"command": "sh", "params": ["-c", command]}
             )
-            return result.get("stdout", "")
-        except UbusPermissionError as err:
-            _LOGGER.debug("Command execution via ubus denied (permissions): %s", err)
-            raise
+            return res.get("stdout", "")
         except UbusError as err:
-            _LOGGER.error("Failed to execute command via ubus: %s", err)
-            raise
+            return f"Error: {err}"
+
+    async def provision_user(self, username: str, password: str) -> bool:
+        """Create a dedicated system user and configure RPC permissions via ubus."""
+        # Use the harmonized provisioning script from base
+        script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
+        try:
+            output = await self.execute_command(script)
+            _LOGGER.debug("Provisioning output: %s", output)
+            return "Provisioning SUCCESS" in output
+        except Exception as err:
+            _LOGGER.error("Failed to provision user %s via ubus: %s", username, err)
+            return False
 
     async def manage_interface(self, name: str, action: str) -> bool:
         """Manage a network interface (up/down/reconnect) via ubus."""

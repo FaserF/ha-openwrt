@@ -73,8 +73,7 @@ async def test_full_user_flow(hass) -> None:
     mock_packages.mwan3 = False
     mock_client.check_packages.return_value = mock_packages
 
-    # Credentials Step -> Permissions Step (via _create_entry)
-    # Patch BOTH the coordinator version AND the config_flow reference to be safe
+    # Credentials Step -> Provision User Step (when user is root)
     with (
         patch(
             "custom_components.openwrt.config_flow.create_client",
@@ -85,6 +84,7 @@ async def test_full_user_flow(hass) -> None:
             return_value=mock_client,
         ),
     ):
+        mock_client.user_exists.return_value = False
         result2 = await flow.async_step_credentials(
             {
                 "username": "root",
@@ -94,7 +94,12 @@ async def test_full_user_flow(hass) -> None:
         )
 
     assert str(result2["type"]).upper() == "FORM"
-    assert result2["step_id"] == "permissions_ubus"
+    assert result2["step_id"] == "provision_user"
+
+    # Provision User Step (Skip) -> Permissions Step
+    result_skip = await flow.async_step_provision_user({"mode": "skip"})
+    assert str(result_skip["type"]).upper() == "FORM"
+    assert result_skip["step_id"] == "permissions_ubus"
 
     # Permissions Step -> Packages Step
     result3 = await flow.async_step_permissions({})
@@ -138,7 +143,7 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
     mock_client.check_permissions.side_effect = Exception("Permission Error")
     mock_client.check_packages.side_effect = Exception("Package Error")
 
-    # Credentials Step - should skip permissions step entirely because permissions and packages are None
+    # Credentials Step - when root, should go to provision_user
     with (
         patch(
             "custom_components.openwrt.config_flow.create_client",
@@ -149,11 +154,19 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
             return_value=mock_client,
         ),
     ):
+        mock_client.user_exists.return_value = False
         result = await flow.async_step_credentials(
             {"username": "root", "password": "password", "use_ssl": False}
         )
 
-    assert result["data"]["host"] == "192.168.1.1"
+    assert result["step_id"] == "provision_user"
+
+    # Provision User Step (Skip) -> Should skip permissions because of errors and go to Packages or result
+    with patch("custom_components.openwrt.config_flow.asyncio.sleep"):
+        result2 = await flow.async_step_provision_user({"mode": "skip"})
+
+    assert str(result2["type"]).upper() == "CREATE_ENTRY"
+    assert result2["data"]["host"] == "192.168.1.1"
 
 
 async def test_config_flow_default_connection_type(hass) -> None:

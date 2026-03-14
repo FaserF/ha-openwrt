@@ -16,6 +16,7 @@ from typing import Any
 import aiohttp
 
 from .base import (
+    PROVISION_SCRIPT_TEMPLATE,
     ConnectedDevice,
     DeviceInfo,
     DhcpLease,
@@ -165,10 +166,25 @@ class LuciRpcClient(OpenWrtClient):
             self._connected = False
             raise LuciRpcError(f"Communication error: {err}") from err
 
-        if "error" in data and data["error"] is not None:
-            raise LuciRpcError(f"RPC error: {data['error']}")
-
         return data.get("result")
+    async def execute_command(self, command: str) -> str:
+        """Execute a command via LuCI RPC sys.exec."""
+        try:
+            return await self._rpc_call("sys", "exec", [command]) or ""
+        except LuciRpcError as err:
+            return f"Error: {err}"
+
+    async def provision_user(self, username: str, password: str) -> bool:
+        """Create a dedicated system user and configure RPC permissions via LuCI RPC."""
+        # Use the harmonized provisioning script from base
+        script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
+        try:
+            output = await self.execute_command(script)
+            _LOGGER.debug("Provisioning output: %s", output)
+            return "Provisioning SUCCESS" in output
+        except Exception as err:
+            _LOGGER.error("Failed to provision user %s via LuCI RPC: %s", username, err)
+            return False
 
     async def connect(self) -> bool:
         """Authenticate with LuCI."""
@@ -964,6 +980,7 @@ class LuciRpcClient(OpenWrtClient):
             _LOGGER.debug("Failed to get IP neighbors via LuCI RPC: %s", err)
         return neighbors
 
+
     async def reboot(self) -> bool:
         """Reboot the device via LuCI RPC."""
         try:
@@ -976,13 +993,7 @@ class LuciRpcClient(OpenWrtClient):
             except Exception:
                 return False
 
-    async def execute_command(self, command: str) -> str:
-        """Execute a command via LuCI RPC (sys.exec)."""
-        try:
-            return await self._rpc_call("sys", "exec", [command]) or ""
-        except LuciRpcError as err:
-            _LOGGER.error("Failed to execute command via LuCI RPC: %s", err)
-            raise
+
 
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable or disable a wireless radio via UCI."""

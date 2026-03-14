@@ -18,7 +18,8 @@
           "use_ssl": "SSL/HTTPS verwenden",
           "verify_ssl": "SSL-Zertifikat überprüfen",
           "port": "Port",
-          "ubus_path": "Ubus Pfad (z.B. /ubus)"
+          "ubus_path": "Ubus Pfad (z.B. /ubus)",
+          "dhcp_software": "DHCP-Software"
         }
       },
       "ssh": {
@@ -28,7 +29,8 @@
           "username": "Benutzername",
           "password": "Passwort",
           "ssh_key": "Privater SSH Schlüssel (Optional, lässt das Passwort leer, falls verwendet)",
-          "port": "Port"
+          "port": "Port",
+          "dhcp_software": "DHCP-Software"
         }
       },
       "reauth_confirm": {
@@ -46,20 +48,46 @@
           "username": "Benutzername",
           "password": "Passwort",
           "use_ssl": "SSL (HTTPS) nutzen",
-          "port": "Port (Optional)"
+          "port": "Port (Optional)",
+          "dhcp_software": "DHCP-Software"
         }
       },
       "permissions": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Anmeldedaten wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies erwartet wird."
+        "description": "Basierend auf den Anmeldedaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies erwartet wird."
       },
       "permissions_ubus": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Anmeldedaten wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen) sehr restriktiv sein und blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur'. Falls Funktionen fehlen oder Sensoren 0 anzeigen, versuche auf **LuCI RPC** in den Integrations-Einstellungen umzuschalten.\n\nDu kannst fortfahren, wenn dies erwartet wird."
+        "description": "Basierend auf den Anmeldedaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen) sehr restriktiv sein und blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur'. Falls Funktionen fehlen oder Sensoren 0 anzeigen, versuche auf **LuCI RPC** in den Integrations-Einstellungen umzuschalten.\n\nDu kannst fortfahren, wenn dies erwartet wird."
       },
       "packages": {
         "title": "Paketübersicht",
         "description": "Die folgenden optionalen Pakete wurden auf deinem Router erkannt. Einige Funktionen können eingeschränkt sein, wenn Pakete fehlen:\n\n{packages_table}\n\nDu kannst fortfahren, wenn dies erwartet wird."
+      },
+      "provision_user": {
+        "title": "Sichere Benutzer-Bereitstellung",
+        "description": "Du verbindest dich momentan als **root**. Für eine bessere Sicherheit wird dringend empfohlen, einen dedizierten Benutzer mit minimalen Rechten für Home Assistant zu erstellen.\n\n{user_exists_info}\n\n[Sicherheitsempfehlungen]({security_link})",
+        "data": {
+          "mode": "Wie möchtest du fortfahren?"
+        }
+      },
+      "reuse_user": {
+        "title": "Zugangsdaten für bestehenden Benutzer",
+        "description": "Bitte gib das Passwort für den bereits existierenden Benutzer **homeassistant** auf deinem Router ein.\n\nWenn du das Passwort nicht mehr weißt, kannst du im vorherigen Schritt 'Benutzer zurücksetzen' wählen.",
+        "data": {
+          "password": "Passwort"
+        }
+      },
+      "display_new_user": {
+        "title": "Benutzer erfolgreich erstellt",
+        "description": "Ein neuer Benutzer wurde auf deinem OpenWrt-Router erstellt:\n\n**Benutzername:** {username}\n**Passwort:** {password}\n\n**WICHTIG:** Bitte dokumentiere/notiere dir dieses Passwort, da es bei einer Integration Neueinrichtung erneut benötigt wird. Wenn du diesen Benutzer verwenden möchtest, wird Home Assistant jetzt zu diesen Anmeldedaten wechseln.",
+        "data": {
+          "use_new_user": "Jetzt zum neuen Benutzer wechseln"
+        }
+      },
+      "provision_failed": {
+        "title": "Bereitstellung fehlgeschlagen",
+        "description": "Die automatische Benutzer-Bereitstellung ist mit dem folgenden Fehler fehlgeschlagen:\n\n`{error}`\n\nDu kannst mit den aktuellen Anmeldedaten fortfahren, wir empfehlen jedoch, deine Router-Einstellungen zu überprüfen."
       }
     },
     "error": {
@@ -69,6 +97,7 @@
       "ssl_error": "SSL-Verifizierung fehlgeschlagen. Deaktiviere 'SSL-Zertifikat prüfen' bei selbstsignierten Zertifikaten.",
       "package_missing": "Erforderliches OpenWrt Paket fehlt. Für ubus: 'uhttpd-mod-ubus'. Für LuCI: 'luci-mod-rpc'. Installation via SSH: 'opkg update && opkg install <paket>'.",
       "permission_error": "Unzureichende RPC-Rechte. Prüfe die Benutzer-ACLs in /etc/config/rpcd oder LuCI Rechte.",
+      "provision_failed": "Automatische Erstellung des dedizierten Benutzers fehlgeschlagen. Bitte prüfe, ob dein Router die Benutzerverwaltung unterstützt, oder versuche, ihn manuell zu erstellen.",
       "unknown": "Ein unerwarteter Fehler ist aufgetreten."
     },
     "abort": {
@@ -95,11 +124,11 @@
       },
       "permissions": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf der Konfiguration wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren."
+        "description": "Basierend auf deiner Konfiguration für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren."
       },
       "permissions_ubus": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf der Konfiguration wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen) sehr restriktiv sein und blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur'. Falls Funktionen fehlen oder Sensoren 0 anzeigen, versuche auf **LuCI RPC** in den Integrations-Einstellungen umzuschalten.\n\nDu kannst fortfahren."
+        "description": "Basierend auf deiner Konfiguration für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen) sehr restriktiv sein und blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur'. Falls Funktionen fehlen oder Sensoren 0 anzeigen, versuche auf **LuCI RPC** in den Integrations-Einstellungen umzuschalten.\n\nDu kannst fortfahren."
       },
       "packages": {
         "title": "Paketübersicht",
@@ -114,6 +143,14 @@
         "dnsmasq": "dnsmasq (/tmp/dhcp.leases)",
         "odhcpd": "odhcpd (ubus dhcp ipv4leases)",
         "none": "Keine (deaktiviert)"
+      }
+    },
+    "provision_mode": {
+      "options": {
+        "create": "Neuen 'homeassistant' Benutzer erstellen",
+        "reset": "Bestehenden Benutzer zurücksetzen (neues Passwort & Berechtigungen)",
+        "reuse": "Bestehenden 'homeassistant' Benutzer verwenden",
+        "skip": "Weiterhin root verwenden (nicht empfohlen)"
       }
     }
   },

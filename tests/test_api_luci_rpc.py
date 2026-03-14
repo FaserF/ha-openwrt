@@ -126,3 +126,21 @@ async def test_luci_set_sqm_config(luci_client: LuciRpcClient):
         mock_call.assert_any_call("uci", "set", ["sqm", "eth0", "download", "200000"])
         # Check commit
         mock_call.assert_any_call("uci", "commit", ["sqm"])
+
+
+@pytest.mark.asyncio
+async def test_luci_provision_user(luci_client: LuciRpcClient):
+    """Test user provisioning via LuCI RPC."""
+    luci_client._auth_token = "luci_test_token"
+    with patch.object(luci_client, "execute_command", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = "LOG: Provisioning SUCCESS"
+
+        success = await luci_client.provision_user("homeassistant", "new-password")
+
+        assert success is True
+        script = mock_exec.call_args[0][0]
+        assert "USER=$(cat <<'EOF'\nhomeassistant\nEOF\n)" in script
+        assert "PASS=$(cat <<'EOF'\nnew-password\nEOF\n)" in script
+        assert 'uci set rpcd.homeassistant=login' in script
+        assert 'uci set rpcd.homeassistant.password="\\$p\\$$USER"' in script
+        assert '/etc/init.d/rpcd restart' in script

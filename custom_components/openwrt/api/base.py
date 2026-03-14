@@ -12,6 +12,146 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
+PROVISION_SCRIPT_TEMPLATE = """
+USER=$(cat <<'EOF'
+{username}
+EOF
+)
+PASS=$(cat <<'EOF'
+{password}
+EOF
+)
+ACL_FILE="/usr/share/rpcd/acl.d/homeassistant.json"
+
+# Log to router syslog
+logger -t ha-openwrt "Starting provisioning for user: $USER"
+
+# Ensure /bin/ash is in /etc/shells (required for some LuCI setups)
+if ! grep -q "^/bin/ash" /etc/shells; then
+    echo "/bin/ash" >> /etc/shells
+fi
+
+# Create user if it doesn't exist
+if ! id "$USER" >/dev/null 2>&1; then
+    logger -t ha-openwrt "Creating system user $USER with ash shell"
+    if command -v adduser >/dev/null 2>&1; then
+        adduser -D -s /bin/ash "$USER" >/dev/null 2>&1 || echo "LOG: FAIL: adduser"
+    elif command -v useradd >/dev/null 2>&1; then
+        useradd -m -s /bin/ash "$USER" >/dev/null 2>&1 || echo "LOG: FAIL: useradd"
+    else
+        mkdir -p "/home/$USER"
+        echo "$USER:x:1001:1001:HomeAssistant:/home/$USER:/bin/ash" >> /etc/passwd
+        echo "$USER:x:1001:" >> /etc/group
+    fi
+else
+    # Update existing user to have valid shell
+    logger -t ha-openwrt "Updating existing user $USER to use /bin/ash"
+    if command -v usermod >/dev/null 2>&1; then
+        usermod -s /bin/ash "$USER" >/dev/null 2>&1 || true
+    else
+        sed -i "s|^$USER:.*-s /bin/false|$USER:x:$(id -u $USER):$(id -g $USER):HomeAssistant:/home/$USER:/bin/ash|" /etc/passwd 2>/dev/null || true
+    fi
+    mkdir -p "/home/$USER"
+fi
+
+# IMPORTANT: Ensure shadow compatibility. Some OpenWrt builds don't sync this automatically.
+# 1. Force 'x' in passwd to trigger shadow usage
+sed -i "s|^$USER:[^:]*:|$USER:x:|" /etc/passwd
+# 2. Ensure entry exists in shadow
+grep -q "^$USER:" /etc/shadow || echo "$USER:*::0:99999:7:::" >> /etc/shadow
+
+# Set password using the most robust method for shadow synchronization
+logger -t ha-openwrt "Updating password for $USER"
+if ! ( (echo "$PASS"; sleep 1; echo "$PASS") | passwd "$USER" >/dev/null 2>&1 || printf "%s:%s\\n" "$USER" "$PASS" | chpasswd >/dev/null 2>&1 ); then
+    echo "LOG: FAIL: password"
+    exit 1
+fi
+
+# Create ACL file
+logger -t ha-openwrt "Creating ACL file $ACL_FILE"
+cat <<EOF > "$ACL_FILE"
+{{
+    "homeassistant": {{
+        "description": "Home Assistant Integration",
+        "read": {{
+            "ubus": {{
+                "system": ["*"],
+                "network": ["*"],
+                "network.interface": ["*"],
+                "network.device": ["*"],
+                "iwinfo": ["*"],
+                "file": ["*"],
+                "firewall": ["*"],
+                "service": ["*"],
+                "uci": ["*"],
+                "session": ["*"],
+                "hostapd.*": ["*"]
+            }},
+            "uci": ["*"]
+        }},
+        "write": {{
+            "ubus": {{
+                "system": ["reboot", "upgrade"],
+                "network.interface": ["up", "down", "reconnect"],
+                "network": ["*"],
+                "firewall": ["*"],
+                "service": ["*"],
+                "uci": ["*"],
+                "file": ["*"],
+                "hostapd.*": ["*"]
+            }},
+            "uci": ["*"]
+        }}
+    }}
+}}
+EOF
+
+chmod 644 "$ACL_FILE"
+
+# Thorough cleanup of existing RPC/LuCI sections for this user
+logger -t ha-openwrt "Cleaning up existing UCI RPC/LuCI sections for $USER"
+for s in $(uci show rpcd 2>/dev/null | grep "=login" | cut -d. -f2 | cut -d= -f1); do
+    [ "$(uci get rpcd.$s.username 2>/dev/null)" = "$USER" ] && uci delete rpcd.$s
+done
+for s in $(uci show luci 2>/dev/null | grep "=user" | cut -d. -f2 | cut -d= -f1); do
+    [ "$(uci get luci.$s.username 2>/dev/null)" = "$USER" ] && uci delete luci.$s
+done
+
+# Configure UCI authorization.
+# rpcd MUST use '$p$<user>' to delegate to system auth (passwd/shadow).
+logger -t ha-openwrt "Configuring UCI authorization for $USER"
+uci set luci.homeassistant=user
+uci set luci.homeassistant.username="$USER"
+uci set luci.homeassistant.password='*'
+uci add_list luci.homeassistant.write="homeassistant"
+uci add_list luci.homeassistant.read="homeassistant"
+
+uci set rpcd.homeassistant=login
+uci set rpcd.homeassistant.username="$USER"
+uci set rpcd.homeassistant.password="\\$p\\$$USER"
+uci add_list rpcd.homeassistant.read="homeassistant"
+uci add_list rpcd.homeassistant.write="homeassistant"
+
+uci commit luci
+uci commit rpcd
+
+echo "LOG: Provisioning SUCCESS"
+logger -t ha-openwrt "Provisioning completed successfully for $USER. Scheduling service restarts."
+
+# Background restart sequence
+(
+    sleep 3
+    /etc/init.d/rpcd restart
+    sleep 3
+    if ! pgrep rpcd >/dev/null; then
+        logger -t ha-openwrt "rpcd failed to restart, trying again..."
+        /etc/init.d/rpcd start
+    fi
+    /etc/init.d/uhttpd restart
+    logger -t ha-openwrt "Services restarted for ha-openwrt provisioning"
+) >/dev/null 2>&1 &
+"""
+
 
 @dataclass
 class DeviceInfo:
@@ -426,6 +566,19 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def check_packages(self) -> OpenWrtPackages:
         """Check installed packages."""
+        raise NotImplementedError
+
+    async def user_exists(self, username: str) -> bool:
+        """Check if a system user exists on the device."""
+        try:
+            output = await self.execute_command(f"id -u {username} 2>/dev/null")
+            return output.strip().isdigit()
+        except Exception:
+            return False
+
+    @abc.abstractmethod
+    async def provision_user(self, username: str, password: str) -> bool:
+        """Create a dedicated system user and configure RPC permissions."""
         raise NotImplementedError
 
     @abc.abstractmethod
