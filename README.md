@@ -7,6 +7,14 @@
 
 A secure, production-ready Home Assistant integration for OpenWrt devices. Monitor system resources, track connected devices, manage WiFi radios, execute commands, and natively update firmware directly from Home Assistant.
 
+## 🧭 Quick Links
+
+| | | | |
+| :--- | :--- | :--- | :--- |
+| [✨ Features](#-features) | [📦 Installation](#-installation) | [⚙️ Configuration](#️-configuration) | [🛡️ Security](SECURITY.md) |
+| [🛠️ Options](#️-options-flow) | [🧱 Services](#-services) | [📖 Automations](#-automation-examples) | [❓ FAQ](#-troubleshooting--faq) |
+| [🧑‍💻 Development](#-development) | [💖 Credits](#-credits--acknowledgements) | [📄 License](#-license) | |
+
 ### Why use this integration?
 While you can monitor routers via SNMP or ping trackers, this integration uses native OpenWrt APIs (Ubus/RPC) to provide deep, reliable integration without the overhead of polling generic network protocols. This means instant device tracking via modern ARP/NDP tables, full control over firewall rules and radios, and even the ability to compile firmware directly from your dashboard.
 
@@ -415,6 +423,9 @@ action:
       message: "The new public IP address is {{ trigger.to_state.state }}"
 ```
 </details>
+
+<details>
+<summary><strong>🚨 Notification on Network Errors (WAN)</strong></summary>
 
 ```yaml
 alias: "Router: Network Error Alert"
