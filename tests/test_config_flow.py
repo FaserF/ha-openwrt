@@ -1,6 +1,6 @@
 """Test the OpenWrt config flow."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -35,7 +35,7 @@ async def test_full_user_flow(hass) -> None:
 
     # User Step - Mock asyncio.open_connection to simulate reachable host
     mock_writer = AsyncMock()
-    mock_writer.close.return_value = None
+    mock_writer.close = MagicMock(return_value=None)
     mock_writer.wait_closed.return_value = None
 
     with patch("asyncio.open_connection", return_value=(AsyncMock(), mock_writer)):
@@ -123,7 +123,7 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
 
     # User Step
     mock_writer = AsyncMock()
-    mock_writer.close.return_value = None
+    mock_writer.close = MagicMock(return_value=None)
     mock_writer.wait_closed.return_value = None
 
     with patch("asyncio.open_connection", return_value=(AsyncMock(), mock_writer)):
