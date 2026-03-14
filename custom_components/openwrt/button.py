@@ -229,7 +229,6 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
     """Representation of an OpenWrt Wake on LAN button."""
 
     _attr_has_entity_name = True
-    _attr_icon = "mdi:desktop-classic"
     _attr_translation_key = "wake_on_lan"
 
     def __init__(
@@ -296,7 +295,6 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
     """Representation of an OpenWrt kick device button."""
 
     _attr_has_entity_name = True
-    _attr_icon = "mdi:account-cancel"
     _attr_translation_key = "kick_device"
 
     def __init__(

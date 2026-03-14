@@ -1,0 +1,54 @@
+{
+  "sensor": {
+    "public_ip": {
+      "default": "mdi:earth"
+    },
+    "qmodem_manufacturer": {
+      "default": "mdi:sim"
+    },
+    "qmodem_revision": {
+      "default": "mdi:sim"
+    },
+    "qmodem_connect_status": {
+      "default": "mdi:cellphone-wireless"
+    },
+    "qmodem_sim_status": {
+      "default": "mdi:sim"
+    },
+    "qmodem_isp": {
+      "default": "mdi:network-outline"
+    },
+    "qmodem_sim_slot": {
+      "default": "mdi:sim"
+    },
+    "qmodem_lte_rsrp": {
+      "default": "mdi:signal-cellular-3"
+    },
+    "qmodem_lte_rsrq": {
+      "default": "mdi:signal-cellular-3"
+    },
+    "qmodem_lte_rssi": {
+      "default": "mdi:signal-cellular-3"
+    },
+    "qmodem_lte_sinr": {
+      "default": "mdi:signal-cellular-3"
+    },
+    "qmodem_nr5g_rsrp": {
+      "default": "mdi:signal-5g"
+    },
+    "qmodem_nr5g_rsrq": {
+      "default": "mdi:signal-5g"
+    },
+    "qmodem_nr5g_sinr": {
+      "default": "mdi:signal-5g"
+    }
+  },
+  "button": {
+    "wake_on_lan": {
+      "default": "mdi:desktop-classic"
+    },
+    "kick_device": {
+      "default": "mdi:account-cancel"
+    }
+  }
+}

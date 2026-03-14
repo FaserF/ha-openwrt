@@ -4,9 +4,10 @@ reboot:
     entry_id:
       description: The config entry ID of the router to reboot.
       example: 1234567890abcdef1234567890abcdef
-      required: false
+      required: true
       selector:
-        text: {}
+        config_entry:
+          integration: openwrt
 
 execute_command:
   description: Executes a shell command on the OpenWrt router.
@@ -16,7 +17,8 @@ execute_command:
       example: 1234567890abcdef1234567890abcdef
       required: true
       selector:
-        text: {}
+        config_entry:
+          integration: openwrt
     command:
       description: The command to execute.
       example: "cat /proc/cpuinfo"
@@ -32,7 +34,8 @@ manage_service:
       example: 1234567890abcdef1234567890abcdef
       required: true
       selector:
-        text: {}
+        config_entry:
+          integration: openwrt
     service_name:
       description: The name of the service (e.g., dnsmasq).
       example: "dnsmasq"
