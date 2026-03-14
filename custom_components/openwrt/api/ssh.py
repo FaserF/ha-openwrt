@@ -120,6 +120,7 @@ class SshClient(OpenWrtClient):
                     )
 
             return ""
+
     async def execute_command(self, command: str) -> str:
         """Execute a command via SSH."""
         return await self._exec(command)
@@ -703,7 +704,6 @@ class SshClient(OpenWrtClient):
             _LOGGER.error("Failed to %s service %s: %s", action, name, err)
             return False
 
-
     async def reboot(self) -> bool:
         """Reboot the device."""
         try:
@@ -712,7 +712,6 @@ class SshClient(OpenWrtClient):
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to reboot: %s", err)
             return False
-
 
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable/disable a wireless interface."""
@@ -725,7 +724,6 @@ class SshClient(OpenWrtClient):
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set wireless %s: %s", interface, err)
             return False
-
 
     async def get_leds(self) -> list:
         """Get LEDs from /sys/class/leds."""

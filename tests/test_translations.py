@@ -134,7 +134,17 @@ def test_config_keys_in_strings():
         if var in const_map:
             value = const_map[var]
             # Exclude known internals or basic ones that are sometimes omitted or handled differently
-            if value in ["host", "connection_type", "username", "password", "port", "use_ssl", "verify_ssl", "ubus_path", "ssh_key"]:
+            if value in [
+                "host",
+                "connection_type",
+                "username",
+                "password",
+                "port",
+                "use_ssl",
+                "verify_ssl",
+                "ubus_path",
+                "ssh_key",
+            ]:
                 continue
 
             # If the value is used in code, it SHOULD be in a .data block somewhere
@@ -162,27 +172,43 @@ def test_steps_and_errors_translated():
 
     # 1. Check step_id="..."
     found_steps = set(re.findall(r'step_id=["\']([^"\']+)["\']', content))
-    translated_steps = set(config_data.get("step", {}).keys()) | set(options_data.get("step", {}).keys())
+    translated_steps = set(config_data.get("step", {}).keys()) | set(
+        options_data.get("step", {}).keys()
+    )
 
     missing_steps = found_steps - translated_steps
-    assert not missing_steps, f"Steps used in code but missing in strings.json: {sorted(missing_steps)}"
+    assert not missing_steps, (
+        f"Steps used in code but missing in strings.json: {sorted(missing_steps)}"
+    )
 
     # 2. Check errors={"base": "...", ...} or errors={"field": "..."}
-    errors_sec = re.findall(r'errors\s*=\s*\{([^}]+)\}', content)
+    errors_sec = re.findall(r"errors\s*=\s*\{([^}]+)\}", content)
     found_error_keys = set()
     for sec in errors_sec:
         found_error_keys.update(re.findall(r':\s*["\']([^"\']+)["\']', sec))
 
-    translated_errors = set(config_data.get("error", {}).keys()) | set(options_data.get("error", {}).keys())
+    translated_errors = set(config_data.get("error", {}).keys()) | set(
+        options_data.get("error", {}).keys()
+    )
     missing_errors = found_error_keys - translated_errors - found_steps
 
     # Static exclusion for known dynamic or placeholder keys
-    missing_errors = {e for e in missing_errors if not e.startswith("{") and e not in ["base"]}
+    missing_errors = {
+        e for e in missing_errors if not e.startswith("{") and e not in ["base"]
+    }
 
-    assert not missing_errors, f"Error keys used in code but missing in strings.json: {sorted(missing_errors)}"
+    assert not missing_errors, (
+        f"Error keys used in code but missing in strings.json: {sorted(missing_errors)}"
+    )
 
     # 3. Check async_abort(reason="...")
-    found_abort_reasons = set(re.findall(r'async_abort\(reason=["\']([^"\']+)["\']', content))
-    translated_aborts = set(config_data.get("abort", {}).keys()) | set(options_data.get("abort", {}).keys())
+    found_abort_reasons = set(
+        re.findall(r'async_abort\(reason=["\']([^"\']+)["\']', content)
+    )
+    translated_aborts = set(config_data.get("abort", {}).keys()) | set(
+        options_data.get("abort", {}).keys()
+    )
     missing_aborts = found_abort_reasons - translated_aborts
-    assert not missing_aborts, f"Abort reasons used in code but missing in strings.json: {sorted(missing_aborts)}"
+    assert not missing_aborts, (
+        f"Abort reasons used in code but missing in strings.json: {sorted(missing_aborts)}"
+    )

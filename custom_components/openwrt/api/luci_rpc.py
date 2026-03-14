@@ -167,6 +167,7 @@ class LuciRpcClient(OpenWrtClient):
             raise LuciRpcError(f"Communication error: {err}") from err
 
         return data.get("result")
+
     async def execute_command(self, command: str) -> str:
         """Execute a command via LuCI RPC sys.exec."""
         try:
@@ -980,7 +981,6 @@ class LuciRpcClient(OpenWrtClient):
             _LOGGER.debug("Failed to get IP neighbors via LuCI RPC: %s", err)
         return neighbors
 
-
     async def reboot(self) -> bool:
         """Reboot the device via LuCI RPC."""
         try:
@@ -992,8 +992,6 @@ class LuciRpcClient(OpenWrtClient):
                 return True
             except Exception:
                 return False
-
-
 
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable or disable a wireless radio via UCI."""

@@ -238,7 +238,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
+            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
                 continue
 
         return False
@@ -602,14 +602,24 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             _LOGGER.warning("API error during connection test: %s", err)
             return "cannot_connect"
         except Exception as err:  # noqa: BLE001
-            _LOGGER.exception("Unexpected error during connection test for %s: %s", data.get(CONF_USERNAME), err)
+            _LOGGER.exception(
+                "Unexpected error during connection test for %s: %s",
+                data.get(CONF_USERNAME),
+                err,
+            )
             return "unknown"
 
     async def async_step_provision_user(
-        self, user_input: dict[str, Any] | None = None, errors: dict[str, str] | None = None
+        self,
+        user_input: dict[str, Any] | None = None,
+        errors: dict[str, str] | None = None,
     ) -> ConfigFlowResult:
         """Step to ask if user wants to provision a dedicated user."""
-        _LOGGER.info("Entering async_step_provision_user: input=%s, errors=%s", user_input, errors)
+        _LOGGER.info(
+            "Entering async_step_provision_user: input=%s, errors=%s",
+            user_input,
+            errors,
+        )
         if user_input is not None:
             mode = user_input.get("mode")
             if mode == "create" or mode == "reset":
@@ -681,25 +691,38 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 await client.connect()
                 # The provisioning script will restart services in background
                 # it's possible the connection drops exactly when/after sending SUCCESS
-                success = await client.provision_user("homeassistant", self._generated_password)
+                success = await client.provision_user(
+                    "homeassistant", self._generated_password
+                )
                 if not success:
                     self._provision_error = "Provisioning script returned failure. Check router logs (logread)."
                 await client.disconnect()
         except TimeoutError:
-            _LOGGER.warning("Provisioning timed out for %s. It might have succeeded if services are restarting.", self._data.get(CONF_HOST))
+            _LOGGER.warning(
+                "Provisioning timed out for %s. It might have succeeded if services are restarting.",
+                self._data.get(CONF_HOST),
+            )
             # We don't mark as success here, but if the script worked,
             # the next step (testing new user) might still work
             self._provision_error = "Timeout during provisioning. The router might be slow or restarting services."
         except Exception as err:
             err_msg = str(err).lower()
             # If we get a connection drop, it's highly likely service restarts triggered it
-            if any(m in err_msg for m in ["connection reset", "broken pipe", "closed", "eof"]):
-                _LOGGER.info("Connection dropped during provisioning for %s - this is expected during service restarts.", self._data.get(CONF_HOST))
+            if any(
+                m in err_msg
+                for m in ["connection reset", "broken pipe", "closed", "eof"]
+            ):
+                _LOGGER.info(
+                    "Connection dropped during provisioning for %s - this is expected during service restarts.",
+                    self._data.get(CONF_HOST),
+                )
                 # We assume success if the command was at least sent and no explicit error returned
                 # The next step 'display_new_user' does a thorough re-connect test
                 success = True
             else:
-                _LOGGER.error("Provisioning failed for %s: %s", self._data.get(CONF_HOST), err)
+                _LOGGER.error(
+                    "Provisioning failed for %s: %s", self._data.get(CONF_HOST), err
+                )
                 self._provision_error = str(err)
 
         if success:
@@ -712,7 +735,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="provision_failed",
             errors={"base": "provision_failed"},
-            description_placeholders={"error": self._provision_error or "Unknown error"},
+            description_placeholders={
+                "error": self._provision_error or "Unknown error"
+            },
         )
 
     async def async_step_provision_failed(
@@ -733,7 +758,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 # Wait for services to fully restart after provisioning
                 # Slower devices need more time for rpcd to come back up
                 # We wait 10s now initially as it's a critical phase
-                _LOGGER.info("Provisioning finished. Waiting 10s for router services to restart...")
+                _LOGGER.info(
+                    "Provisioning finished. Waiting 10s for router services to restart..."
+                )
                 await asyncio.sleep(10)
 
                 # Re-check permissions with new user with retries
@@ -741,18 +768,23 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 for attempt in range(10):
                     _LOGGER.info(
                         "Testing connection with new user 'homeassistant' (attempt %s/10)",
-                        attempt + 1
+                        attempt + 1,
                     )
                     # Use a fresh connection test to avoid session leakage
                     error = await self._test_connection(self._data)
                     if not error:
-                        _LOGGER.info("Connection with new user successful on attempt %s", attempt + 1)
+                        _LOGGER.info(
+                            "Connection with new user successful on attempt %s",
+                            attempt + 1,
+                        )
                         new_user_success = True
                         break
 
                     _LOGGER.warning(
                         "Auth attempt %s failed for %s: %s. Router might still be restarting services. Waiting 5s...",
-                        attempt + 1, self._data.get(CONF_HOST), error
+                        attempt + 1,
+                        self._data.get(CONF_HOST),
+                        error,
                     )
                     await asyncio.sleep(5)
 
@@ -762,7 +794,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                         "Config might have applied but services didn't pick it up or user creation failed. "
                         "Check your router logs for 'ha-openwrt' tags. Last error: %s",
                         self._data.get(CONF_HOST),
-                        error
+                        error,
                     )
                     return await self.async_step_provision_user(
                         errors={"base": error or "invalid_auth"}
