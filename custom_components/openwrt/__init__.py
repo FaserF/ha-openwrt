@@ -30,8 +30,7 @@ from homeassistant.exceptions import (
     ConfigEntryNotReady,
     HomeAssistantError,
 )
-from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 
 from .api.luci_rpc import LuciRpcAuthError, LuciRpcError
 from .api.ssh import SshAuthError, SshError
@@ -50,7 +49,9 @@ from .const import (
     SERVICE_UCI_SET,
     SERVICE_WOL,
 )
-from .coordinator import OpenWrtDataCoordinator, create_client
+from .coordinator import OpenWrtDataCoordinator
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _LOGGER = logging.getLogger(__name__)
 
