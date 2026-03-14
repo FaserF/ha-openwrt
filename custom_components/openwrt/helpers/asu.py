@@ -13,6 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_ASU_URL = "https://sysupgrade.openwrt.org"
 
+
 class AsuClientError(Exception):
     """Base exception for ASU client errors."""
 
@@ -130,7 +131,9 @@ class AsuClient:
                     _LOGGER.info("ASU build complete. Image URL: %s", url)
                     return url
 
-                raise AsuClientError(f"Build marked as Done, but missing image info: {resp}")
+                raise AsuClientError(
+                    f"Build marked as Done, but missing image info: {resp}"
+                )
 
             if "error" in status or resp.get("status") in (400, 500):
                 raise AsuClientError(f"ASU build failed: {status}")

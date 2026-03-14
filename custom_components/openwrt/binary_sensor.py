@@ -101,7 +101,9 @@ async def async_setup_entry(
                                 key=f"interface_{iface.name}_up",
                                 name=f"{iface.name.upper()} Connected",
                                 translation_key="interface_up",
-                                translation_placeholders={"interface": iface.name.upper()},
+                                translation_placeholders={
+                                    "interface": iface.name.upper()
+                                },
                                 device_class=BinarySensorDeviceClass.CONNECTIVITY,
                                 is_on_fn=lambda data, n=iface.name: any(
                                     i.up for i in data.network_interfaces if i.name == n

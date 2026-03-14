@@ -20,12 +20,14 @@ def mock_submodule(name):
             mock = MagicMock()
             sys.modules[full_name] = mock
             if i > 1:
-                parent_name = ".".join(parts[:i-1])
-                setattr(sys.modules[parent_name], parts[i-1], mock)
+                parent_name = ".".join(parts[: i - 1])
+                setattr(sys.modules[parent_name], parts[i - 1], mock)
+
 
 @dataclass(frozen=True, kw_only=True)
 class MockEntityDescription:
     """Base class for mocked entity descriptions."""
+
     key: str
     name: str | None = None
     icon: str | None = None
@@ -41,34 +43,45 @@ class MockEntityDescription:
     is_on_fn: Any | None = None
     available_fn: Any | None = None
 
+
 class MockEntity:
     """Base class for mocked entities."""
+
     _attr_has_entity_name: bool = False
     _attr_unique_id: str | None = None
     _attr_name: str | None = None
     _attr_device_info: Any | None = None
     _attr_extra_state_attributes: dict[str, Any] | None = None
+
     @property
     def unique_id(self) -> str | None:
         return self._attr_unique_id
+
     @property
     def name(self) -> str | None:
         return self._attr_name
+
     def __init__(self, *args, **kwargs):
         pass
+
     def async_write_ha_state(self):
         pass
+
     async def async_update_ha_state(self, force_refresh=False):
         pass
 
+
 class MockCoordinatorEntity(MockEntity):
     """Base class for mocked coordinator entities."""
+
     def __init__(self, coordinator, *args, **kwargs):
         self.coordinator = coordinator
         super().__init__(*args, **kwargs)
+
     @classmethod
     def __class_getitem__(cls, _):
         return cls
+
 
 # Helper to ensure we return classes when accessed from MagicMock
 def create_mock_class(base_class):
@@ -76,15 +89,28 @@ def create_mock_class(base_class):
     mock.__iter__ = None  # Prevent being treated as iterable
     return mock
 
+
 # Pre-populate sys.modules with proper classes BEFORE any imports
-platforms = ["sensor", "binary_sensor", "switch", "button", "light", "update", "device_tracker", "event", "number"]
+platforms = [
+    "sensor",
+    "binary_sensor",
+    "switch",
+    "button",
+    "light",
+    "update",
+    "device_tracker",
+    "event",
+    "number",
+]
 for platform in platforms:
     module_name = f"homeassistant.components.{platform}"
     mock_module = MagicMock()
 
     # Generic Entity and Description classes for the platform
     ent_class_name = "".join([n.capitalize() for n in platform.split("_")]) + "Entity"
-    desc_class_name = "".join([n.capitalize() for n in platform.split("_")]) + "EntityDescription"
+    desc_class_name = (
+        "".join([n.capitalize() for n in platform.split("_")]) + "EntityDescription"
+    )
     setattr(mock_module, ent_class_name, MockEntity)
     setattr(mock_module, desc_class_name, MockEntityDescription)
 
@@ -104,6 +130,8 @@ sys.modules["homeassistant.helpers"] = MagicMock()
 sys.modules["homeassistant.helpers.entity"] = MagicMock()
 sys.modules["homeassistant.helpers.entity"].EntityDescription = MockEntityDescription
 sys.modules["homeassistant.helpers.entity"].Entity = MockEntity
+
+
 class MockDataUpdateCoordinator:
     def __init__(self, *args, **kwargs):
         self.data = None
@@ -117,32 +145,59 @@ class MockDataUpdateCoordinator:
     def __class_getitem__(cls, _):
         return cls
 
+
 sys.modules["homeassistant.helpers.update_coordinator"] = MagicMock()
-sys.modules["homeassistant.helpers.update_coordinator"].CoordinatorEntity = MockCoordinatorEntity
-sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = MockDataUpdateCoordinator
+sys.modules[
+    "homeassistant.helpers.update_coordinator"
+].CoordinatorEntity = MockCoordinatorEntity
+sys.modules[
+    "homeassistant.helpers.update_coordinator"
+].DataUpdateCoordinator = MockDataUpdateCoordinator
+
 
 class MockConfigFlow:
     """Mock ConfigFlow."""
+
     VERSION = 1
+
     def __init__(self, *args, **kwargs):
         self.hass = None
         self.context = {}
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
+
     async def async_set_unique_id(self, unique_id, *, raise_on_progress=True):
         return None
+
     def _abort_if_unique_id_configured(self, *args, **kwargs):
         pass
+
     def async_show_form(self, *args, **kwargs):
-        return {"type": "FORM", "step_id": kwargs.get("step_id")}
+        return {
+            "type": "FORM",
+            "step_id": kwargs.get("step_id"),
+            "data_schema": kwargs.get("data_schema"),
+            "errors": kwargs.get("errors"),
+            "description_placeholders": kwargs.get("description_placeholders"),
+        }
+
     def async_create_entry(self, *args, **kwargs):
-        return {"type": "CREATE_ENTRY", "title": kwargs.get("title"), "data": kwargs.get("data")}
+        return {
+            "type": "CREATE_ENTRY",
+            "title": kwargs.get("title"),
+            "data": kwargs.get("data"),
+        }
+
     def async_abort(self, *args, **kwargs):
         return {"type": "ABORT", "reason": kwargs.get("reason")}
 
+
 class MockOptionsFlow(MockConfigFlow):
     """Mock OptionsFlow."""
+
     pass
+
 
 sys.modules["homeassistant.config_entries"] = MagicMock()
 sys.modules["homeassistant.config_entries"].ConfigFlow = MockConfigFlow
@@ -177,6 +232,7 @@ ha_mocks = [
 for mock_name in ha_mocks:
     mock_submodule(mock_name)
 
+
 # Define specific exceptions
 class MockException(Exception):
     pass
@@ -185,22 +241,37 @@ class MockException(Exception):
 class UpdateFailed(MockException):
     pass
 
+
 sys.modules["homeassistant.exceptions"].ConfigEntryAuthFailed = MockException
 sys.modules["homeassistant.exceptions"].ConfigEntryNotReady = MockException
 sys.modules["homeassistant.exceptions"].HomeAssistantError = MockException
 sys.modules["homeassistant.helpers.update_coordinator"].UpdateFailed = UpdateFailed
 
+
 # Constants and Enums
 class MockEnum(str):
-    def __getattr__(self, name): return name
+    def __getattr__(self, name):
+        return name
+
 
 sys.modules["homeassistant.const"].UnitOfTime = MockEnum("UnitOfTime")
 sys.modules["homeassistant.const"].PERCENTAGE = "%"
-sys.modules["homeassistant.components.sensor"].SensorStateClass = MockEnum("SensorStateClass")
-sys.modules["homeassistant.components.sensor"].SensorDeviceClass = MockEnum("SensorDeviceClass")
-sys.modules["homeassistant.components.binary_sensor"].BinarySensorDeviceClass = MockEnum("BinarySensorDeviceClass")
-sys.modules["homeassistant.components.update"].UpdateDeviceClass = MockEnum("UpdateDeviceClass")
-sys.modules["homeassistant.components.update"].UpdateEntityFeature = MockEnum("UpdateEntityFeature")
+sys.modules["homeassistant.components.sensor"].SensorStateClass = MockEnum(
+    "SensorStateClass"
+)
+sys.modules["homeassistant.components.sensor"].SensorDeviceClass = MockEnum(
+    "SensorDeviceClass"
+)
+sys.modules[
+    "homeassistant.components.binary_sensor"
+].BinarySensorDeviceClass = MockEnum("BinarySensorDeviceClass")
+sys.modules["homeassistant.components.update"].UpdateDeviceClass = MockEnum(
+    "UpdateDeviceClass"
+)
+sys.modules["homeassistant.components.update"].UpdateEntityFeature = MockEnum(
+    "UpdateEntityFeature"
+)
+
 
 @pytest.fixture
 def mock_setup_entry() -> Generator[AsyncMock]:
@@ -209,6 +280,7 @@ def mock_setup_entry() -> Generator[AsyncMock]:
         "custom_components.openwrt.async_setup_entry", return_value=True
     ) as mock_setup_entry:
         yield mock_setup_entry
+
 
 @pytest.fixture
 def mock_ubus_client() -> Generator[AsyncMock]:

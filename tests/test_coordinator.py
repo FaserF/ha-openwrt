@@ -17,7 +17,11 @@ async def test_coordinator_stale_data_on_timeout() -> None:
     hass = MagicMock()
     config_entry = MagicMock()
     config_entry.options = {}
-    config_entry.data = {"host": "192.168.1.1", "username": "root", "password": "password"}
+    config_entry.data = {
+        "host": "192.168.1.1",
+        "username": "root",
+        "password": "password",
+    }
     config_entry.entry_id = "test_entry"
 
     mock_client = AsyncMock()
@@ -57,7 +61,11 @@ async def test_coordinator_update_failed_on_new_install() -> None:
     hass = MagicMock()
     config_entry = MagicMock()
     config_entry.options = {}
-    config_entry.data = {"host": "192.168.1.1", "username": "root", "password": "password"}
+    config_entry.data = {
+        "host": "192.168.1.1",
+        "username": "root",
+        "password": "password",
+    }
     config_entry.entry_id = "test_entry"
 
     mock_client = AsyncMock()

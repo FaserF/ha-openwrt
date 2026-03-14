@@ -21,7 +21,9 @@ from custom_components.openwrt.api.base import (
 def _make_data(**kwargs) -> OpenWrtData:
     """Create a default OpenWrtData with overrides."""
     defaults = {
-        "system_resources": SystemResources(uptime=120, memory_total=1000, memory_used=500, load_1min=0.1),
+        "system_resources": SystemResources(
+            uptime=120, memory_total=1000, memory_used=500, load_1min=0.1
+        ),
         "connected_devices": [],
         "network_interfaces": [],
         "wireless_interfaces": [],
@@ -47,6 +49,7 @@ def _make_entry() -> MagicMock:
 
 
 # ----- VPN Data Model Tests -----
+
 
 class TestVpnInterface:
     """Test VPN interface data model."""
@@ -89,6 +92,7 @@ class TestVpnInterface:
 
 # ----- Latency Data Model Tests -----
 
+
 class TestLatencyResult:
     """Test latency result data model."""
 
@@ -123,6 +127,7 @@ class TestLatencyResult:
 
 
 # ----- OpenWrtData Tests (new fields) -----
+
 
 class TestOpenWrtDataNewFields:
     """Test that OpenWrtData has the new fields."""
@@ -159,6 +164,7 @@ class TestOpenWrtDataNewFields:
 
 
 # ----- Quick Win Tests -----
+
 
 class TestQuickWinSensors:
     """Test that quick-win sensors expose already-collected data."""
@@ -215,6 +221,7 @@ class TestQuickWinSensors:
 
 # ----- DHCP Lease Tests -----
 
+
 class TestDhcpLeaseCount:
     """Test DHCP lease count sensor data availability."""
 
@@ -224,13 +231,16 @@ class TestDhcpLeaseCount:
             dhcp_leases=[
                 DhcpLease(hostname="pc1", mac="AA:BB:CC:DD:EE:01", ip="192.168.1.10"),
                 DhcpLease(hostname="phone", mac="AA:BB:CC:DD:EE:02", ip="192.168.1.11"),
-                DhcpLease(hostname="laptop", mac="AA:BB:CC:DD:EE:03", ip="192.168.1.12"),
+                DhcpLease(
+                    hostname="laptop", mac="AA:BB:CC:DD:EE:03", ip="192.168.1.12"
+                ),
             ]
         )
         assert len(data.dhcp_leases) == 3
 
 
 # ----- Backup API Tests -----
+
 
 class TestBackupApi:
     """Test backup API method exists."""
@@ -239,10 +249,12 @@ class TestBackupApi:
     async def test_create_backup_method_exists(self) -> None:
         """Test that create_backup method exists on OpenWrtClient."""
         from custom_components.openwrt.api.base import OpenWrtClient
+
         assert hasattr(OpenWrtClient, "create_backup")
 
 
 # ----- VPN API Tests -----
+
 
 class TestVpnApi:
     """Test VPN API methods."""
@@ -251,16 +263,19 @@ class TestVpnApi:
     async def test_get_vpn_status_method_exists(self) -> None:
         """Test that get_vpn_status method exists."""
         from custom_components.openwrt.api.base import OpenWrtClient
+
         assert hasattr(OpenWrtClient, "get_vpn_status")
 
     @pytest.mark.asyncio
     async def test_get_latency_method_exists(self) -> None:
         """Test that get_latency method exists."""
         from custom_components.openwrt.api.base import OpenWrtClient
+
         assert hasattr(OpenWrtClient, "get_latency")
 
 
 # ----- Event Platform Tests -----
+
 
 class TestEventPlatform:
     """Test event platform."""
@@ -272,6 +287,7 @@ class TestEventPlatform:
 
 # ----- Number Platform Tests -----
 
+
 class TestNumberPlatform:
     """Test number platform."""
 
@@ -282,26 +298,31 @@ class TestNumberPlatform:
 
 # ----- Const Tests -----
 
+
 class TestConstUpdates:
     """Test constant updates."""
 
     def test_platforms_include_event(self) -> None:
         """Test that PLATFORMS includes event."""
         from custom_components.openwrt.const import PLATFORMS
+
         assert "event" in PLATFORMS
 
     def test_platforms_include_number(self) -> None:
         """Test that PLATFORMS includes number."""
         from custom_components.openwrt.const import PLATFORMS
+
         assert "number" in PLATFORMS
 
     def test_backup_service_constant(self) -> None:
         """Test that SERVICE_BACKUP constant exists."""
         from custom_components.openwrt.const import SERVICE_BACKUP
+
         assert SERVICE_BACKUP == "create_backup"
 
 
 # ----- Coordinator Syntax Fix Test -----
+
 
 class TestCoordinatorSyntaxFix:
     """Test coordinator syntax fix."""

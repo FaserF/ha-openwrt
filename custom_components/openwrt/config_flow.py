@@ -96,6 +96,7 @@ CONNECTION_TYPE_MAP = {
 
 def _generate_permission_table(perms: Any) -> str:
     """Generate markdown table for permissions."""
+
     def to_icon(val: bool) -> str:
         return "✅" if val else "❌"
 
@@ -126,6 +127,7 @@ def _generate_permission_table(perms: Any) -> str:
 
 def _generate_package_table(packages: Any) -> str:
     """Generate markdown table for installed packages."""
+
     def to_icon(val: bool | None) -> str:
         if val is None:
             return "❓"
@@ -232,12 +234,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
+            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
                 continue
 
         return False
 
-    async def async_step_ssdp(self, discovery_info: SsdpServiceInfo) -> ConfigFlowResult:
+    async def async_step_ssdp(
+        self, discovery_info: SsdpServiceInfo
+    ) -> ConfigFlowResult:
         """Handle SSDP auto-discovery."""
         ssdp_location = discovery_info.get("ssdp_location", "")
         parsed = urlparse(ssdp_location)
@@ -274,7 +278,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return await self.async_step_ssdp_confirm()
 
-    async def async_step_dhcp(self, discovery_info: DhcpServiceInfo) -> ConfigFlowResult:
+    async def async_step_dhcp(
+        self, discovery_info: DhcpServiceInfo
+    ) -> ConfigFlowResult:
         """Handle DHCP auto-discovery."""
         host = discovery_info.ip
         await self.async_set_unique_id(host)
@@ -287,8 +293,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         openwrt_indicators = ["openwrt", "lede", "librecmc"]
         mac_prefixes = ["D4BC52", "E848B8", "000C43", "B0B98A"]
 
-        is_openwrt = any(indicator in hostname for indicator in openwrt_indicators) or \
-                     any(mac.startswith(prefix) for prefix in mac_prefixes)
+        is_openwrt = any(
+            indicator in hostname for indicator in openwrt_indicators
+        ) or any(mac.startswith(prefix) for prefix in mac_prefixes)
 
         if not is_openwrt:
             return self.async_abort(reason="not_openwrt")
@@ -319,8 +326,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             pass
         else:
             openwrt_indicators = ["openwrt", "lede", "librecmc", "luci"]
-            if not any(indicator in name or indicator in hostname for indicator in openwrt_indicators):
-                 return self.async_abort(reason="not_openwrt")
+            if not any(
+                indicator in name or indicator in hostname
+                for indicator in openwrt_indicators
+            ):
+                return self.async_abort(reason="not_openwrt")
 
         self._discovered_host = host
         self._discovered_name = discovery_info.hostname or f"OpenWrt ({host})"

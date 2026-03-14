@@ -37,16 +37,18 @@ async def async_setup_entry(
             async_add_entities([OpenWrtNewDeviceEvent(coordinator, entry)])
 
 
-class OpenWrtNewDeviceEvent(
-    CoordinatorEntity[OpenWrtDataCoordinator], EventEntity
-):
+class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEntity):
     """Event entity that fires when a new device connects to the network."""
 
     _attr_has_entity_name = True
     _attr_name = "New Device"
     _attr_translation_key = "new_device"
     _attr_device_class = EventDeviceClass.BUTTON
-    _attr_event_types = ["new_device_connected", "device_connected", "device_disconnected"]
+    _attr_event_types = [
+        "new_device_connected",
+        "device_connected",
+        "device_disconnected",
+    ]
 
     def __init__(
         self,
@@ -87,7 +89,11 @@ class OpenWrtNewDeviceEvent(
             new_macs = current_macs - self._known_macs
             for mac in new_macs:
                 device_info = next(
-                    (d for d in self.coordinator.data.connected_devices if d.mac == mac),
+                    (
+                        d
+                        for d in self.coordinator.data.connected_devices
+                        if d.mac == mac
+                    ),
                     None,
                 )
                 if device_info:

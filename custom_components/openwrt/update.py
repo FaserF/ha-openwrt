@@ -157,7 +157,10 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
 
         # ASU Update Flow
         if data.asu_supported and data.asu_update_available:
-            _LOGGER.info("Initiating ASU custom firmware build for %s", data.firmware_latest_version)
+            _LOGGER.info(
+                "Initiating ASU custom firmware build for %s",
+                data.firmware_latest_version,
+            )
             try:
                 from .const import CONF_ASU_URL
                 from .helpers.asu import AsuClient
@@ -172,13 +175,17 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                     target=data.device_info.target,
                     board_name=data.device_info.board_name,
                     packages=data.installed_packages,
-                    client_name=f"Home Assistant OpenWrt Integration ({self.coordinator.name})"
+                    client_name=f"Home Assistant OpenWrt Integration ({self.coordinator.name})",
                 )
 
-                _LOGGER.info("ASU build requested (hash: %s). Waiting for image...", request_hash)
+                _LOGGER.info(
+                    "ASU build requested (hash: %s). Waiting for image...", request_hash
+                )
                 download_url = await asu_client.poll_build_status(request_hash)
 
-                _LOGGER.info("ASU build complete. Flashing image from: %s", download_url)
+                _LOGGER.info(
+                    "ASU build complete. Flashing image from: %s", download_url
+                )
                 await self.coordinator.client.install_firmware(download_url)
 
             except Exception as err:
@@ -188,9 +195,12 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             return
 
         # Standard Update Flow
-        _LOGGER.info("Initiating standard firmware installation from: %s", self.release_url)
+        _LOGGER.info(
+            "Initiating standard firmware installation from: %s", self.release_url
+        )
         try:
             await self.coordinator.client.install_firmware(self.release_url)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to initiate firmware installation: {err}") from err
-
+            raise HomeAssistantError(
+                f"Failed to initiate firmware installation: {err}"
+            ) from err

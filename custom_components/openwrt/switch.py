@@ -60,7 +60,11 @@ async def async_setup_entry(
                 if redirect.section_id:
                     entities.append(
                         OpenWrtFirewallSwitch(
-                            coordinator, entry, client, redirect.section_id, redirect.name
+                            coordinator,
+                            entry,
+                            client,
+                            redirect.section_id,
+                            redirect.name,
                         )
                     )
 
@@ -107,7 +111,9 @@ async def async_setup_entry(
             for sqm in coordinator.data.sqm:
                 if sqm.section_id:
                     entities.append(
-                        OpenWrtSqmSwitch(coordinator, entry, client, sqm.section_id, sqm.name)
+                        OpenWrtSqmSwitch(
+                            coordinator, entry, client, sqm.section_id, sqm.name
+                        )
                     )
 
     async_add_entities(entities)
@@ -404,7 +410,11 @@ class OpenWrtAccessControlSwitch(
                 f"Failed to block device {self._mac}: {err}"
             ) from err
         await self.coordinator.async_request_refresh()
-class OpenWrtFirewallRuleSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+
+
+class OpenWrtFirewallRuleSwitch(
+    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
+):
     """Switch to enable/disable a general firewall rule."""
 
     _attr_has_entity_name = True

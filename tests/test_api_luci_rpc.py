@@ -116,10 +116,10 @@ async def test_luci_set_sqm_config(luci_client: LuciRpcClient):
     luci_client._auth_token = "luci_test_token"
     with patch.object(luci_client, "_rpc_call", new_callable=AsyncMock) as mock_call:
         await luci_client.set_sqm_config("eth0", enabled=False, download=200000)
-        
+
         # Check if calls were made
         assert mock_call.call_count >= 3
-        
+
         # Check if enabled was set
         mock_call.assert_any_call("uci", "set", ["sqm", "eth0", "enabled", "0"])
         # Check if download was set

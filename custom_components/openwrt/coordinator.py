@@ -331,7 +331,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         target = data.device_info.target
         model = data.device_info.board_name
 
-        asu_url = self.config_entry.options.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org")
+        asu_url = self.config_entry.options.get(
+            CONF_ASU_URL, "https://sysupgrade.openwrt.org"
+        )
 
         session = async_get_clientsession(self.hass)
 
@@ -339,7 +341,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # Check for latest available version for this target on ASU
             # ASU API: GET https://sysupgrade.openwrt.org/api/v1/info?target={target}&model={model}
             url = f"{asu_url.rstrip('/')}/api/v1/info?target={target}&model={model}"
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
                 if resp.status == 200:
                     asu_info = await resp.json()
                     latest_version = asu_info.get("version", "")
@@ -351,9 +355,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
                         try:
                             # Fetch installed packages for the update request
-                            data.installed_packages = await self.client.get_installed_packages()
+                            data.installed_packages = (
+                                await self.client.get_installed_packages()
+                            )
                         except Exception as e:
-                            _LOGGER.debug("Failed to fetch installed packages for ASU: %s", e)
+                            _LOGGER.debug(
+                                "Failed to fetch installed packages for ASU: %s", e
+                            )
 
                         # If ASU has a newer version than official version check, use it
                         if self._version_is_newer(
@@ -510,7 +518,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             current_parts = [int(p) for p in current.split(".")]
             latest_parts = [int(p) for p in latest.split(".")]
             return latest_parts > current_parts
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             return current != latest
 
     async def async_shutdown(self) -> None:

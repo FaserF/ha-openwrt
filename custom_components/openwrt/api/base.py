@@ -163,7 +163,9 @@ class IpNeighbor:
     ip: str = ""
     mac: str = ""
     interface: str = ""
-    state: str = ""  # REACHABLE, STALE, DELAY, PROBE, INCOMPLETE, FAILED, PERMANENT, NOARP
+    state: str = (
+        ""  # REACHABLE, STALE, DELAY, PROBE, INCOMPLETE, FAILED, PERMANENT, NOARP
+    )
 
 
 @dataclass
@@ -274,7 +276,7 @@ class SqmStatus:
     enabled: bool = False
     interface: str = ""
     download: int = 0  # kbit/s
-    upload: int = 0    # kbit/s
+    upload: int = 0  # kbit/s
     qdisc: str = ""
     script: str = ""
     section_id: str = ""
@@ -467,10 +469,14 @@ class OpenWrtClient(abc.ABC):
 
     async def kick_device(self, mac_address: str, interface: str) -> bool:
         """Kick a wireless device from the network using hostapd."""
-        cmd_ubus = f"ubus call hostapd.{interface} del_client '{{\"addr\":\"{mac_address}\",\"reason\":5,\"deauth\":true,\"ban_time\":60000}}'"
+        cmd_ubus = f'ubus call hostapd.{interface} del_client \'{{"addr":"{mac_address}","reason":5,"deauth":true,"ban_time":60000}}\''
         try:
             output = await self.execute_command(cmd_ubus)
-            if output and "Method not found" not in output and "Not found" not in output:
+            if (
+                output
+                and "Method not found" not in output
+                and "Not found" not in output
+            ):
                 return True
         except Exception:
             pass
@@ -592,16 +598,30 @@ class OpenWrtClient(abc.ABC):
                                 type="wireguard",
                             )
                             # Check if interface is up
-                            ip_out = await self.execute_command(f"ip link show {iface_name} 2>/dev/null")
+                            ip_out = await self.execute_command(
+                                f"ip link show {iface_name} 2>/dev/null"
+                            )
                             vpn.up = bool(ip_out and "UP" in ip_out)
 
                             # Get RX/TX bytes
-                            rx_out = await self.execute_command(f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null")
-                            tx_out = await self.execute_command(f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null")
+                            rx_out = await self.execute_command(
+                                f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null"
+                            )
+                            tx_out = await self.execute_command(
+                                f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null"
+                            )
                             try:
-                                vpn.rx_bytes = int(rx_out.strip()) if rx_out and rx_out.strip().isdigit() else 0
-                                vpn.tx_bytes = int(tx_out.strip()) if tx_out and tx_out.strip().isdigit() else 0
-                            except (ValueError, AttributeError):
+                                vpn.rx_bytes = (
+                                    int(rx_out.strip())
+                                    if rx_out and rx_out.strip().isdigit()
+                                    else 0
+                                )
+                                vpn.tx_bytes = (
+                                    int(tx_out.strip())
+                                    if tx_out and tx_out.strip().isdigit()
+                                    else 0
+                                )
+                            except ValueError, AttributeError:
                                 pass
 
                             vpn_interfaces.append(vpn)
@@ -624,7 +644,9 @@ class OpenWrtClient(abc.ABC):
             output = await self.execute_command("pgrep -a openvpn 2>/dev/null")
             if output and "not found" not in output.lower() and output.strip():
                 # OpenVPN is running – check interfaces
-                tun_output = await self.execute_command("ip -br link show type tun 2>/dev/null")
+                tun_output = await self.execute_command(
+                    "ip -br link show type tun 2>/dev/null"
+                )
                 if tun_output:
                     for line in tun_output.strip().splitlines():
                         parts = line.split()
@@ -637,12 +659,24 @@ class OpenWrtClient(abc.ABC):
                                 up=state == "UP",
                             )
                             # Get RX/TX bytes
-                            rx_out = await self.execute_command(f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null")
-                            tx_out = await self.execute_command(f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null")
+                            rx_out = await self.execute_command(
+                                f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null"
+                            )
+                            tx_out = await self.execute_command(
+                                f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null"
+                            )
                             try:
-                                vpn.rx_bytes = int(rx_out.strip()) if rx_out and rx_out.strip().isdigit() else 0
-                                vpn.tx_bytes = int(tx_out.strip()) if tx_out and tx_out.strip().isdigit() else 0
-                            except (ValueError, AttributeError):
+                                vpn.rx_bytes = (
+                                    int(rx_out.strip())
+                                    if rx_out and rx_out.strip().isdigit()
+                                    else 0
+                                )
+                                vpn.tx_bytes = (
+                                    int(tx_out.strip())
+                                    if tx_out and tx_out.strip().isdigit()
+                                    else 0
+                                )
+                            except ValueError, AttributeError:
                                 pass
                             vpn_interfaces.append(vpn)
         except Exception as err:
@@ -734,13 +768,22 @@ class OpenWrtClient(abc.ABC):
                             info.connect_status = str(value) if value else ""
                     elif class_origin == "SIM Information":
                         if item_key == "SIM Status":
-                            info.sim_status = str(value).replace("\n", " ").strip() if value else ""
+                            info.sim_status = (
+                                str(value).replace("\n", " ").strip() if value else ""
+                            )
                         elif item_key == "ISP":
-                            info.isp = str(value).replace("\n", " ").strip() if value else ""
+                            info.isp = (
+                                str(value).replace("\n", " ").strip() if value else ""
+                            )
                         elif item_key == "SIM Slot":
-                            info.sim_slot = str(value).replace("\n", " ").strip() if value else ""
+                            info.sim_slot = (
+                                str(value).replace("\n", " ").strip() if value else ""
+                            )
 
-                    elif item_type == "progress_bar" and class_origin == "Cell Information":
+                    elif (
+                        item_type == "progress_bar"
+                        and class_origin == "Cell Information"
+                    ):
                         if current_context == "LTE":
                             lte_signals[item_key] = value
                         elif current_context == "NR5G":
@@ -786,7 +829,9 @@ class OpenWrtClient(abc.ABC):
 
         data = OpenWrtData()
         self._poll_count = getattr(self, "_poll_count", 0) + 1
-        is_full_poll = self._poll_count % SLOW_POLL_INTERVAL == 1 or self._poll_count == 1
+        is_full_poll = (
+            self._poll_count % SLOW_POLL_INTERVAL == 1 or self._poll_count == 1
+        )
 
         if is_full_poll:
             # Full poll: fetch device_info fresh
@@ -796,7 +841,12 @@ class OpenWrtClient(abc.ABC):
                 self.get_network_interfaces(),
                 self.get_connected_devices(),
             )
-            data.device_info, data.system_resources, data.network_interfaces, data.connected_devices = core_results
+            (
+                data.device_info,
+                data.system_resources,
+                data.network_interfaces,
+                data.connected_devices,
+            ) = core_results
             self._cached_device_info = data.device_info
         else:
             # Fast poll: reuse cached device_info, fetch dynamic core data
@@ -805,7 +855,9 @@ class OpenWrtClient(abc.ABC):
                 self.get_network_interfaces(),
                 self.get_connected_devices(),
             )
-            data.system_resources, data.network_interfaces, data.connected_devices = core_results_fast
+            data.system_resources, data.network_interfaces, data.connected_devices = (
+                core_results_fast
+            )
             data.device_info = getattr(self, "_cached_device_info", data.device_info)
 
         # Always-fresh optional data (changes every cycle)
@@ -821,7 +873,9 @@ class OpenWrtClient(abc.ABC):
             self.get_external_ip(),
         ]
 
-        fast_results = await asyncio.gather(*fast_optional_tasks, return_exceptions=True)
+        fast_results = await asyncio.gather(
+            *fast_optional_tasks, return_exceptions=True
+        )
 
         def get_val(res: Any, default: Any, name: str) -> Any:
             if isinstance(res, Exception):
@@ -851,7 +905,9 @@ class OpenWrtClient(abc.ABC):
                 self.check_packages(),
                 self.check_permissions(),
             ]
-            slow_results = await asyncio.gather(*slow_optional_tasks, return_exceptions=True)
+            slow_results = await asyncio.gather(
+                *slow_optional_tasks, return_exceptions=True
+            )
 
             data.services = get_val(slow_results[0], [], "services")
             data.leds = get_val(slow_results[1], [], "LEDs")
@@ -860,7 +916,9 @@ class OpenWrtClient(abc.ABC):
             data.access_control = get_val(slow_results[4], [], "access control")
             data.sqm = get_val(slow_results[5], [], "SQM")
             data.packages = get_val(slow_results[6], OpenWrtPackages(), "packages")
-            data.permissions = get_val(slow_results[7], OpenWrtPermissions(), "permissions")
+            data.permissions = get_val(
+                slow_results[7], OpenWrtPermissions(), "permissions"
+            )
 
             # Cache slow results
             self._cached_slow_data = {
@@ -873,7 +931,9 @@ class OpenWrtClient(abc.ABC):
                 "packages": data.packages,
                 "permissions": data.permissions,
             }
-            _LOGGER.debug("Full poll cycle %d: refreshed slow-changing data", self._poll_count)
+            _LOGGER.debug(
+                "Full poll cycle %d: refreshed slow-changing data", self._poll_count
+            )
         else:
             # Reuse cached slow-changing data
             cached = getattr(self, "_cached_slow_data", {})

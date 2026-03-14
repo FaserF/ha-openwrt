@@ -66,6 +66,7 @@ async def test_ssh_get_connected_devices_iwinfo_fallback(ssh_client: SshClient):
     """Test SSH client fallback to ubus hostapd for wifi clients when iwinfo fails."""
     ssh_client._connected = True
     with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
+
         def exec_side_effect(command: str) -> str:
             if "cat /proc/net/arp" in command:
                 return "IP address       HW type     Flags       HW address            Mask     Device\n192.168.1.5      0x1         0x2         00:11:22:33:44:55     *        br-lan"
@@ -74,7 +75,9 @@ async def test_ssh_get_connected_devices_iwinfo_fallback(ssh_client: SshClient):
                     return "No information"
                 return "wlan0"
             if "ubus list 'hostapd.*'" in command:
-                return 'hostapd.wlan0 {"clients": {"aa:bb:cc:dd:ee:ff": {"signal": -50}}}'
+                return (
+                    'hostapd.wlan0 {"clients": {"aa:bb:cc:dd:ee:ff": {"signal": -50}}}'
+                )
             return ""
 
         mock_exec.side_effect = exec_side_effect
@@ -97,6 +100,7 @@ async def test_ssh_get_temperature_fallback(ssh_client: SshClient):
     """Test SSH client fallback for temperature within system resources."""
     ssh_client._connected = True
     with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
+
         def exec_side_effect(command: str) -> str:
             if "thermal_zone0" in command:
                 return "45000" if "temp" in command else "cpu-thermal"
@@ -140,7 +144,7 @@ async def test_ssh_set_sqm_config(ssh_client: SshClient):
     ssh_client._connected = True
     with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
         await ssh_client.set_sqm_config("eth0", enabled=False, download=200000)
-        
+
         # Check if commands were executed
         calls = [c.args[0] for c in mock_exec.call_args_list]
         assert "uci set sqm.eth0.enabled='0'" in calls

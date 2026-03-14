@@ -117,14 +117,22 @@ async def test_ubus_set_sqm_config(ubus_client: UbusClient):
     ubus_client._session_id = "test_token"
     with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
         await ubus_client.set_sqm_config("eth0", enabled=False, download=200000)
-        
+
         # Should call uci set (at least twice) and commit
         assert mock_call.call_count >= 3
-        
+
         # Check if enabled was set
-        mock_call.assert_any_call("uci", "set", {"config": "sqm", "section": "eth0", "values": {"enabled": "0"}})
+        mock_call.assert_any_call(
+            "uci",
+            "set",
+            {"config": "sqm", "section": "eth0", "values": {"enabled": "0"}},
+        )
         # Check if download was set
-        mock_call.assert_any_call("uci", "set", {"config": "sqm", "section": "eth0", "values": {"download": "200000"}})
+        mock_call.assert_any_call(
+            "uci",
+            "set",
+            {"config": "sqm", "section": "eth0", "values": {"download": "200000"}},
+        )
         # Check commit
         mock_call.assert_any_call("uci", "commit", {"config": "sqm"})
 
@@ -134,9 +142,10 @@ async def test_ubus_check_permissions(ubus_client: UbusClient):
     """Test checking permissions via ubus."""
     ubus_client._session_id = "test_token"
     from custom_components.openwrt.api.ubus import UbusPermissionError
-    
+
     # Mock ubus 'session' list and 'uci' calls
     with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+
         def side_effect(obj, method, params=None):
             if obj == "session" and method == "list":
                 # Return restricted permissions via session list
@@ -144,9 +153,9 @@ async def test_ubus_check_permissions(ubus_client: UbusClient):
             if obj == "uci" and method == "get":
                 raise UbusPermissionError("Access denied")
             return {}
-        
+
         mock_call.side_effect = side_effect
-        
+
         perms = await ubus_client.check_permissions()
         assert perms.read_system is True
         assert perms.write_system is True
@@ -158,7 +167,7 @@ async def test_ubus_check_permissions_root(ubus_client: UbusClient):
     """Test checking permissions for root user."""
     ubus_client.username = "root"
     ubus_client._session_id = "test_token"
-    
+
     perms = await ubus_client.check_permissions()
     # Check a few key permissions that should be True for root
     assert perms.read_system is True

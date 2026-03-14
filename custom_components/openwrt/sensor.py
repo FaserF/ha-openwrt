@@ -112,7 +112,9 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
         )
 
 
-class OpenWrtQModemSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
+class OpenWrtQModemSensorEntity(
+    CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity
+):
     """Representation of an OpenWrt QModem sensor."""
 
     entity_description: OpenWrtSensorDescription
@@ -190,7 +192,10 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if device.mac == self._mac and device.is_wireless and device.interface:
-                    via_device = (DOMAIN, f"{self._entry.data[CONF_HOST]}_ap_{device.interface}")
+                    via_device = (
+                        DOMAIN,
+                        f"{self._entry.data[CONF_HOST]}_ap_{device.interface}",
+                    )
                     break
 
         return DeviceInfo(
@@ -455,7 +460,9 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             translation_key="wireless_clients",
             state_class=SensorStateClass.MEASUREMENT,
             entity_registry_enabled_default=False,
-            value_fn=lambda data: sum(1 for d in data.connected_devices if d.is_wireless),
+            value_fn=lambda data: sum(
+                1 for d in data.connected_devices if d.is_wireless
+            ),
         ),
     )
 
@@ -637,7 +644,9 @@ async def async_setup_entry(
                 if not wifi.name:
                     continue
                 entities.extend(
-                    _create_wifi_sensors(coordinator, entry, wifi.name, wifi.ssid, wifi.mode)
+                    _create_wifi_sensors(
+                        coordinator, entry, wifi.name, wifi.ssid, wifi.mode
+                    )
                 )
 
         if perms.read_network:
@@ -654,12 +663,18 @@ async def async_setup_entry(
 
         if coordinator.data.qmodem_info.enabled:
             for description in _get_qmodem_sensors():
-                entities.append(OpenWrtQModemSensorEntity(coordinator, entry, description))
+                entities.append(
+                    OpenWrtQModemSensorEntity(coordinator, entry, description)
+                )
 
         if perms.read_sqm and pkgs.sqm_scripts is not False:
             for sqm in coordinator.data.sqm:
                 if sqm.section_id:
-                    entities.extend(_create_sqm_sensors(coordinator, entry, sqm.section_id, sqm.name))
+                    entities.extend(
+                        _create_sqm_sensors(
+                            coordinator, entry, sqm.section_id, sqm.name
+                        )
+                    )
 
         # DHCP Lease Count sensor
         if perms.read_network:
@@ -879,9 +894,6 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-
-
-
 def _create_wifi_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
@@ -1003,7 +1015,8 @@ def _create_wifi_sensors(
                     state_class=SensorStateClass.MEASUREMENT,
                     entity_category=EntityCategory.DIAGNOSTIC,
                     value_fn=lambda data, n=iface_name: next(
-                        (w.signal for w in data.wireless_interfaces if w.name == n), None
+                        (w.signal for w in data.wireless_interfaces if w.name == n),
+                        None,
                     ),
                     available_fn=lambda data, n=iface_name: any(
                         w.name == n and w.signal != 0 for w in data.wireless_interfaces
@@ -1039,7 +1052,8 @@ def _create_wifi_sensors(
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
                     value_fn=lambda data, n=iface_name: next(
-                        (w.quality for w in data.wireless_interfaces if w.name == n), None
+                        (w.quality for w in data.wireless_interfaces if w.name == n),
+                        None,
                     ),
                 ),
                 iface_name,
@@ -1061,7 +1075,8 @@ def _create_wifi_sensors(
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
                     value_fn=lambda data, n=iface_name: next(
-                        (w.bitrate for w in data.wireless_interfaces if w.name == n), None
+                        (w.bitrate for w in data.wireless_interfaces if w.name == n),
+                        None,
                     ),
                 ),
                 iface_name,
@@ -1259,7 +1274,11 @@ def _create_net_sensors(
                 ),
                 attrs_fn=lambda data, n=iface_name: next(
                     (
-                        {"dns_servers": ", ".join(i.dns_servers) if i.dns_servers else "none"}
+                        {
+                            "dns_servers": ", ".join(i.dns_servers)
+                            if i.dns_servers
+                            else "none"
+                        }
                         for i in data.network_interfaces
                         if i.name == n
                     ),
@@ -1417,7 +1436,11 @@ def _create_vpn_sensors(
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
-                    (_bytes_to_mb(v.rx_bytes) for v in data.vpn_interfaces if v.name == n),
+                    (
+                        _bytes_to_mb(v.rx_bytes)
+                        for v in data.vpn_interfaces
+                        if v.name == n
+                    ),
                     0,
                 ),
             ),
@@ -1439,7 +1462,11 @@ def _create_vpn_sensors(
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
-                    (_bytes_to_mb(v.tx_bytes) for v in data.vpn_interfaces if v.name == n),
+                    (
+                        _bytes_to_mb(v.tx_bytes)
+                        for v in data.vpn_interfaces
+                        if v.name == n
+                    ),
                     0,
                 ),
             ),
@@ -1458,7 +1485,8 @@ def _create_vpn_sensors(
                     state_class=SensorStateClass.MEASUREMENT,
                     entity_registry_enabled_default=False,
                     value_fn=lambda data, n=iface_name: next(
-                        (v.peers for v in data.vpn_interfaces if v.name == n), 0,
+                        (v.peers for v in data.vpn_interfaces if v.name == n),
+                        0,
                     ),
                     attrs_fn=lambda data, n=iface_name: next(
                         (
@@ -1503,6 +1531,3 @@ def _create_mwan_sensors(
             ),
         ),
     ]
-
-
-

@@ -125,7 +125,10 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if device.mac == self._mac and device.is_wireless and device.interface:
-                    via_device = (DOMAIN, f"{self._entry.data[CONF_HOST]}_ap_{device.interface}")
+                    via_device = (
+                        DOMAIN,
+                        f"{self._entry.data[CONF_HOST]}_ap_{device.interface}",
+                    )
                     break
 
         return DeviceInfo(

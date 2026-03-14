@@ -12,8 +12,8 @@ Provides deep integration with OpenWrt routers including:
 
 from __future__ import annotations
 
-import logging
 import importlib
+import logging
 from typing import Any
 
 import voluptuous as vol
@@ -30,7 +30,8 @@ from homeassistant.exceptions import (
     ConfigEntryNotReady,
     HomeAssistantError,
 )
-from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 
 from .api.luci_rpc import LuciRpcAuthError, LuciRpcError
 from .api.ssh import SshAuthError, SshError

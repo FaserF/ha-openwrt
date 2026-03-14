@@ -452,6 +452,48 @@
     }
   },
   "services": {
+    "reboot": {
+      "name": "Reboot Router",
+      "description": "Reboots the OpenWrt router.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The OpenWrt router to reboot."
+        }
+      }
+    },
+    "execute_command": {
+      "name": "Execute Command",
+      "description": "Executes a shell command on the OpenWrt router.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The OpenWrt router."
+        },
+        "command": {
+          "name": "Command",
+          "description": "The command to execute (e.g., cat /proc/cpuinfo)."
+        }
+      }
+    },
+    "manage_service": {
+      "name": "Manage Service",
+      "description": "Manage an init.d service on the OpenWrt router.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The OpenWrt router."
+        },
+        "service_name": {
+          "name": "Service Name",
+          "description": "The name of the service (e.g., dnsmasq)."
+        },
+        "action": {
+          "name": "Action",
+          "description": "The action to perform (start, stop, restart, enable, disable)."
+        }
+      }
+    },
     "wake_on_lan": {
       "name": "Wake on LAN",
       "description": "Send a Wake on LAN magic packet to a device via the OpenWrt router.",

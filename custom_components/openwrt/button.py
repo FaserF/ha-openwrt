@@ -84,11 +84,16 @@ async def async_setup_entry(
         for description in BUTTONS:
             if description.key == "reboot" and not perms.write_system:
                 continue
-            if description.key in ("wps_start", "wps_cancel") and not perms.write_wireless:
+            if (
+                description.key in ("wps_start", "wps_cancel")
+                and not perms.write_wireless
+            ):
                 continue
             if description.key == "create_backup" and not perms.write_system:
                 continue
-            entities.append(OpenWrtButtonEntity(coordinator, entry, description, client))
+            entities.append(
+                OpenWrtButtonEntity(coordinator, entry, description, client)
+            )
         if perms.read_services:
             for service in coordinator.data.services:
                 if not service.name:
@@ -149,7 +154,11 @@ async def async_setup_entry(
                 is_wireless = device.is_wireless
                 if not is_wireless and device.interface:
                     iface_lower = device.interface.lower()
-                    if "wlan" in iface_lower or "ap" in iface_lower or "radio" in iface_lower:
+                    if (
+                        "wlan" in iface_lower
+                        or "ap" in iface_lower
+                        or "radio" in iface_lower
+                    ):
                         is_wireless = True
 
                 if pkgs.etherwake is not False and not is_wireless:
@@ -163,7 +172,12 @@ async def async_setup_entry(
                             device.interface,
                         )
                     )
-                if perms.read_wireless and device.is_wireless and device.interface and pkgs.iwinfo is not False:
+                if (
+                    perms.read_wireless
+                    and device.is_wireless
+                    and device.interface
+                    and pkgs.iwinfo is not False
+                ):
                     entities.append(
                         OpenWrtKickButton(
                             coordinator,
@@ -243,7 +257,10 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if device.mac == self._mac and device.is_wireless and device.interface:
-                    via_device = (DOMAIN, f"{self._entry.data[CONF_HOST]}_ap_{device.interface}")
+                    via_device = (
+                        DOMAIN,
+                        f"{self._entry.data[CONF_HOST]}_ap_{device.interface}",
+                    )
                     break
 
         return DeviceInfo(
@@ -308,7 +325,10 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if device.mac == self._mac and device.is_wireless and device.interface:
-                    via_device = (DOMAIN, f"{self._entry.data[CONF_HOST]}_ap_{device.interface}")
+                    via_device = (
+                        DOMAIN,
+                        f"{self._entry.data[CONF_HOST]}_ap_{device.interface}",
+                    )
                     break
 
         return DeviceInfo(

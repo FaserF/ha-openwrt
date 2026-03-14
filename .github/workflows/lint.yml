@@ -24,3 +24,11 @@ jobs:
         run: ruff format --check .
       - name: Run Mypy
         run: mypy custom_components/openwrt
+
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master

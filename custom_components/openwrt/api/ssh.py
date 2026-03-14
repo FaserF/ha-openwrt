@@ -68,7 +68,9 @@ class SshClient(OpenWrtClient):
         dhcp_software: str = "auto",
     ) -> None:
         """Initialize the SSH client."""
-        super().__init__(host, username, password, port, use_ssl, verify_ssl, dhcp_software)
+        super().__init__(
+            host, username, password, port, use_ssl, verify_ssl, dhcp_software
+        )
         self._ssh_key = ssh_key
         self._client: Any = None
 
@@ -112,9 +114,12 @@ class SshClient(OpenWrtClient):
                     if await self.connect():
                         return await self._exec(command, retry=False)
                 except Exception as reconnect_err:
-                    _LOGGER.debug("SSH reconnection failed during retry: %s", reconnect_err)
+                    _LOGGER.debug(
+                        "SSH reconnection failed during retry: %s", reconnect_err
+                    )
 
             return ""
+
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages."""
         try:
@@ -316,7 +321,7 @@ class SshClient(OpenWrtClient):
                 resources.processes = (
                     int(parts[3].split("/")[1]) if "/" in parts[3] else 0
                 )
-        except (ValueError, Exception):  # noqa: BLE001
+        except ValueError, Exception:  # noqa: BLE001
             pass
 
         # Memory fallback if needed
@@ -341,7 +346,7 @@ class SshClient(OpenWrtClient):
         try:
             uptime_str = await self._exec("cat /proc/uptime")
             resources.uptime = int(float(uptime_str.strip().split()[0]))
-        except (ValueError, Exception):  # noqa: BLE001
+        except ValueError, Exception:  # noqa: BLE001
             pass
 
         for thermal_path in [
@@ -365,7 +370,7 @@ class SshClient(OpenWrtClient):
                 else:
                     resources.temperature = float(temp_val)
                 break
-            except (ValueError, Exception):  # noqa: BLE001
+            except ValueError, Exception:  # noqa: BLE001
                 continue
 
         try:
@@ -437,7 +442,7 @@ class SshClient(OpenWrtClient):
                                                 .strip()
                                                 .split()[0]
                                             )
-                                        except (ValueError, IndexError):
+                                        except ValueError, IndexError:
                                             pass
                                     elif "Signal:" in line:
                                         try:
@@ -446,7 +451,7 @@ class SshClient(OpenWrtClient):
                                                 .strip()
                                                 .split()[0]
                                             )
-                                        except (ValueError, IndexError):
+                                        except ValueError, IndexError:
                                             pass
 
                                 assoclist = await self._exec(
@@ -548,7 +553,10 @@ class SshClient(OpenWrtClient):
                     neighbor_state=neigh.state,
                 )
         except Exception as neigh_err:  # noqa: BLE001
-            _LOGGER.debug("Error processing IP neighbors in get_connected_devices (SSH): %s", neigh_err)
+            _LOGGER.debug(
+                "Error processing IP neighbors in get_connected_devices (SSH): %s",
+                neigh_err,
+            )
 
         # 3. Wireless Clients (iwinfo station dump)
         try:
@@ -564,7 +572,11 @@ class SshClient(OpenWrtClient):
                         continue
                     # Parsing: MAC  Signal  Noise  RX_Rate  TX_Rate
                     parts = line.split()
-                    if len(parts) >= 1 and parts[0].count(":") == 5 and len(parts[0]) == 17:
+                    if (
+                        len(parts) >= 1
+                        and parts[0].count(":") == 5
+                        and len(parts[0]) == 17
+                    ):
                         mac = parts[0].lower()
                         if mac in devices:
                             dev = devices[mac]
@@ -594,7 +606,7 @@ class SshClient(OpenWrtClient):
             try:
                 # Find all hostapd objects and get clients
                 cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
-                stdout = await self._exec(cmd) # Changed from _exec_command to _exec
+                stdout = await self._exec(cmd)  # Changed from _exec_command to _exec
                 for line in stdout.splitlines():
                     if not line.strip():
                         continue
@@ -609,7 +621,9 @@ class SshClient(OpenWrtClient):
                             for mac, info in data["clients"].items():
                                 # Create ConnectedDevice object from ubus data
                                 if mac.lower() not in devices:
-                                    dev = ConnectedDevice(mac=mac.lower(), connected=True)
+                                    dev = ConnectedDevice(
+                                        mac=mac.lower(), connected=True
+                                    )
                                     devices[mac.lower()] = dev
                                 else:
                                     dev = devices[mac.lower()]
@@ -632,7 +646,6 @@ class SshClient(OpenWrtClient):
                 pass
 
         return list(devices.values())
-
 
     async def get_services(self) -> list[ServiceInfo]:
         """Get init.d services."""
@@ -702,7 +715,6 @@ class SshClient(OpenWrtClient):
             _LOGGER.error("Failed to set wireless %s: %s", interface, err)
             return False
 
-
     async def get_leds(self) -> list:
         """Get LEDs from /sys/class/leds."""
         from .base import LedInfo
@@ -753,6 +765,7 @@ class SshClient(OpenWrtClient):
         verify if common commands work to be safe.
         """
         from .base import OpenWrtPermissions
+
         perms = OpenWrtPermissions()
 
         try:
@@ -818,7 +831,14 @@ class SshClient(OpenWrtClient):
         except Exception as err:
             _LOGGER.error("Failed to check packages via SSH: %s", err)
             # Initialize to False if we failed (to avoid staying at None)
-            for attr in ["sqm_scripts", "mwan3", "iwinfo", "etherwake", "wireguard", "openvpn"]:
+            for attr in [
+                "sqm_scripts",
+                "mwan3",
+                "iwinfo",
+                "etherwake",
+                "wireguard",
+                "openvpn",
+            ]:
                 if getattr(packages, attr) is None:
                     setattr(packages, attr, False)
         return packages
@@ -1026,9 +1046,13 @@ class SshClient(OpenWrtClient):
                 msg in err_msg
                 for msg in ["connection reset", "broken pipe", "closed", "eof"]
             ):
-                _LOGGER.info("SSH connection lost during sysupgrade - device is likely rebooting")
+                _LOGGER.info(
+                    "SSH connection lost during sysupgrade - device is likely rebooting"
+                )
                 return
-            _LOGGER.warning("Sysupgrade command might have failed or disconnected: %s", err)
+            _LOGGER.warning(
+                "Sysupgrade command might have failed or disconnected: %s", err
+            )
 
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         """Get DHCP leases via SSH."""
@@ -1056,7 +1080,9 @@ class SshClient(OpenWrtClient):
                         return leases
             except Exception:  # noqa: BLE001
                 if self.dhcp_software == "odhcpd":
-                    _LOGGER.debug("Requested odhcpd but 'ubus call dhcp' failed via SSH")
+                    _LOGGER.debug(
+                        "Requested odhcpd but 'ubus call dhcp' failed via SSH"
+                    )
                     return []
 
         # Try dnsmasq via file over SSH
@@ -1076,7 +1102,9 @@ class SshClient(OpenWrtClient):
                         )
             except Exception:  # noqa: BLE001
                 if self.dhcp_software == "dnsmasq":
-                    _LOGGER.debug("Requested dnsmasq but cat /tmp/dhcp.leases failed via SSH")
+                    _LOGGER.debug(
+                        "Requested dnsmasq but cat /tmp/dhcp.leases failed via SSH"
+                    )
 
         return leases
 
@@ -1138,6 +1166,7 @@ class SshClient(OpenWrtClient):
                 pass
 
         return neighbors
+
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status via SSH."""
 
@@ -1184,7 +1213,9 @@ class SshClient(OpenWrtClient):
         """Set SQM configuration via SSH."""
         try:
             for key, value in kwargs.items():
-                val_str = "1" if value is True else "0" if value is False else str(value)
+                val_str = (
+                    "1" if value is True else "0" if value is False else str(value)
+                )
                 await self._exec(f"uci set sqm.{section_id}.{key}='{val_str}'")
             await self._exec("uci commit sqm")
             await self._exec("/etc/init.d/sqm reload")

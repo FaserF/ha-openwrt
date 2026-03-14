@@ -83,7 +83,9 @@ class UbusClient(OpenWrtClient):
         dhcp_software: str = "auto",
     ) -> None:
         """Initialize the ubus client."""
-        super().__init__(host, username, password, port, use_ssl, verify_ssl, dhcp_software)
+        super().__init__(
+            host, username, password, port, use_ssl, verify_ssl, dhcp_software
+        )
         self._ubus_path = ubus_path
         self._session_id: str = "00000000000000000000000000000000"
         self._session: aiohttp.ClientSession | None = None
@@ -351,9 +353,9 @@ class UbusClient(OpenWrtClient):
                             resources.filesystem_used = int(parts[2]) * 1024
                             resources.filesystem_free = int(parts[3]) * 1024
                             break
-                        except (ValueError, IndexError):
+                        except ValueError, IndexError:
                             continue
-        except (UbusError, ValueError, IndexError):
+        except UbusError, ValueError, IndexError:
             pass
 
         # Temperature fetching
@@ -375,6 +377,7 @@ class UbusClient(OpenWrtClient):
                     temp_raw = res.get("data", "").strip()
                     # Handle cases where output might contain non-digits (e.g. quotes or trailing chars)
                     import re
+
                     match = re.search(r"(\d+)", temp_raw)
                     if match:
                         temp = float(match.group(1))
@@ -383,7 +386,7 @@ class UbusClient(OpenWrtClient):
                         if 0 < temp < 150:  # Sanity check
                             resources.temperature = temp
                             break
-                except (UbusError, ValueError):
+                except UbusError, ValueError:
                     continue
 
             # Fallback to execute_command if file.read failed or missing paths
@@ -571,7 +574,7 @@ class UbusClient(OpenWrtClient):
                     is_wireless=False,
                     connected=True,
                 )
-        except (UbusError, Exception):  # noqa: BLE001
+        except UbusError, Exception:  # noqa: BLE001
             pass
 
         # Fetch wireless_data once for both iwinfo and hostapd processing
@@ -642,7 +645,9 @@ class UbusClient(OpenWrtClient):
                     neighbor_state=neigh.state,
                 )
         except Exception as neigh_err:  # noqa: BLE001
-            _LOGGER.debug("Error processing IP neighbors in get_connected_devices: %s", neigh_err)
+            _LOGGER.debug(
+                "Error processing IP neighbors in get_connected_devices: %s", neigh_err
+            )
 
         if wireless_data:
             for _radio_name, radio_data in wireless_data.items():
@@ -764,37 +769,85 @@ class UbusClient(OpenWrtClient):
                     # Some versions use exact matches, some use wildcards
                     for pattern, methods in access.items():
                         # Check object pattern match
-                        if pattern == "*" or pattern == obj or (pattern.endswith("*") and obj.startswith(pattern[:-1])):
+                        if (
+                            pattern == "*"
+                            or pattern == obj
+                            or (pattern.endswith("*") and obj.startswith(pattern[:-1]))
+                        ):
                             # methods can be a list containing the allowed methods for this object
                             if "*" in methods or method in methods:
                                 return True
                     return False
 
-                perms.read_system = has_perm("system", "board") or has_perm("system", "read")
-                perms.write_system = has_perm("system", "reboot") or has_perm("system", "write")
-                perms.read_network = has_perm("network.interface", "dump") or has_perm("network.interface", "read") or has_perm("network", "read")
-                perms.write_network = has_perm("network.interface", "up") or has_perm("network.interface", "write") or has_perm("network", "write")
-                perms.read_firewall = has_perm("firewall", "read") or has_perm("uci", "read")
-                perms.write_firewall = has_perm("firewall", "write") or has_perm("uci", "write")
-                perms.read_wireless = has_perm("iwinfo", "read") or has_perm("hostapd.*", "read") or has_perm("network.wireless", "read")
-                perms.write_wireless = has_perm("iwinfo", "write") or has_perm("hostapd.*", "write") or has_perm("network.wireless", "write")
-                perms.read_services = has_perm("file", "read") or has_perm("luci", "read") or has_perm("service", "read")
-                perms.write_services = has_perm("file", "write") or has_perm("luci", "write") or has_perm("service", "write")
+                perms.read_system = has_perm("system", "board") or has_perm(
+                    "system", "read"
+                )
+                perms.write_system = has_perm("system", "reboot") or has_perm(
+                    "system", "write"
+                )
+                perms.read_network = (
+                    has_perm("network.interface", "dump")
+                    or has_perm("network.interface", "read")
+                    or has_perm("network", "read")
+                )
+                perms.write_network = (
+                    has_perm("network.interface", "up")
+                    or has_perm("network.interface", "write")
+                    or has_perm("network", "write")
+                )
+                perms.read_firewall = has_perm("firewall", "read") or has_perm(
+                    "uci", "read"
+                )
+                perms.write_firewall = has_perm("firewall", "write") or has_perm(
+                    "uci", "write"
+                )
+                perms.read_wireless = (
+                    has_perm("iwinfo", "read")
+                    or has_perm("hostapd.*", "read")
+                    or has_perm("network.wireless", "read")
+                )
+                perms.write_wireless = (
+                    has_perm("iwinfo", "write")
+                    or has_perm("hostapd.*", "write")
+                    or has_perm("network.wireless", "write")
+                )
+                perms.read_services = (
+                    has_perm("file", "read")
+                    or has_perm("luci", "read")
+                    or has_perm("service", "read")
+                )
+                perms.write_services = (
+                    has_perm("file", "write")
+                    or has_perm("luci", "write")
+                    or has_perm("service", "write")
+                )
                 perms.read_sqm = has_perm("uci", "read") or has_perm("luci", "read")
                 perms.write_sqm = has_perm("uci", "write") or has_perm("luci", "write")
-                perms.read_vpn = has_perm("network.interface", "read") or has_perm("uci", "read")
+                perms.read_vpn = has_perm("network.interface", "read") or has_perm(
+                    "uci", "read"
+                )
                 perms.read_mwan = has_perm("uci", "read") or has_perm("file", "read")
                 perms.read_led = has_perm("file", "read") or has_perm("uci", "read")
                 perms.write_led = has_perm("file", "write") or has_perm("uci", "write")
-                perms.read_devices = has_perm("network.interface", "read") or has_perm("dhcp", "read") or has_perm("file", "read")
-                perms.write_devices = has_perm("file", "exec") or has_perm("hostapd.*", "write")
-                perms.write_access_control = has_perm("uci", "write") or has_perm("firewall", "write")
+                perms.read_devices = (
+                    has_perm("network.interface", "read")
+                    or has_perm("dhcp", "read")
+                    or has_perm("file", "read")
+                )
+                perms.write_devices = has_perm("file", "exec") or has_perm(
+                    "hostapd.*", "write"
+                )
+                perms.write_access_control = has_perm("uci", "write") or has_perm(
+                    "firewall", "write"
+                )
 
                 # If we got definitive access list, we are done
                 return perms
 
             # Fallback to manual probes
-            async def can_call(obj: str, method: str, params: dict | None = None) -> bool:
+            async def can_call(
+                obj: str, method: str, params: dict | None = None
+            ) -> bool:
                 try:
                     await self._call(obj, method, params)
                     return True
@@ -806,7 +859,9 @@ class UbusClient(OpenWrtClient):
             perms.read_system = await can_call("system", "board")
             perms.write_system = await can_call("uci", "set", {"config": "system"})
             perms.read_network = await can_call("network.interface", "dump")
-            perms.write_network = await can_call("network.interface", "up", {"interface": "loopback"})
+            perms.write_network = await can_call(
+                "network.interface", "up", {"interface": "loopback"}
+            )
             perms.read_firewall = await can_call("uci", "get", {"config": "firewall"})
             perms.write_firewall = await can_call("uci", "set", {"config": "firewall"})
             perms.read_wireless = await can_call("network.wireless", "status")
@@ -817,7 +872,9 @@ class UbusClient(OpenWrtClient):
             perms.write_led = await can_call("uci", "set", {"config": "system"})
             perms.read_vpn = perms.read_network
             perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"})
-            perms.read_devices = await can_call("dhcp", "ipv4leases") or perms.read_network
+            perms.read_devices = (
+                await can_call("dhcp", "ipv4leases") or perms.read_network
+            )
             perms.write_devices = await can_call("file", "exec", {"command": "ls"})
             perms.write_access_control = perms.write_firewall
             perms.read_services = perms.write_devices
@@ -859,10 +916,20 @@ class UbusClient(OpenWrtClient):
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
             except Exception as err:
-                _LOGGER.debug("Package check via file.exec failed (this is expected on restricted routers): %s", err)
+                _LOGGER.debug(
+                    "Package check via file.exec failed (this is expected on restricted routers): %s",
+                    err,
+                )
                 # Initialize to False for fallback if not already True (from some other source)
                 # This ensures we don't stay at 'None' if detection is possible via stat
-                for attr in ["sqm_scripts", "mwan3", "iwinfo", "etherwake", "wireguard", "openvpn"]:
+                for attr in [
+                    "sqm_scripts",
+                    "mwan3",
+                    "iwinfo",
+                    "etherwake",
+                    "wireguard",
+                    "openvpn",
+                ]:
                     if getattr(packages, attr) is None:
                         setattr(packages, attr, False)
 
@@ -885,7 +952,9 @@ class UbusClient(OpenWrtClient):
                             setattr(packages, attr, True)
                             _LOGGER.debug("Detected package via file.stat: %s", path)
                     except Exception as err:
-                        _LOGGER.debug("Package check via file.stat failed for %s: %s", path, err)
+                        _LOGGER.debug(
+                            "Package check via file.stat failed for %s: %s", path, err
+                        )
                         if getattr(packages, attr) is None:
                             setattr(packages, attr, False)
 
@@ -958,7 +1027,7 @@ class UbusClient(OpenWrtClient):
                                     state=state,
                                 )
                             )
-            except Exception: # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 pass
 
         # 3. Fallback to /proc/net/arp via file.read (passive)
@@ -980,7 +1049,7 @@ class UbusClient(OpenWrtClient):
                                     state="REACHABLE",
                                 )
                             )
-            except Exception as fallback_exc: # noqa: BLE001
+            except Exception as fallback_exc:  # noqa: BLE001
                 _LOGGER.debug("Fallback to /proc/net/arp failed: %s", fallback_exc)
 
         return neighbors
@@ -1036,7 +1105,9 @@ class UbusClient(OpenWrtClient):
                         )
             except UbusError:
                 if self.dhcp_software == "dnsmasq":
-                    _LOGGER.debug("Requested dnsmasq but could not read /tmp/dhcp.leases")
+                    _LOGGER.debug(
+                        "Requested dnsmasq but could not read /tmp/dhcp.leases"
+                    )
 
         return leases
 
@@ -1137,7 +1208,6 @@ class UbusClient(OpenWrtClient):
             _LOGGER.error("Failed to %s service %s: %s", action, name, err)
             return False
 
-
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages via opkg."""
         try:
@@ -1166,10 +1236,7 @@ class UbusClient(OpenWrtClient):
         except UbusError:
             return False
 
-
-    async def set_firewall_rule_enabled(
-        self, section_id: str, enabled: bool
-    ) -> bool:
+    async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
         """Enable or disable a firewall rule via UCI."""
         try:
             action = "1" if enabled else "0"
@@ -1448,14 +1515,26 @@ class UbusClient(OpenWrtClient):
             err_msg = str(err).lower()
             if any(
                 msg in err_msg
-                for msg in ["connection reset", "broken pipe", "closed", "eof", "timeout"]
+                for msg in [
+                    "connection reset",
+                    "broken pipe",
+                    "closed",
+                    "eof",
+                    "timeout",
+                ]
             ):
-                _LOGGER.info("Ubus connection lost during sysupgrade - device is rebooting")
+                _LOGGER.info(
+                    "Ubus connection lost during sysupgrade - device is rebooting"
+                )
                 return
-            _LOGGER.warning("Sysupgrade command might have failed or disconnected: %s", err)
+            _LOGGER.warning(
+                "Sysupgrade command might have failed or disconnected: %s", err
+            )
+
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status via uci ubus."""
         from .base import SqmStatus
+
         sqm_instances: list[SqmStatus] = []
         try:
             resp = await self._call("uci", "get", {"config": "sqm"})
@@ -1468,7 +1547,10 @@ class UbusClient(OpenWrtClient):
                 return sqm_instances
 
             for section_id, section_data in values.items():
-                if isinstance(section_data, dict) and section_data.get(".type") == "queue":
+                if (
+                    isinstance(section_data, dict)
+                    and section_data.get(".type") == "queue"
+                ):
                     sqm = SqmStatus(
                         section_id=section_id,
                         name=str(section_data.get("name", section_id)),
@@ -1488,14 +1570,18 @@ class UbusClient(OpenWrtClient):
         """Set SQM configuration via uci ubus."""
         try:
             for key, value in kwargs.items():
-                val_str = "1" if value is True else "0" if value is False else str(value)
-                await self._call("uci", "set", {
-                    "config": "sqm",
-                    "section": section_id,
-                    "values": {key: val_str}
-                })
+                val_str = (
+                    "1" if value is True else "0" if value is False else str(value)
+                )
+                await self._call(
+                    "uci",
+                    "set",
+                    {"config": "sqm", "section": section_id, "values": {key: val_str}},
+                )
             await self._call("uci", "commit", {"config": "sqm"})
-            await self._call("file", "exec", {"command": "/etc/init.d/sqm", "params": ["reload"]})
+            await self._call(
+                "file", "exec", {"command": "/etc/init.d/sqm", "params": ["reload"]}
+            )
             return True
         except UbusPermissionError as err:
             _LOGGER.debug("SQM config via ubus denied (permissions): %s", err)
