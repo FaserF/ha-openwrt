@@ -92,7 +92,7 @@ async def async_setup_entry(
                     if device.hostname != router_hostname:
                         dev_name = device.hostname
 
-                rule = next(
+                ac_rule = next(
                     (r for r in coordinator.data.access_control if r.mac == device.mac),
                     None,
                 )
@@ -103,7 +103,7 @@ async def async_setup_entry(
                         client,
                         device.mac,
                         dev_name,
-                        rule.section_id if rule else None,
+                        ac_rule.section_id if ac_rule else None,
                     )
                 )
 

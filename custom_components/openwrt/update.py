@@ -199,7 +199,10 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             "Initiating standard firmware installation from: %s", self.release_url
         )
         try:
-            await self.coordinator.client.install_firmware(self.release_url)
+            if url := self.release_url:
+                await self.coordinator.client.install_firmware(url)
+            else:
+                raise ValueError("No firmware URL available for installation.")
         except Exception as err:
             raise HomeAssistantError(
                 f"Failed to initiate firmware installation: {err}"

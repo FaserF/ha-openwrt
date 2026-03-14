@@ -243,7 +243,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self, discovery_info: SsdpServiceInfo
     ) -> ConfigFlowResult:
         """Handle SSDP auto-discovery."""
-        ssdp_location = discovery_info.get("ssdp_location", "")
+        ssdp_location = discovery_info.ssdp_location or ""
         parsed = urlparse(ssdp_location)
         host = parsed.hostname or ""
 
@@ -253,10 +253,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(host)
         self._abort_if_unique_id_configured()
 
-        friendly_name = discovery_info.get("friendlyName", "")
-        server = discovery_info.get("server", "")
-        manufacturer = discovery_info.get("manufacturer", "")
-        model_name = discovery_info.get("modelName", "")
+        upnp = discovery_info.upnp or {}
+        friendly_name = upnp.get("friendlyName", "")
+        server = discovery_info.ssdp_headers.get("SERVER", "")
+        manufacturer = upnp.get("manufacturer", "")
+        model_name = upnp.get("modelName", "")
 
         openwrt_indicators = ["openwrt", "lede", "miniupnpd", "librecmc"]
         combined = f"{friendly_name} {server} {manufacturer} {model_name}".lower()

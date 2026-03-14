@@ -49,7 +49,7 @@ from .const import (
     SERVICE_UCI_SET,
     SERVICE_WOL,
 )
-from .coordinator import OpenWrtDataCoordinator
+from .coordinator import OpenWrtDataCoordinator, create_client
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 

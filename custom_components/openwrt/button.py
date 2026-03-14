@@ -75,7 +75,7 @@ async def async_setup_entry(
     ]
     client: OpenWrtClient = hass.data[DOMAIN][entry.entry_id][DATA_CLIENT]
 
-    entities: list[OpenWrtButtonEntity] = []
+    entities: list[ButtonEntity] = []
 
     if coordinator.data:
         perms = coordinator.data.permissions

@@ -614,7 +614,7 @@ async def async_setup_entry(
         DATA_COORDINATOR
     ]
 
-    entities: list[OpenWrtSensorEntity] = []
+    entities: list[SensorEntity] = []
 
     if coordinator.data:
         perms = coordinator.data.permissions
@@ -865,6 +865,7 @@ async def async_setup_entry(
                         ),
                         None,
                     ),
+                    None,  # available_fn
                     dev_name,
                 )
             )

@@ -8,46 +8,6 @@
   "dependencies": [
     "ssdp"
   ],
-  "documentation": "https://github.com/FaserF/ha-openwrt",
-  "integration_type": "hub",
-  "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/FaserF/ha-openwrt/issues",
-  "loggers": [
-    "openwrt"
-  ],
-  "requirements": [
-    "paramiko>=4.0.0"
-  ],
-  "ssdp": [
-    {
-      "st": "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
-    },
-    {
-      "st": "urn:schemas-upnp-org:device:InternetGatewayDevice:2"
-    },
-    {
-      "st": "upnp:rootdevice"
-    }
-  ],
-  "zeroconf": [
-    {
-      "type": "_http._tcp.local.",
-      "name": "openwrt*"
-    },
-    {
-      "type": "_ssh._tcp.local.",
-      "name": "openwrt*"
-    },
-    {
-      "type": "_luci._tcp.local."
-    },
-    {
-      "type": "_http._tcp.local."
-    },
-    {
-      "type": "_ssh._tcp.local."
-    }
-  ],
   "dhcp": [
     {
       "hostname": "openwrt*"
@@ -71,5 +31,45 @@
       "macaddress": "B0B98A*"
     }
   ],
-  "version": "1.1.0"
+  "documentation": "https://github.com/FaserF/ha-openwrt",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/FaserF/ha-openwrt/issues",
+  "loggers": [
+    "openwrt"
+  ],
+  "requirements": [
+    "paramiko>=4.0.0"
+  ],
+  "ssdp": [
+    {
+      "st": "urn:schemas-upnp-org:device:InternetGatewayDevice:1"
+    },
+    {
+      "st": "urn:schemas-upnp-org:device:InternetGatewayDevice:2"
+    },
+    {
+      "st": "upnp:rootdevice"
+    }
+  ],
+  "version": "1.1.0",
+  "zeroconf": [
+    {
+      "type": "_http._tcp.local.",
+      "name": "openwrt*"
+    },
+    {
+      "type": "_ssh._tcp.local.",
+      "name": "openwrt*"
+    },
+    {
+      "type": "_luci._tcp.local."
+    },
+    {
+      "type": "_http._tcp.local."
+    },
+    {
+      "type": "_ssh._tcp.local."
+    }
+  ]
 }
