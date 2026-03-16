@@ -222,7 +222,7 @@ class SshClient(OpenWrtClient):
             self._connected = True
             _LOGGER.debug("SSH connected to %s", self.host)
             return True
-        except SshError, SshAuthError:
+        except (SshError, SshAuthError):
             raise
         except Exception as err:
             raise SshError(f"SSH connection error: {err}") from err
@@ -247,9 +247,9 @@ class SshClient(OpenWrtClient):
             info.hostname = data.get("hostname", "")
             model = data.get("model")
             if isinstance(model, dict):
-                info.model = model.get("name", model.get("id", info.model))
+                info.model = str(model.get("name", model.get("id", info.model)))
             else:
-                info.model = model or data.get("board_name", "")
+                info.model = str(model or data.get("board_name", ""))
             info.board_name = data.get("board_name", "")
             info.kernel_version = data.get("kernel", "")
             info.architecture = data.get("system", "")
@@ -361,7 +361,7 @@ class SshClient(OpenWrtClient):
                 resources.processes = (
                     int(parts[3].split("/")[1]) if "/" in parts[3] else 0
                 )
-        except ValueError, Exception:  # noqa: BLE001
+        except (ValueError, Exception):  # noqa: BLE001
             pass
 
         # Memory fallback if needed
@@ -386,7 +386,7 @@ class SshClient(OpenWrtClient):
         try:
             uptime_str = await self._exec("cat /proc/uptime")
             resources.uptime = int(float(uptime_str.strip().split()[0]))
-        except ValueError, Exception:  # noqa: BLE001
+        except (ValueError, Exception):  # noqa: BLE001
             pass
 
         for thermal_path in [
@@ -410,7 +410,7 @@ class SshClient(OpenWrtClient):
                 else:
                     resources.temperature = float(temp_val)
                 break
-            except ValueError, Exception:  # noqa: BLE001
+            except (ValueError, Exception):  # noqa: BLE001
                 continue
 
         try:
@@ -482,7 +482,7 @@ class SshClient(OpenWrtClient):
                                                 .strip()
                                                 .split()[0]
                                             )
-                                        except ValueError, IndexError:
+                                        except (ValueError, IndexError):
                                             pass
                                     elif "Access Point:" in line:
                                         try:
@@ -500,8 +500,31 @@ class SshClient(OpenWrtClient):
                                                 .strip()
                                                 .split()[0]
                                             )
-                                        except ValueError, IndexError:
+                                        except (ValueError, IndexError):
                                             pass
+                                    elif "Frequency:" in line:
+                                        try:
+                                            wifi.frequency = (
+                                                line.split("Frequency:")[1].strip()
+                                            )
+                                        except IndexError:
+                                            pass
+
+                                # Fallback: Extract frequency from Channel line if still missing
+                                if not wifi.frequency and iwinfo:
+                                    for line in iwinfo.splitlines():
+                                        if "Channel:" in line and "(" in line and "GHz)" in line:
+                                            try:
+                                                wifi.frequency = line.split("(")[1].split(")")[0].strip()
+                                            except (IndexError, ValueError):
+                                                pass
+
+                                # Fallback 2: Infer from channel number
+                                if not wifi.frequency and wifi.channel > 0:
+                                    if 1 <= wifi.channel <= 14:
+                                        wifi.frequency = "2.4 GHz"
+                                    elif 32 <= wifi.channel <= 177:
+                                        wifi.frequency = "5 GHz"
 
                                 assoclist = await self._exec(
                                     f"iwinfo {iface_name} assoclist 2>/dev/null"

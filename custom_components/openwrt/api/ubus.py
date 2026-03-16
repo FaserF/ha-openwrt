@@ -282,9 +282,9 @@ class UbusClient(OpenWrtClient):
         info.hostname = data.get("hostname", "")
         model = data.get("model")
         if isinstance(model, dict):
-            info.model = model.get("name", model.get("id", info.model))
+            info.model = str(model.get("name", model.get("id", info.model)))
         else:
-            info.model = model or data.get("board_name", "")
+            info.model = str(model or data.get("board_name", ""))
         info.board_name = data.get("board_name", "")
         info.kernel_version = data.get("kernel", "")
         info.architecture = data.get("system", "")
@@ -510,6 +510,13 @@ class UbusClient(OpenWrtClient):
                         wifi.mac_address = iwinfo.get("bssid", "").upper()
                         wifi.channel = iwinfo.get("channel", 0)
                         wifi.frequency = str(iwinfo.get("frequency", ""))
+
+                        # Fallback: Infer from channel if frequency is missing or empty
+                        if (not wifi.frequency or wifi.frequency == "None") and wifi.channel > 0:
+                            if 1 <= wifi.channel <= 14:
+                                wifi.frequency = "2.4 GHz"
+                            elif 32 <= wifi.channel <= 177:
+                                wifi.frequency = "5 GHz"
                         wifi.signal = iwinfo.get("signal", 0)
                         wifi.noise = iwinfo.get("noise", 0)
                         wifi.bitrate = (
@@ -612,7 +619,7 @@ class UbusClient(OpenWrtClient):
                     ip=lease.ip,
                     hostname=lease.hostname,
                     is_wireless=False,
-                    connected=True,
+                    connected=False,  # DHCP leases are just records, not proof of connectivity
                 )
         except UbusError, Exception:  # noqa: BLE001
             pass
@@ -685,12 +692,17 @@ class UbusClient(OpenWrtClient):
                             dev.interface = neigh.interface
                     continue
 
+                # Consider connected only if state is active (REACHABLE, DELAY, PROBE)
+                # STALE or FAILED means it was seen but is not currently active
+                active_states = ("REACHABLE", "DELAY", "PROBE", "PERMANENT")
+                is_active = neigh.state.upper() in active_states
+
                 devices[mac] = ConnectedDevice(
                     mac=mac,
                     ip=neigh.ip,
                     interface=neigh.interface,
                     is_wireless=False,
-                    connected=True,
+                    connected=is_active,
                     connection_type="wired",
                     neighbor_state=neigh.state,
                 )
@@ -761,8 +773,9 @@ class UbusClient(OpenWrtClient):
                                     if mac in devices:
                                         dev = devices[mac]
                                     else:
-                                        dev = ConnectedDevice(mac=mac, connected=True)
+                                        dev = ConnectedDevice(mac=mac, connected=False)
                                         devices[mac] = dev
+                                    dev.connected = True  # Wireless association
                                     dev.is_wireless = True
                                     dev.interface = iface_name
                                     dev.rx_bytes = (

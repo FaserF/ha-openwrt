@@ -177,7 +177,23 @@ async def test_config_flow_default_connection_type(hass) -> None:
     flow = OpenWrtConfigFlow()
     flow.hass = hass
 
-    result = await flow.async_step_user()
+    # Mock aiohttp session for discovery
+    mock_session = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = AsyncMock(return_value="")
+    mock_response.headers = {}
+
+    # Properly mock the async context manager for get and post
+    mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_session.get.return_value.__aexit__ = AsyncMock()
+    mock_session.post.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_session.post.return_value.__aexit__ = AsyncMock()
+
+    with patch(
+        "custom_components.openwrt.config_flow.async_get_clientsession",
+        return_value=mock_session,
+    ):
+        result = await flow.async_step_user()
     assert result["type"].lower() == "form"
     assert result["step_id"] == "user"
 

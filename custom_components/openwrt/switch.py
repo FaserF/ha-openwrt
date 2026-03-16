@@ -44,7 +44,12 @@ async def async_setup_entry(
                 if wifi.name:
                     entities.append(
                         OpenWrtWirelessSwitch(
-                            coordinator, entry, client, wifi.name, wifi.ssid
+                            coordinator,
+                            entry,
+                            client,
+                            wifi.name,
+                            wifi.ssid,
+                            wifi.frequency,
                         )
                     )
 
@@ -180,17 +185,34 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         client: OpenWrtClient,
         iface_name: str,
         ssid: str,
+        frequency: str = "",
     ) -> None:
         """Initialize the wireless switch."""
         super().__init__(coordinator)
         self._client = client
         self._iface_name = iface_name
+
+        # Build a descriptive label: "SSID (Band)" or just "SSID" if frequency is missing
+        band = ""
+        if frequency:
+            if frequency.startswith("2."):
+                band = "2.4 GHz"
+            elif frequency.startswith("5."):
+                band = "5 GHz"
+            elif frequency.startswith("6."):
+                band = "6 GHz"
+            else:
+                band = frequency.replace(" GHz", "") + " GHz"
+
+        label = ssid or iface_name
+        name_label = f"{label} ({band})" if band else label
+
         self._attr_unique_id = f"{entry.entry_id}_wireless_{iface_name}"
-        self._attr_name = f"Wireless {ssid or iface_name}"
+        self._attr_name = f"Wireless {name_label}"
         self._attr_translation_key = "wireless_radio"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{iface_name}")},
-            name=f"AP {ssid or iface_name}",
+            name=f"AP {name_label}",
             manufacturer="OpenWrt",
             model="Access Point",
             via_device=(DOMAIN, entry.data[CONF_HOST]),

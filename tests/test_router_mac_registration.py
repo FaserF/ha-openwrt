@@ -72,6 +72,7 @@ async def test_router_device_registration_with_mac(hass):
                 break
 
         assert router_call is not None
-        assert (dr.CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:FF".lower()) in router_call.kwargs[
-            "connections"
-        ]
+        assert (
+            dr.CONNECTION_NETWORK_MAC,
+            "AA:BB:CC:DD:EE:FF".lower(),
+        ) in router_call.kwargs["connections"]

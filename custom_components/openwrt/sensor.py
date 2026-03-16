@@ -99,13 +99,30 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
         description: OpenWrtSensorDescription,
         iface_name: str,
         ssid: str,
+        frequency: str = "",
     ) -> None:
         """Initialize the WiFi sensor."""
         super().__init__(coordinator, entry, description)
+
+        # Build a descriptive label: "SSID (Band)" or just "SSID" if frequency is missing
+        # Frequency is typically like "2.412 GHz", we want to simplify to "2.4 GHz"
+        band = ""
+        if frequency:
+            if frequency.startswith("2."):
+                band = "2.4 GHz"
+            elif frequency.startswith("5."):
+                band = "5 GHz"
+            elif frequency.startswith("6."):
+                band = "6 GHz"
+            else:
+                band = frequency.replace(" GHz", "") + " GHz"
+
         label = ssid or iface_name
+        name_label = f"{label} ({band})" if band else label
+
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{iface_name}")},
-            name=f"AP {label}",
+            name=f"AP {name_label}",
             manufacturer="OpenWrt",
             model="Access Point",
             via_device=(DOMAIN, entry.data[CONF_HOST]),
@@ -444,10 +461,16 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             name="Connected Clients",
             translation_key="connected_clients",
             state_class=SensorStateClass.MEASUREMENT,
-            value_fn=lambda data: len(data.connected_devices),
+            value_fn=lambda data: sum(1 for d in data.connected_devices if d.connected),
             attrs_fn=lambda data: {
-                "wireless": sum(1 for d in data.connected_devices if d.is_wireless),
-                "wired": sum(1 for d in data.connected_devices if not d.is_wireless),
+                "wireless": sum(
+                    1 for d in data.connected_devices if d.is_wireless and d.connected
+                ),
+                "wired": sum(
+                    1
+                    for d in data.connected_devices
+                    if not d.is_wireless and d.connected
+                ),
             },
         ),
         OpenWrtSensorDescription(
@@ -457,8 +480,23 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             state_class=SensorStateClass.MEASUREMENT,
             entity_registry_enabled_default=False,
             value_fn=lambda data: sum(
-                1 for d in data.connected_devices if d.is_wireless
+                1 for d in data.connected_devices if d.is_wireless and d.connected
             ),
+        ),
+        OpenWrtSensorDescription(
+            key="neighbor_devices",
+            name="Neighbor Devices",
+            translation_key="neighbor_devices",
+            state_class=SensorStateClass.MEASUREMENT,
+            value_fn=lambda data: len(data.ip_neighbors),
+            attrs_fn=lambda data: {
+                "reachable": sum(
+                    1 for n in data.ip_neighbors if n.state.upper() == "REACHABLE"
+                ),
+                "stale": sum(
+                    1 for n in data.ip_neighbors if n.state.upper() == "STALE"
+                ),
+            },
         ),
     )
 
@@ -626,7 +664,12 @@ async def async_setup_entry(
                     continue
                 entities.extend(
                     _create_wifi_sensors(
-                        coordinator, entry, wifi.name, wifi.ssid, wifi.mode
+                        coordinator,
+                        entry,
+                        wifi.name,
+                        wifi.ssid,
+                        wifi.mode,
+                        wifi.frequency,
                     )
                 )
 
@@ -892,6 +935,7 @@ def _create_wifi_sensors(
     iface_name: str,
     ssid: str,
     mode: str,
+    frequency: str = "",
 ) -> list[OpenWrtWifiSensorEntity]:
     """Create sensors for a wireless interface."""
     label = ssid or iface_name
@@ -906,13 +950,15 @@ def _create_wifi_sensors(
                 translation_key="wifi_clients",
                 name=f"{label} Clients",
                 state_class=SensorStateClass.MEASUREMENT,
-                value_fn=lambda data, n=iface_name: next(
-                    (w.clients_count for w in data.wireless_interfaces if w.name == n),
-                    0,
+                value_fn=lambda data, n=iface_name: sum(
+                    1
+                    for d in data.connected_devices
+                    if d.is_wireless and d.connected and d.interface == n
                 ),
             ),
             iface_name,
             ssid,
+            frequency,
         )
     )
 
@@ -931,6 +977,7 @@ def _create_wifi_sensors(
             ),
             iface_name,
             ssid,
+            frequency,
         )
     )
 
@@ -951,6 +998,7 @@ def _create_wifi_sensors(
             ),
             iface_name,
             ssid,
+            frequency,
         )
     )
 
@@ -970,6 +1018,7 @@ def _create_wifi_sensors(
             ),
             iface_name,
             ssid,
+            frequency,
         )
     )
 
@@ -989,6 +1038,7 @@ def _create_wifi_sensors(
             ),
             iface_name,
             ssid,
+            frequency,
         )
     )
 
@@ -1028,6 +1078,7 @@ def _create_wifi_sensors(
                 ),
                 iface_name,
                 ssid,
+                frequency,
             )
         )
 
@@ -1050,6 +1101,7 @@ def _create_wifi_sensors(
                 ),
                 iface_name,
                 ssid,
+                frequency,
             )
         )
 
@@ -1073,6 +1125,7 @@ def _create_wifi_sensors(
                 ),
                 iface_name,
                 ssid,
+                frequency,
             )
         )
 

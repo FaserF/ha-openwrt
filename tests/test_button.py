@@ -93,8 +93,10 @@ async def test_kick_button_default_disabled(hass) -> None:
 
     # Find the kick button in the added entities
     kick_buttons = [
-        e for e in async_add_entities.call_args[0][0]
-        if hasattr(e, "_attr_translation_key") and e._attr_translation_key == "kick_device"
+        e
+        for e in async_add_entities.call_args[0][0]
+        if hasattr(e, "_attr_translation_key")
+        and e._attr_translation_key == "kick_device"
     ]
 
     assert len(kick_buttons) == 1

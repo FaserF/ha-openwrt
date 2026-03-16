@@ -29,6 +29,7 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers import selector
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
@@ -247,7 +248,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
+            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
                 continue
 
         return False
@@ -623,59 +624,79 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_probe_openwrt(self, host: str) -> bool:
         """Probe a host to see if it responds like OpenWrt (LuCI/UBus)."""
         _LOGGER.debug("Probing %s for OpenWrt endpoints", host)
-        
-        # Try a simple HEAD or GET to LuCI login page
-        # OpenWrt common LuCI path
+
+        session = async_get_clientsession(self.hass)
+
+        # 1. Try LuCI
         luci_url = f"http://{host}/cgi-bin/luci/"
-        
         try:
-            async with asyncio.timeout(3):
-                session = self.hass.helpers.aiohttp_client.async_get_clientsession()
+            async with asyncio.timeout(2):
                 async with session.get(luci_url, allow_redirects=True) as response:
-                    text = await response.text()
-                    # Check for common LuCI strings
-                    if any(s in text.lower() for s in ["luci", "openwrt", "ubus"]):
+                    response_text = await response.text()
+                    if any(
+                        s in response_text.lower() for s in ["luci", "openwrt", "ubus"]
+                    ):
                         _LOGGER.info("Found OpenWrt via LuCI probe at %s", host)
                         return True
-                    
-                    # Check server header (uhttpd is common)
-                    server = response.headers.get("Server", "").lower()
-                    if "uhttpd" in server:
-                        _LOGGER.info("Found OpenWrt via uhttpd server header at %s", host)
+                    if "uhttpd" in response.headers.get("Server", "").lower():
                         return True
-        except Exception as err:
-            _LOGGER.debug("Probe of %s failed: %s", host, err)
-            
+        except (TimeoutError, aiohttp.ClientError):
+            pass
+
+        # 2. Try UBus endpoint (default path)
+        ubus_url = f"http://{host}/ubus"
+        try:
+            async with asyncio.timeout(2):
+                # A direct POST to ubus with empty data should return 405 or a JSON error
+                # but it proves the endpoint exists
+                async with session.post(ubus_url, json={}) as response:
+                    if response.status in (
+                        200,
+                        405,
+                    ):  # 405 Method Not Allowed is common for GET on /ubus
+                        _LOGGER.info("Found OpenWrt via UBus probe at %s", host)
+                        return True
+                    try:
+                        data = await response.json()
+                        if isinstance(data, dict) and "jsonrpc" in data:
+                            return True
+                    except Exception:
+                        pass
+        except (TimeoutError, aiohttp.ClientError):
+            pass
+
         return False
 
     async def _async_discover_router(self) -> str | None:
         """Try to discover an OpenWrt router on common gateway IPs."""
-        # Common gateway IPs to probe
-        potential_hosts = ["192.168.1.1"]
-        
+        potential_hosts = ["192.168.1.1", "192.168.0.1", "10.0.0.1"]
+
         # Try to guess gateway from local IP
         try:
-            # We use a dummy UDP connection to determine our local IP
-            # This doesn't send any packets
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.settimeout(0.5)
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
             s.close()
-            
+
             parts = local_ip.split(".")
             if len(parts) == 4:
-                # Common gateway is .1 in most home networks
-                gateway_ip = ".".join(parts[:-1] + ["1"])
-                if gateway_ip not in potential_hosts:
-                    potential_hosts.append(gateway_ip)
+                # Common gateway is .1 or .254
+                for suffix in ["1", "254"]:
+                    gateway_ip = ".".join(parts[:-1] + [suffix])
+                    if gateway_ip not in potential_hosts:
+                        potential_hosts.append(gateway_ip)
         except Exception as err:
             _LOGGER.debug("Could not determine local gateway for discovery: %s", err)
 
-        for host in potential_hosts:
-            if await self._async_probe_openwrt(host):
+        # Probing in parallel for speed
+        tasks = [self._async_probe_openwrt(host) for host in potential_hosts]
+        results = await asyncio.gather(*tasks)
+
+        for host, found in zip(potential_hosts, results, strict=False):
+            if found:
                 return host
-                
+
         return None
 
     async def async_step_provision_user(

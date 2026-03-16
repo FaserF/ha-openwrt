@@ -286,7 +286,7 @@ class LuciRpcClient(OpenWrtClient):
                 board_data = json.loads(board_out)
                 model = board_data.get("model")
                 if isinstance(model, dict):
-                    info.model = model.get("name", model.get("id", info.model))
+                    info.model = str(model.get("name", model.get("id", info.model)))
                 elif model:
                     info.model = str(model)
                 info.board_name = board_data.get("board_name", info.board_name)
@@ -589,7 +589,7 @@ class LuciRpcClient(OpenWrtClient):
                         ipv4_addrs = iface_data.get("ipv4-address", [])
                         if ipv4_addrs:
                             return ipv4_addrs[0].get("address")
-        except LuciRpcError, json.JSONDecodeError:
+        except (LuciRpcError, json.JSONDecodeError):
             pass
         return None
 
@@ -659,7 +659,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except ValueError, IndexError:
+                                            except (ValueError, IndexError):
                                                 pass
                                         elif "Access Point:" in line:
                                             try:
@@ -677,7 +677,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except ValueError, IndexError:
+                                            except (ValueError, IndexError):
                                                 pass
                                         elif "Noise:" in line:
                                             try:
@@ -686,7 +686,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except ValueError, IndexError:
+                                            except (ValueError, IndexError):
                                                 pass
                                         elif "Bit Rate:" in line:
                                             try:
@@ -695,8 +695,36 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except ValueError, IndexError:
+                                            except (ValueError, IndexError):
                                                 pass
+                                        elif "Frequency:" in line:
+                                            try:
+                                                wifi.frequency = (
+                                                    line.split("Frequency:")[1].strip()
+                                                )
+                                            except IndexError:
+                                                pass
+
+                                    # Fallback: Extract frequency from Channel line if still missing
+                                    if not wifi.frequency and "Channel:" in iw_info:
+                                        for line in iw_info.splitlines():
+                                            if "Channel:" in line and "(" in line and "GHz)" in line:
+                                                try:
+                                                    # Extract "2.462 GHz" from "Channel: 11 (2.462 GHz)"
+                                                    wifi.frequency = line.split("(")[1].split(")")[0].strip()
+                                                except (IndexError, ValueError):
+                                                    pass
+
+                                    # Fallback 2: Infer from channel number
+                                    if not wifi.frequency and wifi.channel > 0:
+                                        if 1 <= wifi.channel <= 14:
+                                            wifi.frequency = "2.4 GHz"
+                                        elif 32 <= wifi.channel <= 177:
+                                            wifi.frequency = "5 GHz"
+                                        elif 1 <= wifi.channel <= 233: # 6GHz channels overlap but usually 1-233
+                                            # This is a bit ambiguous without more info, but 5GHz/6GHz are higher
+                                            # We already handled 1-14 as 2.4GHz.
+                                            pass
 
                                 assoc = await self._rpc_call(
                                     "sys",
@@ -824,7 +852,7 @@ class LuciRpcClient(OpenWrtClient):
                             mac=mac,
                             ip=parts[2],
                             hostname=parts[3] if parts[3] != "*" else "",
-                            connected=True,
+                            connected=False,  # DHCP alone is not proof of connectivity
                             is_wireless=False,
                             connection_type="wired",
                         )
@@ -847,7 +875,7 @@ class LuciRpcClient(OpenWrtClient):
                                 devices[mac] = ConnectedDevice(
                                     mac=mac,
                                     ip=parts[0],
-                                    connected=True,
+                                    connected=False,  # Neighbors alone might be stale
                                     is_wireless=False,
                                     connection_type="wired",
                                 )
@@ -882,8 +910,10 @@ class LuciRpcClient(OpenWrtClient):
                                 if mac in devices:
                                     dev = devices[mac]
                                 else:
-                                    dev = ConnectedDevice(mac=mac, connected=True)
+                                    dev = ConnectedDevice(mac=mac, connected=False)
                                     devices[mac] = dev
+
+                                    dev.connected = True  # Wireless association
 
                                 dev.is_wireless = True
                                 if (
@@ -938,8 +968,10 @@ class LuciRpcClient(OpenWrtClient):
                                 if mac in devices:
                                     dev = devices[mac]
                                 else:
-                                    dev = ConnectedDevice(mac=mac, connected=True)
+                                    dev = ConnectedDevice(mac=mac, connected=False)
                                     devices[mac] = dev
+
+                                    dev.connected = True  # Wireless association
 
                                 dev.is_wireless = True
                                 # Map system interface name to UCI section if possible
@@ -955,8 +987,36 @@ class LuciRpcClient(OpenWrtClient):
                                     dev.connection_type = "2.4GHz"
                                 elif not dev.connection_type:
                                     dev.connection_type = "wireless"
-                    except json.JSONDecodeError, KeyError:
+                    except (json.JSONDecodeError, KeyError):
                         continue
+        # 4. Final refinement from IP neighbors (for states)
+        try:
+            active_states = ("REACHABLE", "DELAY", "PROBE", "PERMANENT")
+            neighbors = await self.get_ip_neighbors()
+            for neigh in neighbors:
+                mac = neigh.mac.lower()
+                if mac in devices:
+                    dev = devices[mac]
+                    if neigh.state.upper() in active_states:
+                        dev.connected = True
+                    if not dev.neighbor_state:
+                        dev.neighbor_state = neigh.state
+                    if not dev.interface:
+                        dev.interface = neigh.interface
+                else:
+                    is_active = neigh.state.upper() in active_states
+                    devices[mac] = ConnectedDevice(
+                        mac=mac,
+                        ip=neigh.ip,
+                        interface=neigh.interface,
+                        is_wireless=False,
+                        connected=is_active,
+                        connection_type="wired",
+                        neighbor_state=neigh.state,
+                    )
+        except Exception:
+            pass
+
         return list(devices.values())
 
     async def _get_wireless_mapping(self) -> tuple[dict[str, str], dict[str, str]]:
