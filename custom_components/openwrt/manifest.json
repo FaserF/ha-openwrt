@@ -29,6 +29,15 @@
     },
     {
       "macaddress": "B0B98A*"
+    },
+    {
+      "macaddress": "D85D4C*"
+    },
+    {
+      "macaddress": "E45F01*"
+    },
+    {
+      "macaddress": "B827EB*"
     }
   ],
   "documentation": "https://github.com/FaserF/ha-openwrt",

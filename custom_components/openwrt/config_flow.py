@@ -18,6 +18,7 @@ import socket
 from typing import Any
 from urllib.parse import urlparse
 
+import aiohttp
 import voluptuous as vol
 from homeassistant.config_entries import (
     ConfigEntry,
@@ -168,6 +169,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self._homeassistant_user_exists: bool = False
         self._provision_error: str | None = None
         self._generated_password: str | None = None
+        self._discovered_host: str | None = None
 
     @staticmethod
     @callback
@@ -198,19 +200,26 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_ssh()
             return await self.async_step_credentials()
 
+        # Proactive discovery if no host is set yet
+        default_host = "192.168.1.1"
+        discovered = await self._async_discover_router()
+        if discovered:
+            default_host = discovered
+            self._discovered_host = discovered
+
         return self.async_show_form(
             step_id="user",
-            data_schema=self._async_user_schema(),
+            data_schema=self._async_user_schema(default_host),
             description_placeholders={
                 "docs_url": "https://github.com/FaserF/ha-openwrt",
             },
         )
 
-    def _async_user_schema(self) -> vol.Schema:
+    def _async_user_schema(self, default_host: str = "192.168.1.1") -> vol.Schema:
         """Return the schema for the user step."""
         return vol.Schema(
             {
-                vol.Required(CONF_HOST, default="192.168.1.1"): str,
+                vol.Required(CONF_HOST, default=default_host): str,
                 vol.Required(
                     CONF_CONNECTION_TYPE, default=CONNECTION_TYPE_LUCI_RPC
                 ): vol.In(CONNECTION_TYPE_MAP),
@@ -238,7 +247,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
+            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
                 continue
 
         return False
@@ -266,12 +275,12 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         openwrt_indicators = ["openwrt", "lede", "miniupnpd", "librecmc"]
         combined = f"{friendly_name} {server} {manufacturer} {model_name}".lower()
         if not any(indicator in combined for indicator in openwrt_indicators):
-            _LOGGER.debug(
-                "SSDP discovery for %s skipped: no OpenWrt identifiers in %s",
-                host,
-                combined,
-            )
-            return self.async_abort(reason="not_openwrt")
+            # Proactive probe if indicators are missing but it's an IGD
+            if "internetgatewaydevice" in combined or "rootdevice" in combined:
+                if not await self._async_probe_openwrt(host):
+                    return self.async_abort(reason="not_openwrt")
+            else:
+                return self.async_abort(reason="not_openwrt")
 
         self._discovered_host = host
         self._discovered_name = friendly_name or f"OpenWrt ({host})"
@@ -303,7 +312,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         ) or any(mac.startswith(prefix) for prefix in mac_prefixes)
 
         if not is_openwrt:
-            return self.async_abort(reason="not_openwrt")
+            # Proactive probe for DHCP discovered IPs
+            if not await self._async_probe_openwrt(host):
+                return self.async_abort(reason="not_openwrt")
 
         self._discovered_host = host
         self._discovered_name = f"OpenWrt ({discovery_info.hostname})"
@@ -608,6 +619,64 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 err,
             )
             return "unknown"
+
+    async def _async_probe_openwrt(self, host: str) -> bool:
+        """Probe a host to see if it responds like OpenWrt (LuCI/UBus)."""
+        _LOGGER.debug("Probing %s for OpenWrt endpoints", host)
+        
+        # Try a simple HEAD or GET to LuCI login page
+        # OpenWrt common LuCI path
+        luci_url = f"http://{host}/cgi-bin/luci/"
+        
+        try:
+            async with asyncio.timeout(3):
+                session = self.hass.helpers.aiohttp_client.async_get_clientsession()
+                async with session.get(luci_url, allow_redirects=True) as response:
+                    text = await response.text()
+                    # Check for common LuCI strings
+                    if any(s in text.lower() for s in ["luci", "openwrt", "ubus"]):
+                        _LOGGER.info("Found OpenWrt via LuCI probe at %s", host)
+                        return True
+                    
+                    # Check server header (uhttpd is common)
+                    server = response.headers.get("Server", "").lower()
+                    if "uhttpd" in server:
+                        _LOGGER.info("Found OpenWrt via uhttpd server header at %s", host)
+                        return True
+        except Exception as err:
+            _LOGGER.debug("Probe of %s failed: %s", host, err)
+            
+        return False
+
+    async def _async_discover_router(self) -> str | None:
+        """Try to discover an OpenWrt router on common gateway IPs."""
+        # Common gateway IPs to probe
+        potential_hosts = ["192.168.1.1"]
+        
+        # Try to guess gateway from local IP
+        try:
+            # We use a dummy UDP connection to determine our local IP
+            # This doesn't send any packets
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0.5)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            
+            parts = local_ip.split(".")
+            if len(parts) == 4:
+                # Common gateway is .1 in most home networks
+                gateway_ip = ".".join(parts[:-1] + ["1"])
+                if gateway_ip not in potential_hosts:
+                    potential_hosts.append(gateway_ip)
+        except Exception as err:
+            _LOGGER.debug("Could not determine local gateway for discovery: %s", err)
+
+        for host in potential_hosts:
+            if await self._async_probe_openwrt(host):
+                return host
+                
+        return None
 
     async def async_step_provision_user(
         self,
