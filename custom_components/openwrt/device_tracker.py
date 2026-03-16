@@ -17,6 +17,9 @@ from homeassistant.components.device_tracker import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import (
+    device_registry as dr,
+)
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -66,15 +69,14 @@ async def async_setup_entry(
         new_entities: list[OpenWrtDeviceTracker] = []
 
         for device in coordinator.data.connected_devices:
-            if not device.mac:
-                continue
-            if device.mac in tracked_macs:
+            mac = dr.format_mac(device.mac)
+            if mac in tracked_macs:
                 continue
             if not track_wired and not device.is_wireless:
                 continue
 
-            tracked_macs.add(device.mac)
-            new_entities.append(OpenWrtDeviceTracker(coordinator, entry, device.mac))
+            tracked_macs.add(mac)
+            new_entities.append(OpenWrtDeviceTracker(coordinator, entry, mac))
 
         if new_entities:
             async_add_entities(new_entities)
@@ -102,9 +104,9 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     ) -> None:
         """Initialize the device tracker."""
         super().__init__(coordinator)
-        self._mac = mac
+        self._mac = dr.format_mac(mac)
         self._entry = entry
-        self._attr_unique_id = f"{entry.entry_id}_tracker_{mac.replace(':', '_')}"
+        self._attr_unique_id = f"{entry.entry_id}_tracker_{self._mac}"
 
         # Initial device name fallback
         self._initial_name = mac
@@ -121,18 +123,18 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        via_device = (DOMAIN, self._entry.data[CONF_HOST])
+        via_device = (DOMAIN, self._entry.unique_id or self._entry.data[CONF_HOST])
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if device.mac == self._mac and device.is_wireless and device.interface:
                     via_device = (
                         DOMAIN,
-                        f"{self._entry.data[CONF_HOST]}_ap_{device.interface}",
+                        f"{self._entry.unique_id or self._entry.data[CONF_HOST]}_ap_{device.interface}",
                     )
                     break
 
         return DeviceInfo(
-            connections={("mac", self._mac)},
+            connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
             name=self.name or self._initial_name,
             via_device=via_device,
         )

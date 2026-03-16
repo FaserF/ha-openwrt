@@ -19,6 +19,39 @@
       "hostname": "librecmc*"
     },
     {
+      "macaddress": "9C9D7E*"
+    },
+    {
+      "macaddress": "009EC8*"
+    },
+    {
+      "macaddress": "00C30A*"
+    },
+    {
+      "macaddress": "2072A9*"
+    },
+    {
+      "macaddress": "E44519*"
+    },
+    {
+      "macaddress": "1C2AB0*"
+    },
+    {
+      "macaddress": "1C8BEF*"
+    },
+    {
+      "macaddress": "3C2CA6*"
+    },
+    {
+      "macaddress": "68B8BB*"
+    },
+    {
+      "macaddress": "047A0B*"
+    },
+    {
+      "macaddress": "4C6371*"
+    },
+    {
       "macaddress": "D4BC52*"
     },
     {
@@ -38,6 +71,21 @@
     },
     {
       "macaddress": "B827EB*"
+    },
+    {
+      "macaddress": "14CC20*"
+    },
+    {
+      "macaddress": "C9D3C3*"
+    },
+    {
+      "macaddress": "B04E26*"
+    },
+    {
+      "macaddress": "30055C*"
+    },
+    {
+      "macaddress": "04BF6D*"
     }
   ],
   "documentation": "https://github.com/FaserF/ha-openwrt",
@@ -59,6 +107,15 @@
     },
     {
       "st": "upnp:rootdevice"
+    },
+    {
+      "manufacturer": "OpenWrt*"
+    },
+    {
+      "manufacturer": "miniupnpd*"
+    },
+    {
+      "modelName": "OpenWrt*"
     }
   ],
   "version": "1.2.1",
@@ -73,12 +130,6 @@
     },
     {
       "type": "_luci._tcp.local."
-    },
-    {
-      "type": "_http._tcp.local."
-    },
-    {
-      "type": "_ssh._tcp.local."
     }
   ]
 }

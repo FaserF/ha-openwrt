@@ -168,11 +168,13 @@ class MockConfigFlow:
     def __init__(self, *args, **kwargs):
         self.hass = None
         self.context = {}
+        self.unique_id: str | None = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
 
     async def async_set_unique_id(self, unique_id, *, raise_on_progress=True):
+        self.unique_id = unique_id
         return None
 
     def _abort_if_unique_id_configured(self, *args, **kwargs):
@@ -236,6 +238,13 @@ ha_mocks = [
 
 for mock_name in ha_mocks:
     mock_submodule(mock_name)
+
+# Fix device_registry mocks to behave logically
+dr_mock = MagicMock()
+dr_mock.format_mac.side_effect = lambda x: x.lower() if isinstance(x, str) else x
+sys.modules["homeassistant.helpers.device_registry"] = dr_mock
+if "homeassistant.helpers" in sys.modules:
+    setattr(sys.modules["homeassistant.helpers"], "device_registry", dr_mock)
 
 
 # Define specific exceptions

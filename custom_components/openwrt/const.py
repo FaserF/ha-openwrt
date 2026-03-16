@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Final
 
 DOMAIN: Final = "openwrt"
+DOCS_URL: Final = "https://github.com/FaserF/ha-openwrt"
 
 CONF_HOST: Final = "host"
 CONF_USERNAME: Final = "username"

@@ -62,7 +62,7 @@ class OpenWrtSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         self.entity_description = description
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
 
     @property
@@ -121,11 +121,11 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
         name_label = f"{label} ({band})" if band else label
 
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{iface_name}")},
+            identifiers={(DOMAIN, f"{entry.unique_id}_ap_{iface_name}")},
             name=f"AP {name_label}",
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, entry.data[CONF_HOST]),
+            via_device=(DOMAIN, entry.unique_id),
         )
 
 
@@ -150,11 +150,11 @@ class OpenWrtQModemSensorEntity(OpenWrtSensorEntity):
         model = f"QModem {revision}" if revision else "QModem Device"
 
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_qmodem")},
-            name=f"QModem ({entry.data[CONF_HOST]})",
+            identifiers={(DOMAIN, f"{entry.unique_id}_qmodem")},
+            name=f"QModem ({entry.unique_id})",
             manufacturer=manufacturer,
             model=model,
-            via_device=(DOMAIN, str(entry.data[CONF_HOST])),
+            via_device=(DOMAIN, str(entry.unique_id)),
         )
 
     @property
@@ -202,13 +202,13 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        via_device = (DOMAIN, self._entry.data[CONF_HOST])
+        via_device = (DOMAIN, self._entry.unique_id)
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if device.mac == self._mac and device.is_wireless and device.interface:
                     via_device = (
                         DOMAIN,
-                        f"{self._entry.data[CONF_HOST]}_ap_{device.interface}",
+                        f"{self._entry.unique_id}_ap_{device.interface}",
                     )
                     break
 

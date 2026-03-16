@@ -71,7 +71,7 @@ class OpenWrtLedLight(CoordinatorEntity[OpenWrtDataCoordinator], LightEntity):
         self._attr_name = f"LED {led_name}"
         self._attr_translation_key = "led"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
         self._entry = entry
 

@@ -162,7 +162,7 @@ class OpenWrtBinarySensorEntity(
         self.entity_description = description
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
 
     @property

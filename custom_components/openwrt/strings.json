@@ -2,8 +2,26 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to OpenWrt Router",
-        "description": "Select the connection method for your OpenWrt router. [Learn more]({docs_url}).",
+        "title": "OpenWrt Setup Wizard",
+        "description": "Select the connection method for your OpenWrt router. [Learn more]({docs_url})."
+      },
+      "discovery": {
+        "title": "Searching for OpenWrt",
+        "description": "Scanning your network for OpenWrt routers... {discovery_info}",
+        "data": {
+          "next": "Continue with discovery"
+        }
+      },
+      "select_device": {
+        "title": "Select Your Router",
+        "description": "Multiple OpenWrt devices were found. Please select the one you want to configure:\n\n{public_info}",
+        "data": {
+          "device": "Discovered Device (Method/Capabilities)"
+        }
+      },
+      "manual_entry": {
+        "title": "Manual Configuration",
+        "description": "No routers were automatically detected, or you chose to enter details manually. Please provide the IP address and connection method.",
         "data": {
           "host": "Host (IP address or hostname)",
           "connection_type": "Connection Type"
@@ -11,7 +29,7 @@
       },
       "credentials": {
         "title": "Authentication",
-        "description": "Enter the credentials for {host} via {connection_type}.",
+        "description": "Enter the credentials for **{host}** via **{connection_type}**.\n\n{auto_detected_info}",
         "data": {
           "username": "Username",
           "password": "Password",
@@ -43,7 +61,7 @@
       },
       "ssdp_confirm": {
         "title": "Discovered OpenWrt Router",
-        "description": "Do you want to set up {name} ({host})? Connection will be established via ubus (HTTP/HTTPS).",
+        "description": "Do you want to set up {name} ({host})? Connection will be established via **{method}**.\n\nAvailable capabilities: {capabilities}",
         "data": {
           "username": "Username",
           "password": "Password",
@@ -151,6 +169,13 @@
         "reset": "Reset existing user (new password & permissions)",
         "reuse": "Use existing 'homeassistant' user",
         "skip": "Keep using root (not recommended)"
+      }
+    },
+    "connection_type": {
+      "options": {
+        "ubus": "ubus (HTTP/HTTPS)",
+        "luci_rpc": "LuCI RPC",
+        "ssh": "SSH"
       }
     }
   },

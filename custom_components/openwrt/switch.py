@@ -144,7 +144,7 @@ class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         self._client = client
         self._attr_unique_id = f"{entry.entry_id}_wps"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
 
     @property
@@ -211,11 +211,11 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         self._attr_name = f"Wireless {name_label}"
         self._attr_translation_key = "wireless_radio"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{iface_name}")},
+            identifiers={(DOMAIN, f"{entry.unique_id}_ap_{iface_name}")},
             name=f"AP {name_label}",
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, entry.data[CONF_HOST]),
+            via_device=(DOMAIN, entry.unique_id),
         )
 
     @property
@@ -272,7 +272,7 @@ class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         self._attr_name = f"Service {service_name}"
         self._attr_translation_key = "service_toggle"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
 
     @property
@@ -339,7 +339,7 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         self._attr_name = f"Port Forward {name}"
         self._attr_translation_key = "firewall_port_forward"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
 
     @property
@@ -397,7 +397,7 @@ class OpenWrtAccessControlSwitch(
         self._attr_device_info = {
             "connections": {("mac", mac)},
             "name": name,
-            "via_device": (DOMAIN, entry.data[CONF_HOST]),
+            "via_device": (DOMAIN, entry.unique_id),
         }
 
     @property
@@ -459,7 +459,7 @@ class OpenWrtFirewallRuleSwitch(
         self._attr_name = f"Firewall Rule {name}"
         self._attr_translation_key = "firewall_rule"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
 
     @property
@@ -526,7 +526,7 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         self._attr_name = f"SQM {name}"
         self._attr_translation_key = "sqm_enabled"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
 
     @property

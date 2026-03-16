@@ -64,6 +64,41 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old entry."""
+    _LOGGER.debug("Migrating from version %s", entry.version)
+
+    if entry.version == 1:
+        # Version 2 uses MAC address as unique_id instead of IP
+        client = create_client(dict(entry.data))
+        try:
+            await client.connect()
+            device_info = await client.get_device_info()
+            await client.disconnect()
+
+            if device_info.mac_address:
+                new_unique_id = dr.format_mac(device_info.mac_address)
+                hass.config_entries.async_update_entry(
+                    entry, unique_id=new_unique_id, version=2
+                )
+                _LOGGER.info(
+                    "Migrated OpenWrt entry %s to version 2 (MAC: %s)",
+                    entry.entry_id,
+                    new_unique_id,
+                )
+            else:
+                hass.config_entries.async_update_entry(entry, version=2)
+                _LOGGER.warning(
+                    "Could not get MAC for %s migration. Version bumped.",
+                    entry.entry_id,
+                )
+        except Exception as err:
+            _LOGGER.error("Migration failed for %s: %s", entry.entry_id, err)
+            return False
+
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> bool:
     """Set up OpenWrt from a config entry."""
     client = create_client(dict(entry.data))
@@ -90,13 +125,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
                 continue
             device_registry.async_get_or_create(
                 config_entry_id=entry.entry_id,
-                identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{wifi.name}")},
+                identifiers={(DOMAIN, f"{entry.unique_id}_ap_{wifi.name}")},
                 name=f"AP {wifi.ssid or wifi.name}",
                 manufacturer=device_info.release_distribution or ATTR_MANUFACTURER
                 if device_info
                 else ATTR_MANUFACTURER,
                 model="Access Point",
-                via_device=(DOMAIN, entry.data[CONF_HOST]),
+                via_device=(DOMAIN, entry.unique_id),
             )
 
     hass.data.setdefault(DOMAIN, {})

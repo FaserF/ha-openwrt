@@ -211,7 +211,7 @@ class OpenWrtButtonEntity(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntit
         self._client = client
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
 
     async def async_press(self) -> None:
@@ -252,13 +252,13 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        via_device = (DOMAIN, self._entry.data[CONF_HOST])
+        via_device = (DOMAIN, self._entry.unique_id)
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if device.mac == self._mac and device.is_wireless and device.interface:
                     via_device = (
                         DOMAIN,
-                        f"{self._entry.data[CONF_HOST]}_ap_{device.interface}",
+                        f"{self._entry.unique_id}_ap_{device.interface}",
                     )
                     break
 
@@ -320,13 +320,13 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        via_device = (DOMAIN, self._entry.data[CONF_HOST])
+        via_device = (DOMAIN, self._entry.unique_id)
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if device.mac == self._mac and device.is_wireless and device.interface:
                     via_device = (
                         DOMAIN,
-                        f"{self._entry.data[CONF_HOST]}_ap_{device.interface}",
+                        f"{self._entry.unique_id}_ap_{device.interface}",
                     )
                     break
 

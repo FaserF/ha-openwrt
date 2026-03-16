@@ -28,7 +28,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import callback
-from homeassistant.helpers import selector
+from homeassistant.helpers import device_registry as dr, selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
@@ -85,6 +85,7 @@ from .const import (
     DEFAULT_USE_SSL,
     DEFAULT_USERNAME,
     DEFAULT_VERIFY_SSL,
+    DOCS_URL,
     DOMAIN,
 )
 from .coordinator import create_client
@@ -158,7 +159,7 @@ def _generate_package_table(packages: Any) -> str:
 class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OpenWrt."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Initialize flow."""
@@ -171,6 +172,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self._provision_error: str | None = None
         self._generated_password: str | None = None
         self._discovered_host: str | None = None
+        self._discovered_routers: list[dict[str, str]] = []
 
     @staticmethod
     @callback
@@ -181,57 +183,208 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step - select connection type."""
+        """Handle the initial step - Welcome Screen."""
         if user_input is not None:
-            self._data.update(user_input)
-            host = user_input[CONF_HOST]
-            connection_type = user_input[CONF_CONNECTION_TYPE]
+            return await self.async_step_discovery()
 
-            if not await self._async_check_reachable(host, connection_type):
+        return self.async_show_form(
+            step_id="user", description_placeholders={"docs_url": DOCS_URL}
+        )
+
+    async def async_step_discovery(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Scan for routers in the background."""
+        if user_input is not None or self._discovered_routers:
+            if not self._discovered_routers:
                 return self.async_show_form(
-                    step_id="user",
-                    data_schema=self._async_user_schema(),
-                    errors={CONF_HOST: "cannot_connect"},
-                    description_placeholders={
-                        "docs_url": "https://github.com/FaserF/ha-openwrt",
-                    },
+                    step_id="discovery",
+                    errors={"base": "no_devices_found"},
+                    description_placeholders={"discovery_info": ""},
                 )
 
-            if connection_type == CONNECTION_TYPE_SSH:
+            if len(self._discovered_routers) == 1:
+                router = self._discovered_routers[0]
+                self._data[CONF_HOST] = router["host"]
+                self._data[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_UBUS
+                self._discovered_name = router.get("hostname")
+                return await self.async_step_credentials()
+
+            return await self.async_step_select_device()
+
+        # Perform scanning
+        potential_hosts: set[str] = {"192.168.1.1", "192.168.0.1", "10.0.0.1"}
+
+        # Try to get dynamic gateways from Home Assistant
+        try:
+            # We try to get gateway IPs from network config
+            # This is more robust than guessing
+            from homeassistant.components import network
+
+            adapters = await network.async_get_adapters(self.hass)
+            for adapter in adapters:
+                for ipv4 in adapter.get("ipv4", []):
+                    # Guess gateway by .1 and .254 in same subnet (simplified)
+                    local_ip = ipv4.get("address")
+                    if local_ip:
+                        parts = local_ip.split(".")
+                        if len(parts) == 4:
+                            potential_hosts.add(".".join(parts[:-1] + ["1"]))
+                            potential_hosts.add(".".join(parts[:-1] + ["254"]))
+        except Exception:
+            pass
+
+        tasks = [self._async_probe_router(host) for host in potential_hosts]
+        results = await asyncio.gather(*tasks)
+
+        for router_info in results:
+            if router_info:
+                # Avoid duplicates
+                if not any(
+                    r["host"] == router_info["host"] for r in self._discovered_routers
+                ):
+                    self._discovered_routers.append(router_info)
+
+        if not self._discovered_routers:
+            return await self.async_step_manual_entry()
+
+        return await self.async_step_discovery(user_input={})
+
+    async def async_step_manual_entry(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle manual entry if discovery fails or if chosen."""
+        if user_input is not None:
+            self._data.update(user_input)
+            if user_input[CONF_CONNECTION_TYPE] == CONNECTION_TYPE_SSH:
                 return await self.async_step_ssh()
             return await self.async_step_credentials()
 
-        # Proactive discovery if no host is set yet
-        default_host = "192.168.1.1"
-        discovered = await self._async_discover_router()
-        if discovered:
-            default_host = discovered
-            self._discovered_host = discovered
+        return self.async_show_form(
+            step_id="manual_entry",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST, default="192.168.1.1"): str,
+                    vol.Required(
+                        CONF_CONNECTION_TYPE, default=CONNECTION_TYPE_LUCI_RPC
+                    ): vol.In(CONNECTION_TYPE_MAP),
+                }
+            ),
+        )
+
+    async def async_step_select_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle selecting a router when multiple are found."""
+        if user_input is not None:
+            host = user_input["device"]
+            router = next(r for r in self._discovered_routers if r["host"] == host)
+            self._data[CONF_HOST] = router["host"]
+            self._discovered_name = router.get("hostname")
+            return await self.async_step_credentials()
+
+        device_options = {
+            r[
+                "host"
+            ]: f"{r.get('hostname', 'OpenWrt')} ({r['host']}) - {r['method'].upper()} [Available: {', '.join(r['capabilities'])}]"
+            for r in self._discovered_routers
+        }
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=self._async_user_schema(default_host),
-            description_placeholders={
-                "docs_url": "https://github.com/FaserF/ha-openwrt",
-            },
+            step_id="select_device",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("device"): vol.In(device_options),
+                }
+            ),
+            description_placeholders={"public_info": ""},
         )
 
-    def _async_user_schema(self, default_host: str = "192.168.1.1") -> vol.Schema:
-        """Return the schema for the user step."""
-        return vol.Schema(
-            {
-                vol.Required(CONF_HOST, default=default_host): str,
-                vol.Required(
-                    CONF_CONNECTION_TYPE, default=CONNECTION_TYPE_LUCI_RPC
-                ): vol.In(CONNECTION_TYPE_MAP),
+    def _is_excluded(self, host: str, hostname: str | None = None, properties: dict[str, Any] | None = None) -> bool:
+        """Centralized check for non-router OpenWrt devices like vacuums."""
+        exclusions = [
+            "valetudo", "vacuum", "dreame", "roborock", "cleaner", "mop", 
+            "robot", "airpurifier", "washer", "dryer", "fridge", "oven",
+            "camera", "tuya", "smartlife", "broadlink", "shelly"
+        ]
+        
+        # 1. Check hostname/name
+        search_target = ""
+        if hostname:
+            search_target += hostname.lower()
+        if properties:
+            # Check all property values for exclusions
+            for val in properties.values():
+                if isinstance(val, str):
+                    search_target += " " + val.lower()
+        
+        if any(exc in search_target for exc in exclusions):
+            _LOGGER.info("Definitively excluded %s (%s) as a non-router device", host, hostname)
+            return True
+            
+        return False
+
+    async def _async_probe_router(self, host: str, hostname: str | None = None) -> dict[str, Any] | None:
+        """Probe a host and return metadata if it's OpenWrt."""
+        _LOGGER.debug("Probing router logic for %s (hint: %s)", host, hostname)
+
+        # 1. Definitive exclusions
+        if self._is_excluded(host, hostname):
+            return None
+            
+        effective_hostname = hostname
+        if not effective_hostname or effective_hostname == host:
+            try:
+                loop = asyncio.get_running_loop()
+                result = await loop.run_in_executor(None, socket.gethostbyaddr, host)
+                effective_hostname = result[0]
+            except Exception:
+                effective_hostname = effective_hostname or host
+
+        # Re-check exclusion after reverse DNS
+        if self._is_excluded(host, effective_hostname):
+            return None
+
+        # 2. Port accessibility check
+        if not await self._async_check_reachable(host, CONNECTION_TYPE_UBUS):
+            # If not ubus, might be only SSH
+            if not await self._async_check_reachable(host, CONNECTION_TYPE_SSH):
+                return None
+
+        # 3. Deep probe for LuCI/metadata and capabilities
+        capabilities = []
+        best_method = None
+
+        # Check ubus/luci with the already resolved hostname
+        probed_methods = await self._async_probe_openwrt(host, effective_hostname)
+        if probed_methods:
+            capabilities.extend(probed_methods)
+            if CONNECTION_TYPE_UBUS in probed_methods:
+                best_method = CONNECTION_TYPE_UBUS
+            else:
+                best_method = probed_methods[0]
+
+        # Check SSH
+        if await self._async_check_reachable(host, CONNECTION_TYPE_SSH):
+            # Robust SSH banner check is already inside check_reachable (or should be)
+            if "ssh" not in capabilities:
+                capabilities.append("ssh")
+            if not best_method:
+                best_method = "ssh"
+
+        if best_method:
+            return {
+                "host": host,
+                "hostname": effective_hostname,
+                "capabilities": capabilities,
+                "method": best_method,
             }
-        )
+
+        return None
 
     async def _async_check_reachable(self, host: str, connection_type: str) -> bool:
         """Check if the host is reachable on the expected ports."""
-
         ports = [22] if connection_type == CONNECTION_TYPE_SSH else [80, 443]
-
         if ":" in host:
             try:
                 host_part, port_str = host.split(":")
@@ -241,50 +394,45 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 pass
 
         for port in ports:
-            _LOGGER.debug("Checking reachability of %s:%s", host, port)
             try:
-                async with asyncio.timeout(2):
+                async with asyncio.timeout(1.5):
                     reader, writer = await asyncio.open_connection(host, port)
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
+            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
                 continue
-
         return False
 
     async def async_step_ssdp(
         self, discovery_info: SsdpServiceInfo
     ) -> ConfigFlowResult:
         """Handle SSDP auto-discovery."""
-        ssdp_location = discovery_info.ssdp_location or ""
-        parsed = urlparse(ssdp_location)
-        host = parsed.hostname or ""
-
+        host = urlparse(discovery_info.ssdp_location or "").hostname or discovery_info.ssdp_location
         if not host:
             return self.async_abort(reason="no_host")
 
-        await self.async_set_unique_id(host)
-        self._abort_if_unique_id_configured()
+        # SSDP often includes a serial number which is often the MAC
+        serial = discovery_info.upnp.get("serialNumber")
+        if serial:
+            # Serial is often the MAC or contains it
+            unique_id = dr.format_mac(serial) if ":" in serial or len(serial) == 12 else serial
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+        else:
+            await self.async_set_unique_id(host)
+            self._abort_if_unique_id_configured()
 
-        upnp = discovery_info.upnp or {}
-        friendly_name = upnp.get("friendlyName", "")
-        server = discovery_info.ssdp_headers.get("SERVER", "")
-        manufacturer = upnp.get("manufacturer", "")
-        model_name = upnp.get("modelName", "")
+        hostname = discovery_info.upnp.get("friendlyName") or discovery_info.upnp.get("modelName")
+        if self._is_excluded(host, hostname, discovery_info.upnp):
+            return self.async_abort(reason="not_openwrt")
 
-        openwrt_indicators = ["openwrt", "lede", "miniupnpd", "librecmc"]
-        combined = f"{friendly_name} {server} {manufacturer} {model_name}".lower()
-        if not any(indicator in combined for indicator in openwrt_indicators):
-            # Proactive probe if indicators are missing but it's an IGD
-            if "internetgatewaydevice" in combined or "rootdevice" in combined:
-                if not await self._async_probe_openwrt(host):
-                    return self.async_abort(reason="not_openwrt")
-            else:
-                return self.async_abort(reason="not_openwrt")
+        probe_result = await self._async_probe_router(host, hostname)
+        if not probe_result:
+            return self.async_abort(reason="not_openwrt")
 
-        self._discovered_host = host
-        self._discovered_name = friendly_name or f"OpenWrt ({host})"
+        self._discovered_routers = [probe_result]
+        self._discovered_name = probe_result.get("hostname") or f"OpenWrt ({host})"
 
         self.context["title_placeholders"] = {
             "name": self._discovered_name,
@@ -298,32 +446,24 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle DHCP auto-discovery."""
         host = discovery_info.ip
-        await self.async_set_unique_id(host)
-        self._abort_if_unique_id_configured()
+        mac = discovery_info.macaddress
+        await self.async_set_unique_id(dr.format_mac(mac))
+        self._abort_if_unique_id_configured(updates={CONF_HOST: host})
 
-        hostname = discovery_info.hostname.lower()
-        mac = (discovery_info.macaddress or "").replace(":", "").upper()
+        probe_result = await self._async_probe_router(host, discovery_info.hostname)
+        if not probe_result:
+            return self.async_abort(reason="not_openwrt")
 
-        # MAC prefixes: Xiaomi (D4BC52, E848B8, B0B98A), GL-iNet (000C43), and generic OpenWrt strings
-        openwrt_indicators = ["openwrt", "lede", "librecmc"]
-        mac_prefixes = ["D4BC52", "E848B8", "000C43", "B0B98A"]
+        self._discovered_routers = [probe_result]
+        self._discovered_name = probe_result.get("hostname") or f"OpenWrt ({host})"
 
-        is_openwrt = any(
-            indicator in hostname for indicator in openwrt_indicators
-        ) or any(mac.startswith(prefix) for prefix in mac_prefixes)
+        self.context.update({
+            "title_placeholders": {
+                "name": self._discovered_name,
+                "host": host,
+            }
+        })
 
-        if not is_openwrt:
-            # Proactive probe for DHCP discovered IPs
-            if not await self._async_probe_openwrt(host):
-                return self.async_abort(reason="not_openwrt")
-
-        self._discovered_host = host
-        self._discovered_name = f"OpenWrt ({discovery_info.hostname})"
-
-        self.context["title_placeholders"] = {
-            "name": self._discovered_name,
-            "host": host,
-        }
 
         return await self.async_step_ssdp_confirm()
 
@@ -332,84 +472,76 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle Zeroconf auto-discovery."""
         host = discovery_info.host
-        await self.async_set_unique_id(host)
-        self._abort_if_unique_id_configured()
-
-        name = discovery_info.name.lower()
-        hostname = (discovery_info.hostname or "").lower()
-
-        # If the service type is _luci._tcp, it's almost certainly OpenWrt
-        if "_luci._tcp" in discovery_info.type:
-            pass
+        # Zeroconf properties might have MAC
+        mac = discovery_info.properties.get("mac")
+        if mac:
+            await self.async_set_unique_id(dr.format_mac(mac))
+            self._abort_if_unique_id_configured(updates={CONF_HOST: host})
         else:
-            openwrt_indicators = ["openwrt", "lede", "librecmc", "luci"]
-            if not any(
-                indicator in name or indicator in hostname
-                for indicator in openwrt_indicators
-            ):
-                return self.async_abort(reason="not_openwrt")
+            await self.async_set_unique_id(host)
+            self._abort_if_unique_id_configured()
 
-        self._discovered_host = host
-        self._discovered_name = discovery_info.hostname or f"OpenWrt ({host})"
+        if self._is_excluded(host, discovery_info.name, discovery_info.properties):
+            return self.async_abort(reason="not_openwrt")
 
-        self.context["title_placeholders"] = {
-            "name": self._discovered_name,
-            "host": host,
-        }
+        probe_result = await self._async_probe_router(host, discovery_info.name)
+        if not probe_result:
+            return self.async_abort(reason="not_openwrt")
+
+        self._discovered_routers = [probe_result]
+        self._discovered_name = probe_result.get("hostname") or f"OpenWrt ({host})"
+
+        self.context.update({
+            "title_placeholders": {
+                "name": self._discovered_name,
+                "host": host,
+            }
+        })
+
 
         return await self.async_step_ssdp_confirm()
 
     async def async_step_ssdp_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Confirm the SSDP discovered device."""
+        """Confirm the discovered device."""
         if user_input is not None:
-            self._data[CONF_HOST] = self._discovered_host
-            self._data[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_UBUS
-            self._data.update(user_input)
+            router = self._discovered_routers[-1]
+            self._data[CONF_HOST] = router["host"]
+            self._data[CONF_CONNECTION_TYPE] = user_input.get(
+                CONF_CONNECTION_TYPE, router["method"]
+            )
+            return await self.async_step_credentials()
 
-            if not user_input.get(CONF_PORT):
-                if self._data.get(CONF_USE_SSL, False):
-                    self._data[CONF_PORT] = DEFAULT_PORT_UBUS_SSL
-                else:
-                    self._data[CONF_PORT] = DEFAULT_PORT_UBUS
+        router = self._discovered_routers[-1]
+        capabilities = ", ".join(
+            [CONNECTION_TYPE_MAP.get(c, c) for c in router.get("capabilities", [])]
+        )
 
-            error = await self._test_connection(self._data)
-            if error:
-                return self.async_show_form(
-                    step_id="ssdp_confirm",
-                    data_schema=vol.Schema(
-                        {
-                            vol.Required(CONF_USERNAME, default=DEFAULT_USERNAME): str,
-                            vol.Required(CONF_PASSWORD): str,
-                            vol.Required(CONF_USE_SSL, default=DEFAULT_USE_SSL): bool,
-                            vol.Optional(CONF_PORT): int,
-                        }
-                    ),
-                    errors={"base": error},
-                    description_placeholders={
-                        "name": self._discovered_name or "",
-                        "host": self._discovered_host or "",
-                    },
-                )
-
-            if self._data.get(CONF_USERNAME) == "root":
-                return await self.async_step_provision_user()
-            return await self.async_step_permissions()
+        schema = vol.Schema({})
+        if len(router.get("capabilities", [])) > 1:
+            schema = vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CONNECTION_TYPE, default=router["method"]
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=router["capabilities"],
+                            translation_key="connection_type",
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            )
 
         return self.async_show_form(
             step_id="ssdp_confirm",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_USERNAME, default=DEFAULT_USERNAME): str,
-                    vol.Required(CONF_PASSWORD): str,
-                    vol.Required(CONF_USE_SSL, default=DEFAULT_USE_SSL): bool,
-                    vol.Optional(CONF_PORT): int,
-                }
-            ),
+            data_schema=schema,
             description_placeholders={
-                "name": self._discovered_name or "",
-                "host": self._discovered_host or "",
+                "name": self._discovered_name or "OpenWrt Router",
+                "host": router["host"],
+                "method": CONNECTION_TYPE_MAP.get(router["method"], router["method"]),
+                "capabilities": capabilities,
             },
         )
 
@@ -436,6 +568,30 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     return await self.async_step_provision_user()
                 return await self.async_step_permissions()
 
+        host = self._data.get(CONF_HOST, "")
+        connection_type = self._data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_UBUS)
+
+        # Determine if we have a hint
+        auto_detected_info = ""
+        if any(r["host"] == host for r in self._discovered_routers):
+            hostname = self._discovered_name or host
+            auto_detected_info = f"💡 Auto-detected: **{hostname}** ({host})"
+
+        return self.async_show_form(
+            step_id="credentials",
+            data_schema=self._async_credentials_schema(),
+            errors=errors,
+            description_placeholders={
+                "host": host,
+                "connection_type": CONNECTION_TYPE_MAP.get(
+                    connection_type, connection_type
+                ),
+                "auto_detected_info": auto_detected_info,
+            },
+        )
+
+    def _async_credentials_schema(self) -> vol.Schema:
+        """Return the schema for credentials step."""
         connection_type = self._data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_UBUS)
         is_ubus = connection_type == CONNECTION_TYPE_UBUS
 
@@ -457,17 +613,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         if is_ubus:
             schema_dict[vol.Optional(CONF_UBUS_PATH, default=DEFAULT_UBUS_PATH)] = str
 
-        return self.async_show_form(
-            step_id="credentials",
-            data_schema=vol.Schema(schema_dict),
-            errors=errors,
-            description_placeholders={
-                "host": self._data.get(CONF_HOST, ""),
-                "connection_type": CONNECTION_TYPE_MAP.get(
-                    connection_type, connection_type
-                ),
-            },
-        )
+        return vol.Schema(schema_dict)
 
     async def async_step_ssh(
         self, user_input: dict[str, Any] | None = None
@@ -489,7 +635,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     return await self.async_step_provision_user()
                 return await self.async_step_permissions()
 
-        schema = vol.Schema(
+        return self.async_show_form(
+            step_id="ssh",
+            data_schema=self._async_ssh_schema(),
+            errors=errors,
+            description_placeholders={
+                "host": self._data.get(CONF_HOST, ""),
+            },
+        )
+
+    def _async_ssh_schema(self) -> vol.Schema:
+        """Return the schema for SSH step."""
+        return vol.Schema(
             {
                 vol.Required(CONF_USERNAME, default=DEFAULT_USERNAME): str,
                 vol.Optional(CONF_PASSWORD): str,
@@ -499,15 +656,6 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional(CONF_PORT, default=DEFAULT_PORT_SSH): int,
             }
-        )
-
-        return self.async_show_form(
-            step_id="ssh",
-            data_schema=schema,
-            errors=errors,
-            description_placeholders={
-                "host": self._data.get(CONF_HOST, ""),
-            },
         )
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
@@ -574,6 +722,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     "hostname": device_info.hostname,
                     "model": device_info.model,
                     "firmware_version": device_info.firmware_version,
+                    "mac_address": device_info.mac_address,
                 }
                 try:
                     self._permissions = await client.check_permissions()
@@ -621,10 +770,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             return "unknown"
 
-    async def _async_probe_openwrt(self, host: str) -> bool:
+    async def _async_probe_openwrt(self, host: str, hostname: str | None = None) -> list[str]:
         """Probe a host to see if it responds like OpenWrt (LuCI/UBus)."""
-        _LOGGER.debug("Probing %s for OpenWrt endpoints", host)
+        _LOGGER.debug("Probing %s (%s) for OpenWrt endpoints", host, hostname)
 
+        # 0. Quick exclusion check
+        if self._is_excluded(host, hostname):
+            return []
+
+        # Exclusion list for keyword searching in bodies
+        exclusions = ["valetudo", "manual control", "dreame", "roborock", "vacuum", "cleaner", "mop"]
+
+        found_methods = []
         session = async_get_clientsession(self.hass)
 
         # 1. Try LuCI
@@ -632,40 +789,88 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             async with asyncio.timeout(2):
                 async with session.get(luci_url, allow_redirects=True) as response:
+                    server = response.headers.get("Server", "").lower()
+                    if "valetudo" in server or "valetudo" in response.headers:
+                        return []
+
                     response_text = await response.text()
+                    if any(s in response_text.lower() for s in exclusions):
+                        _LOGGER.debug("Excluded %s as it appears to be a vacuum/valetudo device", host)
+                        return []
+
                     if any(
                         s in response_text.lower() for s in ["luci", "openwrt", "ubus"]
-                    ):
+                    ) or "uhttpd" in response.headers.get("Server", "").lower():
                         _LOGGER.info("Found OpenWrt via LuCI probe at %s", host)
-                        return True
-                    if "uhttpd" in response.headers.get("Server", "").lower():
-                        return True
-        except TimeoutError, aiohttp.ClientError:
+                        found_methods.append(CONNECTION_TYPE_LUCI_RPC)
+        except (TimeoutError, aiohttp.ClientError):
             pass
 
-        # 2. Try UBus endpoint (default path)
+        # 2. Try LuCI static asset (more specific to OpenWrt)
+        if CONNECTION_TYPE_LUCI_RPC not in found_methods:
+            asset_url = f"http://{host}/luci-static/resources/luci.js"
+            try:
+                async with asyncio.timeout(2):
+                    async with session.get(asset_url) as response:
+                        if response.status == 200:
+                            _LOGGER.info("Found OpenWrt via LuCI asset probe at %s", host)
+                            found_methods.append(CONNECTION_TYPE_LUCI_RPC)
+            except (TimeoutError, aiohttp.ClientError):
+                pass
+
+        # Check exclusions again before UBus if we didn't find LuCI yet
+        # (This handles devices where only UBus is exposed but it's a known non-router)
+
+        # 3. Try UBus endpoint (default path)
         ubus_url = f"http://{host}/ubus"
         try:
             async with asyncio.timeout(2):
                 # A direct POST to ubus with empty data should return 405 or a JSON error
-                # but it proves the endpoint exists
+                # but it proves the endpoint exists. A router's ubus usually returns 
+                # a specific JSON structure or at least application/json content type.
                 async with session.post(ubus_url, json={}) as response:
-                    if response.status in (
-                        200,
-                        405,
-                    ):  # 405 Method Not Allowed is common for GET on /ubus
+                    content_type = response.headers.get("Content-Type", "").lower()
+                    server = response.headers.get("Server", "").lower()
+
+                    if "valetudo" in server or "valetudo" in response.headers:
+                        _LOGGER.info("Excluded %s: Valetudo detected via headers", host)
+                        return []
+                    
+                    if response.status in (200, 405):
+                        # Router check: UBus usually responds with application/json
+                        if "json" not in content_type and response.status == 405:
+                            _LOGGER.debug("Excluded %s: UBus probe returned 405 but not JSON", host)
+                            return list(set(found_methods))
+
+                        if response.status == 200:
+                            text = await response.text()
+                            if any(s in text.lower() for s in exclusions):
+                                _LOGGER.debug("Excluded %s: non-router keywords found in UBus response", host)
+                                return list(set(found_methods))
+                            
+                            # A 200 OK from /ubus without any JSON structure is suspicious for a router
+                            try:
+                                data = await response.json()
+                                if not isinstance(data, dict):
+                                    return list(set(found_methods))
+                            except Exception:
+                                # If it's 200 and not JSON, it's probably not ubus
+                                return list(set(found_methods))
+
                         _LOGGER.info("Found OpenWrt via UBus probe at %s", host)
-                        return True
-                    try:
-                        data = await response.json()
-                        if isinstance(data, dict) and "jsonrpc" in data:
-                            return True
-                    except Exception:
-                        pass
-        except TimeoutError, aiohttp.ClientError:
+                        found_methods.append(CONNECTION_TYPE_UBUS)
+                    else:
+                        try:
+                            # If it's a JSON error, check for exclusion in the error message if any
+                            data = await response.json()
+                            if isinstance(data, dict) and "jsonrpc" in data:
+                                found_methods.append(CONNECTION_TYPE_UBUS)
+                        except Exception:
+                            pass
+        except (TimeoutError, aiohttp.ClientError):
             pass
 
-        return False
+        return list(set(found_methods))
 
     async def _async_discover_router(self) -> str | None:
         """Try to discover an OpenWrt router on common gateway IPs."""
@@ -957,8 +1162,13 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         """Create the config entry."""
         host = self._data[CONF_HOST]
         hostname = self._device_info.get("hostname", host)
+        mac = self._device_info.get("mac_address")
 
-        await self.async_set_unique_id(host)
+        if mac:
+            await self.async_set_unique_id(dr.format_mac(mac))
+        else:
+            await self.async_set_unique_id(host)
+
         self._abort_if_unique_id_configured()
 
         title = hostname if hostname else host

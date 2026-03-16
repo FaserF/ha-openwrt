@@ -60,7 +60,7 @@ class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEnti
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_new_device_event"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
         self._known_macs: set[str] = set()
         self._initialized = False

@@ -92,11 +92,11 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         self._attr_name = f"{label} TX Power"
         self._attr_unique_id = f"{entry.entry_id}_txpower_{iface_name}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{iface_name}")},
+            identifiers={(DOMAIN, f"{entry.unique_id}_ap_{iface_name}")},
             name=f"AP {label}",
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, entry.data[CONF_HOST]),
+            via_device=(DOMAIN, entry.unique_id),
         )
 
     @property
@@ -160,7 +160,7 @@ class OpenWrtSqmNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEntity):
         self._entry = entry
         self._sqm_name = name
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
 
     @property
