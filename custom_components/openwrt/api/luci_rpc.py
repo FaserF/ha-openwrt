@@ -23,6 +23,7 @@ from .base import (
     FirewallRedirect,
     FirewallRule,
     IpNeighbor,
+    LldpNeighbor,
     NetworkInterface,
     OpenWrtClient,
     OpenWrtPackages,
@@ -278,7 +279,132 @@ class LuciRpcClient(OpenWrtClient):
         except LuciRpcError:
             pass
 
+        # Populate model and hardware info from system.board if available
+        try:
+            board_out = await self.execute_command("ubus call system board")
+            if board_out and board_out.strip().startswith("{"):
+                board_data = json.loads(board_out)
+                model = board_data.get("model")
+                if isinstance(model, dict):
+                    info.model = model.get("name", model.get("id", info.model))
+                elif model:
+                    info.model = str(model)
+                info.board_name = board_data.get("board_name", info.board_name)
+        except Exception:
+            pass
+
+        if not info.model:
+            # Fallback for model
+            try:
+                model_out = await self.execute_command(
+                    "cat /tmp/sysinfo/model 2>/dev/null"
+                )
+                if model_out:
+                    info.model = model_out.strip()
+            except Exception:
+                pass
+
+        # Get MAC address from primary interface more robustly
+        try:
+            # Try to get the MAC for br-lan FIRST as it's the primary LAN identity
+            mac_out = await self.execute_command(
+                "if [ -f /sys/class/net/br-lan/address ]; then cat /sys/class/net/br-lan/address; "
+                "elif [ -f /sys/class/net/lan/address ]; then cat /sys/class/net/lan/address; "
+                "elif [ -f /sys/class/net/eth0/address ]; then cat /sys/class/net/eth0/address; "
+                "else cat /sys/class/net/*/address | grep -v '00:00:00:00:00:00' | head -n 1; fi"
+            )
+            if mac_out and isinstance(mac_out, str) and ":" in mac_out:
+                info.mac_address = mac_out.strip().lower()
+        except Exception:
+            pass
+
+        # If MAC is still missing, try a different approach (ifconfig/ip)
+        if not info.mac_address:
+            try:
+                ip_addr_out = await self.execute_command(
+                    "ip addr show br-lan || ip addr show lan || ip addr show eth0"
+                )
+                if "link/ether" in ip_addr_out:
+                    mac = ip_addr_out.split("link/ether")[1].strip().split()[0]
+                    info.mac_address = mac.lower()
+            except Exception:
+                pass
+
         return info
+
+    async def get_gateway_mac(self) -> str | None:
+        """Get the MAC address of the default gateway via LuCI RPC."""
+        try:
+            # 1. Get the default gateway IP
+            route_out = await self.execute_command("ip -4 route show | grep default")
+            if not route_out:
+                return None
+
+            # Example: default via 192.168.1.1 dev eth0 proto static
+            parts = route_out.split()
+            if "via" not in parts:
+                return None
+
+            gw_ip = parts[parts.index("via") + 1]
+
+            # 2. Get the MAC from ARP/Neighbor table
+            neigh_out = await self.execute_command(f"ip neigh show {gw_ip}")
+            if not neigh_out:
+                return None
+
+            # Example: 192.168.1.1 dev eth0 lladdr 00:11:22:33:44:55 REACHABLE
+            if "lladdr" in neigh_out:
+                mac = neigh_out.split("lladdr")[1].strip().split()[0]
+                return mac.lower()
+        except Exception:
+            pass
+        return None
+
+    async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
+        """Get LLDP neighbor information via LuCI RPC."""
+        neighbors: list[LldpNeighbor] = []
+        try:
+            # Try ubus first (same as ubus client)
+            out = await self.execute_command("ubus call lldp show 2>/dev/null")
+            if out and out.strip().startswith("{"):
+                data = json.loads(out)
+                for neighbor_data in data.get("lldp", []):
+                    for _interface_name, details in neighbor_data.items():
+                        if not isinstance(details, dict):
+                            continue
+                        # details is a list of neighbors for this interface?
+                        # Actually 'lldp show' structure varies, but let's try a common one
+                        pass
+
+            # Fallback to lldpcli -f json
+            out = await self.execute_command(
+                "lldpcli show neighbors -f json 2>/dev/null"
+            )
+            if out and out.strip().startswith("{"):
+                data = json.loads(out)
+                # Parse lldpcli json output (complex nested structure)
+                # lldp -> neighbor -> [ { interface: { name: "...", neighbor: [...] } } ]
+                lldp = data.get("lldp", {})
+                for entry in lldp.get("interface", []):
+                    local_iface = None
+                    for iface_name, iface_data in entry.items():
+                        local_iface = iface_name
+                        for neighbor in iface_data.get("neighbor", []):
+                            n = LldpNeighbor(local_interface=local_iface)
+                            n.neighbor_name = neighbor.get("name", "")
+                            n.neighbor_description = neighbor.get("descr", "")
+                            n.neighbor_system_name = neighbor.get("sysname", "")
+
+                            port = neighbor.get("port", [{}])[0]
+                            n.neighbor_port = port.get("id", {}).get("value", "")
+
+                            chassis = neighbor.get("chassis", [{}])[0]
+                            n.neighbor_chassis = chassis.get("id", {}).get("value", "")
+
+                            neighbors.append(n)
+        except Exception:
+            pass
+        return neighbors
 
     async def check_permissions(self) -> OpenWrtPermissions:
         """Check what permissions the current user has."""
@@ -535,6 +661,15 @@ class LuciRpcClient(OpenWrtClient):
                                                 )
                                             except ValueError, IndexError:
                                                 pass
+                                        elif "Access Point:" in line:
+                                            try:
+                                                wifi.mac_address = (
+                                                    line.split("Access Point:")[1]
+                                                    .strip()
+                                                    .upper()
+                                                )
+                                            except IndexError:
+                                                pass
                                         elif "Signal:" in line:
                                             try:
                                                 wifi.signal = int(
@@ -655,6 +790,16 @@ class LuciRpcClient(OpenWrtClient):
                         protocol=values.get("proto", ""),
                         device=str(values.get("device", values.get("ifname", ""))),
                     )
+                    # Try to get MAC if possible
+                    if iface.device:
+                        try:
+                            mac = await self.execute_command(
+                                f"cat /sys/class/net/{iface.device}/address 2>/dev/null"
+                            )
+                            if mac and ":" in mac:
+                                iface.mac_address = mac.strip().lower()
+                        except Exception:
+                            pass
                     interfaces.append(iface)
 
         return interfaces
@@ -681,6 +826,7 @@ class LuciRpcClient(OpenWrtClient):
                             hostname=parts[3] if parts[3] != "*" else "",
                             connected=True,
                             is_wireless=False,
+                            connection_type="wired",
                         )
         except LuciRpcError:
             pass
@@ -703,6 +849,7 @@ class LuciRpcClient(OpenWrtClient):
                                     ip=parts[0],
                                     connected=True,
                                     is_wireless=False,
+                                    connection_type="wired",
                                 )
         except LuciRpcError:
             pass
@@ -739,6 +886,16 @@ class LuciRpcClient(OpenWrtClient):
                                     devices[mac] = dev
 
                                 dev.is_wireless = True
+                                if (
+                                    not dev.connection_type
+                                    or dev.connection_type == "wired"
+                                ):
+                                    if "5g" in iface.lower():
+                                        dev.connection_type = "5GHz"
+                                    elif "2g" in iface.lower():
+                                        dev.connection_type = "2.4GHz"
+                                    else:
+                                        dev.connection_type = "wireless"
                                 # Map system interface name to UCI section if possible
                                 dev.interface = getattr(self, "_sys_to_uci", {}).get(
                                     iface, iface

@@ -52,6 +52,11 @@ class MockEntity:
     _attr_name: str | None = None
     _attr_device_info: Any | None = None
     _attr_extra_state_attributes: dict[str, Any] | None = None
+    _attr_entity_registry_enabled_default: bool = True
+
+    @property
+    def entity_registry_enabled_default(self) -> bool:
+        return self._attr_entity_registry_enabled_default
 
     @property
     def unique_id(self) -> str | None:

@@ -21,6 +21,7 @@ from .base import (
     FirewallRedirect,
     FirewallRule,
     IpNeighbor,
+    LldpNeighbor,
     NetworkInterface,
     OpenWrtClient,
     OpenWrtPackages,
@@ -244,7 +245,11 @@ class SshClient(OpenWrtClient):
         if board_json and board_json.strip() and board_json.strip().startswith("{"):
             data = json.loads(board_json)
             info.hostname = data.get("hostname", "")
-            info.model = data.get("model", data.get("board_name", ""))
+            model = data.get("model")
+            if isinstance(model, dict):
+                info.model = model.get("name", model.get("id", info.model))
+            else:
+                info.model = model or data.get("board_name", "")
             info.board_name = data.get("board_name", "")
             info.kernel_version = data.get("kernel", "")
             info.architecture = data.get("system", "")
@@ -281,13 +286,31 @@ class SshClient(OpenWrtClient):
             except Exception:  # noqa: BLE001
                 pass
 
+        # Get MAC address from primary interface more robustly
         try:
-            mac = (
-                await self._exec("cat /sys/class/net/br-lan/address 2>/dev/null")
-            ).strip()
-            info.mac_address = mac.upper() if mac else ""
-        except Exception:  # noqa: BLE001
+            # Try to get the MAC for br-lan FIRST as it's the primary LAN identity
+            mac_out = await self._exec(
+                "if [ -f /sys/class/net/br-lan/address ]; then cat /sys/class/net/br-lan/address; "
+                "elif [ -f /sys/class/net/lan/address ]; then cat /sys/class/net/lan/address; "
+                "elif [ -f /sys/class/net/eth0/address ]; then cat /sys/class/net/eth0/address; "
+                "else cat /sys/class/net/*/address | grep -v '00:00:00:00:00:00' | head -n 1; fi"
+            )
+            if mac_out and isinstance(mac_out, str) and ":" in mac_out:
+                info.mac_address = mac_out.strip().lower()
+        except Exception:
             pass
+
+        # If MAC is still missing, try a different approach (ifconfig/ip)
+        if not info.mac_address:
+            try:
+                ip_addr_out = await self._exec(
+                    "ip addr show br-lan || ip addr show lan || ip addr show eth0"
+                )
+                if isinstance(ip_addr_out, str) and "link/ether" in ip_addr_out:
+                    mac = ip_addr_out.split("link/ether")[1].strip().split()[0]
+                    info.mac_address = mac.lower()
+            except Exception:
+                pass
 
         try:
             uptime_str = await self._exec("cat /proc/uptime")
@@ -461,6 +484,15 @@ class SshClient(OpenWrtClient):
                                             )
                                         except ValueError, IndexError:
                                             pass
+                                    elif "Access Point:" in line:
+                                        try:
+                                            wifi.mac_address = (
+                                                line.split("Access Point:")[1]
+                                                .strip()
+                                                .upper()
+                                            )
+                                        except IndexError:
+                                            pass
                                     elif "Signal:" in line:
                                         try:
                                             wifi.signal = int(
@@ -541,6 +573,7 @@ class SshClient(OpenWrtClient):
                     hostname=lease.hostname,
                     connected=True,
                     is_wireless=False,
+                    connection_type="wired",
                 )
         except Exception:  # noqa: BLE001
             pass
@@ -1108,6 +1141,9 @@ class SshClient(OpenWrtClient):
                                 mac=parts[1].lower(),
                                 ip=parts[2],
                                 hostname=parts[3] if parts[3] != "*" else "",
+                                connected=True,
+                                is_wireless=False,
+                                connection_type="wired",
                             )
                         )
             except Exception:  # noqa: BLE001
@@ -1233,3 +1269,106 @@ class SshClient(OpenWrtClient):
         except Exception as err:
             _LOGGER.error("Failed to set SQM config via SSH: %s", err)
             return False
+
+    async def get_gateway_mac(self) -> str | None:
+        """Get the default gateway MAC address via SSH."""
+        try:
+            # 1. Get default gateway IP
+            route_out = await self._exec("ip route show default 2>/dev/null")
+            if not route_out:
+                return None
+
+            # Example: default via 192.168.178.1 dev eth0 proto static
+            parts = route_out.split()
+            if "via" not in parts:
+                return None
+
+            gw_ip = parts[parts.index("via") + 1]
+
+            # 2. Get MAC for that IP
+            neigh_out = await self._exec(f"ip neigh show {gw_ip} 2>/dev/null")
+            if "lladdr" in neigh_out:
+                neigh_parts = neigh_out.split()
+                return neigh_parts[neigh_parts.index("lladdr") + 1].upper()
+        except Exception as err:
+            _LOGGER.debug("Failed to get gateway MAC via SSH: %s", err)
+        return None
+
+    async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
+        """Get LLDP neighbor information via SSH."""
+        from .base import LldpNeighbor
+
+        neighbors: list[LldpNeighbor] = []
+        try:
+            # Method 1: ubus (preferred)
+            stdout = await self._exec("ubus call lldp show 2>/dev/null")
+            if stdout and stdout.strip().startswith("{"):
+                data = json.loads(stdout)
+                # Parse ubus lldp output structure
+                # {"lldp": {"interface": [{"name": "eth0", "neighbor": [{...}]}]}}
+                interfaces = data.get("lldp", {}).get("interface", [])
+                if isinstance(interfaces, list):
+                    for iface in interfaces:
+                        name = iface.get("name")
+                        neighs = iface.get("neighbor", [])
+                        if isinstance(neighs, list):
+                            for neigh in neighs:
+                                neighbors.append(
+                                    LldpNeighbor(
+                                        local_interface=name or "",
+                                        neighbor_name=neigh.get("name", ""),
+                                        neighbor_port=neigh.get("port", {}).get(
+                                            "id", ""
+                                        )
+                                        if isinstance(neigh.get("port"), dict)
+                                        else "",
+                                        neighbor_chassis=neigh.get("chassis", {}).get(
+                                            "id", ""
+                                        )
+                                        if isinstance(neigh.get("chassis"), dict)
+                                        else "",
+                                        neighbor_description=neigh.get(
+                                            "description", ""
+                                        ),
+                                        neighbor_system_name=neigh.get("sysname", ""),
+                                    )
+                                )
+                if neighbors:
+                    return neighbors
+
+            # Method 2: lldpcli json
+            stdout = await self._exec("lldpcli show neighbors -f json 2>/dev/null")
+            if stdout and stdout.strip().startswith("{"):
+                data = json.loads(stdout)
+                # lldpcli structure: {"lldp": {"interface": {"eth0": {"neighbor": {...}}}}}
+                interfaces = data.get("lldp", {}).get("interface", {})
+                if isinstance(interfaces, dict):
+                    for iface_name, iface_data in interfaces.items():
+                        neighs = iface_data.get("neighbor", [])
+                        if isinstance(neighs, dict):
+                            neighs = [neighs]
+                        if isinstance(neighs, list):
+                            for neigh in neighs:
+                                neighbors.append(
+                                    LldpNeighbor(
+                                        local_interface=iface_name,
+                                        neighbor_name=neigh.get("name", ""),
+                                        neighbor_port=neigh.get("port", {})
+                                        .get("id", {})
+                                        .get("value", "")
+                                        if isinstance(neigh.get("port"), dict)
+                                        else "",
+                                        neighbor_chassis=neigh.get("chassis", {})
+                                        .get("id", {})
+                                        .get("value", "")
+                                        if isinstance(neigh.get("chassis"), dict)
+                                        else "",
+                                        neighbor_description=neigh.get(
+                                            "description", ""
+                                        ),
+                                        neighbor_system_name=neigh.get("sysname", ""),
+                                    )
+                                )
+        except Exception as err:
+            _LOGGER.debug("Failed to get LLDP neighbors via SSH: %s", err)
+        return neighbors

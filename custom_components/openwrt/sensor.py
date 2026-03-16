@@ -711,6 +711,16 @@ async def async_setup_entry(
                     _create_vpn_sensors(coordinator, entry, vpn.name, vpn.type)
                 )
 
+        # LLDP Neighbor sensors
+        if coordinator.data.lldp_neighbors:
+            for neighbor in coordinator.data.lldp_neighbors:
+                if neighbor.local_interface:
+                    entities.extend(
+                        _create_lldp_sensors(
+                            coordinator, entry, neighbor.local_interface
+                        )
+                    )
+
     tracked_macs: set[str] = set()
 
     @callback
@@ -1512,4 +1522,47 @@ def _create_mwan_sensors(
                 ),
             ),
         ),
+    ]
+
+
+def _create_lldp_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    local_interface: str,
+) -> list[OpenWrtSensorEntity]:
+    """Create sensors for an LLDP neighbor."""
+    return [
+        OpenWrtSensorEntity(
+            coordinator,
+            entry,
+            OpenWrtSensorDescription(
+                key=f"lldp_{local_interface}_neighbor",
+                name=f"LLDP Neighbor on {local_interface}",
+                translation_key="lldp_neighbor",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                value_fn=lambda data, i=local_interface: next(
+                    (
+                        n.neighbor_name or n.neighbor_system_name or n.neighbor_chassis
+                        for n in data.lldp_neighbors
+                        if n.local_interface == i
+                    ),
+                    None,
+                ),
+                attrs_fn=lambda data, i=local_interface: next(
+                    (
+                        {
+                            "local_interface": n.local_interface,
+                            "neighbor_name": n.neighbor_name,
+                            "neighbor_port": n.neighbor_port,
+                            "neighbor_chassis": n.neighbor_chassis,
+                            "neighbor_description": n.neighbor_description,
+                            "neighbor_system_name": n.neighbor_system_name,
+                        }
+                        for n in data.lldp_neighbors
+                        if n.local_interface == i
+                    ),
+                    {},
+                ),
+            ),
+        )
     ]

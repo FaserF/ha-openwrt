@@ -22,6 +22,7 @@ from .base import (
     FirewallRedirect,
     FirewallRule,
     IpNeighbor,
+    LldpNeighbor,
     MwanStatus,
     NetworkInterface,
     OpenWrtClient,
@@ -279,7 +280,11 @@ class UbusClient(OpenWrtClient):
         info = DeviceInfo()
         data = await self._call("system", "board")
         info.hostname = data.get("hostname", "")
-        info.model = data.get("model", data.get("board_name", ""))
+        model = data.get("model")
+        if isinstance(model, dict):
+            info.model = model.get("name", model.get("id", info.model))
+        else:
+            info.model = model or data.get("board_name", "")
         info.board_name = data.get("board_name", "")
         info.kernel_version = data.get("kernel", "")
         info.architecture = data.get("system", "")
@@ -297,6 +302,39 @@ class UbusClient(OpenWrtClient):
             info.local_time = str(sys_info.get("localtime", ""))
         except UbusError:
             pass
+
+        # Get MAC address from primary interface
+        try:
+            ifaces = await self.get_network_interfaces()
+            for iface in ifaces:
+                if iface.name == "lan" or iface.device == "br-lan":
+                    info.mac_address = iface.mac_address
+                    break
+        except Exception:
+            pass
+
+        if not info.mac_address:
+            # Robust fallback via shell command (often works even if ubus network fails)
+            try:
+                # We can't use 'self.execute_command' here as it's not in OpenWrtClient base,
+                # but UbusClient has its own way to run commands if sys.exec is available.
+                # Actually, ubus 'file' or 'sys' might work.
+                # Let's use 'sys.exec' if available.
+                sys_exec_out = await self._call(
+                    "sys",
+                    "exec",
+                    {
+                        "command": "cat /sys/class/net/br-lan/address 2>/dev/null || cat /sys/class/net/eth0/address 2>/dev/null"
+                    },
+                )
+                if (
+                    sys_exec_out
+                    and isinstance(sys_exec_out, str)
+                    and ":" in sys_exec_out
+                ):
+                    info.mac_address = sys_exec_out.strip().lower()
+            except Exception:
+                pass
 
         return info
 
@@ -469,6 +507,7 @@ class UbusClient(OpenWrtClient):
                         iwinfo = await self._call(
                             "iwinfo", "info", {"device": iface_name}
                         )
+                        wifi.mac_address = iwinfo.get("bssid", "").upper()
                         wifi.channel = iwinfo.get("channel", 0)
                         wifi.frequency = str(iwinfo.get("frequency", ""))
                         wifi.signal = iwinfo.get("signal", 0)
@@ -607,6 +646,16 @@ class UbusClient(OpenWrtClient):
 
                             dev.is_wireless = True
                             dev.interface = iface_name
+                            if (
+                                not dev.connection_type
+                                or dev.connection_type == "wired"
+                            ):
+                                if "5g" in iface_name.lower():
+                                    dev.connection_type = "5GHz"
+                                elif "2g" in iface_name.lower():
+                                    dev.connection_type = "2.4GHz"
+                                else:
+                                    dev.connection_type = "wireless"
                             dev.signal = client.get("signal", 0)
                             dev.noise = client.get("noise", 0)
                             dev.rx_rate = (
@@ -1600,3 +1649,84 @@ class UbusClient(OpenWrtClient):
         except Exception as err:
             _LOGGER.error("Failed to set SQM config: %s", err)
             return False
+
+    async def get_gateway_mac(self) -> str | None:
+        """Get the default gateway MAC address via ubus."""
+        try:
+            # 1. Get default gateway IP from network.interface dump
+            status = await self._call("network.interface", "dump")
+            gw_ip = None
+            for iface_data in status.get("interface", []):
+                # Look for wan and check ipv4-address
+                if iface_data.get("interface", "").lower() in [
+                    "wan",
+                    "wan6",
+                    "wwan",
+                    "modem",
+                ]:
+                    ipv4_addrs = iface_data.get("ipv4-address", [])
+                    for addr in ipv4_addrs:
+                        if addr.get("gateway"):
+                            gw_ip = addr.get("gateway")
+                            break
+                    if gw_ip:
+                        break
+
+            if not gw_ip:
+                # Fallback: check all interfaces if no obvious WAN
+                for iface_data in status.get("interface", []):
+                    ipv4_addrs = iface_data.get("ipv4-address", [])
+                    for addr in ipv4_addrs:
+                        if addr.get("gateway"):
+                            gw_ip = addr.get("gateway")
+                            break
+                    if gw_ip:
+                        break
+
+            if not gw_ip:
+                return None
+
+            # 2. Get MAC for that IP via ip neighbor (using execute_command fallback)
+            neigh_out = await self.execute_command(f"ip neigh show {gw_ip} 2>/dev/null")
+            if "lladdr" in neigh_out:
+                neigh_parts = neigh_out.split()
+                return neigh_parts[neigh_parts.index("lladdr") + 1].upper()
+        except Exception as err:
+            _LOGGER.debug("Failed to get gateway MAC via ubus: %s", err)
+        return None
+
+    async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
+        """Get LLDP neighbor information via ubus."""
+        from .base import LldpNeighbor
+
+        neighbors: list[LldpNeighbor] = []
+        try:
+            # ubus call lldp show
+            data = await self._call("lldp", "show")
+            # Parse ubus lldp output structure
+            interfaces = data.get("lldp", {}).get("interface", [])
+            if isinstance(interfaces, list):
+                for iface in interfaces:
+                    name = iface.get("name")
+                    neighs = iface.get("neighbor", [])
+                    if isinstance(neighs, list):
+                        for neigh in neighs:
+                            neighbors.append(
+                                LldpNeighbor(
+                                    local_interface=name or "",
+                                    neighbor_name=neigh.get("name", ""),
+                                    neighbor_port=neigh.get("port", {}).get("id", "")
+                                    if isinstance(neigh.get("port"), dict)
+                                    else "",
+                                    neighbor_chassis=neigh.get("chassis", {}).get(
+                                        "id", ""
+                                    )
+                                    if isinstance(neigh.get("chassis"), dict)
+                                    else "",
+                                    neighbor_description=neigh.get("description", ""),
+                                    neighbor_system_name=neigh.get("sysname", ""),
+                                )
+                            )
+        except Exception as err:
+            _LOGGER.debug("Failed to get LLDP neighbors via ubus: %s", err)
+        return neighbors

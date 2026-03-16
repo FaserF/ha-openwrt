@@ -356,6 +356,9 @@
       },
       "sqm_script": {
         "name": "SQM Script"
+      },
+      "lldp_neighbor": {
+        "name": "LLDP Neighbor"
       }
     },
     "binary_sensor": {

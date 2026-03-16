@@ -222,6 +222,17 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                     "is_wireless": device.is_wireless,
                     "connection_type": device.connection_type,
                 }
+
+                # Add historical seen data from coordinator
+                if device.mac.lower() in self.coordinator._device_history:
+                    history = self.coordinator._device_history[device.mac.lower()]
+                    attrs["initially_seen"] = datetime.fromtimestamp(
+                        history["initially_seen"]
+                    ).isoformat()
+                    attrs["last_seen"] = datetime.fromtimestamp(
+                        history["last_seen"]
+                    ).isoformat()
+
                 if device.interface:
                     attrs["interface"] = device.interface
                 if device.is_wireless:

@@ -165,6 +165,7 @@ class DeviceInfo:
     architecture: str = ""
     target: str = ""
     mac_address: str = ""
+    gateway_mac: str | None = None
     uptime: int = 0
     local_time: str = ""
     release_distribution: str = "OpenWrt"
@@ -177,6 +178,7 @@ class WirelessInterface:
     """Wireless interface information."""
 
     name: str = ""
+    mac_address: str = ""
     ssid: str = ""
     mode: str = ""
     channel: int = 0
@@ -284,6 +286,18 @@ class MwanStatus:
     online_ratio: float = 0.0
     uptime: int = 0
     enabled: bool = False
+
+
+@dataclass
+class LldpNeighbor:
+    """LLDP neighbor information."""
+
+    local_interface: str = ""
+    neighbor_name: str = ""
+    neighbor_port: str = ""
+    neighbor_chassis: str = ""  # Often the MAC address
+    neighbor_description: str = ""
+    neighbor_system_name: str = ""
 
 
 @dataclass
@@ -501,6 +515,7 @@ class OpenWrtData:
     asu_update_available: bool = False
     asu_image_status: str = ""  # e.g. "available", "building", "failed"
     asu_image_url: str | None = None
+    lldp_neighbors: list[LldpNeighbor] = field(default_factory=list)
     qmodem_info: QModemInfo = field(default_factory=QModemInfo)
     sqm: list[SqmStatus] = field(default_factory=list)
     permissions: OpenWrtPermissions = field(default_factory=OpenWrtPermissions)
@@ -585,6 +600,14 @@ class OpenWrtClient(abc.ABC):
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interface information."""
         raise NotImplementedError
+
+    async def get_gateway_mac(self) -> str | None:
+        """Get the default gateway MAC address."""
+        return None
+
+    async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
+        """Get LLDP neighbor information."""
+        return []
 
     @abc.abstractmethod
     async def get_network_interfaces(self) -> list[NetworkInterface]:
@@ -1013,6 +1036,27 @@ class OpenWrtClient(abc.ABC):
             )
             data.device_info = getattr(self, "_cached_device_info", data.device_info)
 
+        # Ensure router MAC address is populated from interfaces if missing
+        if data.device_info and not data.device_info.mac_address:
+            # Try to find a suitable MAC address (br-lan, lan, eth0, or first non-loopback)
+            iface_map = {iface.name: iface for iface in data.network_interfaces}
+            best_iface = (
+                iface_map.get("br-lan")
+                or iface_map.get("lan")
+                or iface_map.get("eth0")
+                or iface_map.get("eth1")
+            )
+
+            if not best_iface:
+                # Fallback: first interface with a MAC that isn't loopback
+                for iface in data.network_interfaces:
+                    if iface.mac_address and iface.name != "lo":
+                        best_iface = iface
+                        break
+
+            if best_iface and best_iface.mac_address:
+                data.device_info.mac_address = best_iface.mac_address.upper()
+
         # Always-fresh optional data (changes every cycle)
         fast_optional_tasks = [
             self.get_wireless_interfaces(),
@@ -1024,6 +1068,8 @@ class OpenWrtClient(abc.ABC):
             self.get_vpn_status(),
             self.get_latency(),
             self.get_external_ip(),
+            self.get_gateway_mac(),
+            self.get_lldp_neighbors(),
         ]
 
         fast_results = await asyncio.gather(
@@ -1045,6 +1091,8 @@ class OpenWrtClient(abc.ABC):
         data.vpn_interfaces = get_val(fast_results[6], [], "VPN status")
         data.latency = get_val(fast_results[7], LatencyResult(), "latency")
         data.external_ip = get_val(fast_results[8], None, "external IP")
+        data.device_info.gateway_mac = get_val(fast_results[9], None, "gateway MAC")
+        data.lldp_neighbors = get_val(fast_results[10], [], "LLDP neighbors")
 
         # Slow-changing optional data (services, LEDs, firewall, access control, packages, permissions)
         if is_full_poll:

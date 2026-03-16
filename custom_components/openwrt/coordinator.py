@@ -8,12 +8,20 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import timedelta
 from typing import Any
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_MANUFACTURER, CONF_HOST
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import (
+    device_registry as dr,
+)
+from homeassistant.helpers import (
+    storage,
+)
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -38,7 +46,6 @@ from .const import (
     CONF_CONNECTION_TYPE,
     CONF_CUSTOM_FIRMWARE_REPO,
     CONF_DHCP_SOFTWARE,
-    CONF_HOST,
     CONF_PASSWORD,
     CONF_PORT,
     CONF_SSH_KEY,
@@ -139,6 +146,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self._last_firmware_check: float = 0.0
         self._last_update_time: float = 0.0
         self._prev_network_stats: dict[str, dict[str, int]] = {}
+        self._device_history: dict[str, dict[str, Any]] = {}
+        self._store: storage.Store = storage.Store(
+            hass, 1, f"{DOMAIN}_{config_entry.entry_id}_history"
+        )
 
         update_interval = config_entry.options.get(
             CONF_UPDATE_INTERVAL,
@@ -255,7 +266,111 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             }
         self._last_update_time = now
 
+        # Load history if not already loaded
+        if not self._device_history:
+            stored_data = await self._store.async_load()
+            if stored_data:
+                self._device_history = stored_data
+
+        # Update last_seen and initially_seen
+        current_time = int(time.time())
+        history_updated = False
+
+        # Collect all MAC addresses of the router itself to filter from connected devices
+        own_macs = set()
+        if data.device_info.mac_address:
+            own_macs.add(data.device_info.mac_address.lower())
+        for iface in data.network_interfaces:
+            if iface.mac_address:
+                own_macs.add(iface.mac_address.lower())
+        for wifi_iface in data.wireless_interfaces:
+            if wifi_iface.mac_address:
+                own_macs.add(wifi_iface.mac_address.lower())
+
+        # Filter connected devices and update history
+        filtered_devices = []
+        for device in data.connected_devices:
+            mac = device.mac.lower()
+            if mac in own_macs:
+                continue
+
+            # Filter out devices with hostnames that look like internal interfaces (e.g. wlan0, eth1)
+            # This handles cases like AIoT chips that appear as clients to the main system
+            if device.hostname:
+                hostname = device.hostname.lower()
+                if re.match(r"^(wlan|eth|lan|wan|br-|radio|phy)[0-9]+", hostname):
+                    _LOGGER.debug(
+                        "Filtering out device tracker with interface-like hostname: %s (%s)",
+                        device.hostname,
+                        device.mac,
+                    )
+                    continue
+
+            filtered_devices.append(device)
+
+            if mac not in self._device_history:
+                self._device_history[mac] = {
+                    "initially_seen": current_time,
+                    "last_seen": current_time,
+                }
+                history_updated = True
+            else:
+                self._device_history[mac]["last_seen"] = current_time
+                history_updated = True
+
+        data.connected_devices = filtered_devices
+
+        if history_updated:
+            await self._store.async_save(self._device_history)
+
+        # Update device registry if we have device info
+        await self._async_update_device_registry(data)
+
         return data
+
+    async def _async_update_device_registry(self, data: OpenWrtData) -> None:
+        """Update the device registry with fresh device information."""
+        if not data.device_info:
+            return
+
+        device_info = data.device_info
+        device_registry = dr.async_get(self.hass)
+
+        # Identify gateway device for topology mapping
+        via_device = None
+        if device_info.gateway_mac:
+            gw_mac = device_info.gateway_mac.upper()
+            for dev in device_registry.devices.values():
+                if any(
+                    conn[0] == dr.CONNECTION_NETWORK_MAC and conn[1].upper() == gw_mac
+                    for conn in dev.connections
+                ):
+                    if dev.identifiers:
+                        via_device = next(iter(dev.identifiers))
+                    break
+
+        _LOGGER.debug(
+            "Updating device registry for %s: model=%s, mac=%s, via=%s",
+            self.config_entry.data[CONF_HOST],
+            device_info.model,
+            device_info.mac_address,
+            via_device,
+        )
+
+        device_registry.async_get_or_create(
+            config_entry_id=self.config_entry.entry_id,
+            identifiers={(DOMAIN, self.config_entry.data[CONF_HOST])},
+            connections={(dr.CONNECTION_NETWORK_MAC, device_info.mac_address.lower())}
+            if device_info.mac_address
+            else None,
+            manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
+            model=device_info.model or device_info.board_name,
+            name=device_info.model or device_info.hostname or self.config_entry.title,
+            sw_version=device_info.firmware_version,
+            hw_version=device_info.board_name,
+            via_device=via_device,
+            configuration_url=f"http://{self.config_entry.data[CONF_HOST]}",
+        )
 
     async def _check_firmware_update(self, data: OpenWrtData) -> None:
         """Check for firmware updates (official or custom)."""

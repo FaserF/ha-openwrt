@@ -47,7 +47,14 @@ Supports **OpenWrt 25.12** and newer (older versions may also work, but are not 
   - **Wireless Management**: WPS control switches and buttons to kick (disconnect) specific wireless clients.
 - **Smart Tracking & Events**: 
   - **Multi-source Device Tracking**: Combines DHCP leases with ARP/NDP tables (`ip neigh`) for instant and reliable presence detection.
+  - **Persistent History**: Tracks `initially_seen` and `last_seen` timestamps for every device, persisting across Home Assistant restarts.
+  - **Connection Type Detection**: Automatically identifies if a device is connected via `wired` or a specific WiFi band (`2.4GHz`, `5GHz`, `6GHz`).
+  - **Topology Mapping**: Wireless clients are automatically linked to their respective Access Point via the `via_device` attribute.
+  - **Infrastructure Filtering**: Automatically identifies and filters out the router's own network interfaces to prevent circular self-tracking.
   - **New Device Event**: Fires `openwrt_new_device` when previously unknown MAC addresses are discovered.
+- **Advanced Diagnostics**:
+  - **Refined Naming**: Routers are primarily identified by their product model (e.g. "Xiaomi AX3600") for a premium dashboard look.
+  - **LLDP Neighbors**: Discover and monitor physical port connections via the LLDP protocol (if available on the router).
 - **Optimized for Large Environments**: 
   - Parallel API calls and background platform loading prevent Home Assistant blocking warnings and ensure smooth startup even with 100+ devices.
 - **Native Experience**:
@@ -80,7 +87,7 @@ This integration is fully compatible with [HACS](https://hacs.xyz/).
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=FaserF/ha-openwrt&category=integration)
 
 > [!NOTE]
-> This integration is currently a custom repository but will be submitted as an official HACS integration soon.
+> This integration is currently a custom repository. A Pull Request to include it in the HACS default repositories is [already pending](https://github.com/hacs/default/pull/6270).
 
 1. Open HACS in Home Assistant.
 2. Click on the three dots in the top right corner and select **Custom repositories**.

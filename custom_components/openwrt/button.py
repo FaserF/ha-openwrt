@@ -296,6 +296,7 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
 
     _attr_has_entity_name = True
     _attr_translation_key = "kick_device"
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,

@@ -81,33 +81,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
 
     await coordinator.async_config_entry_first_refresh()
 
-    device_info = coordinator.data.device_info if coordinator.data else None
-    if device_info:
+    # Register AP devices to ensure via_device references in platforms are valid
+    if coordinator.data:
+        device_info = coordinator.data.device_info
         device_registry = dr.async_get(hass)
-        device_registry.async_get_or_create(
-            config_entry_id=entry.entry_id,
-            identifiers={(DOMAIN, entry.data[CONF_HOST])},
-            manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
-            model=device_info.model or device_info.board_name,
-            name=device_info.hostname or entry.title,
-            sw_version=device_info.firmware_version,
-            hw_version=device_info.board_name,
-            configuration_url=f"http://{entry.data[CONF_HOST]}",
-        )
-
-        # Register AP devices to ensure via_device references in platforms are valid
-        if coordinator.data:
-            for wifi in coordinator.data.wireless_interfaces:
-                if not wifi.name:
-                    continue
-                device_registry.async_get_or_create(
-                    config_entry_id=entry.entry_id,
-                    identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{wifi.name}")},
-                    name=f"AP {wifi.ssid or wifi.name}",
-                    manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
-                    model="Access Point",
-                    via_device=(DOMAIN, entry.data[CONF_HOST]),
-                )
+        for wifi in coordinator.data.wireless_interfaces:
+            if not wifi.name:
+                continue
+            device_registry.async_get_or_create(
+                config_entry_id=entry.entry_id,
+                identifiers={(DOMAIN, f"{entry.data[CONF_HOST]}_ap_{wifi.name}")},
+                name=f"AP {wifi.ssid or wifi.name}",
+                manufacturer=device_info.release_distribution or ATTR_MANUFACTURER
+                if device_info
+                else ATTR_MANUFACTURER,
+                model="Access Point",
+                via_device=(DOMAIN, entry.data[CONF_HOST]),
+            )
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
