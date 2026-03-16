@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,9 +19,9 @@ from custom_components.openwrt.api.base import (
 )
 
 
-def _make_data(**kwargs) -> OpenWrtData:
+def _make_data(**kwargs: Any) -> OpenWrtData:
     """Create a default OpenWrtData with overrides."""
-    defaults = {
+    defaults: dict[str, Any] = {
         "system_resources": SystemResources(
             uptime=120, memory_total=1000, memory_used=500, load_1min=0.1
         ),

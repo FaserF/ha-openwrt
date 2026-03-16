@@ -640,7 +640,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                         return True
                     if "uhttpd" in response.headers.get("Server", "").lower():
                         return True
-        except (TimeoutError, aiohttp.ClientError):
+        except TimeoutError, aiohttp.ClientError:
             pass
 
         # 2. Try UBus endpoint (default path)
@@ -662,7 +662,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                             return True
                     except Exception:
                         pass
-        except (TimeoutError, aiohttp.ClientError):
+        except TimeoutError, aiohttp.ClientError:
             pass
 
         return False

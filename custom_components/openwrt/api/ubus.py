@@ -512,7 +512,9 @@ class UbusClient(OpenWrtClient):
                         wifi.frequency = str(iwinfo.get("frequency", ""))
 
                         # Fallback: Infer from channel if frequency is missing or empty
-                        if (not wifi.frequency or wifi.frequency == "None") and wifi.channel > 0:
+                        if (
+                            not wifi.frequency or wifi.frequency == "None"
+                        ) and wifi.channel > 0:
                             if 1 <= wifi.channel <= 14:
                                 wifi.frequency = "2.4 GHz"
                             elif 32 <= wifi.channel <= 177:

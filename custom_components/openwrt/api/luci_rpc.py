@@ -589,7 +589,7 @@ class LuciRpcClient(OpenWrtClient):
                         ipv4_addrs = iface_data.get("ipv4-address", [])
                         if ipv4_addrs:
                             return ipv4_addrs[0].get("address")
-        except (LuciRpcError, json.JSONDecodeError):
+        except LuciRpcError, json.JSONDecodeError:
             pass
         return None
 
@@ -659,7 +659,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except (ValueError, IndexError):
+                                            except ValueError, IndexError:
                                                 pass
                                         elif "Access Point:" in line:
                                             try:
@@ -677,7 +677,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except (ValueError, IndexError):
+                                            except ValueError, IndexError:
                                                 pass
                                         elif "Noise:" in line:
                                             try:
@@ -686,7 +686,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except (ValueError, IndexError):
+                                            except ValueError, IndexError:
                                                 pass
                                         elif "Bit Rate:" in line:
                                             try:
@@ -695,24 +695,32 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except (ValueError, IndexError):
+                                            except ValueError, IndexError:
                                                 pass
                                         elif "Frequency:" in line:
                                             try:
-                                                wifi.frequency = (
-                                                    line.split("Frequency:")[1].strip()
-                                                )
+                                                wifi.frequency = line.split(
+                                                    "Frequency:"
+                                                )[1].strip()
                                             except IndexError:
                                                 pass
 
                                     # Fallback: Extract frequency from Channel line if still missing
                                     if not wifi.frequency and "Channel:" in iw_info:
                                         for line in iw_info.splitlines():
-                                            if "Channel:" in line and "(" in line and "GHz)" in line:
+                                            if (
+                                                "Channel:" in line
+                                                and "(" in line
+                                                and "GHz)" in line
+                                            ):
                                                 try:
                                                     # Extract "2.462 GHz" from "Channel: 11 (2.462 GHz)"
-                                                    wifi.frequency = line.split("(")[1].split(")")[0].strip()
-                                                except (IndexError, ValueError):
+                                                    wifi.frequency = (
+                                                        line.split("(")[1]
+                                                        .split(")")[0]
+                                                        .strip()
+                                                    )
+                                                except IndexError, ValueError:
                                                     pass
 
                                     # Fallback 2: Infer from channel number
@@ -721,7 +729,9 @@ class LuciRpcClient(OpenWrtClient):
                                             wifi.frequency = "2.4 GHz"
                                         elif 32 <= wifi.channel <= 177:
                                             wifi.frequency = "5 GHz"
-                                        elif 1 <= wifi.channel <= 233: # 6GHz channels overlap but usually 1-233
+                                        elif (
+                                            1 <= wifi.channel <= 233
+                                        ):  # 6GHz channels overlap but usually 1-233
                                             # This is a bit ambiguous without more info, but 5GHz/6GHz are higher
                                             # We already handled 1-14 as 2.4GHz.
                                             pass
@@ -987,7 +997,7 @@ class LuciRpcClient(OpenWrtClient):
                                     dev.connection_type = "2.4GHz"
                                 elif not dev.connection_type:
                                     dev.connection_type = "wireless"
-                    except (json.JSONDecodeError, KeyError):
+                    except json.JSONDecodeError, KeyError:
                         continue
         # 4. Final refinement from IP neighbors (for states)
         try:

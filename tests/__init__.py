@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 class HAMock(MagicMock):
     @classmethod
-    def __getattr__(cls, name):
+    def __getattr__(cls, name: str) -> MagicMock:
         return MagicMock()
 
 
