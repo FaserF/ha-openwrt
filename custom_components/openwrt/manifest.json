@@ -61,7 +61,7 @@
       "st": "upnp:rootdevice"
     }
   ],
-  "version": "1.2.0",
+  "version": "1.2.1",
   "zeroconf": [
     {
       "type": "_http._tcp.local.",

@@ -1,6 +1,6 @@
 [project]
 name = "ha-openwrt"
-version = "1.2.0"
+version = "1.2.1"
 description = "Home Assistant integration for OpenWrt devices."
 authors = [
     {name = "FaserF", email = "github@fabiseitz.de"}
