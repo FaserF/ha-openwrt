@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -61,9 +61,9 @@ class OpenWrtSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, cast(str, entry.unique_id or entry.data[CONF_HOST]))},
+        )
 
     @property
     def native_value(self) -> StateType:
@@ -125,7 +125,7 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
             name=f"AP {name_label}",
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, entry.unique_id),
+            via_device=(DOMAIN, cast(str, entry.unique_id)),
         )
 
 
@@ -154,7 +154,7 @@ class OpenWrtQModemSensorEntity(OpenWrtSensorEntity):
             name=f"QModem ({entry.unique_id})",
             manufacturer=manufacturer,
             model=model,
-            via_device=(DOMAIN, str(entry.unique_id)),
+            via_device=(DOMAIN, cast(str, entry.unique_id)),
         )
 
     @property
@@ -202,7 +202,7 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        via_device = (DOMAIN, self._entry.unique_id)
+        via_device = (DOMAIN, cast(str, self._entry.unique_id))
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if device.mac == self._mac and device.is_wireless and device.interface:

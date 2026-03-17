@@ -7,7 +7,7 @@ allowing direct dashboard control instead of requiring the options flow.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
@@ -96,7 +96,7 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
             name=f"AP {label}",
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, entry.unique_id),
+            via_device=(DOMAIN, cast(str, entry.unique_id)),
         )
 
     @property
@@ -159,9 +159,9 @@ class OpenWrtSqmNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEntity):
         self._section_id = section_id
         self._entry = entry
         self._sqm_name = name
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, cast(str, entry.unique_id or entry.data[CONF_HOST]))},
+        )
 
     @property
     def native_value(self) -> float | None:

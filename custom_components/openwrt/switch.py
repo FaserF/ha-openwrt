@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -215,7 +215,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             name=f"AP {name_label}",
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, entry.unique_id),
+            via_device=(DOMAIN, cast(str, entry.unique_id)),
         )
 
     @property
@@ -394,11 +394,11 @@ class OpenWrtAccessControlSwitch(
         self._attr_unique_id = f"{entry.entry_id}_access_{mac.replace(':', '_')}"
         self._attr_name = f"Internet Access {name}"
         self._attr_translation_key = "device_access"
-        self._attr_device_info = {
-            "connections": {("mac", mac)},
-            "name": name,
-            "via_device": (DOMAIN, entry.unique_id),
-        }
+        self._attr_device_info = DeviceInfo(
+            connections={("mac", mac)},
+            name=name,
+            via_device=(DOMAIN, cast(str, entry.unique_id)),
+        )
 
     @property
     def is_on(self) -> bool | None:

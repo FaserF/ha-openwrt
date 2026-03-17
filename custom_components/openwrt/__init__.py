@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from typing import Any
+from typing import Any, cast
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -131,7 +131,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
                 if device_info
                 else ATTR_MANUFACTURER,
                 model="Access Point",
-                via_device=(DOMAIN, entry.unique_id),
+                via_device=(DOMAIN, cast(str, entry.unique_id)),
             )
 
     hass.data.setdefault(DOMAIN, {})

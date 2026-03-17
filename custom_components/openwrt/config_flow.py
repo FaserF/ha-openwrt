@@ -15,6 +15,7 @@ import asyncio
 import logging
 import secrets
 import socket
+from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlparse
 
@@ -305,7 +306,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self,
         host: str,
         hostname: str | None = None,
-        properties: dict[str, Any] | None = None,
+        properties: Mapping[str, Any] | None = None,
     ) -> bool:
         """Centralized check for non-router OpenWrt devices like vacuums."""
         exclusions = [

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.button import (
     ButtonDeviceClass,
@@ -210,9 +210,9 @@ class OpenWrtButtonEntity(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntit
         self.entity_description = description
         self._client = client
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, cast(str, entry.unique_id or entry.data[CONF_HOST]))},
+        )
 
     async def async_press(self) -> None:
         """Handle the button press."""
