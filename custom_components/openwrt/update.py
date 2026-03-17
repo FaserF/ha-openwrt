@@ -152,7 +152,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         if not data:
             raise HomeAssistantError("No data available to process firmware update.")
 
-        if not self.release_url and not data.asu_supported:
+        if not data.firmware_install_url and not data.asu_supported:
             raise ValueError("No firmware URL available for installation.")
 
         # ASU Update Flow
@@ -195,10 +195,8 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             return
 
         # Standard Update Flow
-        _LOGGER.info(
-            "Initiating standard firmware installation from: %s", self.release_url
-        )
-        url = self.release_url
+        url = data.firmware_install_url
+        _LOGGER.info("Initiating standard firmware installation from: %s", url)
         if not url:
             raise ValueError("No firmware URL available for installation.")
 

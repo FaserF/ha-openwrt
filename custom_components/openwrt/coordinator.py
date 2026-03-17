@@ -237,7 +237,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             data.firmware_checksum = self.data.firmware_checksum
             data.is_custom_build = self.data.is_custom_build
         else:
-            data.firmware_current_version = data.device_info.release_version
+            data.firmware_current_version = (
+                data.device_info.firmware_version or data.device_info.release_version
+            )
 
         now = self.hass.loop.time()
         if now - self._last_firmware_check > FIRMWARE_CHECK_INTERVAL.total_seconds():
@@ -431,14 +433,14 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                             board = info.board_name.replace("_", "-").replace(",", "-")
                             dist = info.release_distribution or "openwrt"
                             # Standard OpenWrt sysupgrade URL pattern
-                            data.firmware_release_url = (
+                            data.firmware_install_url = (
                                 f"https://downloads.openwrt.org/releases/{latest_stable}/targets/{target}/"
                                 f"{dist}-{latest_stable}-{target.replace('/', '-')}-{board}-squashfs-sysupgrade.bin"
                             )
-                        else:
-                            data.firmware_release_url = (
-                                f"https://openwrt.org/releases/{latest_stable}"
-                            )
+
+                        data.firmware_release_url = (
+                            f"https://openwrt.org/releases/{latest_stable}"
+                        )
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Failed to check official firmware updates")
 
@@ -466,10 +468,14 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             ) as resp:
                 if resp.status == 200:
                     asu_info = await resp.json()
-                    latest_version = asu_info.get("version", "")
-                    if latest_version and self._version_is_newer(
-                        data.device_info.release_version, latest_version
-                    ):
+                    version = asu_info.get("version", "")
+                    revision = asu_info.get("revision", "")
+                    if "SNAPSHOT" in version.upper() and revision:
+                        latest_version = f"{version} ({revision})"
+                    else:
+                        latest_version = version
+
+                    if latest_version and latest_version != data.firmware_current_version:
                         data.asu_update_available = True
                         data.asu_supported = True
 
@@ -502,6 +508,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                             data.firmware_release_url = (
                                 f"https://openwrt.org/releases/{latest_version}"
                             )
+                            # ASU doesn't have a static download URL, it builds on demand
+                            data.firmware_install_url = ""
                         _LOGGER.debug("ASU update found: %s", latest_version)
                     elif latest_version:
                         data.asu_supported = True
@@ -565,6 +573,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if "SNAPSHOT" in latest_tag.upper() and latest_published:
                 date_part = latest_published.split("T")[0]
                 latest_version = f"{latest_tag} ({date_part})"
+                # Try to get short commit hash for better comparison
+                target_commit = latest_release.get("target_commitish", "")
+                if target_commit and len(target_commit) >= 7:
+                    latest_version = f"{latest_tag} ({target_commit[:7]})"
+                elif date_part:
+                    latest_version = f"{latest_tag} ({date_part})"
 
             data.firmware_latest_version = latest_version
             data.firmware_release_url = latest_release.get("html_url", "")
@@ -598,7 +612,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         break
 
             if best_asset:
-                data.firmware_release_url = best_asset.get("browser_download_url")
+                data.firmware_install_url = best_asset.get("browser_download_url")
                 asset_name = best_asset.get("name", "")
                 if sha_url:
                     async with session.get(sha_url) as sha_resp:

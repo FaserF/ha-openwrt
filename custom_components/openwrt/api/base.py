@@ -508,6 +508,7 @@ class OpenWrtData:
     firmware_latest_version: str = ""
     firmware_current_version: str = ""
     firmware_release_url: str = ""
+    firmware_install_url: str = ""
     firmware_checksum: str = ""
     is_custom_build: bool = False
     installed_packages: list[str] = field(default_factory=list)
