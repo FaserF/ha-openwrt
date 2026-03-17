@@ -1,4 +1,3 @@
-
 import unittest
 
 
@@ -46,8 +45,9 @@ class OpenWrtClientMock:
 
             cpu_usage = (total_diff - idle_diff) / total_diff
             return round(max(0.0, min(100.0, cpu_usage * 100.0)), 1)
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return 0.0
+
 
 class TestCpuCalculation(unittest.TestCase):
     def test_cpu_calculation(self):
@@ -83,6 +83,7 @@ class TestCpuCalculation(unittest.TestCase):
         # DiffTotal: 100, DiffIdle: 100
         # Usage: (100 - 100) / 100 = 0.0%
         self.assertEqual(client._calculate_cpu_usage(stat4), 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

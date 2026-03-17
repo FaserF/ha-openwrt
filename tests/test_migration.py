@@ -20,15 +20,19 @@ async def test_migration_v1_to_v2(hass: HomeAssistant):
     mock_client = AsyncMock()
     mock_client.get_device_info.return_value = mock_device_info
 
-    with patch("custom_components.openwrt.create_client", return_value=mock_client), \
-         patch("custom_components.openwrt.dr.format_mac", side_effect=lambda x: x.lower()), \
-         patch.object(hass.config_entries, "async_update_entry") as mock_update:
-
+    with (
+        patch("custom_components.openwrt.create_client", return_value=mock_client),
+        patch(
+            "custom_components.openwrt.dr.format_mac", side_effect=lambda x: x.lower()
+        ),
+        patch.object(hass.config_entries, "async_update_entry") as mock_update,
+    ):
         assert await async_migrate_entry(hass, entry) is True
 
         mock_update.assert_called_once_with(
             entry, unique_id="aa:bb:cc:dd:ee:ff", version=2
         )
+
 
 async def test_migration_v1_to_v2_fail_mac(hass: HomeAssistant):
     """Test migration from version 1 to 2 when MAC cannot be retrieved."""
@@ -43,15 +47,15 @@ async def test_migration_v1_to_v2_fail_mac(hass: HomeAssistant):
     mock_client = AsyncMock()
     mock_client.get_device_info.return_value = mock_device_info
 
-    with patch("custom_components.openwrt.create_client", return_value=mock_client), \
-         patch.object(hass.config_entries, "async_update_entry") as mock_update:
-
+    with (
+        patch("custom_components.openwrt.create_client", return_value=mock_client),
+        patch.object(hass.config_entries, "async_update_entry") as mock_update,
+    ):
         assert await async_migrate_entry(hass, entry) is True
 
         # Should still bump version
-        mock_update.assert_called_once_with(
-            entry, version=2
-        )
+        mock_update.assert_called_once_with(entry, version=2)
+
 
 async def test_migration_v1_to_v2_exceptions(hass: HomeAssistant):
     """Test migration fails on connection error."""
@@ -63,8 +67,9 @@ async def test_migration_v1_to_v2_exceptions(hass: HomeAssistant):
     mock_client = AsyncMock()
     mock_client.connect.side_effect = Exception("Connection failed")
 
-    with patch("custom_components.openwrt.create_client", return_value=mock_client), \
-         patch.object(hass.config_entries, "async_update_entry") as mock_update:
-
+    with (
+        patch("custom_components.openwrt.create_client", return_value=mock_client),
+        patch.object(hass.config_entries, "async_update_entry") as mock_update,
+    ):
         assert await async_migrate_entry(hass, entry) is False
         assert mock_update.call_count == 0

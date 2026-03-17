@@ -301,12 +301,31 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={"public_info": ""},
         )
 
-    def _is_excluded(self, host: str, hostname: str | None = None, properties: dict[str, Any] | None = None) -> bool:
+    def _is_excluded(
+        self,
+        host: str,
+        hostname: str | None = None,
+        properties: dict[str, Any] | None = None,
+    ) -> bool:
         """Centralized check for non-router OpenWrt devices like vacuums."""
         exclusions = [
-            "valetudo", "vacuum", "dreame", "roborock", "cleaner", "mop",
-            "robot", "airpurifier", "washer", "dryer", "fridge", "oven",
-            "camera", "tuya", "smartlife", "broadlink", "shelly"
+            "valetudo",
+            "vacuum",
+            "dreame",
+            "roborock",
+            "cleaner",
+            "mop",
+            "robot",
+            "airpurifier",
+            "washer",
+            "dryer",
+            "fridge",
+            "oven",
+            "camera",
+            "tuya",
+            "smartlife",
+            "broadlink",
+            "shelly",
         ]
 
         # 1. Check hostname/name
@@ -320,12 +339,16 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     search_target += " " + val.lower()
 
         if any(exc in search_target for exc in exclusions):
-            _LOGGER.info("Definitively excluded %s (%s) as a non-router device", host, hostname)
+            _LOGGER.info(
+                "Definitively excluded %s (%s) as a non-router device", host, hostname
+            )
             return True
 
         return False
 
-    async def _async_probe_router(self, host: str, hostname: str | None = None) -> dict[str, Any] | None:
+    async def _async_probe_router(
+        self, host: str, hostname: str | None = None
+    ) -> dict[str, Any] | None:
         """Probe a host and return metadata if it's OpenWrt."""
         _LOGGER.debug("Probing router logic for %s (hint: %s)", host, hostname)
 
@@ -401,7 +424,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
+            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
                 continue
         return False
 
@@ -409,7 +432,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self, discovery_info: SsdpServiceInfo
     ) -> ConfigFlowResult:
         """Handle SSDP auto-discovery."""
-        host = urlparse(discovery_info.ssdp_location or "").hostname or discovery_info.ssdp_location
+        host = (
+            urlparse(discovery_info.ssdp_location or "").hostname
+            or discovery_info.ssdp_location
+        )
         if not host:
             return self.async_abort(reason="no_host")
 
@@ -417,14 +443,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         serial = discovery_info.upnp.get("serialNumber")
         if serial:
             # Serial is often the MAC or contains it
-            unique_id = dr.format_mac(serial) if ":" in serial or len(serial) == 12 else serial
+            unique_id = (
+                dr.format_mac(serial) if ":" in serial or len(serial) == 12 else serial
+            )
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured(updates={CONF_HOST: host})
         else:
             await self.async_set_unique_id(host)
             self._abort_if_unique_id_configured()
 
-        hostname = discovery_info.upnp.get("friendlyName") or discovery_info.upnp.get("modelName")
+        hostname = discovery_info.upnp.get("friendlyName") or discovery_info.upnp.get(
+            "modelName"
+        )
         if self._is_excluded(host, hostname, discovery_info.upnp):
             return self.async_abort(reason="not_openwrt")
 
@@ -458,13 +488,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_routers = [probe_result]
         self._discovered_name = probe_result.get("hostname") or f"OpenWrt ({host})"
 
-        self.context.update({
-            "title_placeholders": {
-                "name": self._discovered_name,
-                "host": host,
+        self.context.update(
+            {
+                "title_placeholders": {
+                    "name": self._discovered_name,
+                    "host": host,
+                }
             }
-        })
-
+        )
 
         return await self.async_step_ssdp_confirm()
 
@@ -492,13 +523,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_routers = [probe_result]
         self._discovered_name = probe_result.get("hostname") or f"OpenWrt ({host})"
 
-        self.context.update({
-            "title_placeholders": {
-                "name": self._discovered_name,
-                "host": host,
+        self.context.update(
+            {
+                "title_placeholders": {
+                    "name": self._discovered_name,
+                    "host": host,
+                }
             }
-        })
-
+        )
 
         return await self.async_step_ssdp_confirm()
 
@@ -773,7 +805,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             return "unknown"
 
-    async def _async_probe_openwrt(self, host: str, hostname: str | None = None) -> list[str]:
+    async def _async_probe_openwrt(
+        self, host: str, hostname: str | None = None
+    ) -> list[str]:
         """Probe a host to see if it responds like OpenWrt (LuCI/UBus)."""
         _LOGGER.debug("Probing %s (%s) for OpenWrt endpoints", host, hostname)
 
@@ -782,7 +816,15 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             return []
 
         # Exclusion list for keyword searching in bodies
-        exclusions = ["valetudo", "manual control", "dreame", "roborock", "vacuum", "cleaner", "mop"]
+        exclusions = [
+            "valetudo",
+            "manual control",
+            "dreame",
+            "roborock",
+            "vacuum",
+            "cleaner",
+            "mop",
+        ]
 
         found_methods = []
         session = async_get_clientsession(self.hass)
@@ -798,15 +840,22 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
                     response_text = await response.text()
                     if any(s in response_text.lower() for s in exclusions):
-                        _LOGGER.debug("Excluded %s as it appears to be a vacuum/valetudo device", host)
+                        _LOGGER.debug(
+                            "Excluded %s as it appears to be a vacuum/valetudo device",
+                            host,
+                        )
                         return []
 
-                    if any(
-                        s in response_text.lower() for s in ["luci", "openwrt", "ubus"]
-                    ) or "uhttpd" in response.headers.get("Server", "").lower():
+                    if (
+                        any(
+                            s in response_text.lower()
+                            for s in ["luci", "openwrt", "ubus"]
+                        )
+                        or "uhttpd" in response.headers.get("Server", "").lower()
+                    ):
                         _LOGGER.info("Found OpenWrt via LuCI probe at %s", host)
                         found_methods.append(CONNECTION_TYPE_LUCI_RPC)
-        except (TimeoutError, aiohttp.ClientError):
+        except TimeoutError, aiohttp.ClientError:
             pass
 
         # 2. Try LuCI static asset (more specific to OpenWrt)
@@ -816,9 +865,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 async with asyncio.timeout(2):
                     async with session.get(asset_url) as response:
                         if response.status == 200:
-                            _LOGGER.info("Found OpenWrt via LuCI asset probe at %s", host)
+                            _LOGGER.info(
+                                "Found OpenWrt via LuCI asset probe at %s", host
+                            )
                             found_methods.append(CONNECTION_TYPE_LUCI_RPC)
-            except (TimeoutError, aiohttp.ClientError):
+            except TimeoutError, aiohttp.ClientError:
                 pass
 
         # Check exclusions again before UBus if we didn't find LuCI yet
@@ -842,13 +893,19 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     if response.status in (200, 405):
                         # Router check: UBus usually responds with application/json
                         if "json" not in content_type and response.status == 405:
-                            _LOGGER.debug("Excluded %s: UBus probe returned 405 but not JSON", host)
+                            _LOGGER.debug(
+                                "Excluded %s: UBus probe returned 405 but not JSON",
+                                host,
+                            )
                             return list(set(found_methods))
 
                         if response.status == 200:
                             text = await response.text()
                             if any(s in text.lower() for s in exclusions):
-                                _LOGGER.debug("Excluded %s: non-router keywords found in UBus response", host)
+                                _LOGGER.debug(
+                                    "Excluded %s: non-router keywords found in UBus response",
+                                    host,
+                                )
                                 return list(set(found_methods))
 
                             # A 200 OK from /ubus without any JSON structure is suspicious for a router
@@ -870,7 +927,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                                 found_methods.append(CONNECTION_TYPE_UBUS)
                         except Exception:
                             pass
-        except (TimeoutError, aiohttp.ClientError):
+        except TimeoutError, aiohttp.ClientError:
             pass
 
         return list(set(found_methods))

@@ -60,7 +60,9 @@ def test_device_tracker_is_connected_logic(mock_coordinator, mock_config_entry) 
 
     # 2. Device appears
     # Ensure mac is lowercased as real coordinator would do
-    mock_coordinator.data.connected_devices = [ConnectedDevice(mac=mac.lower(), connected=True)]
+    mock_coordinator.data.connected_devices = [
+        ConnectedDevice(mac=mac.lower(), connected=True)
+    ]
     assert tracker.is_connected is True
     assert tracker._last_seen is not None
     last_seen_initial = tracker._last_seen
@@ -115,7 +117,10 @@ def test_device_tracker_stable_device_info(mock_coordinator, mock_config_entry) 
     """Test that device_info uses stable entry.unique_id (MAC)."""
     mac = "aa:bb:cc:dd:ee:ff"
 
-    with patch("custom_components.openwrt.device_tracker.DeviceInfo", side_effect=lambda **kwargs: kwargs):
+    with patch(
+        "custom_components.openwrt.device_tracker.DeviceInfo",
+        side_effect=lambda **kwargs: kwargs,
+    ):
         tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
 
         # Change entry host IP

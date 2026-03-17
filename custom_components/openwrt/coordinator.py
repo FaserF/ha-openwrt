@@ -359,7 +359,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         device_registry.async_get_or_create(
             config_entry_id=self.config_entry.entry_id,
-            identifiers={(DOMAIN, self.config_entry.unique_id or self.config_entry.data[CONF_HOST])},
+            identifiers={
+                (
+                    DOMAIN,
+                    self.config_entry.unique_id or self.config_entry.data[CONF_HOST],
+                )
+            },
             connections={(dr.CONNECTION_NETWORK_MAC, device_info.mac_address.lower())}
             if device_info.mac_address
             else None,

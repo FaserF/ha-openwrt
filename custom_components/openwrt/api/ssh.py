@@ -334,8 +334,7 @@ class SshClient(OpenWrtClient):
         ]
 
         results = await asyncio.gather(
-            *[self._exec(cmd) for cmd in cmds],
-            return_exceptions=True
+            *[self._exec(cmd) for cmd in cmds], return_exceptions=True
         )
 
         # 1. Memory
@@ -400,7 +399,7 @@ class SshClient(OpenWrtClient):
                         resources.filesystem_total = int(parts[1]) * 1024
                         resources.filesystem_used = int(parts[2]) * 1024
                         resources.filesystem_free = int(parts[3]) * 1024
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 pass
 
         # Memory fallback if needed (e.g. if /proc/meminfo was missing or empty)
@@ -420,7 +419,7 @@ class SshClient(OpenWrtClient):
                         - resources.memory_cached
                         - resources.memory_buffered
                     )
-            except Exception: # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 pass
 
         # 6. Thermal
@@ -444,7 +443,7 @@ class SshClient(OpenWrtClient):
                 else:
                     resources.temperature = float(temp_val)
                 break
-            except (ValueError, Exception):  # noqa: BLE001
+            except ValueError, Exception:  # noqa: BLE001
                 continue
 
         return resources

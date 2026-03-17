@@ -54,7 +54,9 @@ async def test_full_user_flow(hass) -> None:
         patch("socket.gethostbyaddr", return_value=("OpenWrt.local", [], [])),
         patch(
             "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_openwrt",
-            side_effect=lambda host, hostname=None: ["ubus"] if host == "192.168.1.1" else [],
+            side_effect=lambda host, hostname=None: (
+                ["ubus"] if host == "192.168.1.1" else []
+            ),
         ),
         patch(
             "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_check_reachable",
@@ -72,13 +74,21 @@ async def test_full_user_flow(hass) -> None:
     mock_client = AsyncMock()
     mock_client.connect.return_value = True
     mock_client.disconnect.return_value = None
-    mock_client.get_device_info.return_value = DeviceInfo(hostname="OpenWrtTest", mac_address="AA:BB:CC:DD:EE:FF")
+    mock_client.get_device_info.return_value = DeviceInfo(
+        hostname="OpenWrtTest", mac_address="AA:BB:CC:DD:EE:FF"
+    )
     mock_client.check_permissions.return_value = OpenWrtPermissions(read_system=True)
     mock_client.check_packages.return_value = OpenWrtPackages(sqm_scripts=True)
 
     with (
-        patch("custom_components.openwrt.config_flow.create_client", return_value=mock_client),
-        patch("custom_components.openwrt.coordinator.create_client", return_value=mock_client),
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=mock_client,
+        ),
+        patch(
+            "custom_components.openwrt.coordinator.create_client",
+            return_value=mock_client,
+        ),
     ):
         mock_client.user_exists.return_value = False
         result = await flow.async_step_credentials(
@@ -128,7 +138,9 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
         patch("socket.gethostbyaddr", side_effect=Exception()),
         patch(
             "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_openwrt",
-            side_effect=lambda host, hostname=None: ["ubus"] if host == "192.168.1.1" else [],
+            side_effect=lambda host, hostname=None: (
+                ["ubus"] if host == "192.168.1.1" else []
+            ),
         ),
         patch(
             "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_check_reachable",
@@ -142,13 +154,21 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
     mock_client = AsyncMock()
     mock_client.connect.return_value = True
     mock_client.disconnect.return_value = None
-    mock_client.get_device_info.return_value = DeviceInfo(hostname="OpenWrtTest", mac_address="AA:BB:CC:DD:EE:FF")
+    mock_client.get_device_info.return_value = DeviceInfo(
+        hostname="OpenWrtTest", mac_address="AA:BB:CC:DD:EE:FF"
+    )
     mock_client.check_permissions.side_effect = Exception("Permission Error")
     mock_client.check_packages.side_effect = Exception("Package Error")
 
     with (
-        patch("custom_components.openwrt.config_flow.create_client", return_value=mock_client),
-        patch("custom_components.openwrt.coordinator.create_client", return_value=mock_client),
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=mock_client,
+        ),
+        patch(
+            "custom_components.openwrt.coordinator.create_client",
+            return_value=mock_client,
+        ),
     ):
         mock_client.user_exists.return_value = False
         result = await flow.async_step_credentials(
@@ -220,7 +240,10 @@ async def test_multi_router_selection(hass) -> None:
 
     with (
         patch("asyncio.open_connection", side_effect=side_effect),
-        patch("socket.gethostbyaddr", side_effect=[("Router1", [], []), ("Router2", [], [])]),
+        patch(
+            "socket.gethostbyaddr",
+            side_effect=[("Router1", [], []), ("Router2", [], [])],
+        ),
         patch(
             "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_openwrt",
             return_value=[CONNECTION_TYPE_UBUS],
@@ -259,14 +282,18 @@ async def test_dhcp_discovery(hass) -> None:
     discovery_info.macaddress = "D4:BC:52:12:34:56"
 
     with (
-        patch("custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_router") as mock_probe,
-        patch("custom_components.openwrt.config_flow.OpenWrtConfigFlow.async_set_unique_id") as mock_set_uid,
+        patch(
+            "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_router"
+        ) as mock_probe,
+        patch(
+            "custom_components.openwrt.config_flow.OpenWrtConfigFlow.async_set_unique_id"
+        ) as mock_set_uid,
     ):
         mock_probe.return_value = {
             "host": "192.168.1.1",
             "hostname": "OpenWrt",
             "capabilities": ["ubus", "ssh"],
-            "method": "ubus"
+            "method": "ubus",
         }
         result = await flow.async_step_dhcp(discovery_info)
 
@@ -297,14 +324,18 @@ async def test_zeroconf_discovery(hass) -> None:
     discovery_info.properties = {}
 
     with (
-        patch("custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_router") as mock_probe,
-        patch("custom_components.openwrt.config_flow.OpenWrtConfigFlow.async_set_unique_id") as mock_set_uid,
+        patch(
+            "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_router"
+        ) as mock_probe,
+        patch(
+            "custom_components.openwrt.config_flow.OpenWrtConfigFlow.async_set_unique_id"
+        ) as mock_set_uid,
     ):
         mock_probe.return_value = {
             "host": "192.168.1.1",
             "hostname": "OpenWrt",
             "capabilities": ["ubus"],
-            "method": "ubus"
+            "method": "ubus",
         }
         result = await flow.async_step_zeroconf(discovery_info)
 

@@ -512,7 +512,7 @@ class LuciRpcClient(OpenWrtClient):
         # but we can try to gather them.
         results = await asyncio.gather(
             *[self._rpc_call("sys", "exec", [cmd]) for cmd in cmds],
-            return_exceptions=True
+            return_exceptions=True,
         )
 
         # 1. Memory
