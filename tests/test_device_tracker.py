@@ -15,7 +15,6 @@ from homeassistant.helpers import (
 from custom_components.openwrt.api.base import ConnectedDevice, OpenWrtData
 from custom_components.openwrt.const import (
     CONF_CONSIDER_HOME,
-    DOMAIN,
 )
 from custom_components.openwrt.device_tracker import OpenWrtDeviceTracker
 
@@ -115,7 +114,7 @@ def test_device_tracker_attributes(mock_coordinator, mock_config_entry) -> None:
 def test_device_tracker_stable_device_info(mock_coordinator, mock_config_entry) -> None:
     """Test that device_info uses stable entry.unique_id (MAC)."""
     mac = "aa:bb:cc:dd:ee:ff"
-    
+
     with patch("custom_components.openwrt.device_tracker.DeviceInfo", side_effect=lambda **kwargs: kwargs):
         tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
 

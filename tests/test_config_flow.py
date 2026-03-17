@@ -43,7 +43,7 @@ async def test_full_user_flow(hass) -> None:
     mock_writer = AsyncMock()
     mock_writer.close = MagicMock()
     mock_writer.wait_closed = AsyncMock()
-    
+
     async def side_effect(host, port):
         if host == "192.168.1.1":
             return AsyncMock(), mock_writer
@@ -63,7 +63,7 @@ async def test_full_user_flow(hass) -> None:
         patch("homeassistant.components.network.async_get_adapters", return_value=[]),
     ):
         result = await flow.async_step_user({"next": True})
-    
+
     assert result["type"].lower() == "form"
     assert result["step_id"] == "credentials"
     assert "OpenWrt.local" in result["description_placeholders"]["auto_detected_info"]
@@ -112,7 +112,7 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
 
     # 1. Welcome
     await flow.async_step_user()
-    
+
     # 2. Discovery -> Credentials
     mock_writer = AsyncMock()
     mock_writer.close = MagicMock()
@@ -175,14 +175,14 @@ async def test_config_flow_default_connection_type(hass) -> None:
 
     # 1. Welcome
     await flow.async_step_user()
-    
+
     # 2. Discovery (submitted Welcome, mock no routers found)
     with (
         patch("asyncio.open_connection", side_effect=ConnectionRefusedError()),
         patch("homeassistant.components.network.async_get_adapters", return_value=[]),
     ):
         result = await flow.async_step_user({"next": True})
-    
+
     # Should land in manual_entry (fallback for no discovery)
     assert result["type"].lower() == "form"
     assert result["step_id"] == "manual_entry"
@@ -246,8 +246,8 @@ async def test_multi_router_selection(hass) -> None:
 
 async def test_dhcp_discovery(hass) -> None:
     """Test successful DHCP discovery."""
+
     from custom_components.openwrt.config_flow import OpenWrtConfigFlow
-    from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
     flow = OpenWrtConfigFlow()
     flow.hass = hass
@@ -282,8 +282,8 @@ async def test_dhcp_discovery(hass) -> None:
 
 async def test_zeroconf_discovery(hass) -> None:
     """Test successful Zeroconf discovery."""
+
     from custom_components.openwrt.config_flow import OpenWrtConfigFlow
-    from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
     flow = OpenWrtConfigFlow()
     flow.hass = hass

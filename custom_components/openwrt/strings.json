@@ -218,9 +218,6 @@
       "public_ip": {
         "name": "Public IP"
       },
-      "firmware_version": {
-        "name": "Firmware Version"
-      },
       "kernel_version": {
         "name": "Kernel Version"
       },
@@ -396,9 +393,6 @@
     "binary_sensor": {
       "device_connected": {
         "name": "Connected"
-      },
-      "firmware_update_available": {
-        "name": "Firmware Update Available"
       },
       "mwan_online": {
         "name": "MWAN {interface} Online"

@@ -244,7 +244,7 @@ dr_mock = MagicMock()
 dr_mock.format_mac.side_effect = lambda x: x.lower() if isinstance(x, str) else x
 sys.modules["homeassistant.helpers.device_registry"] = dr_mock
 if "homeassistant.helpers" in sys.modules:
-    setattr(sys.modules["homeassistant.helpers"], "device_registry", dr_mock)
+    sys.modules["homeassistant.helpers"].device_registry = dr_mock
 
 
 # Define specific exceptions

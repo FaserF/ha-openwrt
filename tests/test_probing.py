@@ -1,10 +1,15 @@
 """Test the OpenWrt config flow probing logic."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from custom_components.openwrt.config_flow import OpenWrtConfigFlow
-from custom_components.openwrt.const import CONNECTION_TYPE_UBUS, CONNECTION_TYPE_LUCI_RPC
+
 import aiohttp
+import pytest
+
+from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+from custom_components.openwrt.const import (
+    CONNECTION_TYPE_LUCI_RPC,
+)
+
 
 @pytest.fixture
 def flow(hass):
@@ -66,7 +71,7 @@ async def test_probe_openwrt_exclusion_vacuum(flow, hass) -> None:
     with patch("custom_components.openwrt.config_flow.async_get_clientsession", return_value=mock_session):
         # Case 1: Excluded by hostname
         assert await flow._async_probe_openwrt("192.168.1.67", "dreame_vacuum_p2028.lan") == []
-        
+
         # Case 2: Excluded by UBus text (if hostname not available)
         mock_session.post.return_value = create_mock_response(status=200, text='{"model": "dreame.vacuum.p2028"}', headers={"Content-Type": "application/json"})
         assert await flow._async_probe_openwrt("192.168.1.67") == []
@@ -84,7 +89,7 @@ async def test_probe_router_exclusion_logic(flow, hass) -> None:
     ):
         # 1. Excluded via hinted hostname
         assert await flow._async_probe_router("192.168.1.67", "Valetudo WittyIdealisticSnake") is None
-        
+
         # 2. Excluded via resolved hostname (reverse DNS)
         assert await flow._async_probe_router("192.168.1.67") is None
 

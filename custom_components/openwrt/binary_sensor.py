@@ -38,14 +38,6 @@ BINARY_SENSORS: tuple[OpenWrtBinarySensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         is_on_fn=lambda data: True,  # If we get data, device is connected
     ),
-    OpenWrtBinarySensorDescription(
-        key="firmware_update_available",
-        name="Firmware Update Available",
-        translation_key="firmware_update_available",
-        device_class=BinarySensorDeviceClass.UPDATE,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        is_on_fn=lambda data: data.firmware_upgradable,
-    ),
 )
 
 
@@ -66,8 +58,6 @@ async def async_setup_entry(
         pkgs = coordinator.data.packages
 
         for description in BINARY_SENSORS:
-            if description.key == "firmware_update_available" and not perms.read_system:
-                continue
             entities.append(OpenWrtBinarySensorEntity(coordinator, entry, description))
         if perms.read_mwan and pkgs.mwan3 is not False:
             for mwan in coordinator.data.mwan_status:

@@ -1,6 +1,6 @@
 
 import unittest
-from unittest.mock import MagicMock
+
 
 # Mocking OpenWrtClient since it depends on many other things
 class OpenWrtClientMock:
@@ -52,22 +52,22 @@ class OpenWrtClientMock:
 class TestCpuCalculation(unittest.TestCase):
     def test_cpu_calculation(self):
         client = OpenWrtClientMock()
-        
+
         # First poll: stats saved, returns 0.0
         # cpu  user nice system idle iowait irq softirq steal guest guest_nice
         stat1 = "cpu  100 0 50 1000 0 0 0 0 0 0"
         # Total: 1150, Idle: 1000
         self.assertEqual(client._calculate_cpu_usage(stat1), 0.0)
         self.assertEqual(client._last_cpu_stats, (1150, 1000))
-        
-        # Second poll: 
+
+        # Second poll:
         # Increase user by 50, system by 50, idle by 100
         stat2 = "cpu  150 0 100 1100 0 0 0 0 0 0"
         # Total: 1350, Idle: 1100
         # DiffTotal: 200, DiffIdle: 100
         # Usage: (200 - 100) / 200 = 0.5 = 50.0%
         self.assertEqual(client._calculate_cpu_usage(stat2), 50.0)
-        
+
         # Third poll: High usage
         # Increase user by 100, idle by 0
         stat3 = "cpu  250 0 100 1100 0 0 0 0 0 0"

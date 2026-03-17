@@ -435,22 +435,6 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             },
         ),
         OpenWrtSensorDescription(
-            key="firmware_version",
-            name="Firmware Version",
-            translation_key="firmware_version",
-            entity_category=EntityCategory.DIAGNOSTIC,
-            value_fn=lambda data: data.device_info.firmware_version,
-            attrs_fn=lambda data: {
-                "distribution": data.device_info.release_distribution,
-                "version": data.device_info.release_version,
-                "revision": data.device_info.release_revision,
-                "target": data.device_info.target,
-                "architecture": data.device_info.architecture,
-                "kernel": data.device_info.kernel_version,
-                "is_custom_build": data.is_custom_build,
-            },
-        ),
-        OpenWrtSensorDescription(
             key="kernel_version",
             name="Kernel Version",
             translation_key="kernel_version",
