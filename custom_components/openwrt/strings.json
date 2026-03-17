@@ -37,7 +37,8 @@
           "verify_ssl": "Verify SSL Certificate",
           "port": "Port",
           "ubus_path": "Ubus Path (e.g. /ubus)",
-          "dhcp_software": "DHCP Software"
+          "dhcp_software": "DHCP Software",
+          "track_devices": "Track network clients (Device Tracker)"
         }
       },
       "ssh": {
@@ -48,7 +49,8 @@
           "password": "Password",
           "ssh_key": "Private SSH Key (Optional, leaves password blank if used)",
           "port": "Port",
-          "dhcp_software": "DHCP Software"
+          "dhcp_software": "DHCP Software",
+          "track_devices": "Track network clients (Device Tracker)"
         }
       },
       "reauth_confirm": {
@@ -67,7 +69,8 @@
           "password": "Password",
           "use_ssl": "Use SSL (HTTPS)",
           "port": "Port (Optional)",
-          "dhcp_software": "DHCP Software"
+          "dhcp_software": "DHCP Software",
+          "track_devices": "Track network clients (Device Tracker)"
         }
       },
       "permissions": {
@@ -116,6 +119,7 @@
       "package_missing": "Required OpenWrt package is missing. For ubus: 'uhttpd-mod-ubus'. For LuCI: 'luci-mod-rpc'. Install via SSH: 'opkg update && opkg install package'.",
       "permission_error": "Insufficient RPC permissions. Check your user ACLs in /etc/config/rpcd or LuCI permissions.",
       "provision_failed": "Failed to automatically create the dedicated user. Ensure you are connected as root and have enough free space on the router for 'rpcd' ACL files.",
+      "no_devices_found": "No OpenWrt routers were automatically discovered on your network. You can try to enter the details manually.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
@@ -183,6 +187,9 @@
     "sensor": {
       "memory_usage": {
         "name": "Memory Usage"
+      },
+      "cpu_usage": {
+        "name": "CPU Usage"
       },
       "memory_used": {
         "name": "Memory Used"

@@ -8,6 +8,7 @@ Requires packages on OpenWrt: uhttpd, uhttpd-mod-ubus, rpcd, rpcd-mod-iwinfo
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -340,34 +341,52 @@ class UbusClient(OpenWrtClient):
 
     async def get_system_resources(self) -> SystemResources:
         """Get system resource usage."""
-        data = await self._call("system", "info")
-        memory = data.get("memory", {})
-        swap = data.get("swap", {})
-        load = data.get("load", [0, 0, 0])
+        resources = SystemResources()
 
-        resources = SystemResources(
-            memory_total=memory.get("total", 0),
-            memory_used=memory.get("total", 0)
-            - memory.get("free", 0)
-            - memory.get("buffered", 0)
-            - memory.get("cached", 0),
-            memory_free=memory.get("free", 0),
-            memory_buffered=memory.get("buffered", 0),
-            memory_cached=memory.get("cached", 0),
-            swap_total=swap.get("total", 0),
-            swap_used=swap.get("total", 0) - swap.get("free", 0),
-            swap_free=swap.get("free", 0),
-            load_1min=load[0] / 65536.0 if len(load) > 0 else 0.0,
-            load_5min=load[1] / 65536.0 if len(load) > 1 else 0.0,
-            load_15min=load[2] / 65536.0 if len(load) > 2 else 0.0,
-            uptime=data.get("uptime", 0),
+        # Fetch resources in parallel where possible
+        results = await asyncio.gather(
+            self._call("system", "info"),
+            self.execute_command("cat /proc/stat 2>/dev/null"),
+            return_exceptions=True,
         )
 
-        try:
-            # First try ubus system info disk
-            fs_data = await self._call("system", "info")
-            if "disk" in fs_data:
-                disk = fs_data["disk"]
+        # 1. System Info (Memory, Swap, Uptime, Load)
+        data = results[0]
+        if not isinstance(data, Exception):
+            mem = data.get("memory", {})
+            resources.memory_total = mem.get("total", 0)
+            resources.memory_free = mem.get("free", 0)
+            resources.memory_buffered = mem.get("buffered", 0)
+            resources.memory_cached = mem.get("cached", 0)
+            resources.memory_used = (
+                resources.memory_total
+                - resources.memory_free
+                - resources.memory_buffered
+                - resources.memory_cached
+            )
+
+            swap = data.get("swap", {})
+            resources.swap_total = swap.get("total", 0)
+            resources.swap_free = swap.get("free", 0)
+            resources.swap_used = resources.swap_total - resources.swap_free
+
+            resources.uptime = data.get("uptime", 0)
+
+            load = data.get("load", [])
+            if len(load) >= 3:
+                # Some OpenWrt versions return load scaled by 65535, others as float
+                if any(isinstance(val, int) and val > 500 for val in load):
+                    resources.load_1min = round(load[0] / 65536.0, 2)
+                    resources.load_5min = round(load[1] / 65536.0, 2)
+                    resources.load_15min = round(load[2] / 65536.0, 2)
+                else:
+                    resources.load_1min = float(load[0])
+                    resources.load_5min = float(load[1])
+                    resources.load_15min = float(load[2])
+
+            # Disk info from ubus if available
+            if "disk" in data:
+                disk = data["disk"]
                 root = disk.get("root", disk.get("/", {}))
                 if isinstance(root, dict) and root.get("total"):
                     resources.filesystem_total = root.get("total", 0)
@@ -376,45 +395,24 @@ class UbusClient(OpenWrtClient):
                         "used", 0
                     )
 
-            # Fallback to df if ubus disk info is missing
-            if resources.filesystem_total == 0:
-                # Busybox df -k returns blocks in 1K
-                result = await self._call(
-                    "file", "exec", {"command": "df", "params": ["-k"]}
-                )
-                stdout = result.get("stdout", "")
-                for line in stdout.strip().split("\n"):
-                    parts = line.split()
-                    # Match overlay or mount point /
-                    if len(parts) >= 6 and (parts[5] == "/" or parts[0] == "overlay"):
-                        try:
-                            resources.filesystem_total = int(parts[1]) * 1024
-                            resources.filesystem_used = int(parts[2]) * 1024
-                            resources.filesystem_free = int(parts[3]) * 1024
-                            break
-                        except ValueError, IndexError:
-                            continue
-        except UbusError, ValueError, IndexError:
-            pass
+        # 2. CPU usage from /proc/stat
+        proc_stat = results[1]
+        if not isinstance(proc_stat, Exception) and proc_stat:
+            resources.cpu_usage = self._calculate_cpu_usage(proc_stat)
 
-        # Temperature fetching
+        # 3. Temperature fetching
         try:
-            # Try various common paths for thermal sensors
+            # Try via ubus file first (more standard for rpc users)
             temp_paths = [
                 "/sys/class/thermal/thermal_zone0/temp",
                 "/sys/class/thermal/thermal_zone1/temp",
-                "/sys/class/thermal/thermal_zone2/temp",
                 "/sys/class/hwmon/hwmon0/temp1_input",
-                "/sys/class/hwmon/hwmon0/device/temp1_input",
                 "/sys/devices/virtual/thermal/thermal_zone0/temp",
-                "/sys/devices/virtual/thermal/thermal_zone1/temp",
-                "/sys/devices/virtual/thermal/thermal_zone2/temp",
             ]
             for path in temp_paths:
                 try:
                     res = await self._call("file", "read", {"path": path})
                     temp_raw = res.get("data", "").strip()
-                    # Handle cases where output might contain non-digits (e.g. quotes or trailing chars)
                     import re
 
                     match = re.search(r"(\d+)", temp_raw)
@@ -422,31 +420,46 @@ class UbusClient(OpenWrtClient):
                         temp = float(match.group(1))
                         if temp > 200:  # Usually millidegrees
                             temp /= 1000.0
-                        if 0 < temp < 150:  # Sanity check
+                        if 0 < temp < 150:
                             resources.temperature = temp
                             break
-                except UbusError, ValueError:
+                except UbusError:
                     continue
 
-            # Fallback to execute_command if file.read failed or missing paths
+            # Fallback to execute_command if ubus file read failed
             if resources.temperature is None:
-                try:
-                    # Some devices need explicit shell cat
-                    out = await self.execute_command(
-                        "cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null"
-                    )
-                    if out:
-                        temp_raw = out.split("\n")[0].strip()
-                        if temp_raw.isdigit():
-                            temp = float(temp_raw)
-                            if temp > 200:
-                                temp /= 1000.0
-                            if 0 < temp < 150:
-                                resources.temperature = temp
-                except Exception:  # noqa: BLE001
-                    pass
+                for path in temp_paths:
+                    try:
+                        temp_raw = await self.execute_command(f"cat {path} 2>/dev/null")
+                        if temp_raw:
+                            match = re.search(r"(\d+)", temp_raw)
+                            if match:
+                                temp = float(match.group(1))
+                                if temp > 200:
+                                    temp /= 1000.0
+                                if 0 < temp < 150:
+                                    resources.temperature = temp
+                                    break
+                    except Exception:  # noqa: BLE001
+                        continue
         except Exception:  # noqa: BLE001
             pass
+
+        # 4. Filesystem fallback to df if ubus disk info was missing
+        if resources.filesystem_total == 0:
+            try:
+                df_output = await self.execute_command(
+                    "df /overlay 2>/dev/null || df / 2>/dev/null"
+                )
+                lines = df_output.strip().split("\n")
+                if len(lines) >= 2:
+                    parts = lines[1].split()
+                    if len(parts) >= 4:
+                        resources.filesystem_total = int(parts[1]) * 1024
+                        resources.filesystem_used = int(parts[2]) * 1024
+                        resources.filesystem_free = int(parts[3]) * 1024
+            except Exception:  # noqa: BLE001
+                pass
 
         return resources
 

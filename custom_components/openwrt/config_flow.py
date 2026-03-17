@@ -28,7 +28,8 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import callback
-from homeassistant.helpers import device_registry as dr, selector
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
@@ -303,11 +304,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     def _is_excluded(self, host: str, hostname: str | None = None, properties: dict[str, Any] | None = None) -> bool:
         """Centralized check for non-router OpenWrt devices like vacuums."""
         exclusions = [
-            "valetudo", "vacuum", "dreame", "roborock", "cleaner", "mop", 
+            "valetudo", "vacuum", "dreame", "roborock", "cleaner", "mop",
             "robot", "airpurifier", "washer", "dryer", "fridge", "oven",
             "camera", "tuya", "smartlife", "broadlink", "shelly"
         ]
-        
+
         # 1. Check hostname/name
         search_target = ""
         if hostname:
@@ -317,11 +318,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             for val in properties.values():
                 if isinstance(val, str):
                     search_target += " " + val.lower()
-        
+
         if any(exc in search_target for exc in exclusions):
             _LOGGER.info("Definitively excluded %s (%s) as a non-router device", host, hostname)
             return True
-            
+
         return False
 
     async def _async_probe_router(self, host: str, hostname: str | None = None) -> dict[str, Any] | None:
@@ -331,7 +332,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         # 1. Definitive exclusions
         if self._is_excluded(host, hostname):
             return None
-            
+
         effective_hostname = hostname
         if not effective_hostname or effective_hostname == host:
             try:
@@ -607,6 +608,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
+            vol.Optional(CONF_TRACK_DEVICES, default=True): bool,
             vol.Optional(CONF_PORT): int,
         }
 
@@ -654,6 +656,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_DHCP_SOFTWARE, default="auto"): vol.In(
                     ["auto", "dnsmasq", "odhcpd", "none"]
                 ),
+                vol.Optional(CONF_TRACK_DEVICES, default=True): bool,
                 vol.Optional(CONF_PORT, default=DEFAULT_PORT_SSH): int,
             }
         )
@@ -826,7 +829,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             async with asyncio.timeout(2):
                 # A direct POST to ubus with empty data should return 405 or a JSON error
-                # but it proves the endpoint exists. A router's ubus usually returns 
+                # but it proves the endpoint exists. A router's ubus usually returns
                 # a specific JSON structure or at least application/json content type.
                 async with session.post(ubus_url, json={}) as response:
                     content_type = response.headers.get("Content-Type", "").lower()
@@ -835,7 +838,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     if "valetudo" in server or "valetudo" in response.headers:
                         _LOGGER.info("Excluded %s: Valetudo detected via headers", host)
                         return []
-                    
+
                     if response.status in (200, 405):
                         # Router check: UBus usually responds with application/json
                         if "json" not in content_type and response.status == 405:
@@ -847,7 +850,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                             if any(s in text.lower() for s in exclusions):
                                 _LOGGER.debug("Excluded %s: non-router keywords found in UBus response", host)
                                 return list(set(found_methods))
-                            
+
                             # A 200 OK from /ubus without any JSON structure is suspicious for a router
                             try:
                                 data = await response.json()

@@ -9,6 +9,7 @@ Supports authentication via LuCI sysauth token.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -498,8 +499,25 @@ class LuciRpcClient(OpenWrtClient):
         """Get system resource usage."""
         resources = SystemResources()
 
-        meminfo = await self._rpc_call("sys", "exec", ["cat /proc/meminfo"])
-        if meminfo:
+        # Fetch basic system stats
+        cmds = [
+            "cat /proc/meminfo",
+            "cat /proc/loadavg",
+            "cat /proc/uptime",
+            "cat /proc/stat",
+            "df /overlay 2>/dev/null || df / 2>/dev/null",
+        ]
+
+        # Parallel execution via Luci RPC is not directly supported in one call for different sys execs,
+        # but we can try to gather them.
+        results = await asyncio.gather(
+            *[self._rpc_call("sys", "exec", [cmd]) for cmd in cmds],
+            return_exceptions=True
+        )
+
+        # 1. Memory
+        meminfo = results[0]
+        if isinstance(meminfo, str) and meminfo:
             for line in meminfo.strip().split("\n"):
                 parts = line.split()
                 if len(parts) >= 2:
@@ -525,25 +543,37 @@ class LuciRpcClient(OpenWrtClient):
             )
             resources.swap_used = resources.swap_total - resources.swap_free
 
-        try:
-            loadavg = await self._rpc_call("sys", "exec", ["cat /proc/loadavg"])
-            if loadavg:
-                parts = loadavg.strip().split()
-                if len(parts) >= 3:
-                    resources.load_1min = float(parts[0])
-                    resources.load_5min = float(parts[1])
-                    resources.load_15min = float(parts[2])
-        except LuciRpcError:
-            pass
+        # 2. Load
+        loadavg = results[1]
+        if isinstance(loadavg, str) and loadavg:
+            parts = loadavg.strip().split()
+            if len(parts) >= 3:
+                resources.load_1min = float(parts[0])
+                resources.load_5min = float(parts[1])
+                resources.load_15min = float(parts[2])
 
-        try:
-            uptime_str = await self._rpc_call("sys", "exec", ["cat /proc/uptime"])
-            if uptime_str:
-                resources.uptime = int(float(uptime_str.strip().split()[0]))
-        except LuciRpcError:
-            pass
+        # 3. Uptime
+        uptime_str = results[2]
+        if isinstance(uptime_str, str) and uptime_str:
+            resources.uptime = int(float(uptime_str.strip().split()[0]))
 
-        # Thermal
+        # 4. CPU usage from /proc/stat
+        proc_stat = results[3]
+        if isinstance(proc_stat, str) and proc_stat:
+            resources.cpu_usage = self._calculate_cpu_usage(proc_stat)
+
+        # 5. Storage
+        df_out = results[4]
+        if isinstance(df_out, str) and df_out:
+            lines = df_out.strip().split("\n")
+            if len(lines) >= 2:
+                parts = lines[1].split()
+                if len(parts) >= 4:
+                    resources.filesystem_total = int(parts[1]) * 1024
+                    resources.filesystem_used = int(parts[2]) * 1024
+                    resources.filesystem_free = int(parts[3]) * 1024
+
+        # 6. Thermal
         try:
             for zone in range(3):
                 temp = await self._rpc_call(
@@ -554,22 +584,6 @@ class LuciRpcClient(OpenWrtClient):
                 if temp and temp.strip().isdigit():
                     resources.temperature = float(temp.strip()) / 1000.0
                     break
-        except LuciRpcError:
-            pass
-
-        # Storage
-        try:
-            df = await self._rpc_call(
-                "sys", "exec", ["df /overlay 2>/dev/null || df / 2>/dev/null"]
-            )
-            if df:
-                lines = df.strip().split("\n")
-                if len(lines) >= 2:
-                    parts = lines[1].split()
-                    if len(parts) >= 4:
-                        resources.filesystem_total = int(parts[1]) * 1024
-                        resources.filesystem_used = int(parts[2]) * 1024
-                        resources.filesystem_free = int(parts[3]) * 1024
         except LuciRpcError:
             pass
 

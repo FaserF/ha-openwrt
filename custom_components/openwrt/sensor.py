@@ -280,6 +280,16 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
     """Get system sensors descriptions."""
     return (
         OpenWrtSensorDescription(
+            key="cpu_usage",
+            name="CPU Usage",
+            translation_key="cpu_usage",
+            native_unit_of_measurement=PERCENTAGE,
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            suggested_display_precision=1,
+            value_fn=lambda data: data.system_resources.cpu_usage,
+        ),
+        OpenWrtSensorDescription(
             key="public_ip",
             name="Public IP",
             translation_key="public_ip",

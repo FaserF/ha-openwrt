@@ -547,6 +547,7 @@ class OpenWrtClient(abc.ABC):
         self._poll_count = 0
         self._cached_device_info: DeviceInfo | None = None
         self._cached_slow_data: dict[str, Any] = {}
+        self._last_cpu_stats: tuple[int, int] | None = None
 
     @property
     def connected(self) -> bool:
@@ -600,6 +601,59 @@ class OpenWrtClient(abc.ABC):
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interface information."""
         raise NotImplementedError
+
+    def _calculate_cpu_usage(self, proc_stat: str) -> float:
+        """Calculate CPU usage percentage from /proc/stat.
+
+        Formula:
+        Idle = idle + iowait
+        NonIdle = user + nice + system + irq + softirq + steal
+        Total = Idle + NonIdle
+
+        Percentage = (Total - Idle) / Total
+        """
+        if not proc_stat:
+            return 0.0
+
+        try:
+            # cpu  user nice system idle iowait irq softirq steal guest guest_nice
+            line = proc_stat.splitlines()[0]
+            parts = line.split()
+            if len(parts) < 5:
+                return 0.0
+
+            # parts[1] is user, parts[2] is nice, etc.
+            user = int(parts[1])
+            nice = int(parts[2])
+            system = int(parts[3])
+            idle = int(parts[4])
+            iowait = int(parts[5]) if len(parts) > 5 else 0
+            irq = int(parts[6]) if len(parts) > 6 else 0
+            softirq = int(parts[7]) if len(parts) > 7 else 0
+            steal = int(parts[8]) if len(parts) > 8 else 0
+
+            idle_time = idle + iowait
+            non_idle_time = user + nice + system + irq + softirq + steal
+            total_time = idle_time + non_idle_time
+
+            if self._last_cpu_stats is None:
+                self._last_cpu_stats = (total_time, idle_time)
+                return 0.0
+
+            prev_total, prev_idle = self._last_cpu_stats
+            self._last_cpu_stats = (total_time, idle_time)
+
+            total_diff = total_time - prev_total
+            idle_diff = idle_time - prev_idle
+
+            if total_diff <= 0:
+                return 0.0
+
+            cpu_usage = (total_diff - idle_diff) / total_diff
+            return round(max(0.0, min(100.0, cpu_usage * 100.0)), 1)
+
+        except (ValueError, IndexError):
+            return 0.0
 
     async def get_gateway_mac(self) -> str | None:
         """Get the default gateway MAC address."""

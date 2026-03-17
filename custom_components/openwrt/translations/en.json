@@ -3,7 +3,25 @@
     "step": {
       "user": {
         "title": "Connect to OpenWrt Router",
-        "description": "Select the connection method for your OpenWrt router. [Learn more]({docs_url}).",
+        "description": "Select the connection method for your OpenWrt router. [Learn more]({docs_url})."
+      },
+      "discovery": {
+        "title": "Searching for OpenWrt",
+        "description": "Scanning your network for OpenWrt routers... {discovery_info}",
+        "data": {
+          "next": "Continue with discovery"
+        }
+      },
+      "select_device": {
+        "title": "Select Your Router",
+        "description": "Multiple OpenWrt devices were found. Please select the one you want to configure:\n\n{public_info}",
+        "data": {
+          "device": "Discovered Device (Method/Capabilities)"
+        }
+      },
+      "manual_entry": {
+        "title": "Manual Configuration",
+        "description": "No routers were automatically detected, or you chose to enter details manually. Please provide the IP address and connection method.",
         "data": {
           "host": "Host (IP address or hostname)",
           "connection_type": "Connection Type"
@@ -19,7 +37,8 @@
           "verify_ssl": "Verify SSL Certificate",
           "port": "Port",
           "ubus_path": "Ubus Path (e.g. /ubus)",
-          "dhcp_software": "DHCP Software"
+          "dhcp_software": "DHCP Software",
+          "track_devices": "Track network clients (Device Tracker)"
         }
       },
       "ssh": {
@@ -30,7 +49,8 @@
           "password": "Password",
           "ssh_key": "Private SSH Key (Optional, leaves password blank if used)",
           "port": "Port",
-          "dhcp_software": "DHCP Software"
+          "dhcp_software": "DHCP Software",
+          "track_devices": "Track network clients (Device Tracker)"
         }
       },
       "reauth_confirm": {
@@ -49,7 +69,8 @@
           "password": "Password",
           "use_ssl": "Use SSL (HTTPS)",
           "port": "Port (Optional)",
-          "dhcp_software": "DHCP Software"
+          "dhcp_software": "DHCP Software",
+          "track_devices": "Track network clients (Device Tracker)"
         }
       },
       "permissions": {
@@ -97,6 +118,7 @@
       "ssl_error": "SSL verification failed. If using self-signed certs, disable 'Verify SSL Certificate'.",
       "package_missing": "Required OpenWrt package is missing. For ubus: 'uhttpd-mod-ubus'. For LuCI: 'luci-mod-rpc'. Install via SSH: 'opkg update && opkg install package'.",
       "permission_error": "Insufficient RPC permissions. Check your user ACLs in /etc/config/rpcd or LuCI permissions.",
+      "no_devices_found": "No OpenWrt routers were automatically discovered on your network. You can try to enter the details manually.",
       "provision_failed": "Failed to automatically create the dedicated user. Please check if your router supports user management or try creating it manually.",
       "unknown": "An unexpected error occurred."
     },
@@ -152,12 +174,22 @@
         "reuse": "Use existing 'homeassistant' user",
         "skip": "Keep using root (not recommended)"
       }
+    },
+    "connection_type": {
+      "options": {
+        "ubus": "ubus (HTTP/HTTPS)",
+        "luci_rpc": "LuCI RPC",
+        "ssh": "SSH"
+      }
     }
   },
   "entity": {
     "sensor": {
       "memory_usage": {
         "name": "Memory Usage"
+      },
+      "cpu_usage": {
+        "name": "CPU Usage"
       },
       "memory_used": {
         "name": "Memory Used"
