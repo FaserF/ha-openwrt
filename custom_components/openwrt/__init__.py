@@ -101,7 +101,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> bool:
     """Set up OpenWrt from a config entry."""
-    client = create_client(dict(entry.data))
+    client = create_client({**entry.data, **entry.options})
 
     try:
         await client.connect()

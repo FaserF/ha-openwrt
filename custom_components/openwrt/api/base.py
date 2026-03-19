@@ -613,7 +613,15 @@ class OpenWrtClient(abc.ABC):
 
         Percentage = (Total - Idle) / Total
         """
-        if not proc_stat:
+        if not proc_stat or not isinstance(proc_stat, str):
+            return 0.0
+
+        # Basic validation: must start with 'cpu ' and have enough parts
+        if not proc_stat.startswith("cpu "):
+            _LOGGER.debug(
+                "Invalid /proc/stat data received for CPU calculation: %s...",
+                proc_stat[:50],
+            )
             return 0.0
 
         try:
@@ -653,7 +661,8 @@ class OpenWrtClient(abc.ABC):
             cpu_usage = (total_diff - idle_diff) / total_diff
             return round(max(0.0, min(100.0, cpu_usage * 100.0)), 1)
 
-        except ValueError, IndexError:
+        except (ValueError, IndexError) as err:
+            _LOGGER.debug("Error parsing /proc/stat for CPU usage: %s", err)
             return 0.0
 
     async def get_gateway_mac(self) -> str | None:

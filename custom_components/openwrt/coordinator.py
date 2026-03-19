@@ -381,7 +381,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     async def _check_firmware_update(self, data: OpenWrtData) -> None:
         """Check for firmware updates (official or custom)."""
-        custom_repo = self.config_entry.options.get(CONF_CUSTOM_FIRMWARE_REPO, "")
+        custom_repo = self.config_entry.options.get(
+            CONF_CUSTOM_FIRMWARE_REPO,
+            self.config_entry.data.get(CONF_CUSTOM_FIRMWARE_REPO, ""),
+        )
         if custom_repo:
             await self._check_custom_firmware_update(data, custom_repo)
         else:
@@ -454,7 +457,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         model = data.device_info.board_name
 
         asu_url = self.config_entry.options.get(
-            CONF_ASU_URL, "https://sysupgrade.openwrt.org"
+            CONF_ASU_URL,
+            self.config_entry.data.get(
+                CONF_ASU_URL, "https://sysupgrade.openwrt.org"
+            ),
         )
 
         session = async_get_clientsession(self.hass)

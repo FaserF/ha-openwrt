@@ -143,6 +143,20 @@ class LuciRpcClient(OpenWrtClient):
                     )
 
                 response.raise_for_status()
+
+                # Check content type to ensure it's JSON
+                content_type = response.headers.get("Content-Type", "").lower()
+                if "application/json" not in content_type:
+                    text = await response.text()
+                    if "<html" in text.lower():
+                        _LOGGER.debug(
+                            "Received HTML instead of JSON from LuCI RPC: %s", text[:200]
+                        )
+                        raise LuciRpcPackageMissingError(
+                            "LuCI RPC returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
+                        )
+                    raise LuciRpcError(f"Unexpected content type from LuCI RPC: {content_type}")
+
                 data = await response.json()
         except TimeoutError as err:
             raise LuciRpcTimeoutError(
@@ -175,7 +189,8 @@ class LuciRpcClient(OpenWrtClient):
         try:
             return await self._rpc_call("sys", "exec", [command]) or ""
         except LuciRpcError as err:
-            return f"Error: {err}"
+            _LOGGER.debug("Command failed via LuCI RPC sys.exec: %s (%s)", command, err)
+            return ""
 
     async def provision_user(self, username: str, password: str) -> bool:
         """Create a dedicated system user and configure RPC permissions via LuCI RPC."""
@@ -212,6 +227,18 @@ class LuciRpcClient(OpenWrtClient):
                         "LuCI RPC auth endpoint not found. Is 'luci-mod-rpc' installed?"
                     )
                 response.raise_for_status()
+                
+                # Check content type to ensure it's JSON
+                content_type = response.headers.get("Content-Type", "").lower()
+                if "application/json" not in content_type:
+                    text = await response.text()
+                    if "<html" in text.lower():
+                        _LOGGER.debug("Received HTML instead of JSON from LuCI Auth: %s", text[:200])
+                        raise LuciRpcPackageMissingError(
+                            "LuCI Auth returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
+                        )
+                    raise LuciRpcError(f"Unexpected content type from LuCI Auth: {content_type}")
+
                 data = await response.json()
         except TimeoutError as err:
             raise LuciRpcTimeoutError(f"Login timeout for LuCI on {self.host}") from err
@@ -464,7 +491,8 @@ class LuciRpcClient(OpenWrtClient):
         try:
             cmd = (
                 "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
-                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn; do "
+                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
+                "/usr/lib/lua/luci/controller/rpc.lua; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._rpc_call("sys", "exec", [cmd])
@@ -480,6 +508,9 @@ class LuciRpcClient(OpenWrtClient):
                 packages.etherwake = detect_status(3)
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
+                # We can add luci-mod-rpc if we want to show it in the UI, 
+                # but for now we just use the detection to verify it's there.
+                # If we are here, luci-mod-rpc IS working, so it's True.
         except Exception as err:
             _LOGGER.error("Failed to check packages via LuCI RPC: %s", err)
             # Initialize to False if we failed (to avoid staying at None)
@@ -506,35 +537,39 @@ class LuciRpcClient(OpenWrtClient):
             "cat /proc/uptime",
             "cat /proc/stat",
             "df /overlay 2>/dev/null || df / 2>/dev/null",
+            "ubus call system info 2>/dev/null",
+            "ubus call luci getMountPoints 2>/dev/null",
         ]
 
-        # Parallel execution via Luci RPC is not directly supported in one call for different sys execs,
-        # but we can try to gather them.
+        # Parallel execution via Luci RPC
         results = await asyncio.gather(
             *[self._rpc_call("sys", "exec", [cmd]) for cmd in cmds],
             return_exceptions=True,
         )
 
-        # 1. Memory
+        # 1. Memory (from /proc/meminfo)
         meminfo = results[0]
         if isinstance(meminfo, str) and meminfo:
             for line in meminfo.strip().split("\n"):
                 parts = line.split()
                 if len(parts) >= 2:
                     key = parts[0].rstrip(":")
-                    val = int(parts[1]) * 1024  # Convert kB to bytes
-                    if key == "MemTotal":
-                        resources.memory_total = val
-                    elif key == "MemFree":
-                        resources.memory_free = val
-                    elif key == "Buffers":
-                        resources.memory_buffered = val
-                    elif key == "Cached":
-                        resources.memory_cached = val
-                    elif key == "SwapTotal":
-                        resources.swap_total = val
-                    elif key == "SwapFree":
-                        resources.swap_free = val
+                    try:
+                        val = int(parts[1]) * 1024  # Convert kB to bytes
+                        if key == "MemTotal":
+                            resources.memory_total = val
+                        elif key == "MemFree":
+                            resources.memory_free = val
+                        elif key == "Buffers":
+                            resources.memory_buffered = val
+                        elif key == "Cached":
+                            resources.memory_cached = val
+                        elif key == "SwapTotal":
+                            resources.swap_total = val
+                        elif key == "SwapFree":
+                            resources.swap_free = val
+                    except ValueError:
+                        continue
             resources.memory_used = (
                 resources.memory_total
                 - resources.memory_free
@@ -543,48 +578,114 @@ class LuciRpcClient(OpenWrtClient):
             )
             resources.swap_used = resources.swap_total - resources.swap_free
 
-        # 2. Load
+        # 2. Load (from /proc/loadavg)
         loadavg = results[1]
         if isinstance(loadavg, str) and loadavg:
             parts = loadavg.strip().split()
             if len(parts) >= 3:
-                resources.load_1min = float(parts[0])
-                resources.load_5min = float(parts[1])
-                resources.load_15min = float(parts[2])
+                try:
+                    resources.load_1min = float(parts[0])
+                    resources.load_5min = float(parts[1])
+                    resources.load_15min = float(parts[2])
+                except ValueError:
+                    pass
 
-        # 3. Uptime
+        # 3. Uptime (from /proc/uptime)
         uptime_str = results[2]
         if isinstance(uptime_str, str) and uptime_str:
-            resources.uptime = int(float(uptime_str.strip().split()[0]))
+            try:
+                resources.uptime = int(float(uptime_str.strip().split()[0]))
+            except (ValueError, IndexError):
+                pass
 
-        # 4. CPU usage from /proc/stat
-        proc_stat = results[3]
-        if isinstance(proc_stat, str) and proc_stat:
-            resources.cpu_usage = self._calculate_cpu_usage(proc_stat)
+        # 4. System Info (Memory fallback and CPU/Disk)
+        sys_info = results[5]
+        if isinstance(sys_info, str) and sys_info.strip().startswith("{"):
+            try:
+                data = json.loads(sys_info)
+                # Fallback memory if proc/meminfo failed
+                if resources.memory_total == 0:
+                    mem = data.get("memory", {})
+                    resources.memory_total = mem.get("total", 0)
+                    resources.memory_used = mem.get("total", 0) - mem.get("free", 0)
 
-        # 5. Storage
-        df_out = results[4]
-        if isinstance(df_out, str) and df_out:
-            lines = df_out.strip().split("\n")
-            if len(lines) >= 2:
-                parts = lines[1].split()
-                if len(parts) >= 4:
-                    resources.filesystem_total = int(parts[1]) * 1024
-                    resources.filesystem_used = int(parts[2]) * 1024
-                    resources.filesystem_free = int(parts[3]) * 1024
+                # CPU info
+                if "cpu" in data and isinstance(data["cpu"], dict):
+                    cpu = data["cpu"]
+                    stat_line = (
+                        f"cpu  {cpu.get('user', 0)} {cpu.get('nice', 0)} "
+                        f"{cpu.get('system', 0)} {cpu.get('idle', 0)} "
+                        f"{cpu.get('iowait', 0)} {cpu.get('irq', 0)} "
+                        f"{cpu.get('softirq', 0)} {cpu.get('steal', 0)}"
+                    )
+                    resources.cpu_usage = self._calculate_cpu_usage(stat_line)
 
-        # 6. Thermal
+                # Disk info
+                if "disk" in data:
+                    disk = data["disk"]
+                    root = disk.get("root", disk.get("/", {}))
+                    if isinstance(root, dict) and root.get("total"):
+                        resources.filesystem_total = root.get("total", 0)
+                        resources.filesystem_used = root.get("used", 0)
+                        resources.filesystem_free = root.get("total", 0) - root.get("used", 0)
+            except Exception:
+                pass
+
+        # 5. Storage fallback via luci.getMountPoints
+        if resources.filesystem_total == 0:
+            mounts_str = results[6]
+            if isinstance(mounts_str, str) and mounts_str.strip().startswith("{"):
+                try:
+                    mounts = json.loads(mounts_str)
+                    if isinstance(mounts, dict) and "result" in mounts:
+                        for mount in mounts["result"]:
+                            if mount.get("mount") in ("/", "/overlay"):
+                                resources.filesystem_total = mount.get("size", 0)
+                                resources.filesystem_free = mount.get("free", 0) or mount.get("avail", 0)
+                                resources.filesystem_used = resources.filesystem_total - resources.filesystem_free
+                                break
+                except Exception:
+                    pass
+
+        # 6. Storage fallback via df
+        if resources.filesystem_total == 0:
+            df_out = results[4]
+            if isinstance(df_out, str) and df_out:
+                lines = df_out.strip().split("\n")
+                if len(lines) >= 2:
+                    parts = lines[1].split()
+                    if len(parts) >= 4:
+                        try:
+                            resources.filesystem_total = int(parts[1]) * 1024
+                            resources.filesystem_used = int(parts[2]) * 1024
+                            resources.filesystem_free = int(parts[3]) * 1024
+                        except (ValueError, IndexError):
+                            pass
+
+        # 7. CPU usage fallback from /proc/stat
+        if resources.cpu_usage == 0.0:
+            proc_stat = results[3]
+            if isinstance(proc_stat, str) and proc_stat:
+                resources.cpu_usage = self._calculate_cpu_usage(proc_stat)
+
+        # 8. Thermal
         try:
             for zone in range(3):
-                temp = await self._rpc_call(
+                temp_raw = await self._rpc_call(
                     "sys",
                     "exec",
                     [f"cat /sys/class/thermal/thermal_zone{zone}/temp 2>/dev/null"],
                 )
-                if temp and temp.strip().isdigit():
-                    resources.temperature = float(temp.strip()) / 1000.0
-                    break
-        except LuciRpcError:
+                if temp_raw:
+                    match = re.search(r"(\d+)", temp_raw)
+                    if match:
+                        temp = float(match.group(1))
+                        if temp > 200:
+                            temp /= 1000.0
+                        if 0 < temp < 150:
+                            resources.temperature = temp
+                            break
+        except Exception:
             pass
 
         return resources

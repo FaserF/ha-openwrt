@@ -45,14 +45,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up device tracker from config entry."""
-    track_devices = entry.options.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES)
+    track_devices = entry.options.get(
+        CONF_TRACK_DEVICES,
+        entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
+    )
     if not track_devices:
         return
 
     coordinator: OpenWrtDataCoordinator = hass.data[DOMAIN][entry.entry_id][
         DATA_COORDINATOR
     ]
-    track_wired = entry.options.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED)
+    track_wired = entry.options.get(
+        CONF_TRACK_WIRED,
+        entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
+    )
 
     tracked_macs: set[str] = set()
 
@@ -116,7 +122,10 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                     self._initial_name = device.hostname
                     break
         self._consider_home = timedelta(
-            seconds=entry.options.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME)
+            seconds=entry.options.get(
+                CONF_CONSIDER_HOME,
+                entry.data.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME),
+            )
         )
         self._last_seen: datetime | None = None
 

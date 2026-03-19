@@ -1232,8 +1232,25 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
         self._abort_if_unique_id_configured()
 
+        # Split data and options
+        # Options are toggles that the user might want to change later via Configure
+        data = self._data.copy()
+        options = {}
+
+        for key in [
+            CONF_TRACK_DEVICES,
+            CONF_TRACK_WIRED,
+            CONF_UPDATE_INTERVAL,
+            CONF_CONSIDER_HOME,
+            CONF_DHCP_SOFTWARE,
+            CONF_CUSTOM_FIRMWARE_REPO,
+            CONF_ASU_URL,
+        ]:
+            if key in data:
+                options[key] = data.pop(key)
+
         title = hostname if hostname else host
-        return self.async_create_entry(title=title, data=self._data)
+        return self.async_create_entry(title=title, data=data, options=options)
 
 
 class OpenWrtOptionsFlow(OptionsFlow):

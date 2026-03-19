@@ -347,12 +347,14 @@ class UbusClient(OpenWrtClient):
         results = await asyncio.gather(
             self._call("system", "info"),
             self.execute_command("cat /proc/stat 2>/dev/null"),
+            self._call("file", "read", {"path": "/proc/stat"}),
             return_exceptions=True,
         )
 
-        # 1. System Info (Memory, Swap, Uptime, Load)
+        # 1. System Info (Memory, Swap, Uptime, Load, and maybe CPU)
         data = results[0]
-        if not isinstance(data, Exception):
+        if not isinstance(data, Exception) and isinstance(data, dict):
+            # Memory parsing
             mem = data.get("memory", {})
             resources.memory_total = mem.get("total", 0)
             resources.memory_free = mem.get("free", 0)
@@ -365,6 +367,7 @@ class UbusClient(OpenWrtClient):
                 - resources.memory_cached
             )
 
+            # Swap parsing
             swap = data.get("swap", {})
             resources.swap_total = swap.get("total", 0)
             resources.swap_free = swap.get("free", 0)
@@ -372,9 +375,10 @@ class UbusClient(OpenWrtClient):
 
             resources.uptime = data.get("uptime", 0)
 
+            # Load parsing
             load = data.get("load", [])
             if len(load) >= 3:
-                # Some OpenWrt versions return load scaled by 65535, others as float
+                # Some OpenWrt versions return load scaled by 65536, others as float
                 if any(isinstance(val, int) and val > 500 for val in load):
                     resources.load_1min = round(load[0] / 65536.0, 2)
                     resources.load_5min = round(load[1] / 65536.0, 2)
@@ -395,10 +399,48 @@ class UbusClient(OpenWrtClient):
                         "used", 0
                     )
 
-        # 2. CPU usage from /proc/stat
-        proc_stat = results[1]
-        if not isinstance(proc_stat, Exception) and proc_stat:
-            resources.cpu_usage = self._calculate_cpu_usage(proc_stat)
+            # Check if system info HAS a cpu field (common in some OpenWrt versions)
+            if "cpu" in data and isinstance(data["cpu"], dict):
+                cpu = data["cpu"]
+                # Format it like /proc/stat line for _calculate_cpu_usage
+                stat_line = (
+                    f"cpu  {cpu.get('user', 0)} {cpu.get('nice', 0)} "
+                    f"{cpu.get('system', 0)} {cpu.get('idle', 0)} "
+                    f"{cpu.get('iowait', 0)} {cpu.get('irq', 0)} "
+                    f"{cpu.get('softirq', 0)} {cpu.get('steal', 0)}"
+                )
+                resources.cpu_usage = self._calculate_cpu_usage(stat_line)
+
+        # 2. Storage fallback via luci.getMountPoints
+        if resources.filesystem_total == 0:
+            try:
+                mounts = await self._call("luci", "getMountPoints")
+                if isinstance(mounts, dict) and "result" in mounts:
+                    for mount in mounts["result"]:
+                        if mount.get("mount") in ("/", "/overlay"):
+                            resources.filesystem_total = mount.get("size", 0)
+                            resources.filesystem_free = mount.get("free", 0) or mount.get("avail", 0)
+                            resources.filesystem_used = resources.filesystem_total - resources.filesystem_free
+                            break
+            except Exception:
+                pass
+
+        # 3. CPU usage fallback from /proc/stat
+        if resources.cpu_usage == 0.0:
+            # Try Priority 2: file.read (more standard and less restricted than file.exec)
+            file_read = results[2]
+            if (
+                not isinstance(file_read, Exception)
+                and isinstance(file_read, dict)
+                and file_read.get("data")
+            ):
+                resources.cpu_usage = self._calculate_cpu_usage(file_read["data"])
+
+            # Try Priority 3: file.exec (original method)
+            if resources.cpu_usage == 0.0:
+                proc_stat = results[1]
+                if not isinstance(proc_stat, Exception) and proc_stat:
+                    resources.cpu_usage = self._calculate_cpu_usage(proc_stat)
 
         # 3. Temperature fetching
         try:
@@ -1161,15 +1203,22 @@ class UbusClient(OpenWrtClient):
 
         # Parse dnsmasq leases from /tmp/dhcp.leases
         if self.dhcp_software in ("auto", "dnsmasq"):
+            content = ""
             try:
-                result = await self._call(
-                    "file",
-                    "read",
-                    {
-                        "path": "/tmp/dhcp.leases",
-                    },
-                )
+                # Priority 1: file.read (more robust/standard)
+                result = await self._call("file", "read", {"path": "/tmp/dhcp.leases"})
                 content = result.get("data", "")
+            except UbusError:
+                pass
+
+            if not content:
+                try:
+                    # Priority 2: file.exec (original fallback)
+                    content = await self.execute_command("cat /tmp/dhcp.leases 2>/dev/null")
+                except Exception:
+                    pass
+
+            if content:
                 for line in content.strip().split("\n"):
                     parts = line.split()
                     if len(parts) >= 4:
@@ -1181,11 +1230,8 @@ class UbusClient(OpenWrtClient):
                                 hostname=parts[3] if parts[3] != "*" else "",
                             )
                         )
-            except UbusError:
-                if self.dhcp_software == "dnsmasq":
-                    _LOGGER.debug(
-                        "Requested dnsmasq but could not read /tmp/dhcp.leases"
-                    )
+            elif self.dhcp_software == "dnsmasq":
+                _LOGGER.debug("Requested dnsmasq but could not read /tmp/dhcp.leases")
 
         return leases
 
@@ -1565,7 +1611,8 @@ class UbusClient(OpenWrtClient):
             )
             return res.get("stdout", "")
         except UbusError as err:
-            return f"Error: {err}"
+            _LOGGER.debug("Command failed via ubus file.exec: %s (%s)", command, err)
+            return ""
 
     async def provision_user(self, username: str, password: str) -> bool:
         """Create a dedicated system user and configure RPC permissions via ubus."""

@@ -126,10 +126,19 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
 | **Backups/Update** | ✅ Full | ✅ Full | ❌ Limited |
 
 #### 🔑 Which method should I choose?
-
 1.  **Ubus (HTTP/HTTPS)**: The gold standard. If your router supports it and permissions are set up correctly, use this. It's the most stable and efficient.
 2.  **LuCI RPC**: The perfect fallback. If Ubus is giving you "Access Denied" errors (common on newer OpenWrt SNAPSHOTs or restricted firmware), **switch to LuCI RPC**. It often has more permissive default access to system sensors like temperature and client lists.
-3.  **SSH**: Use only if HTTP/HTTPS is not possible or if you need to bypass all RPC restictions entirely. Note that SSH causes higher CPU load on the router during polling.
+3.  **SSH**: Use only if HTTP/HTTPS is not possible or if you need to bypass all RPC restrictions entirely. Note that SSH causes higher CPU load on the router during polling.
+
+### ⚠️ Known Ubus Limitations
+
+When using the **Ubus** connection method, some sensors may be unavailable (showing as 0 or missing) depending on your OpenWrt version and RPC ACL configuration:
+
+- **CPU Usage**: Many OpenWrt releases do not expose CPU statistics directly via Ubus. The integration attempts to read `/proc/stat`, but this is often restricted by default `rpcd` ACLs. If CPU usage stays at 0%, this is likely a permission limitation.
+- **System Temperature**: Access to thermal data (e.g., `/sys/class/thermal/...`) is frequently restricted via Ubus. If the temperature sensor is missing, it's due to these security restrictions.
+- **Disk/Storage Usage**: Similar to CPU/Temp, detailed filesystem info might be restricted.
+
+**Solution**: If these sensors are vital for you, switch the connection method to **LuCI RPC** or **SSH**, or manually grant `file` read access to `/proc/stat` and `/sys` in your router's `/etc/config/rpcd` or `/usr/share/rpcd/acl.d/`.
 
 ### Required Permissions
 
