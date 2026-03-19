@@ -83,27 +83,32 @@ async def test_full_user_flow(hass) -> None:
             "custom_components.openwrt.coordinator.create_client",
             return_value=mock_client,
         ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
     ):
         mock_client.user_exists.return_value = False
         result = await flow.async_step_credentials(
             {"username": "root", "password": "password", "use_ssl": False}
         )
 
-    assert result["step_id"] == "provision_user"
+        assert result["step_id"] == "provision_user"
 
-    # 4. Provision -> Permissions
-    result = await flow.async_step_provision_user({"mode": "skip"})
-    assert result["step_id"] == "permissions_ubus"
+        # 4. Provision -> Permissions
+        result = await flow.async_step_provision_user({"mode": "skip"})
+        assert result["step_id"] == "permissions_ubus"
 
-    # 5. Permissions -> Packages
-    result = await flow.async_step_permissions({})
-    assert result["step_id"] == "packages"
+        # 5. Permissions -> Packages
+        result = await flow.async_step_permissions({})
+        assert result["step_id"] == "packages"
 
-    # 6. Packages -> Create Entry
-    result = await flow.async_step_packages({})
-    assert result["type"].lower() == "create_entry"
-    assert result["title"] == "OpenWrtTest"
-    assert flow.unique_id == "aa:bb:cc:dd:ee:ff"
+        # 6. Packages -> Create Entry
+        result = await flow.async_step_packages({})
+        assert result["type"].lower() == "create_entry"
+        assert result["title"] == "OpenWrtTest"
+        assert flow.unique_id == "aa:bb:cc:dd:ee:ff"
 
 
 async def test_full_user_flow_with_check_errors(hass) -> None:
