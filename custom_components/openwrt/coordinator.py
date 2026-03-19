@@ -130,6 +130,7 @@ def create_client(config: dict[str, Any]) -> OpenWrtClient:
 class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     """Coordinator for fetching data from an OpenWrt device."""
 
+
     config_entry: ConfigEntry
 
     def __init__(
@@ -160,7 +161,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             hass,
             _LOGGER,
             config_entry=config_entry,
-            name=f"{DOMAIN}_{config_entry.data.get(CONF_HOST, 'unknown')}",
+            name=config_entry.data.get(CONF_HOST, "unknown"),
             update_interval=timedelta(seconds=update_interval),
         )
 
@@ -404,7 +405,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             or not revision.startswith("r")
         ):
             data.is_custom_build = True
-            return
+            # Don't return here! Even custom/snapshot builds might want to see stable updates.
 
         session = async_get_clientsession(self.hass)
 
@@ -467,6 +468,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # Check for latest available version for this target on ASU
             # ASU API: GET https://sysupgrade.openwrt.org/api/v1/info?target={target}&model={model}
             url = f"{asu_url.rstrip('/')}/api/v1/info?target={target}&model={model}"
+            is_snapshot = "SNAPSHOT" in data.device_info.release_version.upper()
+            if is_snapshot:
+                url += "&version=SNAPSHOT"
+
             async with session.get(
                 url, timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
@@ -474,10 +479,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     asu_info = await resp.json()
                     version = asu_info.get("version", "")
                     revision = asu_info.get("revision", "")
-                    if "SNAPSHOT" in version.upper() and revision:
-                        latest_version = f"{version} ({revision})"
+                    if (revision and "SNAPSHOT" in version.upper()) or (
+                        revision and not version
+                    ):
+                        latest_version = f"{version or 'SNAPSHOT'} ({revision})"
                     else:
-                        latest_version = version
+                        latest_version = version or revision
 
                     if (
                         latest_version
@@ -520,6 +527,28 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         _LOGGER.debug("ASU update found: %s", latest_version)
                     elif latest_version:
                         data.asu_supported = True
+                elif resp.status == 404 and "," in model:
+                    # Retry with underscore instead of comma (common ASU model ID variation)
+                    alt_model = model.replace(",", "_")
+                    _LOGGER.debug("ASU 404 for %s, retrying with %s", model, alt_model)
+                    url = f"{asu_url.rstrip('/')}/api/v1/info?target={target}&model={alt_model}"
+                    if "SNAPSHOT" in data.device_info.release_version.upper():
+                        url += "&version=SNAPSHOT"
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp2:
+                        if resp2.status == 200:
+                            asu_info = await resp2.json()
+                            version = asu_info.get("version", "")
+                            revision = asu_info.get("revision", "")
+                            if (revision and "SNAPSHOT" in version.upper()) or (revision and not version):
+                                latest_version = f"{version or 'SNAPSHOT'} ({revision})"
+                            else:
+                                latest_version = version or revision
+
+                            if latest_version and latest_version != data.firmware_current_version:
+                                data.asu_update_available = True
+                                data.asu_supported = True
+                                data.firmware_latest_version = latest_version
+                                data.firmware_upgradable = True
         except Exception as err:
             _LOGGER.debug("ASU check failed: %s", err)
 
@@ -580,7 +609,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if "SNAPSHOT" in latest_tag.upper() and latest_published:
                 date_part = latest_published.split("T")[0]
                 latest_version = f"{latest_tag} ({date_part})"
-                # Try to get short commit hash for better comparison
                 target_commit = latest_release.get("target_commitish", "")
                 if target_commit and len(target_commit) >= 7:
                     latest_version = f"{latest_tag} ({target_commit[:7]})"
@@ -659,7 +687,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             current_parts = [int(p) for p in current.split(".")]
             latest_parts = [int(p) for p in latest.split(".")]
             return latest_parts > current_parts
-        except ValueError, AttributeError:
+        except (ValueError, AttributeError):
             return current != latest
 
     async def async_shutdown(self) -> None:

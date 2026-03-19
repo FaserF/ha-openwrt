@@ -922,7 +922,8 @@ class SshClient(OpenWrtClient):
             cmd = (
                 "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                 "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
-                "/usr/lib/lua/luci/controller/rpc.lua; do "
+                "/usr/lib/lua/luci/controller/rpc.lua "
+                "/usr/lib/lua/luci/controller/attendedsysupgrade.lua; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._exec(cmd)
@@ -935,8 +936,10 @@ class SshClient(OpenWrtClient):
             packages.mwan3 = detect_status(1)
             packages.iwinfo = detect_status(2)
             packages.etherwake = detect_status(3)
+            packages.wireguard = detect_status(4)
             packages.openvpn = detect_status(5)
             packages.luci_mod_rpc = detect_status(6)
+            packages.asu = detect_status(7)
         except Exception as err:
             _LOGGER.error("Failed to check packages via SSH: %s", err)
             # Initialize to False if we failed (to avoid staying at None)
@@ -1140,11 +1143,12 @@ class SshClient(OpenWrtClient):
             _LOGGER.error("Failed to manage interface %s: %s", name, err)
             return False
 
-    async def install_firmware(self, url: str) -> None:
+    async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         """Install firmware from the given URL via SSH."""
         # Use sysupgrade for installation
         # Download to /tmp and then run sysupgrade
-        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade /tmp/firmware.bin"
+        keep = "" if keep_settings else "-n"
+        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
         try:
             _LOGGER.info("Initiating firmware installation via SSH from: %s", url)
             # We expect this to eventually fail or disconnect as the router reboots
@@ -1163,6 +1167,25 @@ class SshClient(OpenWrtClient):
             _LOGGER.warning(
                 "Sysupgrade command might have failed or disconnected: %s", err
             )
+
+    async def download_file(self, remote_path: str, local_path: str) -> bool:
+        """Download a file from the router via SSH using cat (fallback for SCP)."""
+        try:
+            # Using cat and reading back the result. For larger files this might be slow,
+            # but for backups (~some KB) it should be fine.
+            content = await self._exec(f"cat {remote_path}")
+            if content:
+                # We need to be careful with binary data over SSH exec
+                # If the file is a .tar.gz, it's binary.
+                # Let's try base64 to be safe if it's binary.
+                b64_content = await self._exec(f"base64 {remote_path}")
+                import base64
+                with open(local_path, "wb") as f:
+                    f.write(base64.b64decode(b64_content))
+                return True
+        except Exception as err:
+            _LOGGER.error("Failed to download file via SSH: %s", err)
+        return False
 
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         """Get DHCP leases via SSH."""

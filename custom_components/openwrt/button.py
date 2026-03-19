@@ -34,7 +34,7 @@ class OpenWrtButtonDescription(ButtonEntityDescription):
 BUTTONS: tuple[OpenWrtButtonDescription, ...] = (
     OpenWrtButtonDescription(
         key="reboot",
-        name="Reboot Router",
+        name="Reboot",
         translation_key="reboot",
         device_class=ButtonDeviceClass.RESTART,
         entity_category=EntityCategory.CONFIG,
@@ -104,7 +104,7 @@ async def async_setup_entry(
                         entry,
                         OpenWrtButtonDescription(
                             key=f"restart_{service.name}",
-                            name=f"Restart {service.name}",
+                            name=service.name,
                             translation_key="service_restart",
                             translation_placeholders={"service": service.name},
                             device_class=ButtonDeviceClass.RESTART,
@@ -126,7 +126,7 @@ async def async_setup_entry(
                         entry,
                         OpenWrtButtonDescription(
                             key=f"reconnect_{iface.name}",
-                            name=f"Reconnect {iface.name.upper()}",
+                            name=iface.name.upper(),
                             translation_key="interface_reconnect",
                             translation_placeholders={"interface": iface.name.upper()},
                             entity_category=EntityCategory.CONFIG,

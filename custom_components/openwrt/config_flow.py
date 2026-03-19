@@ -62,6 +62,7 @@ from .api.ubus import (
 )
 from .const import (
     CONF_ASU_URL,
+    CONF_AUTO_BACKUP,
     CONF_CONNECTION_TYPE,
     CONF_CONSIDER_HOME,
     CONF_CUSTOM_FIRMWARE_REPO,
@@ -164,7 +165,8 @@ def _generate_package_table(packages: Any, connection_type: str | None = None) -
         f"| **etherwake** | {to_icon(packages.etherwake)} | {get_missing(packages.etherwake, 'Wake on LAN')} |\n"
         f"| **wireguard-tools** | {to_icon(packages.wireguard)} | {get_missing(packages.wireguard, 'WireGuard Sensors')} |\n"
         f"| **openvpn** | {to_icon(packages.openvpn)} | {get_missing(packages.openvpn, 'OpenVPN Sensors')} |\n"
-        f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, required=luci_required)} |"
+        f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, required=luci_required)} |\n"
+        f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)')} |"
     )
     return table
 
@@ -1335,7 +1337,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Abort other flows with the same unique ID to allow this one to proceed
         # This prevents "already_in_progress" if discovery found the router first
-        for flow in self.hass.config_entries.flow.async_progress():
+        try:
+            in_progress = self.hass.config_entries.flow.async_progress()
+            import inspect as _inspect
+            if _inspect.iscoroutine(in_progress):
+                in_progress = []
+        except Exception:  # noqa: BLE001
+            in_progress = []
+        for flow in in_progress:
             if (
                 flow["flow_id"] != self.flow_id
                 and flow.get("handler") == DOMAIN
@@ -1417,6 +1426,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
                     CONF_CONSIDER_HOME,
                     default=current.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
+                vol.Optional(
+                    CONF_AUTO_BACKUP,
+                    default=current.get(CONF_AUTO_BACKUP, True),
+                ): bool,
                 vol.Optional(
                     CONF_CUSTOM_FIRMWARE_REPO,
                     default=current.get(CONF_CUSTOM_FIRMWARE_REPO, ""),

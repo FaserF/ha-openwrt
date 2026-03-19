@@ -483,24 +483,28 @@ class UbusClient(OpenWrtClient):
             temp_paths = [
                 "/sys/class/thermal/thermal_zone0/temp",
                 "/sys/class/thermal/thermal_zone1/temp",
+                "/sys/class/thermal/thermal_zone2/temp",
                 "/sys/class/hwmon/hwmon0/temp1_input",
+                "/sys/class/hwmon/hwmon1/temp1_input",
+                "/sys/class/hwmon/hwmon2/temp1_input",
                 "/sys/devices/virtual/thermal/thermal_zone0/temp",
             ]
             for path in temp_paths:
                 try:
                     res = await self._call("file", "read", {"path": path})
-                    temp_raw = res.get("data", "").strip()
-                    import re
+                    if res and isinstance(res, dict) and res.get("data"):
+                        temp_raw = res.get("data", "").strip()
+                        import re
 
-                    match = re.search(r"(\d+)", temp_raw)
-                    if match:
-                        temp = float(match.group(1))
-                        if temp > 200:  # Usually millidegrees
-                            temp /= 1000.0
-                        if 0 < temp < 150:
-                            resources.temperature = temp
-                            break
-                except UbusError:
+                        match = re.search(r"(\d+)", temp_raw)
+                        if match:
+                            temp = float(match.group(1))
+                            if temp > 200:  # Usually millidegrees
+                                temp /= 1000.0
+                            if 0 < temp < 150:
+                                resources.temperature = temp
+                                break
+                except (UbusError, KeyError, AttributeError):
                     continue
 
             # Fallback to execute_command if ubus file read failed
@@ -918,7 +922,6 @@ class UbusClient(OpenWrtClient):
             # Check session access list - this is the most definitive way
             session_list = await self._call("session", "list")
             if session_list and ("acls" in session_list or "access" in session_list.get("values", {})):
-                access = session_list.get("values", {}).get("access", {})
 
                 def has_perm(obj: str, method: str) -> bool:
                     # Check in modern 'acls' structure if present
@@ -1081,7 +1084,7 @@ class UbusClient(OpenWrtClient):
                 cmd = (
                     "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                     "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
-                    "/www/cgi-bin/luci; do "
+                    "/usr/lib/lua/luci/controller/attendedsysupgrade.lua; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
@@ -1102,8 +1105,10 @@ class UbusClient(OpenWrtClient):
                 packages.etherwake = detect_status(3)
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
+                packages.asu = detect_status(6)
                 if packages.luci_mod_rpc is not True:
-                    packages.luci_mod_rpc = detect_status(6)
+                    packages.luci_mod_rpc = "luci-rpc" in objects
+                packages.asu = detect_status(6)
             except Exception as err:
                 _LOGGER.debug(
                     "Package check via file.exec failed (expected on restricted routers): %s",
@@ -1144,6 +1149,7 @@ class UbusClient(OpenWrtClient):
             check_list = [
                 ("/usr/bin/etherwake", "etherwake"),
                 ("/usr/bin/wg", "wireguard"),
+                ("/usr/lib/lua/luci/controller/attendedsysupgrade.lua", "asu"),
             ]
             for path, attr in check_list:
                 if getattr(packages, attr) is not True:
@@ -1163,6 +1169,7 @@ class UbusClient(OpenWrtClient):
                 "wireguard",
                 "openvpn",
                 "luci_mod_rpc",
+                "asu",
             ]:
                 if getattr(packages, attr) is None:
                     setattr(packages, attr, False)
@@ -1765,9 +1772,10 @@ class UbusClient(OpenWrtClient):
         except UbusError:
             return False
 
-    async def install_firmware(self, url: str) -> None:
+    async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         """Install firmware from the given URL via ubus."""
-        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade /tmp/firmware.bin"
+        keep = "" if keep_settings else "-n"
+        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
         try:
             _LOGGER.info("Initiating firmware installation via ubus from: %s", url)
             await self.execute_command(cmd)
@@ -1791,6 +1799,20 @@ class UbusClient(OpenWrtClient):
             _LOGGER.warning(
                 "Sysupgrade command might have failed or disconnected: %s", err
             )
+
+    async def download_file(self, remote_path: str, local_path: str) -> bool:
+        """Download a file from the router via ubus file.read."""
+        try:
+            import base64
+            # ubus file.read returns base64 encoded data (in "data" key)
+            res = await self._call("file", "read", {"path": remote_path})
+            if res and isinstance(res, dict) and "data" in res:
+                with open(local_path, "wb") as f:
+                    f.write(base64.b64decode(res["data"]))
+                return True
+        except Exception as err:
+            _LOGGER.error("Failed to download file via ubus: %s", err)
+        return False
 
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status via uci ubus."""

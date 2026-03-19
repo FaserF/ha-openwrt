@@ -178,3 +178,4 @@ ruff_errors.json
 *result*.txt
 /dummy_ha
 *.txt
+*output*.json

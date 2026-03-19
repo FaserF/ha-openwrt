@@ -160,9 +160,12 @@ async def test_ssh_provision_user(ssh_client: SshClient):
     with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = "LOG: Provisioning SUCCESS"
 
-        success = await ssh_client.provision_user("homeassistant", "new-password")
+        result = await ssh_client.provision_user("homeassistant", "new-password")
 
+        # provision_user returns (success: bool, error: str | None)
+        success, error = result
         assert success is True
+        assert error is None
         script = mock_exec.call_args[0][0]
         assert "USER=$(cat <<'EOF'\nhomeassistant\nEOF\n)" in script
         assert "PASS=$(cat <<'EOF'\nnew-password\nEOF\n)" in script

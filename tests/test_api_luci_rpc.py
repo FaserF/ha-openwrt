@@ -138,9 +138,12 @@ async def test_luci_provision_user(luci_client: LuciRpcClient):
     ) as mock_exec:
         mock_exec.return_value = "LOG: Provisioning SUCCESS"
 
-        success = await luci_client.provision_user("homeassistant", "new-password")
+        result = await luci_client.provision_user("homeassistant", "new-password")
 
+        # provision_user returns (success: bool, error: str | None)
+        success, error = result
         assert success is True
+        assert error is None
         script = mock_exec.call_args[0][0]
         assert "USER=$(cat <<'EOF'\nhomeassistant\nEOF\n)" in script
         assert "PASS=$(cat <<'EOF'\nnew-password\nEOF\n)" in script

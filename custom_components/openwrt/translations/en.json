@@ -140,6 +140,7 @@
           "track_wired": "Include Wired Devices in Tracking",
           "consider_home": "Device 'Consider Home' Delay (seconds)",
           "dhcp_software": "DHCP Software",
+          "auto_backup": "Automatic Backup before Firmware Update",
           "custom_firmware_repo": "Custom Firmware GitHub Repo (owner/repo)",
           "asu_url": "Attended Sysupgrade Server URL"
         },
@@ -647,5 +648,15 @@
         }
       }
     }
+  },
+  "package_features": {
+    "sqm_scripts": "SQM QoS Settings",
+    "mwan3": "MWAN3 Sensors",
+    "iwinfo": "Wireless Client Details",
+    "etherwake": "Wake on LAN",
+    "wireguard": "WireGuard Support",
+    "openvpn": "OpenVPN Sensors",
+    "luci_mod_rpc": "LuCI RPC Support",
+    "asu": "Firmware Upgrade (ASU)"
   }
 }

@@ -140,6 +140,9 @@ class MockClient(OpenWrtClient):
     async def install_firmware(self, image_url: str) -> None:
         pass
 
+    async def download_file(self, remote_path: str) -> bytes:
+        return b""
+
     async def get_mwan_status(self) -> list[MwanStatus]:
         return []
 

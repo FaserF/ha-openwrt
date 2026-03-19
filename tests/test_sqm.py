@@ -62,7 +62,7 @@ async def test_sqm_switch() -> None:
 
     entity = OpenWrtSqmSwitch(coordinator, entry, client, "eth0", "eth0")
 
-    assert entity.name == "SQM eth0"
+    assert entity.name == "eth0"
     assert entity.is_on is True
     assert entity.unique_id == "test_entry_sqm_eth0"
 

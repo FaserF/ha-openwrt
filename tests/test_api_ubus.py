@@ -186,9 +186,12 @@ async def test_ubus_provision_user(ubus_client: UbusClient):
     ) as mock_exec:
         mock_exec.return_value = "LOG: Provisioning SUCCESS"
 
-        success = await ubus_client.provision_user("homeassistant", "new-password")
+        result = await ubus_client.provision_user("homeassistant", "new-password")
 
+        # provision_user returns (success: bool, error: str | None)
+        success, error = result
         assert success is True
+        assert error is None
         script = mock_exec.call_args[0][0]
         assert "USER=$(cat <<'EOF'\nhomeassistant\nEOF\n)" in script
         assert "PASS=$(cat <<'EOF'\nnew-password\nEOF\n)" in script

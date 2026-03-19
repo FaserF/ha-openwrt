@@ -77,6 +77,7 @@ OPENWRT_RELEASE_API: Final = "https://downloads.openwrt.org/.versions.json"
 CONF_CUSTOM_FIRMWARE_REPO: Final = "custom_firmware_repo"
 CONF_CUSTOM_FIRMWARE_PATTERN: Final = "custom_firmware_pattern"
 CONF_ASU_URL: Final = "asu_url"
+CONF_AUTO_BACKUP: Final = "auto_backup"
 
 SENSOR_TYPE_SYSTEM: Final = "system"
 SENSOR_TYPE_NETWORK: Final = "network"

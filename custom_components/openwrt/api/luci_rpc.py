@@ -529,7 +529,7 @@ class LuciRpcClient(OpenWrtClient):
             try:
                 ubus_list = await self.execute_command("ubus list")
                 objects = ubus_list.splitlines() if ubus_list else []
-                
+
                 if "sqm" in objects:
                     packages.sqm_scripts = True
                 if "mwan3" in objects:
@@ -543,7 +543,7 @@ class LuciRpcClient(OpenWrtClient):
             cmd = (
                 "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                 "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
-                "/usr/lib/lua/luci/controller/rpc.lua; do "
+                "/usr/lib/lua/luci/controller/attendedsysupgrade.lua; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._rpc_call("sys", "exec", [cmd])
@@ -562,7 +562,9 @@ class LuciRpcClient(OpenWrtClient):
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
                 if packages.luci_mod_rpc is not True:
-                    packages.luci_mod_rpc = detect_status(6)
+                    packages.luci_mod_rpc = True # If we are here, LuCI is working
+                packages.asu = detect_status(6)
+                packages.asu = detect_status(6)
 
             # Step 3: Check UCI configs for remaining packages (very robust fallback)
             if packages.sqm_scripts is not True:
@@ -572,7 +574,7 @@ class LuciRpcClient(OpenWrtClient):
                         packages.sqm_scripts = True
                 except Exception:
                     pass
-            
+
             if packages.mwan3 is not True:
                 try:
                     res = await self._rpc_call("uci", "get_all", ["mwan3"])
@@ -593,8 +595,8 @@ class LuciRpcClient(OpenWrtClient):
                 try:
                     res = await self._rpc_call("uci", "get_all", ["network"])
                     if res and isinstance(res, dict) and any(
-                        v.get("proto") == "wireguard" 
-                        for v in res.values() 
+                        v.get("proto") == "wireguard"
+                        for v in res.values()
                         if isinstance(v, dict)
                     ):
                         packages.wireguard = True
@@ -622,7 +624,7 @@ class LuciRpcClient(OpenWrtClient):
             ]:
                 if getattr(packages, attr) is None:
                     setattr(packages, attr, False)
-        
+
         return packages
 
     async def get_system_resources(self) -> SystemResources:
@@ -1181,45 +1183,46 @@ class LuciRpcClient(OpenWrtClient):
         cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
         stdout = await self._rpc_call("sys", "exec", [cmd])
         if stdout:
-        for line in stdout.splitlines():
-            if not line.strip():
-                continue
-            parts = line.split(" ", 1)
-            if len(parts) < 2:
-                continue
-            obj_name, data_str = parts
-            iface_name = (
-                obj_name.split(".", 1)[1] if "." in obj_name else obj_name
-            )
-                    try:
-                        data = json.loads(data_str)
-                        if "clients" in data:
-                            for mac, info in data["clients"].items():
-                                mac = mac.lower()
-                                if mac in devices:
-                                    dev = devices[mac]
-                                else:
-                                    dev = ConnectedDevice(mac=mac, connected=False)
-                                    devices[mac] = dev
+            for line in stdout.splitlines():
+                if not line.strip():
+                    continue
+                parts = line.split(" ", 1)
+                if len(parts) < 2:
+                    continue
+                obj_name, data_str = parts
+                iface_name = (
+                    obj_name.split(".", 1)[1] if "." in obj_name else obj_name
+                )
+                try:
+                    data = json.loads(data_str)
+                    if "clients" in data:
+                        for mac, info in data["clients"].items():
+                            mac = mac.lower()
+                            if mac in devices:
+                                dev = devices[mac]
+                            else:
+                                dev = ConnectedDevice(mac=mac, connected=False)
+                                devices[mac] = dev
 
-                                    dev.connected = True  # Wireless association
+                                dev.connected = True  # Wireless association
 
-                                dev.is_wireless = True
-                                # Map system interface name to UCI section if possible
-                                dev.interface = getattr(self, "_sys_to_uci", {}).get(
-                                    iface_name, iface_name
-                                )
-                                if not dev.signal:
-                                    dev.signal = info.get("signal", 0)
+                            dev.is_wireless = True
+                            # Map system interface name to UCI section if possible
+                            dev.interface = getattr(self, "_sys_to_uci", {}).get(
+                                iface_name, iface_name
+                            )
+                            if not dev.signal:
+                                dev.signal = info.get("signal", 0)
 
-                                if "5g" in iface_name.lower():
-                                    dev.connection_type = "5GHz"
-                                elif "2g" in iface_name.lower():
-                                    dev.connection_type = "2.4GHz"
-                                elif not dev.connection_type:
-                                    dev.connection_type = "wireless"
-                    except json.JSONDecodeError, KeyError:
-                        continue
+                            if "5g" in iface_name.lower():
+                                dev.connection_type = "5GHz"
+                            elif "2g" in iface_name.lower():
+                                dev.connection_type = "2.4GHz"
+                            elif not dev.connection_type:
+                                dev.connection_type = "wireless"
+                except (json.JSONDecodeError, KeyError):
+                    continue
+
         # 4. Final refinement from IP neighbors (for states)
         try:
             active_states = ("REACHABLE", "DELAY", "PROBE", "PERMANENT")
@@ -1468,9 +1471,10 @@ class LuciRpcClient(OpenWrtClient):
         except Exception:
             return False
 
-    async def install_firmware(self, url: str) -> None:
+    async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         """Install firmware from the given URL via LuCI RPC."""
-        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade /tmp/firmware.bin"
+        keep = "" if keep_settings else "-n"
+        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
         try:
             _LOGGER.info("Initiating firmware installation via LuCI RPC from: %s", url)
             await self.execute_command(cmd)
@@ -1493,6 +1497,20 @@ class LuciRpcClient(OpenWrtClient):
             else:
                 _LOGGER.error("Failed to execute sysupgrade via LuCI RPC: %s", err)
                 raise LuciRpcError(f"sysupgrade execution failed: {err}") from err
+
+    async def download_file(self, remote_path: str, local_path: str) -> bool:
+        """Download a file from the router via LuCI RPC file.read."""
+        try:
+            import base64
+            # LuCI file.read returns base64 encoded data
+            res = await self._rpc_call("file", "read", [remote_path])
+            if res and isinstance(res, str):
+                with open(local_path, "wb") as f:
+                    f.write(base64.b64decode(res))
+                return True
+        except Exception as err:
+            _LOGGER.error("Failed to download file via LuCI RPC: %s", err)
+        return False
 
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages via opkg."""

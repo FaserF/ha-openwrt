@@ -141,6 +141,7 @@
           "track_wired": "Kabelgebundene Geräte in Tracking einschließen",
           "consider_home": "Sekunden bevor ein Gerät auf 'abwesend' gesetzt wird",
           "dhcp_software": "DHCP-Software",
+          "auto_backup": "Automatisches Backup vor Firmware Update",
           "custom_firmware_repo": "Eigenes GitHub Firmware Repo (URL oder owner/repo)",
           "asu_url": "Attended Sysupgrade Server URL"
         }
@@ -647,5 +648,15 @@
         }
       }
     }
+  },
+  "package_features": {
+    "sqm_scripts": "SQM QoS Einstellungen",
+    "mwan3": "MWAN3 Sensoren",
+    "iwinfo": "WLAN-Client-Details",
+    "etherwake": "Wake on LAN",
+    "wireguard": "WireGuard Unterstützung",
+    "openvpn": "OpenVPN Sensoren",
+    "luci_mod_rpc": "LuCI RPC Unterstützung",
+    "asu": "Firmware Upgrade (ASU)"
   }
 }

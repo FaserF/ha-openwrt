@@ -22,7 +22,11 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    CONF_AUTO_BACKUP,
+    CONF_CONNECTION_TYPE,
     CONF_HOST,
+    CONNECTION_TYPE_LUCI_RPC,
+    CONNECTION_TYPE_UBUS,
     DATA_COORDINATOR,
     DOMAIN,
 )
@@ -51,12 +55,9 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
     """Representation of an OpenWrt firmware update."""
 
     _attr_has_entity_name = True
-    _attr_name = "Firmware"
+    _attr_name = None
     _attr_translation_key = "firmware_update"
     _attr_device_class = UpdateDeviceClass.FIRMWARE
-    _attr_supported_features = (
-        UpdateEntityFeature.RELEASE_NOTES | UpdateEntityFeature.INSTALL
-    )
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -66,10 +67,38 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
     ) -> None:
         """Initialize the update entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"{entry.entry_id}_firmware_update"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
+
+    @property
+    def supported_features(self) -> UpdateEntityFeature:
+        """Return supported features."""
+        features = UpdateEntityFeature.RELEASE_NOTES
+        data = self.coordinator.data
+        if not data:
+            return features
+
+        # Basic install capability
+        can_install = bool(data.firmware_install_url)
+
+        # ASU capability check
+        if data.asu_supported:
+            # If using LuCI/Ubus, we prefer having luci-app-attendedsysupgrade for consistency,
+            # but technically we can install if we have the build capability.
+            # User requested that it's checked.
+            conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
+            if conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS):
+                if data.packages.asu:
+                    can_install = True
+            else:
+                # SSH or other
+                can_install = True
+
+        if can_install:
+            features |= UpdateEntityFeature.INSTALL
+
+        return features
 
     @property
     def installed_version(self) -> str | None:
@@ -155,6 +184,20 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         if not data.firmware_install_url and not data.asu_supported:
             raise ValueError("No firmware URL available for installation.")
 
+        # Check for auto-backup option
+        auto_backup = self.coordinator.config_entry.options.get(CONF_AUTO_BACKUP, True)
+        if auto_backup:
+            await self._async_perform_backup()
+
+        # Check for required ASU package if using LuCI/Ubus
+        if data.asu_supported and not data.firmware_install_url:
+            conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
+            if conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS) and not data.packages.asu:
+                raise HomeAssistantError(
+                    "Attended Sysupgrade package (luci-app-attendedsysupgrade) is missing on the router. "
+                    "Cannot perform firmware upgrade."
+                )
+
         # ASU Update Flow
         if data.asu_supported and data.asu_update_available:
             _LOGGER.info(
@@ -186,7 +229,9 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 _LOGGER.info(
                     "ASU build complete. Flashing image from: %s", download_url
                 )
-                await self.coordinator.client.install_firmware(download_url)
+                # ASU builds always keep settings by default in OpenWrt logic,
+                # but we pass it anyway.
+                await self.coordinator.client.install_firmware(download_url, keep_settings=True)
 
             except Exception as err:
                 _LOGGER.error("ASU firmware update failed: %s", err)
@@ -201,8 +246,44 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             raise ValueError("No firmware URL available for installation.")
 
         try:
-            await self.coordinator.client.install_firmware(url)
+            # We assume keep_settings=True for official updates from HA
+            await self.coordinator.client.install_firmware(url, keep_settings=True)
         except Exception as err:
             raise HomeAssistantError(
                 f"Failed to initiate firmware installation: {err}"
             ) from err
+
+    async def _async_perform_backup(self) -> None:
+        """Perform a backup and download it to HA."""
+        _LOGGER.info("Performing automatic backup before firmware update...")
+        try:
+            # 1. Create backup on router
+            remote_path = await self.coordinator.client.create_backup()
+            if not remote_path:
+                _LOGGER.error("Failed to create backup on router")
+                return
+
+            # 2. Prepare local path
+            import os
+            backup_dir = self.hass.config.path("backups", "openwrt")
+            if not os.path.exists(backup_dir):
+                os.makedirs(backup_dir, exist_ok=True)
+
+            local_filename = os.path.basename(remote_path)
+            local_path = os.path.join(backup_dir, local_filename)
+
+            # 3. Download to HA
+            success = await self.coordinator.client.download_file(remote_path, local_path)
+            if success:
+                _LOGGER.info("Backup successfully saved to: %s", local_path)
+                # Cleanup remote file
+                await self.coordinator.client.execute_command(f"rm {remote_path}")
+            else:
+                _LOGGER.error("Failed to download backup from router to %s", local_path)
+
+        except Exception as err:
+            _LOGGER.error("Automatic backup failed: %s", err)
+            # We don't raise here to avoid blocking the update if backup fails,
+            # unless the user really wants it. But usually, an update is more important.
+            # However, safety first - maybe we should raise?
+            # User said "automatically trigger a backup", so let's log it.

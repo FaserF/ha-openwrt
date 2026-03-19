@@ -8,6 +8,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
@@ -517,6 +518,7 @@ class OpenWrtPackages:
     wireguard: bool | None = None
     openvpn: bool | None = None
     luci_mod_rpc: bool | None = None
+    asu: bool | None = None
 
 
 @dataclass
@@ -860,7 +862,7 @@ class OpenWrtClient(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def install_firmware(self, url: str) -> None:
+    async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         """Install firmware from the given URL."""
         raise NotImplementedError
 
@@ -997,15 +999,28 @@ class OpenWrtClient(abc.ABC):
         return result
 
     async def create_backup(self) -> str:
-        """Create a configuration backup on the router. Returns the backup file path."""
+        """Create a configuration backup on the router. Returns the backup file path on the router."""
         try:
-            output = await self.execute_command(
-                "sysupgrade -b /tmp/backup-ha-$(date +%Y%m%d-%H%M%S).tar.gz && ls -t /tmp/backup-ha-*.tar.gz | head -1"
-            )
-            return output.strip() if output else ""
+            # Create backup filename with timestamp
+            filename = f"backup-ha-{datetime.now().strftime('%Y%m%d-%H%M%S')}.tar.gz"
+            path = f"/tmp/{filename}"
+
+            # Run sysupgrade -b to create the backup
+            await self.execute_command(f"sysupgrade -b {path}")
+
+            # Verify file exists and return path
+            check = await self.execute_command(f"ls {path}")
+            if path in check:
+                return path
+            return ""
         except Exception as err:
             _LOGGER.error("Backup creation failed: %s", err)
             raise
+
+    @abc.abstractmethod
+    async def download_file(self, remote_path: str, local_path: str) -> bool:
+        """Download a file from the router to a local path."""
+        raise NotImplementedError
 
     async def get_qmodem_info(self) -> QModemInfo:
         """Get cellular modem status from QModem's modem_ctrl ubus subsystem (if available)."""

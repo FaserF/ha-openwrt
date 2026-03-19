@@ -208,7 +208,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         name_label = f"{label} ({band})" if band else label
 
         self._attr_unique_id = f"{entry.entry_id}_wireless_{iface_name}"
-        self._attr_name = f"Wireless {name_label}"
+        self._attr_name = name_label
         self._attr_translation_key = "wireless_radio"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.unique_id}_ap_{iface_name}")},
@@ -269,7 +269,7 @@ class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         self._client = client
         self._service_name = service_name
         self._attr_unique_id = f"{entry.entry_id}_service_{service_name}"
-        self._attr_name = f"Service {service_name}"
+        self._attr_name = service_name
         self._attr_translation_key = "service_toggle"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
@@ -336,7 +336,7 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         self._client = client
         self._section_id = section_id
         self._attr_unique_id = f"{entry.entry_id}_firewall_{section_id}"
-        self._attr_name = f"Port Forward {name}"
+        self._attr_name = name
         self._attr_translation_key = "firewall_port_forward"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
@@ -392,7 +392,7 @@ class OpenWrtAccessControlSwitch(
         self._client = client
         self._mac = mac
         self._attr_unique_id = f"{entry.entry_id}_access_{mac.replace(':', '_')}"
-        self._attr_name = f"Internet Access {name}"
+        self._attr_name = name
         self._attr_translation_key = "device_access"
         self._attr_device_info = DeviceInfo(
             connections={("mac", mac)},
@@ -456,7 +456,7 @@ class OpenWrtFirewallRuleSwitch(
         self._client = client
         self._section_id = section_id
         self._attr_unique_id = f"{entry.entry_id}_firewall_rule_{section_id}"
-        self._attr_name = f"Firewall Rule {name}"
+        self._attr_name = name
         self._attr_translation_key = "firewall_rule"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
@@ -523,7 +523,7 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         self._client = client
         self._section_id = section_id
         self._attr_unique_id = f"{entry.entry_id}_sqm_{section_id}"
-        self._attr_name = f"SQM {name}"
+        self._attr_name = name
         self._attr_translation_key = "sqm_enabled"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
