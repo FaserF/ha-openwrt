@@ -504,7 +504,7 @@ class UbusClient(OpenWrtClient):
                             if 0 < temp < 150:
                                 resources.temperature = temp
                                 break
-                except (UbusError, KeyError, AttributeError):
+                except UbusError, KeyError, AttributeError:
                     continue
 
             # Fallback to execute_command if ubus file read failed
@@ -717,7 +717,7 @@ class UbusClient(OpenWrtClient):
                     is_wireless=False,
                     connected=False,  # DHCP leases are just records, not proof of connectivity
                 )
-        except (UbusError, Exception):  # noqa: BLE001
+        except UbusError, Exception:  # noqa: BLE001
             pass
 
         # Fetch wireless_data once for both iwinfo and hostapd processing
@@ -921,7 +921,9 @@ class UbusClient(OpenWrtClient):
 
             # Check session access list - this is the most definitive way
             session_list = await self._call("session", "list")
-            if session_list and ("acls" in session_list or "access" in session_list.get("values", {})):
+            if session_list and (
+                "acls" in session_list or "access" in session_list.get("values", {})
+            ):
 
                 def has_perm(obj: str, method: str) -> bool:
                     # Check in modern 'acls' structure if present
@@ -1050,10 +1052,9 @@ class UbusClient(OpenWrtClient):
             perms.read_devices = (
                 await can_call("dhcp", "ipv4leases") or perms.read_network
             )
-            perms.write_devices = (
-                await can_call("file", "exec", {"command": "/usr/bin/id"})
-                or await can_call("file", "exec", {"command": "id"})
-            )
+            perms.write_devices = await can_call(
+                "file", "exec", {"command": "/usr/bin/id"}
+            ) or await can_call("file", "exec", {"command": "id"})
             perms.write_access_control = perms.write_firewall
             perms.read_services = await can_call("service", "list")
             perms.write_services = await can_call("service", "list")
@@ -1138,9 +1139,17 @@ class UbusClient(OpenWrtClient):
                 try:
                     res = await self._call("uci", "get", {"config": "network"})
                     # Look for wireguard interface sections
-                    if res and isinstance(res, dict) and any(v.get("proto") == "wireguard" for v in res.values() if isinstance(v, dict)):
+                    if (
+                        res
+                        and isinstance(res, dict)
+                        and any(
+                            v.get("proto") == "wireguard"
+                            for v in res.values()
+                            if isinstance(v, dict)
+                        )
+                    ):
                         packages.wireguard = True
-                    elif "wg" in objects: # objects from Step 1
+                    elif "wg" in objects:  # objects from Step 1
                         packages.wireguard = True
                 except Exception:
                     pass
@@ -1713,7 +1722,9 @@ class UbusClient(OpenWrtClient):
             return res.get("stdout", "")
         except UbusPermissionError as err:
             _LOGGER.debug(
-                "Permission denied for command via ubus file.exec: %s (%s)", command, err
+                "Permission denied for command via ubus file.exec: %s (%s)",
+                command,
+                err,
             )
             return ""
         except UbusError as err:
@@ -1734,7 +1745,9 @@ class UbusClient(OpenWrtClient):
         # 2. Fallback to base method (which uses execute_command)
         return await super().user_exists(username)
 
-    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
+    async def provision_user(
+        self, username: str, password: str
+    ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via ubus."""
         # Use the harmonized provisioning script from base
         script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
@@ -1775,7 +1788,9 @@ class UbusClient(OpenWrtClient):
     async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         """Install firmware from the given URL via ubus."""
         keep = "" if keep_settings else "-n"
-        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
+        cmd = (
+            f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
+        )
         try:
             _LOGGER.info("Initiating firmware installation via ubus from: %s", url)
             await self.execute_command(cmd)
@@ -1804,6 +1819,7 @@ class UbusClient(OpenWrtClient):
         """Download a file from the router via ubus file.read."""
         try:
             import base64
+
             # ubus file.read returns base64 encoded data (in "data" key)
             res = await self._call("file", "read", {"path": remote_path})
             if res and isinstance(res, dict) and "data" in res:

@@ -200,7 +200,9 @@ class LuciRpcClient(OpenWrtClient):
         """Check if a system user exists on the device."""
         # 1. Try via LuCI RPC (often more restricted than ubus, but let's try reading passwd)
         try:
-            res = await self.execute_command(f"grep -q '^{username}:' /etc/passwd && echo 'exists'")
+            res = await self.execute_command(
+                f"grep -q '^{username}:' /etc/passwd && echo 'exists'"
+            )
             if res and isinstance(res, str) and "exists" in res:
                 return True
         except Exception:
@@ -209,14 +211,18 @@ class LuciRpcClient(OpenWrtClient):
         # 2. Fallback to base method
         return await super().user_exists(username)
 
-    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
+    async def provision_user(
+        self, username: str, password: str
+    ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via LuCI RPC."""
         # Use the harmonized provisioning script from base
         script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
         try:
             output = await self.execute_command(script)
             if output:
-                _LOGGER.debug("Provisioning output for %s via LuCI RPC: %s", username, output)
+                _LOGGER.debug(
+                    "Provisioning output for %s via LuCI RPC: %s", username, output
+                )
 
             if "Provisioning SUCCESS" in output:
                 return True, None
@@ -562,7 +568,7 @@ class LuciRpcClient(OpenWrtClient):
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
                 if packages.luci_mod_rpc is not True:
-                    packages.luci_mod_rpc = True # If we are here, LuCI is working
+                    packages.luci_mod_rpc = True  # If we are here, LuCI is working
                 packages.asu = detect_status(6)
                 packages.asu = detect_status(6)
 
@@ -594,10 +600,14 @@ class LuciRpcClient(OpenWrtClient):
             if packages.wireguard is not True:
                 try:
                     res = await self._rpc_call("uci", "get_all", ["network"])
-                    if res and isinstance(res, dict) and any(
-                        v.get("proto") == "wireguard"
-                        for v in res.values()
-                        if isinstance(v, dict)
+                    if (
+                        res
+                        and isinstance(res, dict)
+                        and any(
+                            v.get("proto") == "wireguard"
+                            for v in res.values()
+                            if isinstance(v, dict)
+                        )
                     ):
                         packages.wireguard = True
                 except Exception:
@@ -620,7 +630,12 @@ class LuciRpcClient(OpenWrtClient):
             _LOGGER.error("Failed to check packages via LuCI RPC: %s", err)
             # Ensure no None values are returned
             for attr in [
-                "sqm_scripts", "mwan3", "iwinfo", "etherwake", "wireguard", "openvpn"
+                "sqm_scripts",
+                "mwan3",
+                "iwinfo",
+                "etherwake",
+                "wireguard",
+                "openvpn",
             ]:
                 if getattr(packages, attr) is None:
                     setattr(packages, attr, False)
@@ -696,7 +711,7 @@ class LuciRpcClient(OpenWrtClient):
         if isinstance(uptime_str, str) and uptime_str:
             try:
                 resources.uptime = int(float(uptime_str.strip().split()[0]))
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 pass
 
         # 4. System Info (Memory fallback and CPU/Disk)
@@ -767,7 +782,7 @@ class LuciRpcClient(OpenWrtClient):
                             resources.filesystem_total = int(parts[1]) * 1024
                             resources.filesystem_used = int(parts[2]) * 1024
                             resources.filesystem_free = int(parts[3]) * 1024
-                        except (ValueError, IndexError):
+                        except ValueError, IndexError:
                             pass
 
         # 7. CPU usage fallback from /proc/stat
@@ -813,7 +828,7 @@ class LuciRpcClient(OpenWrtClient):
                             ipv4_addrs = iface_data.get("ipv4-address", [])
                             if ipv4_addrs:
                                 return ipv4_addrs[0].get("address")
-        except (LuciRpcError, json.JSONDecodeError):
+        except LuciRpcError, json.JSONDecodeError:
             pass
         return None
 
@@ -1191,9 +1206,7 @@ class LuciRpcClient(OpenWrtClient):
                 if len(parts) < 2:
                     continue
                 obj_name, data_str = parts
-                iface_name = (
-                    obj_name.split(".", 1)[1] if "." in obj_name else obj_name
-                )
+                iface_name = obj_name.split(".", 1)[1] if "." in obj_name else obj_name
                 try:
                     data = json.loads(data_str)
                     if data and isinstance(data, dict) and "clients" in data:
@@ -1221,7 +1234,7 @@ class LuciRpcClient(OpenWrtClient):
                                 dev.connection_type = "2.4GHz"
                             elif not dev.connection_type:
                                 dev.connection_type = "wireless"
-                except (json.JSONDecodeError, KeyError):
+                except json.JSONDecodeError, KeyError:
                     continue
 
         # 4. Final refinement from IP neighbors (for states)
@@ -1476,7 +1489,9 @@ class LuciRpcClient(OpenWrtClient):
     async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         """Install firmware from the given URL via LuCI RPC."""
         keep = "" if keep_settings else "-n"
-        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
+        cmd = (
+            f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
+        )
         try:
             _LOGGER.info("Initiating firmware installation via LuCI RPC from: %s", url)
             await self.execute_command(cmd)
@@ -1504,6 +1519,7 @@ class LuciRpcClient(OpenWrtClient):
         """Download a file from the router via LuCI RPC file.read."""
         try:
             import base64
+
             # LuCI file.read returns base64 encoded data
             res = await self._rpc_call("file", "read", [remote_path])
             if res and isinstance(res, str):

@@ -110,7 +110,9 @@ class MockClient(OpenWrtClient):
     async def get_installed_packages(self) -> list[str]:
         return []
 
-    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
+    async def provision_user(
+        self, username: str, password: str
+    ) -> tuple[bool, str | None]:
         return True, None
 
     async def get_external_ip(self) -> str | None:

@@ -643,7 +643,9 @@ class OpenWrtClient(abc.ABC):
             return False
 
     @abc.abstractmethod
-    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
+    async def provision_user(
+        self, username: str, password: str
+    ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions.
 
         Returns:
@@ -914,7 +916,7 @@ class OpenWrtClient(abc.ABC):
                                     if tx_out and tx_out.strip().isdigit()
                                     else 0
                                 )
-                            except (ValueError, AttributeError):
+                            except ValueError, AttributeError:
                                 pass
 
                             vpn_interfaces.append(vpn)
@@ -969,7 +971,7 @@ class OpenWrtClient(abc.ABC):
                                     if tx_out and tx_out.strip().isdigit()
                                     else 0
                                 )
-                            except (ValueError, AttributeError):
+                            except ValueError, AttributeError:
                                 pass
                             vpn_interfaces.append(vpn)
         except Exception as err:

@@ -131,7 +131,6 @@ def create_client(config: dict[str, Any]) -> OpenWrtClient:
 class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     """Coordinator for fetching data from an OpenWrt device."""
 
-
     config_entry: ConfigEntry
 
     def __init__(
@@ -405,14 +404,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         if not current_version:
             return
 
-
         session = async_get_clientsession(self.hass)
 
         try:
             if "SNAPSHOT" in current_version.upper() and data.device_info.target:
                 target = data.device_info.target
                 profile_url = f"https://downloads.openwrt.org/snapshots/targets/{target}/profiles.json"
-                async with session.get(profile_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                async with session.get(
+                    profile_url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
                     if resp.status == 200:
                         profile_data = await resp.json()
                         version_code = profile_data.get("version_code", "")
@@ -422,11 +422,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                                 data.firmware_latest_version = latest_snapshot
                                 data.firmware_upgradable = True
 
-                                board = data.device_info.board_name.replace("_", "-").replace(",", "-")
+                                board = data.device_info.board_name.replace(
+                                    "_", "-"
+                                ).replace(",", "-")
                                 data.firmware_release_url = f"https://downloads.openwrt.org/snapshots/targets/{target}/"
 
                                 profiles = profile_data.get("profiles", {})
-                                board_key = data.device_info.board_name.replace("-", "_").replace(",", "_")
+                                board_key = data.device_info.board_name.replace(
+                                    "-", "_"
+                                ).replace(",", "_")
                                 board_profile = profiles.get(board_key)
                                 if board_profile:
                                     images = board_profile.get("images", [])
@@ -459,7 +463,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                             info = data.device_info
                             if info.target and info.board_name:
                                 target = info.target
-                                board = info.board_name.replace("_", "-").replace(",", "-")
+                                board = info.board_name.replace("_", "-").replace(
+                                    ",", "-"
+                                )
                                 dist = info.release_distribution or "openwrt"
                                 # Standard OpenWrt sysupgrade URL pattern
                                 data.firmware_install_url = (
@@ -511,11 +517,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     else:
                         latest_version = version or revision
 
-                    if (
-                        latest_version
-                        and self._version_is_newer(
-                            data.firmware_current_version or "", latest_version
-                        )
+                    if latest_version and self._version_is_newer(
+                        data.firmware_current_version or "", latest_version
                     ):
                         data.asu_update_available = True
                         data.asu_supported = True
@@ -561,12 +564,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     url = f"{asu_url.rstrip('/')}/api/v1/info?target={target}&model={alt_model}"
                     if "SNAPSHOT" in data.device_info.release_version.upper():
                         url += "&version=SNAPSHOT"
-                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp2:
+                    async with session.get(
+                        url, timeout=aiohttp.ClientTimeout(total=10)
+                    ) as resp2:
                         if resp2.status == 200:
                             asu_info = await resp2.json()
                             version = asu_info.get("version", "")
                             revision = asu_info.get("revision", "")
-                            if (revision and "SNAPSHOT" in version.upper()) or (revision and not version):
+                            if (revision and "SNAPSHOT" in version.upper()) or (
+                                revision and not version
+                            ):
                                 latest_version = f"{version or 'SNAPSHOT'} ({revision})"
                             else:
                                 latest_version = version or revision
@@ -651,9 +658,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 data.firmware_current_version or "", latest_tag
             )
             if not is_upgradable and latest_version != latest_tag:
-                 is_upgradable = self._version_is_newer(
-                     data.firmware_current_version or "", latest_version
-                 )
+                is_upgradable = self._version_is_newer(
+                    data.firmware_current_version or "", latest_version
+                )
             data.firmware_upgradable = is_upgradable
 
             assets = latest_release.get("assets", [])
@@ -721,8 +728,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             return False
 
         if "SNAPSHOT" in current.upper() and "SNAPSHOT" in latest.upper():
+
             def get_rev_num(v: str) -> int:
-                match = re.search(r'r(\d+)-', v)
+                match = re.search(r"r(\d+)-", v)
                 if match:
                     return int(match.group(1))
                 return -1
@@ -737,7 +745,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             current_parts = [int(p) for p in current.split(".")]
             latest_parts = [int(p) for p in latest.split(".")]
             return latest_parts > current_parts
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             return current != latest
 
     async def async_shutdown(self) -> None:

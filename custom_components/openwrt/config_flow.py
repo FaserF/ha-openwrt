@@ -281,7 +281,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         results = await asyncio.gather(*tasks)
 
         existing_hosts = {
-            entry.data.get(CONF_HOST) for entry in self.hass.config_entries.async_entries(DOMAIN)
+            entry.data.get(CONF_HOST)
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
         }
 
         for router_info in results:
@@ -291,9 +292,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 if host in existing_hosts:
                     continue
                 # Avoid duplicates
-                if not any(
-                    r["host"] == host for r in self._discovered_routers
-                ):
+                if not any(r["host"] == host for r in self._discovered_routers):
                     self._discovered_routers.append(router_info)
 
         if not self._discovered_routers:
@@ -512,7 +511,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
+            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
                 continue
         return False
 
@@ -1179,7 +1178,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                             if success:
                                 self._provision_error = None
                             else:
-                                self._provision_error = f"SSH fallback also failed: {ssh_error}"
+                                self._provision_error = (
+                                    f"SSH fallback also failed: {ssh_error}"
+                                )
                             await ssh_client.disconnect()
                     except Exception as err:
                         _LOGGER.debug("SSH fallback failed: %s", err)
@@ -1377,6 +1378,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             in_progress = self.hass.config_entries.flow.async_progress()
             import inspect as _inspect
+
             if _inspect.iscoroutine(in_progress):
                 in_progress = []
         except Exception:  # noqa: BLE001

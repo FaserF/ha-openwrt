@@ -126,14 +126,18 @@ class SshClient(OpenWrtClient):
         """Execute a command via SSH."""
         return await self._exec(command)
 
-    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
+    async def provision_user(
+        self, username: str, password: str
+    ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via SSH."""
         # Use the harmonized provisioning script from base
         script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
         try:
             output = await self._exec(script)
             if output:
-                _LOGGER.debug("Provisioning output for %s via SSH: %s", username, output)
+                _LOGGER.debug(
+                    "Provisioning output for %s via SSH: %s", username, output
+                )
 
             if "Provisioning SUCCESS" in output:
                 return True, None
@@ -1148,7 +1152,9 @@ class SshClient(OpenWrtClient):
         # Use sysupgrade for installation
         # Download to /tmp and then run sysupgrade
         keep = "" if keep_settings else "-n"
-        cmd = f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
+        cmd = (
+            f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
+        )
         try:
             _LOGGER.info("Initiating firmware installation via SSH from: %s", url)
             # We expect this to eventually fail or disconnect as the router reboots
@@ -1180,6 +1186,7 @@ class SshClient(OpenWrtClient):
                 # Let's try base64 to be safe if it's binary.
                 b64_content = await self._exec(f"base64 {remote_path}")
                 import base64
+
                 with open(local_path, "wb") as f:
                     f.write(base64.b64decode(b64_content))
                 return True

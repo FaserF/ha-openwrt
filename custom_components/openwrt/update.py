@@ -206,8 +206,16 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             notes += f"{install_barrier}\n\n"
 
             # Inject dynamic Firmware Selector URL with specific router parameters
-            target = data.device_info.target.replace("/", "%2F") if data.device_info.target else ""
-            board = data.device_info.board_name.replace(",", "_").replace(" ", "_") if data.device_info.board_name else ""
+            target = (
+                data.device_info.target.replace("/", "%2F")
+                if data.device_info.target
+                else ""
+            )
+            board = (
+                data.device_info.board_name.replace(",", "_").replace(" ", "_")
+                if data.device_info.board_name
+                else ""
+            )
 
             version_param = latest
             if "SNAPSHOT" in latest.upper():
@@ -242,7 +250,10 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         # Check for required ASU package if using LuCI/Ubus
         if data.asu_supported and not data.firmware_install_url:
             conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
-            if conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS) and not data.packages.asu:
+            if (
+                conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS)
+                and not data.packages.asu
+            ):
                 raise HomeAssistantError(
                     "Attended Sysupgrade package (luci-app-attendedsysupgrade) is missing on the router. "
                     "Cannot perform firmware upgrade."
@@ -281,7 +292,9 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 )
                 # ASU builds always keep settings by default in OpenWrt logic,
                 # but we pass it anyway.
-                await self.coordinator.client.install_firmware(download_url, keep_settings=True)
+                await self.coordinator.client.install_firmware(
+                    download_url, keep_settings=True
+                )
 
             except Exception as err:
                 _LOGGER.error("ASU firmware update failed: %s", err)
@@ -315,6 +328,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
 
             # 2. Prepare local path
             import os
+
             backup_dir = self.hass.config.path("backups", "openwrt")
             if not os.path.exists(backup_dir):
                 os.makedirs(backup_dir, exist_ok=True)
@@ -323,7 +337,9 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             local_path = os.path.join(backup_dir, local_filename)
 
             # 3. Download to HA
-            success = await self.coordinator.client.download_file(remote_path, local_path)
+            success = await self.coordinator.client.download_file(
+                remote_path, local_path
+            )
             if success:
                 _LOGGER.info("Backup successfully saved to: %s", local_path)
                 # Cleanup remote file
