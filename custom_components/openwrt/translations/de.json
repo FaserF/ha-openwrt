@@ -124,6 +124,7 @@
     },
     "abort": {
       "already_configured": "Dieser Router ist bereits konfiguriert.",
+      "already_in_progress": "Die Einrichtung dieses Routers wird bereits in einem anderen Fenster oder durch die automatische Suche durchgeführt.",
       "reauth_successful": "Die erneute Authentifizierung war erfolgreich.",
       "no_host": "Das gefundene Gerät hat keine gültige Host-Adresse.",
       "not_openwrt": "Das gefundene Gerät scheint kein OpenWrt-Router zu sein."

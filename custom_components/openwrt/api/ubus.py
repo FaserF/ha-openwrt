@@ -210,6 +210,37 @@ class UbusClient(OpenWrtClient):
 
         return result
 
+    async def _list_objects(self) -> list[str]:
+        """List available ubus objects."""
+        session = await self._ensure_session()
+        if not self._connected:
+            await self.connect()
+
+        token = self._session_id
+        payload = self._build_request(
+            "list",
+            [token],
+            request_id=UBUS_ID_CALL,
+        )
+
+        try:
+            async with session.post(
+                self._base_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+        except Exception as err:
+            _LOGGER.debug("Failed to list ubus objects: %s", err)
+            return []
+
+        if "result" not in data:
+            return []
+
+        # Result is a dict where keys are object names
+        return list(data["result"].keys())
+
     async def connect(self) -> bool:
         """Authenticate with the ubus RPC endpoint."""
         session = await self._ensure_session()
@@ -886,19 +917,36 @@ class UbusClient(OpenWrtClient):
 
             # Check session access list - this is the most definitive way
             session_list = await self._call("session", "list")
-            if session_list and "access" in session_list.get("values", {}):
-                access = session_list["values"]["access"]
+            if session_list and ("acls" in session_list or "access" in session_list.get("values", {})):
+                access = session_list.get("values", {}).get("access", {})
 
                 def has_perm(obj: str, method: str) -> bool:
-                    # Some versions use exact matches, some use wildcards
+                    # Check in modern 'acls' structure if present
+                    acls = session_list.get("acls", {})
+                    if acls:
+                        # Check ubus/uci/file objects
+                        for section in ["ubus", "uci", "file"]:
+                            if section in acls and isinstance(acls[section], dict):
+                                for pattern, methods in acls[section].items():
+                                    if (
+                                        pattern == "*"
+                                        or pattern == obj
+                                        or (
+                                            pattern.endswith("*")
+                                            and obj.startswith(pattern[:-1])
+                                        )
+                                    ):
+                                        if "*" in methods or method in methods:
+                                            return True
+
+                    # Fallback to legacy 'values.access' structure
+                    access = session_list.get("values", {}).get("access", {})
                     for pattern, methods in access.items():
-                        # Check object pattern match
                         if (
                             pattern == "*"
                             or pattern == obj
                             or (pattern.endswith("*") and obj.startswith(pattern[:-1]))
                         ):
-                            # methods can be a list containing the allowed methods for this object
                             if "*" in methods or method in methods:
                                 return True
                     return False
@@ -999,10 +1047,13 @@ class UbusClient(OpenWrtClient):
             perms.read_devices = (
                 await can_call("dhcp", "ipv4leases") or perms.read_network
             )
-            perms.write_devices = await can_call("file", "exec", {"command": "ls"})
+            perms.write_devices = (
+                await can_call("file", "exec", {"command": "/usr/bin/id"})
+                or await can_call("file", "exec", {"command": "id"})
+            )
             perms.write_access_control = perms.write_firewall
-            perms.read_services = perms.write_devices
-            perms.write_services = perms.write_devices
+            perms.read_services = await can_call("service", "list")
+            perms.write_services = await can_call("service", "list")
 
         except Exception as err:
             _LOGGER.debug("Error checking permissions via ubus: %s", err)
@@ -1016,78 +1067,108 @@ class UbusClient(OpenWrtClient):
         """Check installed packages."""
         packages = OpenWrtPackages()
         try:
-            # Method 1: Try executing a small script to check all files at once (fastest)
+            # Step 1: Check available ubus objects (very robust)
+            objects = await self._list_objects()
+            packages.iwinfo = "iwinfo" in objects
+            packages.luci_mod_rpc = "luci-rpc" in objects
+            if "mwan3" in objects:
+                packages.mwan3 = True
+            if "sqm" in objects:
+                packages.sqm_scripts = True
+
+            # Step 2: Try executing a small script for remaining/all (fastest for root)
             try:
                 cmd = (
                     "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                     "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
-                    "/usr/lib/lua/luci/controller/rpc.lua; do "
+                    "/www/cgi-bin/luci; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
-                    "file", "exec", {"command": "sh", "params": ["-c", cmd]}
+                    "file", "exec", {"command": "/bin/sh", "params": ["-c", cmd]}
                 )
                 out = result.get("stdout", "")
                 results = out.strip().split("\n")
 
-                # Map results to package status
                 def detect_status(idx: int) -> bool:
                     return len(results) > idx and results[idx].strip() == "1"
 
-                packages.sqm_scripts = detect_status(0)
-                packages.mwan3 = detect_status(1)
-                packages.iwinfo = detect_status(2)
+                if packages.sqm_scripts is not True:
+                    packages.sqm_scripts = detect_status(0)
+                if packages.mwan3 is not True:
+                    packages.mwan3 = detect_status(1)
+                if packages.iwinfo is not True:
+                    packages.iwinfo = detect_status(2)
                 packages.etherwake = detect_status(3)
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
-                packages.luci_mod_rpc = detect_status(6)
+                if packages.luci_mod_rpc is not True:
+                    packages.luci_mod_rpc = detect_status(6)
             except Exception as err:
                 _LOGGER.debug(
-                    "Package check via file.exec failed (this is expected on restricted routers): %s",
+                    "Package check via file.exec failed (expected on restricted routers): %s",
                     err,
                 )
-                # Initialize to False for fallback if not already True (from some other source)
-                # This ensures we don't stay at 'None' if detection is possible via stat
-                for attr in [
-                    "sqm_scripts",
-                    "mwan3",
-                    "iwinfo",
-                    "etherwake",
-                    "wireguard",
-                    "openvpn",
-                    "luci_mod_rpc",
-                ]:
-                    if getattr(packages, attr) is None:
-                        setattr(packages, attr, False)
 
-            # Method 2: Fallback to file.stat for any package still False
-            # Some routers restrict file.exec but allow file.stat
+            # Step 3: Check UCI configs for remaining packages (needs uci: ["*"])
+            if packages.sqm_scripts is not True:
+                try:
+                    await self._call("uci", "get", {"config": "sqm"})
+                    packages.sqm_scripts = True
+                except Exception:
+                    pass
+            if packages.mwan3 is not True:
+                try:
+                    await self._call("uci", "get", {"config": "mwan3"})
+                    packages.mwan3 = True
+                except Exception:
+                    pass
+            if packages.openvpn is not True:
+                try:
+                    await self._call("uci", "get", {"config": "openvpn"})
+                    packages.openvpn = True
+                except Exception:
+                    pass
+            if packages.wireguard is not True:
+                try:
+                    res = await self._call("uci", "get", {"config": "network"})
+                    # Look for wireguard interface sections
+                    if res and isinstance(res, dict) and any(v.get("proto") == "wireguard" for v in res.values() if isinstance(v, dict)):
+                        packages.wireguard = True
+                    elif "wg" in objects: # objects from Step 1
+                        packages.wireguard = True
+                except Exception:
+                    pass
+
+            # Step 4: Fallback to file.stat (last resort, needs file: ["stat", "/path"])
             check_list = [
-                ("/etc/init.d/sqm", "sqm_scripts"),
-                ("/etc/init.d/mwan3", "mwan3"),
-                ("/usr/bin/iwinfo", "iwinfo"),
                 ("/usr/bin/etherwake", "etherwake"),
                 ("/usr/bin/wg", "wireguard"),
-                ("/usr/sbin/openvpn", "openvpn"),
             ]
-
             for path, attr in check_list:
                 if getattr(packages, attr) is not True:
                     try:
                         stat = await self._call("file", "stat", {"path": path})
                         if stat and "type" in stat:
                             setattr(packages, attr, True)
-                            _LOGGER.debug("Detected package via file.stat: %s", path)
-                    except Exception as err:
-                        _LOGGER.debug(
-                            "Package check via file.stat failed for %s: %s", path, err
-                        )
-                        if getattr(packages, attr) is None:
-                            setattr(packages, attr, False)
+                    except Exception:
+                        pass
+
+            # Initialize remaining to False
+            for attr in [
+                "sqm_scripts",
+                "mwan3",
+                "iwinfo",
+                "etherwake",
+                "wireguard",
+                "openvpn",
+                "luci_mod_rpc",
+            ]:
+                if getattr(packages, attr) is None:
+                    setattr(packages, attr, False)
 
         except Exception as err:
             _LOGGER.error("Failed to check packages via ubus: %s", err)
-            # We don't raise here to allow the rest of the flow to continue
         return packages
 
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
@@ -1618,22 +1699,56 @@ class UbusClient(OpenWrtClient):
             res = await self._call(
                 "file", "exec", {"command": "sh", "params": ["-c", command]}
             )
+            if not res or not isinstance(res, dict):
+                return ""
             return res.get("stdout", "")
+        except UbusPermissionError as err:
+            _LOGGER.debug(
+                "Permission denied for command via ubus file.exec: %s (%s)", command, err
+            )
+            return ""
         except UbusError as err:
             _LOGGER.debug("Command failed via ubus file.exec: %s (%s)", command, err)
             return ""
 
-    async def provision_user(self, username: str, password: str) -> bool:
+    async def user_exists(self, username: str) -> bool:
+        """Check if a system user exists on the device."""
+        # 1. Try via ubus file.read (more robust/standard than exec)
+        try:
+            res = await self._call("file", "read", {"path": "/etc/passwd"})
+            if res and "data" in res:
+                if f"{username}:" in res["data"]:
+                    return True
+        except Exception:
+            pass
+
+        # 2. Fallback to base method (which uses execute_command)
+        return await super().user_exists(username)
+
+    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via ubus."""
         # Use the harmonized provisioning script from base
         script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
         try:
             output = await self.execute_command(script)
-            _LOGGER.debug("Provisioning output: %s", output)
-            return "Provisioning SUCCESS" in output
+            if output:
+                _LOGGER.debug("Provisioning output for %s: %s", username, output)
+
+            if "Provisioning SUCCESS" in output:
+                return True, None
+
+            if "LOG: FAIL:" in output:
+                fail_msg = output.split("LOG: FAIL:")[1].splitlines()[0].strip()
+                _LOGGER.error("Provisioning failed: %s", fail_msg)
+                return False, fail_msg
+
+            return (
+                False,
+                "Provisioning script returned failure without specific error. Check router logs (logread).",
+            )
         except Exception as err:
             _LOGGER.error("Failed to provision user %s via ubus: %s", username, err)
-            return False
+            return False, str(err)
 
     async def manage_interface(self, name: str, action: str) -> bool:
         """Manage a network interface (up/down/reconnect) via ubus."""

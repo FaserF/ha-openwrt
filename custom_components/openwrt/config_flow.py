@@ -132,7 +132,7 @@ def _generate_permission_table(perms: Any) -> str:
     return table
 
 
-def _generate_package_table(packages: Any) -> str:
+def _generate_package_table(packages: Any, connection_type: str | None = None) -> str:
     """Generate markdown table for installed packages."""
 
     def to_icon(val: bool | None) -> str:
@@ -140,10 +140,20 @@ def _generate_package_table(packages: Any) -> str:
             return "❓"
         return "✅" if val else "❌"
 
-    def get_missing(val: bool | None, name: str) -> str:
+    def get_missing(val: bool | None, name: str, required: bool = False) -> str:
         if val is None:
             return "Check failed"
-        return "-" if val else name
+        if val:
+            return "-"
+        if not required:
+            return name
+        return f"{name} (required)"
+
+    # LuCI RPC requirement depends on connection type
+    from .const import CONNECTION_TYPE_LUCI_RPC
+
+    luci_required = connection_type == CONNECTION_TYPE_LUCI_RPC
+    luci_info = "LuCI Web API (required)" if luci_required else "LuCI Web API (not needed for this connection method)"
 
     table = (
         "| Package | Installed | Missing Features |\n"
@@ -154,7 +164,7 @@ def _generate_package_table(packages: Any) -> str:
         f"| **etherwake** | {to_icon(packages.etherwake)} | {get_missing(packages.etherwake, 'Wake on LAN')} |\n"
         f"| **wireguard-tools** | {to_icon(packages.wireguard)} | {get_missing(packages.wireguard, 'WireGuard Sensors')} |\n"
         f"| **openvpn** | {to_icon(packages.openvpn)} | {get_missing(packages.openvpn, 'OpenVPN Sensors')} |\n"
-        f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, 'LuCI Web API (required)')} |"
+        f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, required=luci_required)} |"
     )
     return table
 
@@ -656,6 +666,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
+                await self._async_set_unique_id_and_check()
                 if self._data.get(CONF_USERNAME) == "root":
                     return await self.async_step_provision_user()
                 return await self.async_step_permissions()
@@ -724,6 +735,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
+                await self._async_set_unique_id_and_check()
                 if self._data.get(CONF_USERNAME) == "root":
                     return await self.async_step_provision_user()
                 return await self.async_step_permissions()
@@ -1111,11 +1123,41 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 await client.connect()
                 # The provisioning script will restart services in background
                 # it's possible the connection drops exactly when/after sending SUCCESS
-                success = await client.provision_user(
+                success, self._provision_error = await client.provision_user(
                     "homeassistant", self._generated_password
                 )
-                if not success:
-                    self._provision_error = "Provisioning script returned failure. Check router logs (logread)."
+
+                # Fallback to SSH for root if ubus provisioning fails with permission error
+                if (
+                    not success
+                    and self._data.get(CONF_USERNAME) == "root"
+                    and self._data.get(CONF_CONNECTION_TYPE) != CONNECTION_TYPE_SSH
+                ):
+                    _LOGGER.info(
+                        "Provisioning via %s failed for root, trying SSH fallback",
+                        self._data.get(CONF_CONNECTION_TYPE),
+                    )
+                    from .api.ssh import SshClient
+
+                    ssh_client = SshClient(
+                        host=self._data[CONF_HOST],
+                        username="root",
+                        password=self._data[CONF_PASSWORD],
+                        port=self._data.get(CONF_PORT, 22),
+                    )
+                    try:
+                        if await ssh_client.connect():
+                            success, ssh_error = await ssh_client.provision_user(
+                                "homeassistant", self._generated_password
+                            )
+                            if success:
+                                self._provision_error = None
+                            else:
+                                self._provision_error = f"SSH fallback also failed: {ssh_error}"
+                            await ssh_client.disconnect()
+                    except Exception as err:
+                        _LOGGER.debug("SSH fallback failed: %s", err)
+
                 await client.disconnect()
         except TimeoutError:
             _LOGGER.warning(
@@ -1275,7 +1317,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         if getattr(self, "_packages", None) is None:
             return await self._create_entry()
 
-        table = _generate_package_table(self._packages)
+        table = _generate_package_table(
+            self._packages, self._data.get(CONF_CONNECTION_TYPE)
+        )
 
         return self.async_show_form(
             step_id="packages",
@@ -1283,18 +1327,36 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={"packages_table": table},
         )
 
+    async def _async_set_unique_id_and_check(self) -> None:
+        """Set unique ID and check for existing config flow or entry."""
+        mac = self._device_info.get("mac_address")
+        host = self._data[CONF_HOST]
+        unique_id = dr.format_mac(mac) if mac else host
+
+        # Abort other flows with the same unique ID to allow this one to proceed
+        # This prevents "already_in_progress" if discovery found the router first
+        for flow in self.hass.config_entries.flow.async_progress():
+            if (
+                flow["flow_id"] != self.flow_id
+                and flow.get("handler") == DOMAIN
+                and flow.get("context", {}).get("unique_id") == unique_id
+            ):
+                _LOGGER.info(
+                    "Aborting existing OpenWrt flow %s to allow manual setup for %s",
+                    flow["flow_id"],
+                    unique_id,
+                )
+                self.hass.config_entries.flow.async_abort(flow["flow_id"])
+
+        # Set unique ID and abort if already configured
+        await self.async_set_unique_id(unique_id)
+        self._abort_if_unique_id_configured()
+
     async def _create_entry(self) -> ConfigFlowResult:
         """Create the config entry."""
+        # Unique ID is already set and checked in credential steps
         host = self._data[CONF_HOST]
         hostname = self._device_info.get("hostname", host)
-        mac = self._device_info.get("mac_address")
-
-        if mac:
-            await self.async_set_unique_id(dr.format_mac(mac))
-        else:
-            await self.async_set_unique_id(host)
-
-        self._abort_if_unique_id_configured()
 
         # Split data and options
         # Options are toggles that the user might want to change later via Configure
@@ -1440,7 +1502,9 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if self._packages is None:
             return self.async_create_entry(title="", data=self._options)
 
-        table = _generate_package_table(self._packages)
+        table = _generate_package_table(
+            self._packages, self._config_entry.data.get(CONF_CONNECTION_TYPE)
+        )
 
         return self.async_show_form(
             step_id="packages",

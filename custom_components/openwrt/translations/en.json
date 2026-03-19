@@ -124,6 +124,7 @@
     },
     "abort": {
       "already_configured": "This router is already configured.",
+      "already_in_progress": "Configuration flow is already in progress for this router.",
       "reauth_successful": "Re-authentication was successful.",
       "no_host": "Discovered device has no valid host address.",
       "not_openwrt": "Discovered device does not appear to be an OpenWrt router."

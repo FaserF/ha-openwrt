@@ -126,17 +126,30 @@ class SshClient(OpenWrtClient):
         """Execute a command via SSH."""
         return await self._exec(command)
 
-    async def provision_user(self, username: str, password: str) -> bool:
+    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via SSH."""
         # Use the harmonized provisioning script from base
         script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
         try:
             output = await self._exec(script)
-            _LOGGER.debug("Provisioning output: %s", output)
-            return "Provisioning SUCCESS" in output
+            if output:
+                _LOGGER.debug("Provisioning output for %s via SSH: %s", username, output)
+
+            if "Provisioning SUCCESS" in output:
+                return True, None
+
+            if "LOG: FAIL:" in output:
+                fail_msg = output.split("LOG: FAIL:")[1].splitlines()[0].strip()
+                _LOGGER.error("Provisioning failed via SSH: %s", fail_msg)
+                return False, fail_msg
+
+            return (
+                False,
+                "Provisioning script returned failure without specific error via SSH. Check router logs (logread).",
+            )
         except Exception as err:
             _LOGGER.error("Failed to provision user %s via SSH: %s", username, err)
-            return False
+            return False, str(err)
 
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages."""

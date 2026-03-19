@@ -196,17 +196,43 @@ class LuciRpcClient(OpenWrtClient):
             _LOGGER.debug("Command failed via LuCI RPC sys.exec: %s (%s)", command, err)
             return ""
 
-    async def provision_user(self, username: str, password: str) -> bool:
+    async def user_exists(self, username: str) -> bool:
+        """Check if a system user exists on the device."""
+        # 1. Try via LuCI RPC (often more restricted than ubus, but let's try reading passwd)
+        try:
+            res = await self.execute_command(f"grep -q '^{username}:' /etc/passwd && echo 'exists'")
+            if res and "exists" in res:
+                return True
+        except Exception:
+            pass
+
+        # 2. Fallback to base method
+        return await super().user_exists(username)
+
+    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via LuCI RPC."""
         # Use the harmonized provisioning script from base
         script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
         try:
             output = await self.execute_command(script)
-            _LOGGER.debug("Provisioning output: %s", output)
-            return "Provisioning SUCCESS" in output
+            if output:
+                _LOGGER.debug("Provisioning output for %s via LuCI RPC: %s", username, output)
+
+            if "Provisioning SUCCESS" in output:
+                return True, None
+
+            if "LOG: FAIL:" in output:
+                fail_msg = output.split("LOG: FAIL:")[1].splitlines()[0].strip()
+                _LOGGER.error("Provisioning failed via LuCI RPC: %s", fail_msg)
+                return False, fail_msg
+
+            return (
+                False,
+                "Provisioning script returned failure without specific error via LuCI RPC. Check router logs (logread).",
+            )
         except Exception as err:
             _LOGGER.error("Failed to provision user %s via LuCI RPC: %s", username, err)
-            return False
+            return False, str(err)
 
     async def connect(self) -> bool:
         """Authenticate with LuCI."""
@@ -495,9 +521,25 @@ class LuciRpcClient(OpenWrtClient):
         return perms
 
     async def check_packages(self) -> OpenWrtPackages:
-        """Check installed packages."""
+        """Check installed packages with multiple fallbacks."""
         packages = OpenWrtPackages()
         try:
+            # Step 1: Check via ubus call (if ubus is available via sys.exec)
+            # This is more reliable than file checks for some packages
+            try:
+                ubus_list = await self.execute_command("ubus list")
+                objects = ubus_list.splitlines() if ubus_list else []
+                
+                if "sqm" in objects:
+                    packages.sqm_scripts = True
+                if "mwan3" in objects:
+                    packages.mwan3 = True
+                if "luci" in objects:
+                    packages.luci_mod_rpc = True
+            except Exception:
+                pass
+
+            # Step 2: Check via file existence (sys.exec)
             cmd = (
                 "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                 "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
@@ -511,17 +553,55 @@ class LuciRpcClient(OpenWrtClient):
                 def detect_status(idx: int) -> bool:
                     return len(results) > idx and results[idx].strip() == "1"
 
-                packages.sqm_scripts = detect_status(0)
-                packages.mwan3 = detect_status(1)
+                if packages.sqm_scripts is not True:
+                    packages.sqm_scripts = detect_status(0)
+                if packages.mwan3 is not True:
+                    packages.mwan3 = detect_status(1)
                 packages.iwinfo = detect_status(2)
                 packages.etherwake = detect_status(3)
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
-                packages.luci_mod_rpc = detect_status(6)
-                # If we are here, luci-mod-rpc IS working, so it's True.
-        except Exception as err:
-            _LOGGER.error("Failed to check packages via LuCI RPC: %s", err)
-            # Initialize to False if we failed (to avoid staying at None)
+                if packages.luci_mod_rpc is not True:
+                    packages.luci_mod_rpc = detect_status(6)
+
+            # Step 3: Check UCI configs for remaining packages (very robust fallback)
+            if packages.sqm_scripts is not True:
+                try:
+                    res = await self._rpc_call("uci", "get_all", ["sqm"])
+                    if res and isinstance(res, dict):
+                        packages.sqm_scripts = True
+                except Exception:
+                    pass
+            
+            if packages.mwan3 is not True:
+                try:
+                    res = await self._rpc_call("uci", "get_all", ["mwan3"])
+                    if res and isinstance(res, dict):
+                        packages.mwan3 = True
+                except Exception:
+                    pass
+
+            if packages.openvpn is not True:
+                try:
+                    res = await self._rpc_call("uci", "get_all", ["openvpn"])
+                    if res and isinstance(res, dict):
+                        packages.openvpn = True
+                except Exception:
+                    pass
+
+            if packages.wireguard is not True:
+                try:
+                    res = await self._rpc_call("uci", "get_all", ["network"])
+                    if res and isinstance(res, dict) and any(
+                        v.get("proto") == "wireguard" 
+                        for v in res.values() 
+                        if isinstance(v, dict)
+                    ):
+                        packages.wireguard = True
+                except Exception:
+                    pass
+
+            # Final pass: Initialize remaining to False (to avoid staying at None)
             for attr in [
                 "sqm_scripts",
                 "mwan3",
@@ -529,9 +609,20 @@ class LuciRpcClient(OpenWrtClient):
                 "etherwake",
                 "wireguard",
                 "openvpn",
+                "luci_mod_rpc",
             ]:
                 if getattr(packages, attr) is None:
                     setattr(packages, attr, False)
+
+        except Exception as err:
+            _LOGGER.error("Failed to check packages via LuCI RPC: %s", err)
+            # Ensure no None values are returned
+            for attr in [
+                "sqm_scripts", "mwan3", "iwinfo", "etherwake", "wireguard", "openvpn"
+            ]:
+                if getattr(packages, attr) is None:
+                    setattr(packages, attr, False)
+        
         return packages
 
     async def get_system_resources(self) -> SystemResources:

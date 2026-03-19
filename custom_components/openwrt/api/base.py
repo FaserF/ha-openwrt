@@ -63,31 +63,55 @@ grep -q "^$USER:" /etc/shadow || echo "$USER:*::0:99999:7:::" >> /etc/shadow
 # Set password using the most robust method for shadow synchronization
 logger -t ha-openwrt "Updating password for $USER"
 if ! ( (echo "$PASS"; sleep 1; echo "$PASS") | passwd "$USER" >/dev/null 2>&1 || printf "%s:%s\\n" "$USER" "$PASS" | chpasswd >/dev/null 2>&1 ); then
-    echo "LOG: FAIL: password"
+    echo "LOG: FAIL: password change failed"
     exit 1
 fi
 
 # Create ACL file
 logger -t ha-openwrt "Creating ACL file $ACL_FILE"
-cat <<EOF > "$ACL_FILE"
+if ! cat <<EOF > "$ACL_FILE"
 {{
     "homeassistant": {{
         "description": "Home Assistant Integration",
         "read": {{
             "ubus": {{
-                "system": ["*"],
+                "system": ["info", "board"],
                 "network": ["*"],
-                "network.interface": ["*"],
-                "network.device": ["*"],
-                "iwinfo": ["*"],
-                "file": ["*"],
-                "firewall": ["*"],
-                "service": ["*"],
-                "uci": ["*"],
-                "session": ["*"],
-                "hostapd.*": ["*"]
+                "network.interface": ["dump", "status"],
+                "network.device": ["status"],
+                "iwinfo": ["info", "assoclist", "txpowerlist", "scan"],
+                "file": ["read", "stat", "list"],
+                "firewall": ["status"],
+                "service": ["list"],
+                "uci": ["get", "state"],
+                "session": ["list"],
+                "hostapd.*": ["get_clients"]
             }},
-            "uci": ["*"]
+            "uci": ["*"],
+            "file": {{
+                "/etc/config/sqm": ["read", "stat"],
+                "/etc/config/mwan3": ["read", "stat"],
+                "/etc/config/network": ["read", "stat"],
+                "/etc/config/wireless": ["read", "stat"],
+                "/etc/config/firewall": ["read", "stat"],
+                "/etc/config/dhcp": ["read", "stat"],
+                "/etc/config/system": ["read", "stat"],
+                "/etc/config/luci": ["read", "stat"],
+                "/etc/config/rpcd": ["read", "stat"],
+                "/etc/passwd": ["read"],
+                "/etc/group": ["read"],
+                "/etc/shadow": ["read"],
+                "/etc/shells": ["read"],
+                "/etc/init.d/sqm": ["read", "stat"],
+                "/etc/init.d/mwan3": ["read", "stat"],
+                "/usr/bin/iwinfo": ["read", "stat"],
+                "/usr/bin/etherwake": ["read", "stat"],
+                "/usr/bin/wg": ["read", "stat"],
+                "/usr/sbin/openvpn": ["read", "stat"],
+                "/usr/bin/id": ["read", "stat", "exec"],
+                "/bin/sh": ["read", "stat", "exec"],
+                "/bin/ls": ["read", "stat", "exec"]
+            }}
         }},
         "write": {{
             "ubus": {{
@@ -97,14 +121,23 @@ cat <<EOF > "$ACL_FILE"
                 "firewall": ["*"],
                 "service": ["*"],
                 "uci": ["*"],
-                "file": ["*"],
+                "file": ["exec"],
                 "hostapd.*": ["*"]
             }},
-            "uci": ["*"]
+            "uci": ["*"],
+            "file": {{
+                "/bin/sh": ["exec"],
+                "/usr/bin/id": ["exec"],
+                "/bin/ls": ["exec"]
+            }}
         }}
     }}
 }}
 EOF
+then
+    echo "LOG: FAIL: could not create ACL file $ACL_FILE"
+    exit 1
+fi
 
 chmod 644 "$ACL_FILE"
 
@@ -132,8 +165,10 @@ uci set rpcd.homeassistant.password="\\$p\\$$USER"
 uci add_list rpcd.homeassistant.read="homeassistant"
 uci add_list rpcd.homeassistant.write="homeassistant"
 
-uci commit luci
-uci commit rpcd
+if ! (uci commit luci && uci commit rpcd); then
+    echo "LOG: FAIL: uci commit failed"
+    exit 1
+fi
 
 echo "LOG: Provisioning SUCCESS"
 logger -t ha-openwrt "Provisioning completed successfully for $USER. Scheduling service restarts."
@@ -588,6 +623,17 @@ class OpenWrtClient(abc.ABC):
 
     async def user_exists(self, username: str) -> bool:
         """Check if a system user exists on the device."""
+        # Try checking via /etc/passwd first as it's often more accessible
+        try:
+            # We use cat via execute_command, but subclasses might override this
+            # to use a more direct file-read if available (e.g. ubus file.read)
+            passwd = await self.execute_command("cat /etc/passwd 2>/dev/null")
+            if passwd and f"{username}:" in passwd:
+                return True
+        except Exception:
+            pass
+
+        # Fallback to id -u
         try:
             output = await self.execute_command(f"id -u {username} 2>/dev/null")
             return output.strip().isdigit()
@@ -595,8 +641,12 @@ class OpenWrtClient(abc.ABC):
             return False
 
     @abc.abstractmethod
-    async def provision_user(self, username: str, password: str) -> bool:
-        """Create a dedicated system user and configure RPC permissions."""
+    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
+        """Create a dedicated system user and configure RPC permissions.
+
+        Returns:
+            (success, error_message)
+        """
         raise NotImplementedError
 
     @abc.abstractmethod
