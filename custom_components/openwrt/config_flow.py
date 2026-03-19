@@ -30,7 +30,7 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import selector
+from homeassistant.helpers import selector, translation
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
@@ -133,7 +133,11 @@ def _generate_permission_table(perms: Any) -> str:
     return table
 
 
-def _generate_package_table(packages: Any, connection_type: str | None = None) -> str:
+def _generate_package_table(
+    packages: Any,
+    connection_type: str | None = None,
+    translations: dict[str, str] | None = None,
+) -> str:
     """Generate markdown table for installed packages."""
 
     def to_icon(val: bool | None) -> str:
@@ -141,32 +145,44 @@ def _generate_package_table(packages: Any, connection_type: str | None = None) -
             return "❓"
         return "✅" if val else "❌"
 
-    def get_missing(val: bool | None, name: str, required: bool = False) -> str:
+    def get_missing(
+        val: bool | None, name: str, key: str | None = None, required: bool = False
+    ) -> str:
         if val is None:
             return "Check failed"
         if val:
             return "-"
+
+        # Use translated name if available
+        display_name = name
+        if translations and key and key in translations:
+            display_name = translations[key]
+
         if not required:
-            return name
-        return f"{name} (required)"
+            return display_name
+        return f"{display_name} (required)"
 
     # LuCI RPC requirement depends on connection type
     from .const import CONNECTION_TYPE_LUCI_RPC
 
     luci_required = connection_type == CONNECTION_TYPE_LUCI_RPC
-    luci_info = "LuCI Web API (required)" if luci_required else "LuCI Web API (not needed for this connection method)"
+    luci_info = (
+        "LuCI Web API (required)"
+        if luci_required
+        else "LuCI Web API (not needed for this connection method)"
+    )
 
     table = (
         "| Package | Installed | Missing Features |\n"
         "|---------|-----------|------------------|\n"
-        f"| **sqm-scripts** | {to_icon(packages.sqm_scripts)} | {get_missing(packages.sqm_scripts, 'SQM QoS Settings')} |\n"
-        f"| **mwan3** | {to_icon(packages.mwan3)} | {get_missing(packages.mwan3, 'MWAN3 Sensors')} |\n"
-        f"| **iwinfo** | {to_icon(packages.iwinfo)} | {get_missing(packages.iwinfo, 'Enhanced WiFi Info')} |\n"
-        f"| **etherwake** | {to_icon(packages.etherwake)} | {get_missing(packages.etherwake, 'Wake on LAN')} |\n"
-        f"| **wireguard-tools** | {to_icon(packages.wireguard)} | {get_missing(packages.wireguard, 'WireGuard Sensors')} |\n"
-        f"| **openvpn** | {to_icon(packages.openvpn)} | {get_missing(packages.openvpn, 'OpenVPN Sensors')} |\n"
-        f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, required=luci_required)} |\n"
-        f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)')} |"
+        f"| **sqm-scripts** | {to_icon(packages.sqm_scripts)} | {get_missing(packages.sqm_scripts, 'SQM QoS Settings', 'sqm_scripts')} |\n"
+        f"| **mwan3** | {to_icon(packages.mwan3)} | {get_missing(packages.mwan3, 'MWAN3 Sensors', 'mwan3')} |\n"
+        f"| **iwinfo** | {to_icon(packages.iwinfo)} | {get_missing(packages.iwinfo, 'Enhanced WiFi Info', 'iwinfo')} |\n"
+        f"| **etherwake** | {to_icon(packages.etherwake)} | {get_missing(packages.etherwake, 'Wake on LAN', 'etherwake')} |\n"
+        f"| **wireguard-tools** | {to_icon(packages.wireguard)} | {get_missing(packages.wireguard, 'WireGuard Sensors', 'wireguard')} |\n"
+        f"| **openvpn** | {to_icon(packages.openvpn)} | {get_missing(packages.openvpn, 'OpenVPN Sensors', 'openvpn')} |\n"
+        f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, 'luci_mod_rpc', required=luci_required)} |\n"
+        f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)', 'asu')} |"
     )
     return table
 
@@ -1327,8 +1343,21 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         if getattr(self, "_packages", None) is None:
             return await self._create_entry()
 
+        # Get translations for package features
+        translations = await translation.async_get_translations(
+            self.hass, self.hass.config.language, "entity", [DOMAIN]
+        )
+        prefix = f"component.{DOMAIN}.entity.sensor.package_feature.state."
+        feature_translations = {
+            key.replace(prefix, ""): value
+            for key, value in translations.items()
+            if key.startswith(prefix)
+        }
+
         table = _generate_package_table(
-            self._packages, self._data.get(CONF_CONNECTION_TYPE)
+            self._packages,
+            self._data.get(CONF_CONNECTION_TYPE),
+            translations=feature_translations,
         )
 
         return self.async_show_form(
@@ -1523,8 +1552,21 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if self._packages is None:
             return self.async_create_entry(title="", data=self._options)
 
+        # Get translations for package features
+        translations = await translation.async_get_translations(
+            self.hass, self.hass.config.language, "entity", [DOMAIN]
+        )
+        prefix = f"component.{DOMAIN}.entity.sensor.package_feature.state."
+        feature_translations = {
+            key.replace(prefix, ""): value
+            for key, value in translations.items()
+            if key.startswith(prefix)
+        }
+
         table = _generate_package_table(
-            self._packages, self._config_entry.data.get(CONF_CONNECTION_TYPE)
+            self._packages,
+            self._config_entry.data.get(CONF_CONNECTION_TYPE),
+            translations=feature_translations,
         )
 
         return self.async_show_form(

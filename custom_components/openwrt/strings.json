@@ -400,6 +400,18 @@
       },
       "neighbor_devices": {
         "name": "Neighbor Devices"
+      },
+      "package_feature": {
+        "state": {
+          "sqm_scripts": "SQM QoS Settings",
+          "mwan3": "MWAN3 Sensors",
+          "iwinfo": "Wireless Client Details",
+          "etherwake": "Wake on LAN",
+          "wireguard": "WireGuard Support",
+          "openvpn": "OpenVPN Sensors",
+          "luci_mod_rpc": "LuCI RPC Support",
+          "asu": "Firmware Upgrade (ASU)"
+        }
       }
     },
     "binary_sensor": {
@@ -648,15 +660,5 @@
         }
       }
     }
-  },
-  "package_features": {
-    "sqm_scripts": "SQM QoS Settings",
-    "mwan3": "MWAN3 Sensors",
-    "iwinfo": "Wireless Client Details",
-    "etherwake": "Wake on LAN",
-    "wireguard": "WireGuard Support",
-    "openvpn": "OpenVPN Sensors",
-    "luci_mod_rpc": "LuCI RPC Support",
-    "asu": "Firmware Upgrade (ASU)"
   }
 }

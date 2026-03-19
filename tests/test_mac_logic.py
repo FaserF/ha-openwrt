@@ -110,8 +110,8 @@ class MockClient(OpenWrtClient):
     async def get_installed_packages(self) -> list[str]:
         return []
 
-    async def provision_user(self, username: str, password: str) -> bool:
-        return True
+    async def provision_user(self, username: str, password: str) -> tuple[bool, str | None]:
+        return True, None
 
     async def get_external_ip(self) -> str | None:
         return None
@@ -137,11 +137,11 @@ class MockClient(OpenWrtClient):
     async def set_led(self, name: str, brightness: int) -> bool:
         return True
 
-    async def install_firmware(self, image_url: str) -> None:
+    async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         pass
 
-    async def download_file(self, remote_path: str) -> bytes:
-        return b""
+    async def download_file(self, remote_path: str, local_path: str) -> bool:
+        return True
 
     async def get_mwan_status(self) -> list[MwanStatus]:
         return []
