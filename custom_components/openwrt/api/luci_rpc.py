@@ -201,7 +201,7 @@ class LuciRpcClient(OpenWrtClient):
         # 1. Try via LuCI RPC (often more restricted than ubus, but let's try reading passwd)
         try:
             res = await self.execute_command(f"grep -q '^{username}:' /etc/passwd && echo 'exists'")
-            if res and "exists" in res:
+            if res and isinstance(res, str) and "exists" in res:
                 return True
         except Exception:
             pass
@@ -696,7 +696,7 @@ class LuciRpcClient(OpenWrtClient):
         if isinstance(uptime_str, str) and uptime_str:
             try:
                 resources.uptime = int(float(uptime_str.strip().split()[0]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
 
         # 4. System Info (Memory fallback and CPU/Disk)
@@ -767,7 +767,7 @@ class LuciRpcClient(OpenWrtClient):
                             resources.filesystem_total = int(parts[1]) * 1024
                             resources.filesystem_used = int(parts[2]) * 1024
                             resources.filesystem_free = int(parts[3]) * 1024
-                        except ValueError, IndexError:
+                        except (ValueError, IndexError):
                             pass
 
         # 7. CPU usage fallback from /proc/stat
@@ -806,13 +806,14 @@ class LuciRpcClient(OpenWrtClient):
             )
             if status:
                 data = json.loads(status)
-                for iface_data in data.get("interface", []):
-                    iface_name = iface_data.get("interface", "").lower()
-                    if iface_name in ["wan", "wan6", "wwan", "modem"]:
-                        ipv4_addrs = iface_data.get("ipv4-address", [])
-                        if ipv4_addrs:
-                            return ipv4_addrs[0].get("address")
-        except LuciRpcError, json.JSONDecodeError:
+                if data and isinstance(data, dict):
+                    for iface_data in data.get("interface", []):
+                        iface_name = iface_data.get("interface", "").lower()
+                        if iface_name in ["wan", "wan6", "wwan", "modem"]:
+                            ipv4_addrs = iface_data.get("ipv4-address", [])
+                            if ipv4_addrs:
+                                return ipv4_addrs[0].get("address")
+        except (LuciRpcError, json.JSONDecodeError):
             pass
         return None
 
@@ -1195,7 +1196,7 @@ class LuciRpcClient(OpenWrtClient):
                 )
                 try:
                     data = json.loads(data_str)
-                    if "clients" in data:
+                    if data and isinstance(data, dict) and "clients" in data:
                         for mac, info in data["clients"].items():
                             mac = mac.lower()
                             if mac in devices:
@@ -1316,15 +1317,16 @@ class LuciRpcClient(OpenWrtClient):
                 )
                 if stdout and stdout.strip().startswith("{"):
                     data = json.loads(stdout)
-                    for lease_data in data.get("dhcp_leases", []):
-                        leases.append(
-                            DhcpLease(
-                                hostname=lease_data.get("hostname", ""),
-                                mac=lease_data.get("mac", "").lower(),
-                                ip=lease_data.get("ipaddr", ""),
-                                expires=lease_data.get("expires", 0),
+                    if data and isinstance(data, dict):
+                        for lease_data in data.get("dhcp_leases", []):
+                            leases.append(
+                                DhcpLease(
+                                    hostname=lease_data.get("hostname", ""),
+                                    mac=lease_data.get("mac", "").lower(),
+                                    ip=lease_data.get("ipaddr", ""),
+                                    expires=lease_data.get("expires", 0),
+                                )
                             )
-                        )
                     if leases and self.dhcp_software == "odhcpd":
                         return leases
             except Exception:  # noqa: BLE001

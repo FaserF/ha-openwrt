@@ -67,6 +67,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
     ) -> None:
         """Initialize the update entity."""
         super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_firmware_update"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
@@ -112,6 +113,11 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         """Return the latest available firmware version."""
         if self.coordinator.data is None:
             return None
+
+        # If we determined the latest remote version is not newer than our current system, we are up to date
+        if not self.coordinator.data.firmware_upgradable:
+            return self.installed_version
+
         latest = self.coordinator.data.firmware_latest_version
         if not latest:
             return self.installed_version
@@ -157,6 +163,23 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         if not latest:
             return None
 
+        # Determine if install is possible to show clear explanations
+        can_install = bool(data.firmware_install_url)
+        conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
+        install_barrier = ""
+
+        if data.asu_supported:
+            if conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS):
+                if data.packages.asu:
+                    can_install = True
+                else:
+                    install_barrier = "The `luci-app-attendedsysupgrade` package is not installed on the router."
+            else:
+                can_install = True
+
+        if not can_install and not install_barrier:
+            install_barrier = "No direct installation URL is available for this update or your device does not support Attended Sysupgrade (ASU)."
+
         if data.is_custom_build:
             notes = f"## Custom Firmware: {latest}\n\n"
             if data.firmware_checksum:
@@ -169,7 +192,34 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
 
         notes += f"**Target:** `{data.device_info.target}`\n"
         notes += f"**Board:** `{data.device_info.board_name}`\n\n"
-        notes += "⚠️ **Always back up your configuration before upgrading!**"
+        notes += "⚠️ **Always back up your configuration before upgrading!**\n\n"
+
+        auto_backup = self.coordinator.config_entry.options.get(CONF_AUTO_BACKUP, True)
+        if auto_backup:
+            notes += "🛡️ *Note: Automatic Backups are enabled in your integration options. A configuration backup will be automatically created and stored sequentially in your Home Assistant `.storage` folder before the update begins.*\n\n"
+        else:
+            notes += "*(Automatic Backup is currently disabled in your integration options)*\n\n"
+
+        if not can_install:
+            notes += "---\n\n"
+            notes += "### ⚠️ Automatic Installation Disabled\n"
+            notes += f"{install_barrier}\n\n"
+
+            # Inject dynamic Firmware Selector URL with specific router parameters
+            target = data.device_info.target.replace("/", "%2F") if data.device_info.target else ""
+            board = data.device_info.board_name.replace(",", "_").replace(" ", "_") if data.device_info.board_name else ""
+
+            version_param = latest
+            if "SNAPSHOT" in latest.upper():
+                version_param = "SNAPSHOT"
+
+            fs_url = f"https://firmware-selector.openwrt.org/?version={version_param}&target={target}&id={board}"
+            notes += f"**🚀 Official Downloads:**\n[Firmware Selector ({latest})]({fs_url})\n\n"
+
+            if data.firmware_install_url:
+                notes += f"**Direct Link:**\n[Download Firmware Image globally]({data.firmware_install_url})\n"
+            elif data.firmware_release_url:
+                notes += f"**Repository / Changelog:**\n[View Release and Source]({data.firmware_release_url})\n"
 
         return notes
 

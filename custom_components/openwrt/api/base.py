@@ -914,7 +914,7 @@ class OpenWrtClient(abc.ABC):
                                     if tx_out and tx_out.strip().isdigit()
                                     else 0
                                 )
-                            except ValueError, AttributeError:
+                            except (ValueError, AttributeError):
                                 pass
 
                             vpn_interfaces.append(vpn)
@@ -969,7 +969,7 @@ class OpenWrtClient(abc.ABC):
                                     if tx_out and tx_out.strip().isdigit()
                                     else 0
                                 )
-                            except ValueError, AttributeError:
+                            except (ValueError, AttributeError):
                                 pass
                             vpn_interfaces.append(vpn)
         except Exception as err:

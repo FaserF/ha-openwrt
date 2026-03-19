@@ -264,11 +264,19 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         tasks = [self._async_probe_router(host) for host in potential_hosts]
         results = await asyncio.gather(*tasks)
 
+        existing_hosts = {
+            entry.data.get(CONF_HOST) for entry in self.hass.config_entries.async_entries(DOMAIN)
+        }
+
         for router_info in results:
             if router_info:
+                host = router_info["host"]
+                # Skip already configured routers
+                if host in existing_hosts:
+                    continue
                 # Avoid duplicates
                 if not any(
-                    r["host"] == router_info["host"] for r in self._discovered_routers
+                    r["host"] == host for r in self._discovered_routers
                 ):
                     self._discovered_routers.append(router_info)
 
@@ -488,7 +496,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except TimeoutError, socket.gaierror, ConnectionRefusedError, OSError:
+            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
                 continue
         return False
 

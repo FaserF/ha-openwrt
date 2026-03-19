@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+import traceback as _traceback
 from datetime import timedelta
 from typing import Any
 
@@ -222,6 +223,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 async_create_connection_lost_repair(self.hass, self.config_entry)
                 raise UpdateFailed(f"Error fetching data: {retry_err}") from retry_err
         except Exception as err:
+            _LOGGER.error(
+                "Unexpected error updating OpenWrt data for %s: %s\n%s",
+                self.name,
+                err,
+                _traceback.format_exc(),
+            )
             raise UpdateFailed(f"Unexpected error: {err}") from err
 
         async_delete_connection_lost_repair(self.hass, self.config_entry)
@@ -398,18 +405,37 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         if not current_version:
             return
 
-        revision = data.device_info.release_revision
-        if revision and (
-            "SNAPSHOT" in current_version.upper()
-            or "custom" in revision.lower()
-            or not revision.startswith("r")
-        ):
-            data.is_custom_build = True
-            # Don't return here! Even custom/snapshot builds might want to see stable updates.
 
         session = async_get_clientsession(self.hass)
 
         try:
+            if "SNAPSHOT" in current_version.upper() and data.device_info.target:
+                target = data.device_info.target
+                profile_url = f"https://downloads.openwrt.org/snapshots/targets/{target}/profiles.json"
+                async with session.get(profile_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        profile_data = await resp.json()
+                        version_code = profile_data.get("version_code", "")
+                        if version_code:
+                            latest_snapshot = f"SNAPSHOT ({version_code})"
+                            if self._version_is_newer(current_version, latest_snapshot):
+                                data.firmware_latest_version = latest_snapshot
+                                data.firmware_upgradable = True
+
+                                board = data.device_info.board_name.replace("_", "-").replace(",", "-")
+                                data.firmware_release_url = f"https://downloads.openwrt.org/snapshots/targets/{target}/"
+
+                                profiles = profile_data.get("profiles", {})
+                                board_key = data.device_info.board_name.replace("-", "_").replace(",", "_")
+                                board_profile = profiles.get(board_key)
+                                if board_profile:
+                                    images = board_profile.get("images", [])
+                                    for img in images:
+                                        if "sysupgrade" in img.get("name", ""):
+                                            data.firmware_install_url = f"{data.firmware_release_url}{img.get('name')}"
+                                            break
+                return
+
             async with session.get(
                 OPENWRT_RELEASE_API, timeout=aiohttp.ClientTimeout(total=15)
             ) as response:
@@ -425,26 +451,25 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                                 break
 
                     if latest_stable:
-                        data.firmware_latest_version = latest_stable
-                        data.firmware_upgradable = self._version_is_newer(
-                            current_version, latest_stable
-                        )
+                        if self._version_is_newer(current_version, latest_stable):
+                            data.firmware_latest_version = latest_stable
+                            data.firmware_upgradable = True
 
-                        # Try to build a direct sysupgrade URL if we have target/board
-                        info = data.device_info
-                        if info.target and info.board_name:
-                            target = info.target
-                            board = info.board_name.replace("_", "-").replace(",", "-")
-                            dist = info.release_distribution or "openwrt"
-                            # Standard OpenWrt sysupgrade URL pattern
-                            data.firmware_install_url = (
-                                f"https://downloads.openwrt.org/releases/{latest_stable}/targets/{target}/"
-                                f"{dist}-{latest_stable}-{target.replace('/', '-')}-{board}-squashfs-sysupgrade.bin"
+                            # Try to build a direct sysupgrade URL if we have target/board
+                            info = data.device_info
+                            if info.target and info.board_name:
+                                target = info.target
+                                board = info.board_name.replace("_", "-").replace(",", "-")
+                                dist = info.release_distribution or "openwrt"
+                                # Standard OpenWrt sysupgrade URL pattern
+                                data.firmware_install_url = (
+                                    f"https://downloads.openwrt.org/releases/{latest_stable}/targets/{target}/"
+                                    f"{dist}-{latest_stable}-{target.replace('/', '-')}-{board}-squashfs-sysupgrade.bin"
+                                )
+
+                            data.firmware_release_url = (
+                                f"https://openwrt.org/releases/{latest_stable}"
                             )
-
-                        data.firmware_release_url = (
-                            f"https://openwrt.org/releases/{latest_stable}"
-                        )
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Failed to check official firmware updates")
 
@@ -488,7 +513,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
                     if (
                         latest_version
-                        and latest_version != data.firmware_current_version
+                        and self._version_is_newer(
+                            data.firmware_current_version or "", latest_version
+                        )
                     ):
                         data.asu_update_available = True
                         data.asu_supported = True
@@ -544,7 +571,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                             else:
                                 latest_version = version or revision
 
-                            if latest_version and latest_version != data.firmware_current_version:
+                            if latest_version and self._version_is_newer(
+                                data.firmware_current_version or "", latest_version
+                            ):
                                 data.asu_update_available = True
                                 data.asu_supported = True
                                 data.firmware_latest_version = latest_version
@@ -618,10 +647,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             data.firmware_latest_version = latest_version
             data.firmware_release_url = latest_release.get("html_url", "")
 
-            is_upgradable = (
-                data.firmware_current_version != latest_tag
-                and data.firmware_current_version != latest_version
+            is_upgradable = self._version_is_newer(
+                data.firmware_current_version or "", latest_tag
             )
+            if not is_upgradable and latest_version != latest_tag:
+                 is_upgradable = self._version_is_newer(
+                     data.firmware_current_version or "", latest_version
+                 )
             data.firmware_upgradable = is_upgradable
 
             assets = latest_release.get("assets", [])
@@ -683,6 +715,24 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     @staticmethod
     def _version_is_newer(current: str, latest: str) -> bool:
         """Compare firmware versions (e.g., '24.10.1' vs '25.12.0')."""
+        import re
+
+        if "SNAPSHOT" in current.upper() and "SNAPSHOT" not in latest.upper():
+            return False
+
+        if "SNAPSHOT" in current.upper() and "SNAPSHOT" in latest.upper():
+            def get_rev_num(v: str) -> int:
+                match = re.search(r'r(\d+)-', v)
+                if match:
+                    return int(match.group(1))
+                return -1
+
+            rev_current = get_rev_num(current)
+            rev_latest = get_rev_num(latest)
+            if rev_current >= 0 and rev_latest >= 0 and rev_latest != rev_current:
+                return rev_latest > rev_current
+            return current != latest
+
         try:
             current_parts = [int(p) for p in current.split(".")]
             latest_parts = [int(p) for p in latest.split(".")]

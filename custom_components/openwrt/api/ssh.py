@@ -732,7 +732,7 @@ class SshClient(OpenWrtClient):
                     iface_name = obj_name.split(".", 1)[1]
                     try:
                         data = json.loads(data_str)
-                        if "clients" in data:
+                        if data and isinstance(data, dict) and "clients" in data:
                             for mac, info in data["clients"].items():
                                 # Create ConnectedDevice object from ubus data
                                 if mac.lower() not in devices:
@@ -1200,15 +1200,16 @@ class SshClient(OpenWrtClient):
                 stdout = await self._exec("ubus call dhcp ipv4leases 2>/dev/null")
                 if stdout and stdout.strip().startswith("{"):
                     data = json.loads(stdout)
-                    for lease_data in data.get("dhcp_leases", []):
-                        leases.append(
-                            DhcpLease(
-                                hostname=lease_data.get("hostname", ""),
-                                mac=lease_data.get("mac", "").lower(),
-                                ip=lease_data.get("ipaddr", ""),
-                                expires=lease_data.get("expires", 0),
+                    if data and isinstance(data, dict):
+                        for lease_data in data.get("dhcp_leases", []):
+                            leases.append(
+                                DhcpLease(
+                                    hostname=lease_data.get("hostname", ""),
+                                    mac=lease_data.get("mac", "").lower(),
+                                    ip=lease_data.get("ipaddr", ""),
+                                    expires=lease_data.get("expires", 0),
+                                )
                             )
-                        )
                     if leases and self.dhcp_software == "odhcpd":
                         return leases
             except Exception:  # noqa: BLE001

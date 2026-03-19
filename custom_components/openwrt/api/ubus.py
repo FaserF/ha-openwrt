@@ -235,7 +235,7 @@ class UbusClient(OpenWrtClient):
             _LOGGER.debug("Failed to list ubus objects: %s", err)
             return []
 
-        if "result" not in data:
+        if "result" not in data or not isinstance(data["result"], dict):
             return []
 
         # Result is a dict where keys are object names
@@ -717,7 +717,7 @@ class UbusClient(OpenWrtClient):
                     is_wireless=False,
                     connected=False,  # DHCP leases are just records, not proof of connectivity
                 )
-        except UbusError, Exception:  # noqa: BLE001
+        except (UbusError, Exception):  # noqa: BLE001
             pass
 
         # Fetch wireless_data once for both iwinfo and hostapd processing
@@ -1155,7 +1155,7 @@ class UbusClient(OpenWrtClient):
                 if getattr(packages, attr) is not True:
                     try:
                         stat = await self._call("file", "stat", {"path": path})
-                        if stat and "type" in stat:
+                        if stat and isinstance(stat, dict) and "type" in stat:
                             setattr(packages, attr, True)
                     except Exception:
                         pass
@@ -1725,7 +1725,7 @@ class UbusClient(OpenWrtClient):
         # 1. Try via ubus file.read (more robust/standard than exec)
         try:
             res = await self._call("file", "read", {"path": "/etc/passwd"})
-            if res and "data" in res:
+            if res and isinstance(res, dict) and "data" in res:
                 if f"{username}:" in res["data"]:
                     return True
         except Exception:
