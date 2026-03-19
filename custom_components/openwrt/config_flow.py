@@ -97,7 +97,7 @@ _LOGGER = logging.getLogger(__name__)
 CONNECTION_TYPE_MAP = {
     CONNECTION_TYPE_UBUS: "ubus (HTTP/HTTPS)",
     CONNECTION_TYPE_LUCI_RPC: "LuCI RPC",
-    CONNECTION_TYPE_SSH: "SSH",
+    CONNECTION_TYPE_SSH: "SSH (not recommended)",
 }
 
 
@@ -153,7 +153,8 @@ def _generate_package_table(packages: Any) -> str:
         f"| **iwinfo** | {to_icon(packages.iwinfo)} | {get_missing(packages.iwinfo, 'Enhanced WiFi Info')} |\n"
         f"| **etherwake** | {to_icon(packages.etherwake)} | {get_missing(packages.etherwake, 'Wake on LAN')} |\n"
         f"| **wireguard-tools** | {to_icon(packages.wireguard)} | {get_missing(packages.wireguard, 'WireGuard Sensors')} |\n"
-        f"| **openvpn** | {to_icon(packages.openvpn)} | {get_missing(packages.openvpn, 'OpenVPN Sensors')} |"
+        f"| **openvpn** | {to_icon(packages.openvpn)} | {get_missing(packages.openvpn, 'OpenVPN Sensors')} |\n"
+        f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, 'LuCI Web API (required)')} |"
     )
     return table
 
@@ -187,10 +188,26 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle the initial step - Welcome Screen."""
         if user_input is not None:
+            if user_input.get("flow_type") == "manual":
+                return await self.async_step_manual_entry()
             return await self.async_step_discovery()
 
         return self.async_show_form(
-            step_id="user", description_placeholders={"docs_url": DOCS_URL}
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        "flow_type", default="manual"
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=["discovery", "manual"],
+                            translation_key="flow_type",
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+            description_placeholders={"docs_url": DOCS_URL},
         )
 
     async def async_step_discovery(
@@ -206,11 +223,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
 
             if len(self._discovered_routers) == 1:
-                router = self._discovered_routers[0]
-                self._data[CONF_HOST] = router["host"]
-                self._data[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_UBUS
-                self._discovered_name = router.get("hostname")
-                return await self.async_step_credentials()
+                return await self.async_step_confirm_discovery()
 
             return await self.async_step_select_device()
 
@@ -280,10 +293,13 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle selecting a router when multiple are found."""
         if user_input is not None:
             host = user_input["device"]
+            if host == "manual":
+                return await self.async_step_manual_entry()
+
             router = next(r for r in self._discovered_routers if r["host"] == host)
-            self._data[CONF_HOST] = router["host"]
+            self._discovered_routers = [router]
             self._discovered_name = router.get("hostname")
-            return await self.async_step_credentials()
+            return await self.async_step_confirm_discovery()
 
         device_options = {
             r[
@@ -291,6 +307,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             ]: f"{r.get('hostname', 'OpenWrt')} ({r['host']}) - {r['method'].upper()} [Available: {', '.join(r['capabilities'])}]"
             for r in self._discovered_routers
         }
+        # Add manual entry option
+        device_options["manual"] = "Enter details manually..."
 
         return self.async_show_form(
             step_id="select_device",
@@ -324,9 +342,22 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             "oven",
             "camera",
             "tuya",
-            "smartlife",
             "broadlink",
             "shelly",
+            "opnsense",
+            "pfsense",
+            "fortigate",
+            "mikrotik",
+            "ubnt",
+            "unifi",
+            "tplink",
+            "asuswrt",
+            "ddwrt",
+            "padavan",
+            "proxmox",
+            "esxi",
+            "truenas",
+            "freenas",
         ]
 
         # 1. Check hostname/name
@@ -422,6 +453,26 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 async with asyncio.timeout(1.5):
                     reader, writer = await asyncio.open_connection(host, port)
+                    if port == 22:
+                        # Try to read SSH banner to reduce false positives
+                        try:
+                            banner = await reader.read(100)
+                            banner_str = banner.decode("utf-8", errors="ignore").lower()
+                            if (
+                                "dropbear" not in banner_str
+                                and "openwrt" not in banner_str
+                            ):
+                                _LOGGER.debug(
+                                    "Excluded %s: SSH banner '%s' does not look like OpenWrt",
+                                    host,
+                                    banner_str.strip(),
+                                )
+                                writer.close()
+                                await writer.wait_closed()
+                                continue
+                        except Exception:
+                            # If we can't read the banner, we still allow it but it's less certain
+                            pass
                     writer.close()
                     await writer.wait_closed()
                     return True
@@ -471,7 +522,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             "host": host,
         }
 
-        return await self.async_step_ssdp_confirm()
+        return await self.async_step_confirm_discovery()
 
     async def async_step_dhcp(
         self, discovery_info: DhcpServiceInfo
@@ -498,7 +549,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
 
-        return await self.async_step_ssdp_confirm()
+        return await self.async_step_confirm_discovery()
 
     async def async_step_zeroconf(
         self, discovery_info: ZeroconfServiceInfo
@@ -533,13 +584,16 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
 
-        return await self.async_step_ssdp_confirm()
+        return await self.async_step_confirm_discovery()
 
-    async def async_step_ssdp_confirm(
+    async def async_step_confirm_discovery(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Confirm the discovered device."""
         if user_input is not None:
+            if user_input.get(CONF_CONNECTION_TYPE) == "manual":
+                return await self.async_step_manual_entry()
+
             router = self._discovered_routers[-1]
             self._data[CONF_HOST] = router["host"]
             self._data[CONF_CONNECTION_TYPE] = user_input.get(
@@ -553,14 +607,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
         schema = vol.Schema({})
-        if len(router.get("capabilities", [])) > 1:
+        options: list[str] = list(router.get("capabilities", []))
+        if "manual" not in options:
+            options.append("manual")
+
+        if len(options) > 0:
             schema = vol.Schema(
                 {
                     vol.Required(
                         CONF_CONNECTION_TYPE, default=router["method"]
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=router["capabilities"],
+                            options=options,
                             translation_key="connection_type",
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
@@ -569,7 +627,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         return self.async_show_form(
-            step_id="ssdp_confirm",
+            step_id="confirm_discovery",
             data_schema=schema,
             description_placeholders={
                 "name": self._discovered_name or "OpenWrt Router",
@@ -676,6 +734,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "host": self._data.get(CONF_HOST, ""),
+                "security_link": "https://github.com/FaserF/ha-openwrt/blob/main/SECURITY.md",
             },
         )
 
@@ -850,7 +909,12 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     if (
                         any(
                             s in response_text.lower()
-                            for s in ["luci", "openwrt", "ubus"]
+                            for s in [
+                                "luci - openwrt",
+                                "<title>luci",
+                                "ubus rpc",
+                                "cgi-bin/luci",
+                            ]
                         )
                         or "uhttpd" in response.headers.get("Server", "").lower()
                     ):

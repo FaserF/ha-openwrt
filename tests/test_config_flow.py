@@ -39,36 +39,30 @@ async def test_full_user_flow(hass) -> None:
     assert result["step_id"] == "user"
 
     # 2. Discovery Step (started by submitting Welcome)
-    # Mocking discovery to find one router (192.168.1.1)
-    mock_writer = AsyncMock()
-    mock_writer.close = MagicMock()
-    mock_writer.wait_closed = AsyncMock()
-
-    async def side_effect(host, port):
+    # Mock _async_probe_router to return exactly one router
+    async def mock_probe_router(host, hostname=None):
         if host == "192.168.1.1":
-            return AsyncMock(), mock_writer
-        raise ConnectionRefusedError()
+            return {
+                "host": "192.168.1.1",
+                "hostname": "OpenWrt.local",
+                "capabilities": ["ubus", "ssh"],
+                "method": "ubus",
+            }
+        return None
 
     with (
-        patch("asyncio.open_connection", side_effect=side_effect),
-        patch("socket.gethostbyaddr", return_value=("OpenWrt.local", [], [])),
-        patch(
-            "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_openwrt",
-            side_effect=lambda host, hostname=None: (
-                ["ubus"] if host == "192.168.1.1" else []
-            ),
-        ),
-        patch(
-            "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_check_reachable",
-            side_effect=lambda host, conn_type: host == "192.168.1.1",
-        ),
+        patch.object(flow, "_async_probe_router", side_effect=mock_probe_router),
         patch("homeassistant.components.network.async_get_adapters", return_value=[]),
     ):
-        result = await flow.async_step_user({"next": True})
+        result = await flow.async_step_user({"flow_type": "discovery"})
 
     assert result["type"].lower() == "form"
+    assert result["step_id"] == "confirm_discovery"
+
+    # 3. Confirm Discovery Step
+    result = await flow.async_step_confirm_discovery({"connection_type": "ubus"})
+    assert result["type"].lower() == "form"
     assert result["step_id"] == "credentials"
-    assert "OpenWrt.local" in result["description_placeholders"]["auto_detected_info"]
 
     # 3. Credentials Step
     mock_client = AsyncMock()
@@ -124,31 +118,23 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
     await flow.async_step_user()
 
     # 2. Discovery -> Credentials
-    mock_writer = AsyncMock()
-    mock_writer.close = MagicMock()
-    mock_writer.wait_closed = AsyncMock()
-
-    async def side_effect(host, port):
+    async def mock_probe_router(host, hostname=None):
         if host == "192.168.1.1":
-            return AsyncMock(), mock_writer
-        raise ConnectionRefusedError()
+            return {
+                "host": "192.168.1.1",
+                "hostname": "192.168.1.1",
+                "capabilities": ["ubus"],
+                "method": "ubus",
+            }
+        return None
 
     with (
-        patch("asyncio.open_connection", side_effect=side_effect),
-        patch("socket.gethostbyaddr", side_effect=Exception()),
-        patch(
-            "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_openwrt",
-            side_effect=lambda host, hostname=None: (
-                ["ubus"] if host == "192.168.1.1" else []
-            ),
-        ),
-        patch(
-            "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_check_reachable",
-            side_effect=lambda host, conn_type: host == "192.168.1.1",
-        ),
+        patch.object(flow, "_async_probe_router", side_effect=mock_probe_router),
         patch("homeassistant.components.network.async_get_adapters", return_value=[]),
     ):
-        result = await flow.async_step_user({"next": True})
+        # Welcome -> Discovery -> Confirm
+        await flow.async_step_user({"flow_type": "discovery"})
+        await flow.async_step_confirm_discovery({"connection_type": "ubus"})
 
     # 3. Credentials
     mock_client = AsyncMock()
@@ -201,7 +187,7 @@ async def test_config_flow_default_connection_type(hass) -> None:
         patch("asyncio.open_connection", side_effect=ConnectionRefusedError()),
         patch("homeassistant.components.network.async_get_adapters", return_value=[]),
     ):
-        result = await flow.async_step_user({"next": True})
+        result = await flow.async_step_user({"flow_type": "discovery"})
 
     # Should land in manual_entry (fallback for no discovery)
     assert result["type"].lower() == "form"
@@ -254,7 +240,7 @@ async def test_multi_router_selection(hass) -> None:
         ),
         patch("homeassistant.components.network.async_get_adapters", return_value=[]),
     ):
-        result = await flow.async_step_user({"next": True})
+        result = await flow.async_step_user({"flow_type": "discovery"})
 
     assert result["type"].lower() == "form"
     assert result["step_id"] == "select_device"
@@ -263,8 +249,9 @@ async def test_multi_router_selection(hass) -> None:
     # The label is now more complex: "Router1 (192.168.1.1) - UBUS [Available: ubus, ssh]"
     # But for the form submission, we only need the value (IP)
     result = await flow.async_step_select_device({"device": "192.168.1.1"})
+    assert result["step_id"] == "confirm_discovery"
+    result = await flow.async_step_confirm_discovery({"connection_type": "ubus"})
     assert result["step_id"] == "credentials"
-    assert result["description_placeholders"]["host"] == "192.168.1.1"
 
 
 async def test_dhcp_discovery(hass) -> None:
@@ -298,12 +285,12 @@ async def test_dhcp_discovery(hass) -> None:
         result = await flow.async_step_dhcp(discovery_info)
 
     assert result["type"].lower() == "form"
-    assert result["step_id"] == "ssdp_confirm"
+    assert result["step_id"] == "confirm_discovery"
     mock_set_uid.assert_called_with("d4:bc:52:12:34:56")
     mock_probe.assert_called_with("192.168.1.1", "OpenWrt")
 
     # Follow through confirmation
-    result = await flow.async_step_ssdp_confirm({})
+    result = await flow.async_step_confirm_discovery({})
     assert result["step_id"] == "credentials"
 
 
@@ -340,10 +327,10 @@ async def test_zeroconf_discovery(hass) -> None:
         result = await flow.async_step_zeroconf(discovery_info)
 
     assert result["type"].lower() == "form"
-    assert result["step_id"] == "ssdp_confirm"
+    assert result["step_id"] == "confirm_discovery"
     mock_set_uid.assert_called_with("192.168.1.1")
     mock_probe.assert_called_with("192.168.1.1", "OpenWrt._luci._tcp.local.")
 
     # Follow through confirmation
-    result = await flow.async_step_ssdp_confirm({})
+    result = await flow.async_step_confirm_discovery({})
     assert result["step_id"] == "credentials"

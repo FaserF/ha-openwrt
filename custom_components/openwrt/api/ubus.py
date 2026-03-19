@@ -419,8 +419,12 @@ class UbusClient(OpenWrtClient):
                     for mount in mounts["result"]:
                         if mount.get("mount") in ("/", "/overlay"):
                             resources.filesystem_total = mount.get("size", 0)
-                            resources.filesystem_free = mount.get("free", 0) or mount.get("avail", 0)
-                            resources.filesystem_used = resources.filesystem_total - resources.filesystem_free
+                            resources.filesystem_free = mount.get(
+                                "free", 0
+                            ) or mount.get("avail", 0)
+                            resources.filesystem_used = (
+                                resources.filesystem_total - resources.filesystem_free
+                            )
                             break
             except Exception:
                 pass
@@ -1016,7 +1020,8 @@ class UbusClient(OpenWrtClient):
             try:
                 cmd = (
                     "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
-                    "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn; do "
+                    "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
+                    "/usr/lib/lua/luci/controller/rpc.lua; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
@@ -1035,6 +1040,7 @@ class UbusClient(OpenWrtClient):
                 packages.etherwake = detect_status(3)
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
+                packages.luci_mod_rpc = detect_status(6)
             except Exception as err:
                 _LOGGER.debug(
                     "Package check via file.exec failed (this is expected on restricted routers): %s",
@@ -1049,6 +1055,7 @@ class UbusClient(OpenWrtClient):
                     "etherwake",
                     "wireguard",
                     "openvpn",
+                    "luci_mod_rpc",
                 ]:
                     if getattr(packages, attr) is None:
                         setattr(packages, attr, False)
@@ -1214,7 +1221,9 @@ class UbusClient(OpenWrtClient):
             if not content:
                 try:
                     # Priority 2: file.exec (original fallback)
-                    content = await self.execute_command("cat /tmp/dhcp.leases 2>/dev/null")
+                    content = await self.execute_command(
+                        "cat /tmp/dhcp.leases 2>/dev/null"
+                    )
                 except Exception:
                     pass
 

@@ -458,9 +458,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         asu_url = self.config_entry.options.get(
             CONF_ASU_URL,
-            self.config_entry.data.get(
-                CONF_ASU_URL, "https://sysupgrade.openwrt.org"
-            ),
+            self.config_entry.data.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org"),
         )
 
         session = async_get_clientsession(self.hass)
@@ -481,7 +479,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     else:
                         latest_version = version
 
-                    if latest_version and latest_version != data.firmware_current_version:
+                    if (
+                        latest_version
+                        and latest_version != data.firmware_current_version
+                    ):
                         data.asu_update_available = True
                         data.asu_supported = True
 

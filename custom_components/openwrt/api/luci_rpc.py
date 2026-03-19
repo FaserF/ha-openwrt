@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any
 
 import aiohttp
@@ -150,12 +151,15 @@ class LuciRpcClient(OpenWrtClient):
                     text = await response.text()
                     if "<html" in text.lower():
                         _LOGGER.debug(
-                            "Received HTML instead of JSON from LuCI RPC: %s", text[:200]
+                            "Received HTML instead of JSON from LuCI RPC: %s",
+                            text[:200],
                         )
                         raise LuciRpcPackageMissingError(
                             "LuCI RPC returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
                         )
-                    raise LuciRpcError(f"Unexpected content type from LuCI RPC: {content_type}")
+                    raise LuciRpcError(
+                        f"Unexpected content type from LuCI RPC: {content_type}"
+                    )
 
                 data = await response.json()
         except TimeoutError as err:
@@ -227,17 +231,22 @@ class LuciRpcClient(OpenWrtClient):
                         "LuCI RPC auth endpoint not found. Is 'luci-mod-rpc' installed?"
                     )
                 response.raise_for_status()
-                
+
                 # Check content type to ensure it's JSON
                 content_type = response.headers.get("Content-Type", "").lower()
                 if "application/json" not in content_type:
                     text = await response.text()
                     if "<html" in text.lower():
-                        _LOGGER.debug("Received HTML instead of JSON from LuCI Auth: %s", text[:200])
+                        _LOGGER.debug(
+                            "Received HTML instead of JSON from LuCI Auth: %s",
+                            text[:200],
+                        )
                         raise LuciRpcPackageMissingError(
                             "LuCI Auth returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
                         )
-                    raise LuciRpcError(f"Unexpected content type from LuCI Auth: {content_type}")
+                    raise LuciRpcError(
+                        f"Unexpected content type from LuCI Auth: {content_type}"
+                    )
 
                 data = await response.json()
         except TimeoutError as err:
@@ -508,8 +517,7 @@ class LuciRpcClient(OpenWrtClient):
                 packages.etherwake = detect_status(3)
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
-                # We can add luci-mod-rpc if we want to show it in the UI, 
-                # but for now we just use the detection to verify it's there.
+                packages.luci_mod_rpc = detect_status(6)
                 # If we are here, luci-mod-rpc IS working, so it's True.
         except Exception as err:
             _LOGGER.error("Failed to check packages via LuCI RPC: %s", err)
@@ -595,7 +603,7 @@ class LuciRpcClient(OpenWrtClient):
         if isinstance(uptime_str, str) and uptime_str:
             try:
                 resources.uptime = int(float(uptime_str.strip().split()[0]))
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 pass
 
         # 4. System Info (Memory fallback and CPU/Disk)
@@ -627,7 +635,9 @@ class LuciRpcClient(OpenWrtClient):
                     if isinstance(root, dict) and root.get("total"):
                         resources.filesystem_total = root.get("total", 0)
                         resources.filesystem_used = root.get("used", 0)
-                        resources.filesystem_free = root.get("total", 0) - root.get("used", 0)
+                        resources.filesystem_free = root.get("total", 0) - root.get(
+                            "used", 0
+                        )
             except Exception:
                 pass
 
@@ -641,8 +651,13 @@ class LuciRpcClient(OpenWrtClient):
                         for mount in mounts["result"]:
                             if mount.get("mount") in ("/", "/overlay"):
                                 resources.filesystem_total = mount.get("size", 0)
-                                resources.filesystem_free = mount.get("free", 0) or mount.get("avail", 0)
-                                resources.filesystem_used = resources.filesystem_total - resources.filesystem_free
+                                resources.filesystem_free = mount.get(
+                                    "free", 0
+                                ) or mount.get("avail", 0)
+                                resources.filesystem_used = (
+                                    resources.filesystem_total
+                                    - resources.filesystem_free
+                                )
                                 break
                 except Exception:
                     pass
@@ -659,7 +674,7 @@ class LuciRpcClient(OpenWrtClient):
                             resources.filesystem_total = int(parts[1]) * 1024
                             resources.filesystem_used = int(parts[2]) * 1024
                             resources.filesystem_free = int(parts[3]) * 1024
-                        except (ValueError, IndexError):
+                        except ValueError, IndexError:
                             pass
 
         # 7. CPU usage fallback from /proc/stat

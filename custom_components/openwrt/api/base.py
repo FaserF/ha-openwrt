@@ -481,6 +481,7 @@ class OpenWrtPackages:
     etherwake: bool | None = None
     wireguard: bool | None = None
     openvpn: bool | None = None
+    luci_mod_rpc: bool | None = None
 
 
 @dataclass

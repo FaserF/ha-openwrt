@@ -908,7 +908,8 @@ class SshClient(OpenWrtClient):
             # or multiple if needed. Here we check existence of binaries or init scripts.
             cmd = (
                 "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
-                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn; do "
+                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
+                "/usr/lib/lua/luci/controller/rpc.lua; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._exec(cmd)
@@ -921,8 +922,8 @@ class SshClient(OpenWrtClient):
             packages.mwan3 = detect_status(1)
             packages.iwinfo = detect_status(2)
             packages.etherwake = detect_status(3)
-            packages.wireguard = detect_status(4)
             packages.openvpn = detect_status(5)
+            packages.luci_mod_rpc = detect_status(6)
         except Exception as err:
             _LOGGER.error("Failed to check packages via SSH: %s", err)
             # Initialize to False if we failed (to avoid staying at None)
@@ -933,6 +934,7 @@ class SshClient(OpenWrtClient):
                 "etherwake",
                 "wireguard",
                 "openvpn",
+                "luci_mod_rpc",
             ]:
                 if getattr(packages, attr) is None:
                     setattr(packages, attr, False)

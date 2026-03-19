@@ -29,7 +29,7 @@
       },
       "credentials": {
         "title": "Authentifizierung",
-        "description": "Gib die Zugangsdaten für {host} via {connection_type} ein.",
+        "description": "Gib die Zugangsdaten für **{host}** via **{connection_type}** ein.\n\nHinweis: Wenn der Port leer gelassen wird, wird standardmäßig 80 (HTTP), 443 (HTTPS) oder 22 (SSH) verwendet, abhängig von deinen Einstellungen.\n\n{auto_detected_info}",
         "data": {
           "username": "Benutzername",
           "password": "Passwort",
@@ -43,7 +43,7 @@
       },
       "ssh": {
         "title": "SSH Authentifizierung",
-        "description": "Gib die SSH Zugangsdaten für {host} ein.",
+        "description": "Gib die SSH-Zugangsdaten für {host} ein.\n\nHinweis: Wenn der Port leer gelassen wird, wird standardmäßig 22 verwendet. SSH wird **nicht empfohlen** für volle Sensor-Unterstützung (wie z.B. CPU-Auslastung bei einigen Modellen). Verwende nach Möglichkeit LuCI RPC oder ubus.\n\n[Sicherheitsempfehlungen]({security_link})",
         "data": {
           "username": "Benutzername",
           "password": "Passwort",
@@ -61,9 +61,9 @@
           "password": "Passwort"
         }
       },
-      "ssdp_confirm": {
+      "confirm_discovery": {
         "title": "OpenWrt Router gefunden",
-        "description": "Möchten Sie {name} ({host}) einrichten? Die Verbindung wird über ubus (HTTP/HTTPS) hergestellt.",
+        "description": "Möchtest du {name} ({host}) einrichten? Die Verbindung wird über **{method}** hergestellt.\n\nVerfügbare Funktionen: {capabilities}",
         "data": {
           "username": "Benutzername",
           "password": "Passwort",
@@ -113,7 +113,7 @@
     },
     "error": {
       "cannot_connect": "Verbindung zum Router fehlgeschlagen. Prüfe IP/Host und ob der Dienst (ubus/LuCI/SSH) läuft.",
-      "invalid_auth": "Ungültige Zugangsdaten (Benutzername, Passwort oder SSH-Key).",
+      "invalid_auth": "Ungültige Zugangsdaten (Benutzername, Passwort oder SSH-Schlüssel). Stelle sicher, dass der Dienst (ubus/LuCI) aktiviert ist und dein Benutzer über ausreichende ACL-Berechtigungen verfügt.",
       "timeout": "Zeitüberschreitung der Verbindung. Prüfe die Erreichbarkeit und den Port.",
       "ssl_error": "SSL-Verifizierung fehlgeschlagen. Deaktiviere 'SSL-Zertifikat prüfen' bei selbstsignierten Zertifikaten.",
       "package_missing": "Erforderliches OpenWrt Paket fehlt. Für ubus: 'uhttpd-mod-ubus'. Für LuCI: 'luci-mod-rpc'. Installation via SSH: 'opkg update && opkg install <paket>'.",
@@ -179,7 +179,14 @@
       "options": {
         "ubus": "ubus (HTTP/HTTPS)",
         "luci_rpc": "LuCI RPC",
-        "ssh": "SSH"
+        "ssh": "SSH (nicht empfohlen)",
+        "manual": "Manuell konfigurieren..."
+      }
+    },
+    "flow_type": {
+      "options": {
+        "discovery": "Automatische Suche",
+        "manual": "Manuelle Konfiguration"
       }
     }
   },

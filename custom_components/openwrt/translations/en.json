@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to OpenWrt Router",
+        "title": "OpenWrt Setup Wizard",
         "description": "Select the connection method for your OpenWrt router. [Learn more]({docs_url})."
       },
       "discovery": {
@@ -16,7 +16,7 @@
         "title": "Select Your Router",
         "description": "Multiple OpenWrt devices were found. Please select the one you want to configure:\n\n{public_info}",
         "data": {
-          "device": "Discovered Device (Method/Capabilities)"
+          "device": "Select Device (or enter details manually)"
         }
       },
       "manual_entry": {
@@ -29,7 +29,7 @@
       },
       "credentials": {
         "title": "Authentication",
-        "description": "Enter the credentials for {host} via {connection_type}.",
+        "description": "Enter the credentials for **{host}** via **{connection_type}**.\n\nNote: If the port is left empty, it will default to 80 (HTTP), 443 (HTTPS), or 22 (SSH) depending on your settings.\n\n{auto_detected_info}",
         "data": {
           "username": "Username",
           "password": "Password",
@@ -43,7 +43,7 @@
       },
       "ssh": {
         "title": "SSH Authentication",
-        "description": "Enter the SSH credentials for {host}.",
+        "description": "Enter the SSH credentials for {host}.\n\nNote: If the port is left empty, it will default to 22. SSH is **not recommended** for full sensor support (like CPU usage on some models). Use LuCI RPC or ubus if possible.\n\n[Security Best Practices]({security_link})",
         "data": {
           "username": "Username",
           "password": "Password",
@@ -61,9 +61,9 @@
           "password": "Password"
         }
       },
-      "ssdp_confirm": {
+      "confirm_discovery": {
         "title": "Discovered OpenWrt Router",
-        "description": "Do you want to set up {name} ({host})? Connection will be established via ubus (HTTP/HTTPS).",
+        "description": "Do you want to set up {name} ({host})? Connection will be established via **{method}**.\n\nAvailable capabilities: {capabilities}",
         "data": {
           "username": "Username",
           "password": "Password",
@@ -113,13 +113,13 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to the router. Check the IP/Host and ensure the selected service (ubus/LuCI/SSH) is running.",
-      "invalid_auth": "Invalid authentication credentials (Username, Password or SSH Key).",
+      "invalid_auth": "Invalid authentication credentials (Username, Password or SSH Key). Ensure the service (ubus/LuCI) is enabled and your user has sufficient ACL permissions.",
       "timeout": "Connection timed out. Check if the router is reachable and the port is correct.",
       "ssl_error": "SSL verification failed. If using self-signed certs, disable 'Verify SSL Certificate'.",
       "package_missing": "Required OpenWrt package is missing. For ubus: 'uhttpd-mod-ubus'. For LuCI: 'luci-mod-rpc'. Install via SSH: 'opkg update && opkg install package'.",
       "permission_error": "Insufficient RPC permissions. Check your user ACLs in /etc/config/rpcd or LuCI permissions.",
+      "provision_failed": "Failed to automatically create the dedicated user. Ensure you are connected as root and have enough free space on the router for 'rpcd' ACL files.",
       "no_devices_found": "No OpenWrt routers were automatically discovered on your network. You can try to enter the details manually.",
-      "provision_failed": "Failed to automatically create the dedicated user. Please check if your router supports user management or try creating it manually.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
@@ -133,16 +133,16 @@
     "step": {
       "init": {
         "title": "OpenWrt Options",
-        "description": "Configure OpenWrt integration options.",
         "data": {
-          "update_interval": "Update interval (seconds)",
-          "track_devices": "Track connected devices",
-          "track_wired": "Include wired devices in tracking",
-          "consider_home": "Seconds to wait before marking a device as away",
+          "update_interval": "Update Interval (seconds)",
+          "track_devices": "Track Network Devices",
+          "track_wired": "Include Wired Devices in Tracking",
+          "consider_home": "Device 'Consider Home' Delay (seconds)",
           "dhcp_software": "DHCP Software",
-          "custom_firmware_repo": "Custom GitHub Firmware Repo (URL or owner/repo)",
+          "custom_firmware_repo": "Custom Firmware GitHub Repo (owner/repo)",
           "asu_url": "Attended Sysupgrade Server URL"
-        }
+        },
+        "description": "Configure OpenWrt integration options."
       },
       "permissions": {
         "title": "Permissions Summary",
@@ -179,7 +179,14 @@
       "options": {
         "ubus": "ubus (HTTP/HTTPS)",
         "luci_rpc": "LuCI RPC",
-        "ssh": "SSH"
+        "ssh": "SSH (not recommended)",
+        "manual": "Configure manually..."
+      }
+    },
+    "flow_type": {
+      "options": {
+        "discovery": "Automatic Discovery",
+        "manual": "Manual Configuration"
       }
     }
   },
@@ -234,7 +241,7 @@
         "name": "Clients"
       },
       "wifi_signal": {
-        "name": "Wi-Fi Signal Strength"
+        "name": "Signal"
       },
       "wifi_channel": {
         "name": "Channel"

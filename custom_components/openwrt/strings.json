@@ -16,7 +16,7 @@
         "title": "Select Your Router",
         "description": "Multiple OpenWrt devices were found. Please select the one you want to configure:\n\n{public_info}",
         "data": {
-          "device": "Discovered Device (Method/Capabilities)"
+          "device": "Select Device (or enter details manually)"
         }
       },
       "manual_entry": {
@@ -29,7 +29,7 @@
       },
       "credentials": {
         "title": "Authentication",
-        "description": "Enter the credentials for **{host}** via **{connection_type}**.\n\n{auto_detected_info}",
+        "description": "Enter the credentials for **{host}** via **{connection_type}**.\n\nNote: If the port is left empty, it will default to 80 (HTTP), 443 (HTTPS), or 22 (SSH) depending on your settings.\n\n{auto_detected_info}",
         "data": {
           "username": "Username",
           "password": "Password",
@@ -43,7 +43,7 @@
       },
       "ssh": {
         "title": "SSH Authentication",
-        "description": "Enter the SSH credentials for {host}.",
+        "description": "Enter the SSH credentials for {host}.\n\nNote: If the port is left empty, it will default to 22. SSH is **not recommended** for full sensor support (like CPU usage on some models). Use LuCI RPC or ubus if possible.\n\n[Security Best Practices]({security_link})",
         "data": {
           "username": "Username",
           "password": "Password",
@@ -61,7 +61,7 @@
           "password": "Password"
         }
       },
-      "ssdp_confirm": {
+      "confirm_discovery": {
         "title": "Discovered OpenWrt Router",
         "description": "Do you want to set up {name} ({host})? Connection will be established via **{method}**.\n\nAvailable capabilities: {capabilities}",
         "data": {
@@ -89,14 +89,14 @@
         "title": "Secure User Provisioning",
         "description": "You are currently connecting as **root**. For better security, it is highly recommended to create a dedicated, least-privilege user for Home Assistant.\n\n{user_exists_info}\n\n[Security Best Practices]({security_link})",
         "data": {
-            "mode": "How would you like to proceed?"
+          "mode": "How would you like to proceed?"
         }
       },
       "reuse_user": {
         "title": "Existing User Credentials",
         "description": "Please enter the password for the existing **homeassistant** user on your router.",
         "data": {
-            "password": "Password"
+          "password": "Password"
         }
       },
       "display_new_user": {
@@ -179,7 +179,14 @@
       "options": {
         "ubus": "ubus (HTTP/HTTPS)",
         "luci_rpc": "LuCI RPC",
-        "ssh": "SSH"
+        "ssh": "SSH (not recommended)",
+        "manual": "Configure manually..."
+      }
+    },
+    "flow_type": {
+      "options": {
+        "discovery": "Automatic Discovery",
+        "manual": "Manual Configuration"
       }
     }
   },
