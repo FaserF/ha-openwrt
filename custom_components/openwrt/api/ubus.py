@@ -1175,38 +1175,39 @@ class UbusClient(OpenWrtClient):
         """Get IP neighbor (ARP/NDP) table."""
         neighbors: list[IpNeighbor] = []
 
-        # 1. Try ubus network.device status (more robust as it doesn't need file.exec)
+        # 1. Try ubus network.device status
         try:
             status = await self._call("network.device", "status")
-            # This call returns a dictionary of devices. We iterate over them to find neighbors.
-            for dev_name, dev_info in status.items():
-                if not isinstance(dev_info, dict):
-                    continue
-                # Some OpenWrt versions show neighbors here
-                neighbors_list = dev_info.get("neighbors", [])
-                for neigh in neighbors_list:
-                    mac = neigh.get("lladdr")
-                    ip = neigh.get("address")
-                    if mac and ip:
-                        neighbors.append(
-                            IpNeighbor(
-                                ip=ip,
-                                mac=mac.upper(),
-                                interface=dev_name,
-                                state=neigh.get("state", "REACHABLE"),
+            if status and isinstance(status, dict):
+                for dev_name, dev_info in status.items():
+                    if not isinstance(dev_info, dict):
+                        continue
+                    # Some OpenWrt versions show neighbors here
+                    neighbors_list = dev_info.get("neighbors", [])
+                    for neigh in neighbors_list:
+                        mac = neigh.get("lladdr")
+                        ip = neigh.get("address")
+                        if mac and ip:
+                            neighbors.append(
+                                IpNeighbor(
+                                    ip=ip,
+                                    mac=mac.upper(),
+                                    interface=dev_name,
+                                    state=neigh.get("state", "REACHABLE"),
+                                )
                             )
-                        )
         except Exception:  # noqa: BLE001
             pass
 
-        # 2. Try file.exec ip neigh show (only works if permissions allow)
-        if not neighbors:
-            try:
-                result = await self._call(
-                    "file", "exec", {"command": "ip", "params": ["neigh", "show"]}
-                )
-                content = result.get("stdout", "")
+        # 2. Try file.exec ip neigh show (more complete on many systems)
+        existing_macs = {n.mac for n in neighbors}
+        try:
+            result = await self._call(
+                "file", "exec", {"command": "ip", "params": ["neigh", "show"]}
+            )
+            content = result.get("stdout", "")
 
+            if content:
                 for line in content.strip().split("\n"):
                     if not line:
                         continue
@@ -1220,23 +1221,24 @@ class UbusClient(OpenWrtClient):
                         if "lladdr" in parts:
                             idx = parts.index("lladdr")
                             if len(parts) > idx + 1:
-                                mac = parts[idx + 1]
+                                mac = parts[idx + 1].upper()
                         if "dev" in parts:
                             idx = parts.index("dev")
                             if len(parts) > idx + 1:
                                 interface = parts[idx + 1]
 
-                        if mac:
+                        if mac and mac not in existing_macs:
                             neighbors.append(
                                 IpNeighbor(
                                     ip=ip,
-                                    mac=mac.upper(),
+                                    mac=mac,
                                     interface=interface,
                                     state=state,
                                 )
                             )
-            except Exception:  # noqa: BLE001
-                pass
+                            existing_macs.add(mac)
+        except Exception:  # noqa: BLE001
+            pass
 
         # 3. Fallback to /proc/net/arp via file.read (passive)
         if not neighbors:

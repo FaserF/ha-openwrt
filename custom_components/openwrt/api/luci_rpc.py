@@ -1177,20 +1177,20 @@ class LuciRpcClient(OpenWrtClient):
         except LuciRpcError:
             pass
 
-            # Fallback: Discovery of all hostapd objects
-            cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
-            stdout = await self._rpc_call("sys", "exec", [cmd])
-            if stdout:
-                for line in stdout.splitlines():
-                    if not line.strip():
-                        continue
-                    parts = line.split(" ", 1)
-                    if len(parts) < 2:
-                        continue
-                    obj_name, data_str = parts
-                    iface_name = (
-                        obj_name.split(".", 1)[1] if "." in obj_name else obj_name
-                    )
+        # 4. Fallback: Discovery of all hostapd objects
+        cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
+        stdout = await self._rpc_call("sys", "exec", [cmd])
+        if stdout:
+        for line in stdout.splitlines():
+            if not line.strip():
+                continue
+            parts = line.split(" ", 1)
+            if len(parts) < 2:
+                continue
+            obj_name, data_str = parts
+            iface_name = (
+                obj_name.split(".", 1)[1] if "." in obj_name else obj_name
+            )
                     try:
                         data = json.loads(data_str)
                         if "clients" in data:

@@ -396,6 +396,9 @@
       },
       "lldp_neighbor": {
         "name": "LLDP-Nachbar"
+      },
+      "neighbor_devices": {
+        "name": "Nachbargeräte"
       }
     },
     "binary_sensor": {
