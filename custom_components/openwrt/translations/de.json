@@ -233,6 +233,9 @@
       "architecture": {
         "name": "Architektur"
       },
+      "system_logs": {
+        "name": "System-Logs"
+      },
       "connected_clients": {
         "name": "Verbundene Clients"
       },
