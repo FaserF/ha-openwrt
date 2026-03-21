@@ -1731,3 +1731,13 @@ class LuciRpcClient(OpenWrtClient):
         except Exception as err:
             _LOGGER.error("Failed to set SQM config via LuCI RPC: %s", err)
             return False
+
+    async def get_system_logs(self, count: int = 10) -> list[str]:
+        """Get recent system log entries via LuCI RPC."""
+        try:
+            output = await self._rpc_call("sys", "exec", [f"logread -n {count}"])
+            if output:
+                return [line.strip() for line in output.splitlines() if line.strip()]
+        except Exception as err:
+            _LOGGER.debug("Failed to get system logs via LuCI RPC: %s", err)
+        return []
