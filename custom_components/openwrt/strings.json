@@ -468,6 +468,9 @@
       "service_restart": {
         "name": "Restart {service}"
       },
+      "service_stop": {
+        "name": "Stop {service}"
+      },
       "kick_device": {
         "name": "Kick Device"
       },

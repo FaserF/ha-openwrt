@@ -104,14 +104,30 @@ async def async_setup_entry(
                         entry,
                         OpenWrtButtonDescription(
                             key=f"restart_{service.name}",
-                            name=service.name,
+                            name=f"Restart {service.name}",
                             translation_key="service_restart",
                             translation_placeholders={"service": service.name},
                             device_class=ButtonDeviceClass.RESTART,
                             entity_category=EntityCategory.CONFIG,
-                            entity_registry_enabled_default=False,
                             press_fn=lambda c, n=service.name: c.manage_service(
                                 n, "restart"
+                            ),
+                        ),
+                        client,
+                    )
+                )
+                entities.append(
+                    OpenWrtButtonEntity(
+                        coordinator,
+                        entry,
+                        OpenWrtButtonDescription(
+                            key=f"stop_{service.name}",
+                            name=f"Stop {service.name}",
+                            translation_key="service_stop",
+                            translation_placeholders={"service": service.name},
+                            entity_category=EntityCategory.CONFIG,
+                            press_fn=lambda c, n=service.name: c.manage_service(
+                                n, "stop"
                             ),
                         ),
                         client,

@@ -1908,6 +1908,22 @@ class UbusClient(OpenWrtClient):
         except Exception:
             pass
         return status
+    async def manage_service(self, name: str, action: str) -> bool:
+        """Manage a system service (start/stop/restart/enable/disable)."""
+        try:
+            # Try via ubus file.exec first (best for structured systems)
+            await self._call(
+                "file", "exec", {"command": f"/etc/init.d/{name}", "params": [action]}
+            )
+            return True
+        except Exception:
+            # Fallback to execute_command
+            try:
+                await self.execute_command(f"/etc/init.d/{name} {action}")
+                return True
+            except Exception as err:
+                _LOGGER.debug("Failed to manage service %s (%s): %s", name, action, err)
+                return False
 
     async def set_adblock_enabled(self, enabled: bool) -> bool:
         """Enable/disable adblock service."""

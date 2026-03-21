@@ -1687,6 +1687,16 @@ class LuciRpcClient(OpenWrtClient):
         except Exception:
             pass
         return status
+    async def manage_service(self, name: str, action: str) -> bool:
+        """Manage a system service (start/stop/restart/enable/disable) via LuCI RPC."""
+        try:
+            await self._rpc_call("sys", "exec", [f"/etc/init.d/{name} {action}"])
+            return True
+        except Exception as err:
+            _LOGGER.error(
+                "Failed to manage service %s (%s) via LuCI RPC: %s", name, action, err
+            )
+            return False
 
     async def set_adblock_enabled(self, enabled: bool) -> bool:
         """Enable/disable adblock service via LuCI RPC."""

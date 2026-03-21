@@ -466,7 +466,10 @@
         "name": "WPS abbrechen"
       },
       "service_restart": {
-        "name": "{service} neustarten"
+        "name": "{service} neu starten"
+      },
+      "service_stop": {
+        "name": "{service} stoppen"
       },
       "wake_on_lan": {
         "name": "Wake-on-LAN"
