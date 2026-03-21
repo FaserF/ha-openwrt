@@ -1079,6 +1079,8 @@ class UbusClient(OpenWrtClient):
                 packages.mwan3 = True
             if "sqm" in objects:
                 packages.sqm_scripts = True
+            if "adblock" in objects:
+                packages.adblock = True
 
             # Step 2: Try executing a small script for remaining/all (fastest for root)
             try:
@@ -1086,8 +1088,12 @@ class UbusClient(OpenWrtClient):
                     "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                     "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
                     "/usr/lib/lua/luci/controller/rpc.lua "
+                    "/usr/share/luci/menu.d/luci-mod-rpc.json "
                     "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
-                    "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json; do "
+                    "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
+                    "/etc/init.d/adblock "
+                    "/etc/init.d/simple-adblock "
+                    "/etc/init.d/ban-ip; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
@@ -1111,7 +1117,12 @@ class UbusClient(OpenWrtClient):
                 packages.asu = detect_status(6)
                 if packages.luci_mod_rpc is not True:
                     packages.luci_mod_rpc = "luci-rpc" in objects or detect_status(6)
-                packages.asu = detect_status(7) or detect_status(8)
+                if packages.asu is not True:
+                    packages.asu = detect_status(7) or detect_status(8)
+                if packages.adblock is not True:
+                    packages.adblock = detect_status(9)
+                packages.simple_adblock = detect_status(10)
+                packages.ban_ip = detect_status(11)
             except Exception as err:
                 _LOGGER.debug(
                     "Package check via file.exec failed (expected on restricted routers): %s",
@@ -1161,6 +1172,9 @@ class UbusClient(OpenWrtClient):
                 ("/usr/bin/etherwake", "etherwake"),
                 ("/usr/bin/wg", "wireguard"),
                 ("/usr/lib/lua/luci/controller/attendedsysupgrade.lua", "asu"),
+                ("/etc/init.d/adblock", "adblock"),
+                ("/etc/init.d/simple-adblock", "simple_adblock"),
+                ("/etc/init.d/ban-ip", "ban_ip"),
             ]
             for path, attr in check_list:
                 if getattr(packages, attr) is not True:
@@ -1183,6 +1197,9 @@ class UbusClient(OpenWrtClient):
                     "openvpn": "openvpn",
                     "luci_mod_rpc": "luci-mod-rpc",
                     "asu": "luci-app-attendedsysupgrade",
+                    "adblock": "adblock",
+                    "simple_adblock": "simple-adblock",
+                    "ban_ip": "ban-ip",
                 }
                 for attr, pkg_name in mapping.items():
                     if getattr(packages, attr) is not True:
