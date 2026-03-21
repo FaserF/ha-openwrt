@@ -492,6 +492,27 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
                 ),
             },
         ),
+        OpenWrtSensorDescription(
+            key="system_logs",
+            name="System Logs",
+            translation_key="system_logs",
+            icon="mdi:script-text",
+            entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
+            value_fn=lambda data: "Error"
+            if any(
+                any(
+                    e in line.lower()
+                    for e in ["err", "fail", "crit", "alert", "emerg"]
+                )
+                for line in data.system_logs
+            )
+            else "OK",
+            attrs_fn=lambda data: {
+                "logs": "\n".join(data.system_logs),
+                "log_count": len(data.system_logs),
+            },
+        ),
     )
 
 
