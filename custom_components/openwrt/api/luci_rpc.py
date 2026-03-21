@@ -549,8 +549,12 @@ class LuciRpcClient(OpenWrtClient):
                 "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                 "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
                 "/usr/lib/lua/luci/controller/rpc.lua "
+                "/usr/share/luci/menu.d/luci-mod-rpc.json "
                 "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
-                "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json; do "
+                "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
+                "/etc/init.d/adblock "
+                "/etc/init.d/simple-adblock "
+                "/etc/init.d/ban-ip; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._rpc_call("sys", "exec", [cmd])
@@ -571,6 +575,9 @@ class LuciRpcClient(OpenWrtClient):
                 if packages.luci_mod_rpc is not True:
                     packages.luci_mod_rpc = detect_status(6) or (len(objects) > 0)
                 packages.asu = detect_status(7) or detect_status(8)
+                packages.adblock = detect_status(9)
+                packages.simple_adblock = detect_status(10)
+                packages.ban_ip = detect_status(11)
 
             # Step 3: Check UCI configs for remaining packages (very robust fallback)
             if packages.sqm_scripts is not True:
@@ -613,32 +620,48 @@ class LuciRpcClient(OpenWrtClient):
                 except Exception:
                     pass
 
+            # Step 4: Fallback to get_installed_packages (full list check)
+            installed = await self.get_installed_packages()
+            if installed:
+                mapping = {
+                    "sqm_scripts": "sqm-scripts",
+                    "mwan3": "mwan3",
+                    "iwinfo": "iwinfo",
+                    "etherwake": "etherwake",
+                    "wireguard": "wireguard",
+                    "openvpn": "openvpn",
+                    "luci_mod_rpc": "luci-mod-rpc",
+                    "asu": "luci-app-attendedsysupgrade",
+                    "adblock": "adblock",
+                    "simple_adblock": "simple-adblock",
+                    "ban_ip": "ban-ip",
+                }
+                for attr, pkg in mapping.items():
+                    if getattr(packages, attr) is not True:
+                        if pkg in ["wireguard", "openvpn"]:
+                            setattr(
+                                packages,
+                                attr,
+                                any(pkg in p for p in installed),
+                            )
+                        else:
+                            setattr(packages, attr, pkg in installed)
+
             # Final pass: Initialize remaining to False (to avoid staying at None)
-            for attr in [
-                "sqm_scripts",
-                "mwan3",
-                "iwinfo",
-                "etherwake",
-                "wireguard",
-                "openvpn",
-                "luci_mod_rpc",
-            ]:
-                if getattr(packages, attr) is None:
-                    setattr(packages, attr, False)
+            import dataclasses
+
+            for field in dataclasses.fields(packages):
+                if getattr(packages, field.name) is None:
+                    setattr(packages, field.name, False)
 
         except Exception as err:
             _LOGGER.error("Failed to check packages via LuCI RPC: %s", err)
             # Ensure no None values are returned
-            for attr in [
-                "sqm_scripts",
-                "mwan3",
-                "iwinfo",
-                "etherwake",
-                "wireguard",
-                "openvpn",
-            ]:
-                if getattr(packages, attr) is None:
-                    setattr(packages, attr, False)
+            import dataclasses
+
+            for field in dataclasses.fields(packages):
+                if getattr(packages, field.name) is None:
+                    setattr(packages, field.name, False)
 
         return packages
 
