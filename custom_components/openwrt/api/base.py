@@ -523,6 +523,9 @@ class OpenWrtPackages:
     openvpn: bool | None = None
     luci_mod_rpc: bool | None = None
     asu: bool | None = None
+    adblock: bool | None = None
+    simple_adblock: bool | None = None
+    ban_ip: bool | None = None
 
 
 @dataclass
