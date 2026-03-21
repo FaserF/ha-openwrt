@@ -1449,7 +1449,16 @@ class UbusClient(OpenWrtClient):
         except UbusError as err:
             _LOGGER.error("Failed to set WPS: %s", err)
 
-        return False
+    async def get_system_logs(self, count: int = 10) -> list[str]:
+        """Get recent system log entries via logread."""
+        try:
+            # Try via execute_command (file.exec)
+            output = await self.execute_command(f"logread -n {count}")
+            if output:
+                return [line.strip() for line in output.splitlines() if line.strip()]
+        except Exception as err:
+            _LOGGER.debug("Failed to get system logs via ubus: %s", err)
+        return []
 
     async def get_services(self) -> list[ServiceInfo]:
         """Get init.d services via the rc ubus interface."""
