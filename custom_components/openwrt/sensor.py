@@ -860,7 +860,10 @@ async def async_setup_entry(
                     for storage_description in storage_descriptions:
                         entities.append(
                             OpenWrtStorageSensor(
-                                coordinator, entry, storage_description, usage.mount_point
+                                coordinator,
+                                entry,
+                                storage_description,
+                                usage.mount_point,
                             )
                         )
         if perms.read_wireless and pkgs.iwinfo is not False:
