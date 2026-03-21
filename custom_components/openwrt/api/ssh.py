@@ -923,8 +923,12 @@ class SshClient(OpenWrtClient):
                 "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                 "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
                 "/usr/lib/lua/luci/controller/rpc.lua "
+                "/usr/share/luci/menu.d/luci-mod-rpc.json "
                 "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
-                "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json; do "
+                "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
+                "/etc/init.d/adblock "
+                "/etc/init.d/simple-adblock "
+                "/etc/init.d/ban-ip; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._exec(cmd)
@@ -941,6 +945,9 @@ class SshClient(OpenWrtClient):
             packages.openvpn = detect_status(5)
             packages.luci_mod_rpc = detect_status(6)
             packages.asu = detect_status(7) or detect_status(8)
+            packages.adblock = detect_status(9)
+            packages.simple_adblock = detect_status(10)
+            packages.ban_ip = detect_status(11)
 
             # Step 2: Fallback to get_installed_packages (full list check)
             installed = await self.get_installed_packages()
@@ -961,6 +968,12 @@ class SshClient(OpenWrtClient):
                     packages.luci_mod_rpc = "luci-mod-rpc" in installed
                 if not packages.asu:
                     packages.asu = "luci-app-attendedsysupgrade" in installed
+                if not packages.adblock:
+                    packages.adblock = "adblock" in installed
+                if not packages.simple_adblock:
+                    packages.simple_adblock = "simple-adblock" in installed
+                if not packages.ban_ip:
+                    packages.ban_ip = "ban-ip" in installed
 
         except Exception as err:
             _LOGGER.error("Failed to check packages via SSH: %s", err)
