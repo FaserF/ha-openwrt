@@ -121,7 +121,155 @@ async def async_setup_entry(
                         )
                     )
 
+        if pkgs.adblock:
+            entities.append(OpenWrtAdBlockSwitch(coordinator, entry, client))
+        if pkgs.simple_adblock:
+            entities.append(OpenWrtSimpleAdBlockSwitch(coordinator, entry, client))
+        if pkgs.ban_ip:
+            entities.append(OpenWrtBanIpSwitch(coordinator, entry, client))
+
     async_add_entities(entities)
+
+
+class OpenWrtAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+    """Switch to enable/disable AdBlock."""
+
+    _attr_has_entity_name = True
+    _attr_name = "AdBlock"
+    _attr_translation_key = "adblock"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = SwitchDeviceClass.SWITCH
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        client: OpenWrtClient,
+    ) -> None:
+        """Initialize the adblock switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._attr_unique_id = f"{entry.entry_id}_adblock"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return adblock status."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.adblock.enabled
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable AdBlock."""
+        try:
+            await self._client.set_adblock_enabled(True)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to enable AdBlock: {err}") from err
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable AdBlock."""
+        try:
+            await self._client.set_adblock_enabled(False)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to disable AdBlock: {err}") from err
+        await self.coordinator.async_request_refresh()
+
+
+class OpenWrtSimpleAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+    """Switch to enable/disable Simple AdBlock."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Simple AdBlock"
+    _attr_translation_key = "simple_adblock"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = SwitchDeviceClass.SWITCH
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        client: OpenWrtClient,
+    ) -> None:
+        """Initialize the simple-adblock switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._attr_unique_id = f"{entry.entry_id}_simple_adblock"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return simple-adblock status."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.simple_adblock.enabled
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable Simple AdBlock."""
+        try:
+            await self._client.set_simple_adblock_enabled(True)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to enable Simple AdBlock: {err}") from err
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable Simple AdBlock."""
+        try:
+            await self._client.set_simple_adblock_enabled(False)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to disable Simple AdBlock: {err}") from err
+        await self.coordinator.async_request_refresh()
+
+
+class OpenWrtBanIpSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+    """Switch to enable/disable Ban-IP."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Ban-IP"
+    _attr_translation_key = "banip"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = SwitchDeviceClass.SWITCH
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        client: OpenWrtClient,
+    ) -> None:
+        """Initialize the ban-ip switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._attr_unique_id = f"{entry.entry_id}_banip"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return ban-ip status."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.ban_ip.enabled
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable Ban-IP."""
+        try:
+            await self._client.set_banip_enabled(True)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to enable Ban-IP: {err}") from err
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable Ban-IP."""
+        try:
+            await self._client.set_banip_enabled(False)
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to disable Ban-IP: {err}") from err
+        await self.coordinator.async_request_refresh()
 
 
 class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):

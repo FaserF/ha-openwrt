@@ -17,6 +17,8 @@ import aiohttp
 from .base import (
     PROVISION_SCRIPT_TEMPLATE,
     AccessControl,
+    AdBlockStatus,
+    BanIpStatus,
     ConnectedDevice,
     DeviceInfo,
     DhcpLease,
@@ -27,9 +29,11 @@ from .base import (
     MwanStatus,
     NetworkInterface,
     OpenWrtClient,
+    OpenWrtData,
     OpenWrtPackages,
     OpenWrtPermissions,
     ServiceInfo,
+    SimpleAdBlockStatus,
     SqmStatus,
     SystemResources,
     WirelessInterface,
@@ -1882,7 +1886,89 @@ class UbusClient(OpenWrtClient):
                 return True
         except Exception as err:
             _LOGGER.error("Failed to download file via ubus: %s", err)
-        return False
+    async def get_adblock_status(self) -> AdBlockStatus:
+        """Get adblock status via ubus/uci."""
+        from .base import AdBlockStatus
+        status = AdBlockStatus()
+        try:
+            # Try ubus first
+            res = await self._call("adblock", "status")
+            if res:
+                status.enabled = res.get("adblock_status") == "enabled"
+                status.status = res.get("adblock_status", "disabled")
+                status.version = res.get("adblock_version")
+                status.blocked_domains = int(res.get("blocked_domains", 0))
+                status.last_update = res.get("last_run")
+                return status
+            
+            # Fallback to uci
+            enabled = await self.execute_command("uci -q get adblock.global.enabled")
+            status.enabled = enabled.strip() == "1"
+            status.status = "enabled" if status.enabled else "disabled"
+        except Exception:
+            pass
+        return status
+
+    async def set_adblock_enabled(self, enabled: bool) -> bool:
+        """Enable/disable adblock service."""
+        val = "1" if enabled else "0"
+        try:
+            await self.execute_command(f"uci set adblock.global.enabled='{val}' && uci commit adblock")
+            action = "start" if enabled else "stop"
+            await self.execute_command(f"/etc/init.d/adblock {action}")
+            return True
+        except Exception:
+            return False
+
+    async def get_simple_adblock_status(self) -> SimpleAdBlockStatus:
+        """Get simple-adblock status via uci."""
+        from .base import SimpleAdBlockStatus
+        status = SimpleAdBlockStatus()
+        try:
+            res = await self.execute_command("uci -q get simple-adblock.config.enabled")
+            status.enabled = res.strip() == "1"
+            status.status = "enabled" if status.enabled else "disabled"
+            # Optional: try to count blocked domains if file exists
+            count = await self.execute_command("wc -l < /tmp/simple-adblock.blocked 2>/dev/null")
+            if count and count.strip().isdigit():
+                status.blocked_domains = int(count.strip())
+        except Exception:
+            pass
+        return status
+
+    async def set_simple_adblock_enabled(self, enabled: bool) -> bool:
+        """Enable/disable simple-adblock service."""
+        val = "1" if enabled else "0"
+        try:
+            await self.execute_command(f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock")
+            action = "start" if enabled else "stop"
+            await self.execute_command(f"/etc/init.d/simple-adblock {action}")
+            return True
+        except Exception:
+            return False
+
+    async def get_banip_status(self) -> BanIpStatus:
+        """Get ban-ip status."""
+        from .base import BanIpStatus
+        status = BanIpStatus()
+        try:
+            res = await self.execute_command("uci -q get ban-ip.config.enabled")
+            status.enabled = res.strip() == "1"
+            status.status = "enabled" if status.enabled else "disabled"
+        except Exception:
+            pass
+        return status
+
+    async def set_banip_enabled(self, enabled: bool) -> bool:
+        """Enable/disable ban-ip service."""
+        val = "1" if enabled else "0"
+        try:
+            await self.execute_command(f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip")
+            action = "start" if enabled else "stop"
+            await self.execute_command(f"/etc/init.d/ban-ip {action}")
+            return True
+        except Exception:
+            return False
 
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status via uci ubus."""

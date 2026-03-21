@@ -402,6 +402,37 @@ class ServiceInfo:
 
 
 @dataclass
+class AdBlockStatus:
+    """Status of the adblock package."""
+
+    enabled: bool = False
+    status: str = "disabled"
+    version: str | None = None
+    blocked_domains: int = 0
+    last_update: str | None = None
+
+
+@dataclass
+class SimpleAdBlockStatus:
+    """Status of the simple-adblock package."""
+
+    enabled: bool = False
+    status: str = "disabled"
+    version: str | None = None
+    blocked_domains: int = 0
+
+
+@dataclass
+class BanIpStatus:
+    """Status of the ban-ip package."""
+
+    enabled: bool = False
+    status: str = "disabled"
+    version: str | None = None
+    banned_ips: int = 0
+
+
+@dataclass
 class LedInfo:
     """Router LED information."""
 
@@ -542,6 +573,9 @@ class OpenWrtData:
     mwan_status: list[MwanStatus] = field(default_factory=list)
     wps_status: WpsStatus = field(default_factory=WpsStatus)
     system_logs: list[str] = field(default_factory=list)
+    adblock: AdBlockStatus = field(default_factory=AdBlockStatus)
+    simple_adblock: SimpleAdBlockStatus = field(default_factory=SimpleAdBlockStatus)
+    ban_ip: BanIpStatus = field(default_factory=BanIpStatus)
     services: list[ServiceInfo] = field(default_factory=list)
     leds: list[LedInfo] = field(default_factory=list)
     firewall_redirects: list[FirewallRedirect] = field(default_factory=list)
@@ -991,6 +1025,30 @@ class OpenWrtClient(abc.ABC):
 
         return vpn_interfaces
 
+    async def get_adblock_status(self) -> AdBlockStatus:
+        """Get status of the adblock package."""
+        return AdBlockStatus()
+
+    async def set_adblock_enabled(self, enabled: bool) -> bool:
+        """Enable/disable the adblock service."""
+        return False
+
+    async def get_simple_adblock_status(self) -> SimpleAdBlockStatus:
+        """Get status of the simple-adblock package."""
+        return SimpleAdBlockStatus()
+
+    async def set_simple_adblock_enabled(self, enabled: bool) -> bool:
+        """Enable/disable the simple-adblock service."""
+        return False
+
+    async def get_banip_status(self) -> BanIpStatus:
+        """Get status of the ban-ip package."""
+        return BanIpStatus()
+
+    async def set_banip_enabled(self, enabled: bool) -> bool:
+        """Enable/disable the ban-ip service."""
+        return False
+
     async def get_latency(self, target: str = "8.8.8.8") -> LatencyResult:
         """Measure network latency via ping."""
         result = LatencyResult(target=target)
@@ -1217,6 +1275,18 @@ class OpenWrtClient(abc.ABC):
             self.get_system_logs(),
         ]
 
+        # Dynamically add adblock-related tasks if packages are present
+        extra_tasks_map = {}
+        if data.packages.adblock:
+            extra_tasks_map["adblock"] = len(fast_optional_tasks)
+            fast_optional_tasks.append(self.get_adblock_status())
+        if data.packages.simple_adblock:
+            extra_tasks_map["simple_adblock"] = len(fast_optional_tasks)
+            fast_optional_tasks.append(self.get_simple_adblock_status())
+        if data.packages.ban_ip:
+            extra_tasks_map["ban_ip"] = len(fast_optional_tasks)
+            fast_optional_tasks.append(self.get_banip_status())
+
         fast_results = await asyncio.gather(
             *fast_optional_tasks, return_exceptions=True
         )
@@ -1239,6 +1309,22 @@ class OpenWrtClient(abc.ABC):
         data.device_info.gateway_mac = get_val(fast_results[9], None, "gateway MAC")
         data.lldp_neighbors = get_val(fast_results[10], [], "LLDP neighbors")
         data.system_logs = get_val(fast_results[11], [], "system logs")
+
+        # Handle adblock-related results
+        if "adblock" in extra_tasks_map:
+            data.adblock = get_val(
+                fast_results[extra_tasks_map["adblock"]], AdBlockStatus(), "adblock"
+            )
+        if "simple_adblock" in extra_tasks_map:
+            data.simple_adblock = get_val(
+                fast_results[extra_tasks_map["simple_adblock"]],
+                SimpleAdBlockStatus(),
+                "simple-adblock",
+            )
+        if "ban_ip" in extra_tasks_map:
+            data.ban_ip = get_val(
+                fast_results[extra_tasks_map["ban_ip"]], BanIpStatus(), "ban-ip"
+            )
 
         # Slow-changing optional data (services, LEDs, firewall, access control, packages, permissions)
         if is_full_poll:

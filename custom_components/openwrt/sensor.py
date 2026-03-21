@@ -654,6 +654,59 @@ def _get_qmodem_sensors() -> tuple[OpenWrtSensorDescription, ...]:
     )
 
 
+def _get_adblock_sensors() -> tuple[OpenWrtSensorDescription, ...]:
+    """Get adblock sensor descriptions."""
+    return (
+        OpenWrtSensorDescription(
+            key="adblock_status",
+            name="AdBlock Status",
+            translation_key="adblock_status",
+            icon="mdi:shield-check",
+            entity_category=EntityCategory.DIAGNOSTIC,
+            value_fn=lambda data: data.adblock.status,
+        ),
+        OpenWrtSensorDescription(
+            key="adblock_blocked",
+            name="AdBlock Blocked Domains",
+            translation_key="adblock_blocked",
+            icon="mdi:shield-search",
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            value_fn=lambda data: data.adblock.blocked_domains,
+        ),
+    )
+
+
+def _get_simple_adblock_sensors() -> tuple[OpenWrtSensorDescription, ...]:
+    """Get simple-adblock sensor descriptions."""
+    return (
+        OpenWrtSensorDescription(
+            key="simple_adblock_blocked",
+            name="Simple AdBlock Blocked Domains",
+            translation_key="simple_adblock_blocked",
+            icon="mdi:shield-search",
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            value_fn=lambda data: data.simple_adblock.blocked_domains,
+        ),
+    )
+
+
+def _get_banip_sensors() -> tuple[OpenWrtSensorDescription, ...]:
+    """Get ban-ip sensor descriptions."""
+    return (
+        OpenWrtSensorDescription(
+            key="banip_banned",
+            name="Ban-IP Banned IPs",
+            translation_key="banip_banned",
+            icon="mdi:ip-network-outline",
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            value_fn=lambda data: data.ban_ip.banned_ips,
+        ),
+    )
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -673,6 +726,18 @@ async def async_setup_entry(
         if perms.read_system:
             for description in _get_system_sensors():
                 entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+
+            if pkgs.adblock:
+                for description in _get_adblock_sensors():
+                    entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+
+            if pkgs.simple_adblock:
+                for description in _get_simple_adblock_sensors():
+                    entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+
+            if pkgs.ban_ip:
+                for description in _get_banip_sensors():
+                    entities.append(OpenWrtSensorEntity(coordinator, entry, description))
         if perms.read_wireless and pkgs.iwinfo is not False:
             for wifi in coordinator.data.wireless_interfaces:
                 if not wifi.name:

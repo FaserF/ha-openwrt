@@ -236,6 +236,18 @@
       "system_logs": {
         "name": "System Logs"
       },
+      "adblock_status": {
+        "name": "AdBlock Status"
+      },
+      "adblock_blocked": {
+        "name": "AdBlock Blocked Domains"
+      },
+      "simple_adblock_blocked": {
+        "name": "Simple AdBlock Blocked Domains"
+      },
+      "banip_banned": {
+        "name": "Ban-IP Banned IPs"
+      },
       "connected_clients": {
         "name": "Connected Clients"
       },
@@ -413,7 +425,10 @@
           "wireguard": "WireGuard Support",
           "openvpn": "OpenVPN Sensors",
           "luci_mod_rpc": "LuCI RPC Support",
-          "asu": "Firmware Upgrade (ASU)"
+          "asu": "Firmware Upgrade (ASU)",
+          "adblock": "AdBlock",
+          "simple_adblock": "Simple AdBlock",
+          "ban_ip": "Ban-IP"
         }
       }
     },
@@ -481,6 +496,15 @@
       },
       "sqm_enabled": {
         "name": "SQM Enabled"
+      },
+      "adblock": {
+        "name": "AdBlock"
+      },
+      "simple_adblock": {
+        "name": "Simple AdBlock"
+      },
+      "banip": {
+        "name": "Ban-IP"
       }
     },
     "update": {

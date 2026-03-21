@@ -19,6 +19,8 @@ import aiohttp
 
 from .base import (
     PROVISION_SCRIPT_TEMPLATE,
+    AdBlockStatus,
+    BanIpStatus,
     ConnectedDevice,
     DeviceInfo,
     DhcpLease,
@@ -30,6 +32,7 @@ from .base import (
     OpenWrtClient,
     OpenWrtPackages,
     OpenWrtPermissions,
+    SimpleAdBlockStatus,
     SqmStatus,
     SystemResources,
     WirelessInterface,
@@ -1655,6 +1658,94 @@ class LuciRpcClient(OpenWrtClient):
             return True
         except Exception as err:  # noqa: BLE001
             _LOGGER.error("Failed to set firewall redirect via LuCI RPC: %s", err)
+            return False
+
+    async def get_adblock_status(self) -> AdBlockStatus:
+        """Get adblock status via LuCI RPC."""
+        from .base import AdBlockStatus
+        status = AdBlockStatus()
+        try:
+            # Try ubus via sys.exec
+            out = await self._rpc_call("sys", "exec", ["ubus call adblock status 2>/dev/null"])
+            if out:
+                import json
+                try:
+                    res = json.loads(out)
+                    status.enabled = res.get("adblock_status") == "enabled"
+                    status.status = res.get("adblock_status", "disabled")
+                    status.version = res.get("adblock_version")
+                    status.blocked_domains = int(res.get("blocked_domains", 0))
+                    status.last_update = res.get("last_run")
+                    return status
+                except json.JSONDecodeError:
+                    pass
+
+            # Fallback to uci
+            enabled = await self._rpc_call("sys", "exec", ["uci -q get adblock.global.enabled"])
+            status.enabled = enabled.strip() == "1"
+            status.status = "enabled" if status.enabled else "disabled"
+        except Exception:
+            pass
+        return status
+
+    async def set_adblock_enabled(self, enabled: bool) -> bool:
+        """Enable/disable adblock service via LuCI RPC."""
+        val = "1" if enabled else "0"
+        try:
+            await self._rpc_call("sys", "exec", [f"uci set adblock.global.enabled='{val}' && uci commit adblock"])
+            action = "start" if enabled else "stop"
+            await self._rpc_call("sys", "exec", [f"/etc/init.d/adblock {action}"])
+            return True
+        except Exception:
+            return False
+
+    async def get_simple_adblock_status(self) -> SimpleAdBlockStatus:
+        """Get simple-adblock status via LuCI RPC."""
+        from .base import SimpleAdBlockStatus
+        status = SimpleAdBlockStatus()
+        try:
+            res = await self._rpc_call("sys", "exec", ["uci -q get simple-adblock.config.enabled"])
+            status.enabled = res.strip() == "1"
+            status.status = "enabled" if status.enabled else "disabled"
+            count = await self._rpc_call("sys", "exec", ["wc -l < /tmp/simple-adblock.blocked 2>/dev/null"])
+            if count and count.strip().isdigit():
+                status.blocked_domains = int(count.strip())
+        except Exception:
+            pass
+        return status
+
+    async def set_simple_adblock_enabled(self, enabled: bool) -> bool:
+        """Enable/disable simple-adblock service via LuCI RPC."""
+        val = "1" if enabled else "0"
+        try:
+            await self._rpc_call("sys", "exec", [f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock"])
+            action = "start" if enabled else "stop"
+            await self._rpc_call("sys", "exec", [f"/etc/init.d/simple-adblock {action}"])
+            return True
+        except Exception:
+            return False
+
+    async def get_banip_status(self) -> BanIpStatus:
+        """Get ban-ip status via LuCI RPC."""
+        from .base import BanIpStatus
+        status = BanIpStatus()
+        try:
+            res = await self._rpc_call("sys", "exec", ["uci -q get ban-ip.config.enabled"])
+            status.enabled = res.strip() == "1"
+            status.status = "enabled" if status.enabled else "disabled"
+        except Exception:
+            pass
+        return status
+
+    async def set_banip_enabled(self, enabled: bool) -> bool:
+        """Enable/disable ban-ip service via LuCI RPC."""
+        val = "1" if enabled else "0"
+        try:
+            await self._rpc_call("sys", "exec", [f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip"])
+            action = "start" if enabled else "stop"
+            await self._rpc_call("sys", "exec", [f"/etc/init.d/ban-ip {action}"])
+            return True
+        except Exception:
             return False
 
     async def get_sqm_status(self) -> list[SqmStatus]:
