@@ -18,7 +18,7 @@ A secure, production-ready Home Assistant integration for OpenWrt devices. Monit
 ### Why use this integration?
 While you can monitor routers via SNMP or ping trackers, this integration uses native OpenWrt APIs (Ubus/RPC) to provide deep, reliable integration without the overhead of polling generic network protocols. This means instant device tracking via modern ARP/NDP tables, full control over firewall rules and radios, and even the ability to compile firmware directly from your dashboard.
 
-Supports **OpenWrt 25.12** and newer (older versions may also work, but are not directly tested and supported within this integration; update to the latest release if possible).
+Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fallback). This integration natively supports both `apk` and `opkg` package managers, ensuring future compatibility with the latest OpenWrt releases.
 
 ## ✨ Features
 

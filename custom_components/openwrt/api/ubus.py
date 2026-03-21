@@ -1085,14 +1085,16 @@ class UbusClient(OpenWrtClient):
                 cmd = (
                     "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                     "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
-                    "/usr/lib/lua/luci/controller/attendedsysupgrade.lua; do "
+                    "/usr/lib/lua/luci/controller/rpc.lua "
+                    "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
+                    "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
                     "file", "exec", {"command": "/bin/sh", "params": ["-c", cmd]}
                 )
                 out = result.get("stdout", "")
-                results = out.strip().split("\n")
+                results = out.strip().splitlines()
 
                 def detect_status(idx: int) -> bool:
                     return len(results) > idx and results[idx].strip() == "1"
@@ -1108,8 +1110,8 @@ class UbusClient(OpenWrtClient):
                 packages.openvpn = detect_status(5)
                 packages.asu = detect_status(6)
                 if packages.luci_mod_rpc is not True:
-                    packages.luci_mod_rpc = "luci-rpc" in objects
-                packages.asu = detect_status(6)
+                    packages.luci_mod_rpc = "luci-rpc" in objects or detect_status(6)
+                packages.asu = detect_status(7) or detect_status(8)
             except Exception as err:
                 _LOGGER.debug(
                     "Package check via file.exec failed (expected on restricted routers): %s",
@@ -1169,22 +1171,46 @@ class UbusClient(OpenWrtClient):
                     except Exception:
                         pass
 
-            # Initialize remaining to False
-            for attr in [
-                "sqm_scripts",
-                "mwan3",
-                "iwinfo",
-                "etherwake",
-                "wireguard",
-                "openvpn",
-                "luci_mod_rpc",
-                "asu",
-            ]:
-                if getattr(packages, attr) is None:
-                    setattr(packages, attr, False)
+            # Step 5: Final fallback to get_installed_packages (full list check)
+            installed = await self.get_installed_packages()
+            if installed:
+                mapping = {
+                    "sqm_scripts": "sqm-scripts",
+                    "mwan3": "mwan3",
+                    "iwinfo": "iwinfo",
+                    "etherwake": "etherwake",
+                    "wireguard": "wireguard",
+                    "openvpn": "openvpn",
+                    "luci_mod_rpc": "luci-mod-rpc",
+                    "asu": "luci-app-attendedsysupgrade",
+                }
+                for attr, pkg_name in mapping.items():
+                    if getattr(packages, attr) is not True:
+                        if pkg_name in ["wireguard", "openvpn"]:
+                            setattr(
+                                packages,
+                                attr,
+                                any(pkg_name in p for p in installed),
+                            )
+                        else:
+                            setattr(packages, attr, pkg_name in installed)
+
+            # Final safety: Initialize remaining to False
+            import dataclasses
+
+            for field in dataclasses.fields(packages):
+                if getattr(packages, field.name) is None:
+                    setattr(packages, field.name, False)
 
         except Exception as err:
-            _LOGGER.error("Failed to check packages via ubus: %s", err)
+            _LOGGER.debug("Package check failed: %s", err)
+            # Initialize to False if we failed (to avoid staying at None)
+            import dataclasses
+
+            for field in dataclasses.fields(packages):
+                if getattr(packages, field.name) is None:
+                    setattr(packages, field.name, False)
+
         return packages
 
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
@@ -1441,9 +1467,11 @@ class UbusClient(OpenWrtClient):
             return False
 
     async def get_installed_packages(self) -> list[str]:
-        """Get a list of installed packages via opkg."""
+        """Get a list of installed packages via apk or opkg."""
         try:
-            output = await self.execute_command("opkg list-installed | cut -d' ' -f1")
+            # Try apk first (modern OpenWrt), fallback to opkg
+            cmd = "apk info 2>/dev/null || opkg list-installed | cut -d' ' -f1"
+            output = await self.execute_command(cmd)
             return [line.strip() for line in output.splitlines() if line.strip()]
         except UbusError:
             _LOGGER.debug("Failed to list installed packages via Ubus")

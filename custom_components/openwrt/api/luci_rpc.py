@@ -531,7 +531,6 @@ class LuciRpcClient(OpenWrtClient):
         packages = OpenWrtPackages()
         try:
             # Step 1: Check via ubus call (if ubus is available via sys.exec)
-            # This is more reliable than file checks for some packages
             try:
                 ubus_list = await self.execute_command("ubus list")
                 objects = ubus_list.splitlines() if ubus_list else []
@@ -540,7 +539,7 @@ class LuciRpcClient(OpenWrtClient):
                     packages.sqm_scripts = True
                 if "mwan3" in objects:
                     packages.mwan3 = True
-                if "luci" in objects:
+                if "luci" in objects or "luci-rpc" in objects:
                     packages.luci_mod_rpc = True
             except Exception:
                 pass
@@ -549,7 +548,9 @@ class LuciRpcClient(OpenWrtClient):
             cmd = (
                 "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                 "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
-                "/usr/lib/lua/luci/controller/attendedsysupgrade.lua; do "
+                "/usr/lib/lua/luci/controller/rpc.lua "
+                "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
+                "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._rpc_call("sys", "exec", [cmd])
@@ -568,9 +569,8 @@ class LuciRpcClient(OpenWrtClient):
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
                 if packages.luci_mod_rpc is not True:
-                    packages.luci_mod_rpc = True  # If we are here, LuCI is working
-                packages.asu = detect_status(6)
-                packages.asu = detect_status(6)
+                    packages.luci_mod_rpc = detect_status(6) or (len(objects) > 0)
+                packages.asu = detect_status(7) or detect_status(8)
 
             # Step 3: Check UCI configs for remaining packages (very robust fallback)
             if packages.sqm_scripts is not True:
@@ -1531,9 +1531,11 @@ class LuciRpcClient(OpenWrtClient):
         return False
 
     async def get_installed_packages(self) -> list[str]:
-        """Get a list of installed packages via opkg."""
+        """Get a list of installed packages via apk or opkg."""
         try:
-            output = await self.execute_command("opkg list-installed | cut -d' ' -f1")
+            # Try apk first (modern OpenWrt), fallback to opkg
+            cmd = "apk info 2>/dev/null || opkg list-installed | cut -d' ' -f1"
+            output = await self.execute_command(cmd)
             return [line.strip() for line in output.splitlines() if line.strip()]
         except LuciRpcError:
             _LOGGER.debug("Failed to list installed packages via LuCI RPC")

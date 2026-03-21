@@ -50,18 +50,22 @@ else
     if command -v usermod >/dev/null 2>&1; then
         usermod -s /bin/ash "$USER" >/dev/null 2>&1 || true
     else
-        sed -i "s|^$USER:.*-s /bin/false|$USER:x:$(id -u $USER):$(id -g $USER):HomeAssistant:/home/$USER:/bin/ash|" /etc/passwd 2>/dev/null || true
+        uid=$(id -u "$USER")
+        gid=$(id -g "$USER")
+        sed -i "s|^$USER:.*|$USER:x:$uid:$gid:HomeAssistant:/home/$USER:/bin/ash|" /etc/passwd 2>/dev/null || true
     fi
     mkdir -p "/home/$USER"
 fi
 
-# IMPORTANT: Ensure shadow compatibility. Some OpenWrt builds don't sync this automatically.
+# IMPORTANT: Ensure shadow compatibility.
 # 1. Force 'x' in passwd to trigger shadow usage
 sed -i "s|^$USER:[^:]*:|$USER:x:|" /etc/passwd
-# 2. Ensure entry exists in shadow
-grep -q "^$USER:" /etc/shadow || echo "$USER:*::0:99999:7:::" >> /etc/shadow
+# 2. Ensure entry exists in shadow if shadow exists
+if [ -f /etc/shadow ]; then
+    grep -q "^$USER:" /etc/shadow || echo "$USER:*::0:99999:7:::" >> /etc/shadow
+fi
 
-# Set password using the most robust method for shadow synchronization
+# Set password using the most robust method
 logger -t ha-openwrt "Updating password for $USER"
 if ! ( (echo "$PASS"; sleep 1; echo "$PASS") | passwd "$USER" >/dev/null 2>&1 || printf "%s:%s\\n" "$USER" "$PASS" | chpasswd >/dev/null 2>&1 ); then
     echo "LOG: FAIL: password change failed"
@@ -70,6 +74,7 @@ fi
 
 # Create ACL file
 logger -t ha-openwrt "Creating ACL file $ACL_FILE"
+mkdir -p "$(dirname "$ACL_FILE")"
 if ! cat <<EOF > "$ACL_FILE"
 {{
     "homeassistant": {{
@@ -152,7 +157,6 @@ for s in $(uci show luci 2>/dev/null | grep "=user" | cut -d. -f2 | cut -d= -f1)
 done
 
 # Configure UCI authorization.
-# rpcd MUST use '$p$<user>' to delegate to system auth (passwd/shadow).
 logger -t ha-openwrt "Configuring UCI authorization for $USER"
 uci set luci.homeassistant=user
 uci set luci.homeassistant.username="$USER"

@@ -156,15 +156,12 @@ class SshClient(OpenWrtClient):
             return False, str(err)
 
     async def get_installed_packages(self) -> list[str]:
-        """Get a list of installed packages."""
+        """Get a list of installed packages via apk or opkg."""
         try:
-            output = await self._exec("opkg list-installed")
-            packages = []
-            for line in output.splitlines():
-                parts = line.split(" - ")
-                if parts:
-                    packages.append(parts[0].strip())
-            return packages
+            # Try apk first (modern OpenWrt), fallback to opkg
+            cmd = "apk info 2>/dev/null || opkg list-installed | cut -d' ' -f1"
+            output = await self._exec(cmd)
+            return [line.strip() for line in output.splitlines() if line.strip()]
         except Exception:
             return []
 
@@ -921,13 +918,13 @@ class SshClient(OpenWrtClient):
         """Check installed packages."""
         packages = OpenWrtPackages()
         try:
-            # Check packages using a single fast SSH command if possible,
-            # or multiple if needed. Here we check existence of binaries or init scripts.
+            # Step 1: Check existence of binaries or init scripts (fast)
             cmd = (
                 "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
                 "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
                 "/usr/lib/lua/luci/controller/rpc.lua "
-                "/usr/lib/lua/luci/controller/attendedsysupgrade.lua; do "
+                "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
+                "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._exec(cmd)
@@ -943,7 +940,28 @@ class SshClient(OpenWrtClient):
             packages.wireguard = detect_status(4)
             packages.openvpn = detect_status(5)
             packages.luci_mod_rpc = detect_status(6)
-            packages.asu = detect_status(7)
+            packages.asu = detect_status(7) or detect_status(8)
+
+            # Step 2: Fallback to get_installed_packages (full list check)
+            installed = await self.get_installed_packages()
+            if installed:
+                if not packages.sqm_scripts:
+                    packages.sqm_scripts = "sqm-scripts" in installed
+                if not packages.mwan3:
+                    packages.mwan3 = "mwan3" in installed
+                if not packages.iwinfo:
+                    packages.iwinfo = "iwinfo" in installed
+                if not packages.etherwake:
+                    packages.etherwake = "etherwake" in installed
+                if not packages.wireguard:
+                    packages.wireguard = any("wireguard" in p for p in installed)
+                if not packages.openvpn:
+                    packages.openvpn = any("openvpn" in p for p in installed)
+                if not packages.luci_mod_rpc:
+                    packages.luci_mod_rpc = "luci-mod-rpc" in installed
+                if not packages.asu:
+                    packages.asu = "luci-app-attendedsysupgrade" in installed
+
         except Exception as err:
             _LOGGER.error("Failed to check packages via SSH: %s", err)
             # Initialize to False if we failed (to avoid staying at None)
@@ -955,9 +973,11 @@ class SshClient(OpenWrtClient):
                 "wireguard",
                 "openvpn",
                 "luci_mod_rpc",
+                "asu",
             ]:
                 if getattr(packages, attr) is None:
                     setattr(packages, attr, False)
+
         return packages
 
     async def get_firewall_rules(self) -> list[FirewallRule]:
