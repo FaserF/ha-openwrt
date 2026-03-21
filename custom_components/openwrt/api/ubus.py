@@ -29,7 +29,6 @@ from .base import (
     MwanStatus,
     NetworkInterface,
     OpenWrtClient,
-    OpenWrtData,
     OpenWrtPackages,
     OpenWrtPermissions,
     ServiceInfo,
@@ -530,21 +529,42 @@ class UbusClient(OpenWrtClient):
         except Exception:  # noqa: BLE001
             pass
 
-        # 4. Filesystem fallback to df if ubus disk info was missing
-        if resources.filesystem_total == 0:
-            try:
-                df_output = await self.execute_command(
-                    "df /overlay 2>/dev/null || df / 2>/dev/null"
-                )
+        # 4. Detailed Storage monitoring via df
+        try:
+            df_output = await self.execute_command("df -Pk 2>/dev/null")
+            if df_output:
+                from .base import StorageUsage
+
                 lines = df_output.strip().split("\n")
-                if len(lines) >= 2:
-                    parts = lines[1].split()
-                    if len(parts) >= 4:
-                        resources.filesystem_total = int(parts[1]) * 1024
-                        resources.filesystem_used = int(parts[2]) * 1024
-                        resources.filesystem_free = int(parts[3]) * 1024
-            except Exception:  # noqa: BLE001
-                pass
+                if len(lines) > 1:
+                    for line in lines[1:]:
+                        parts = line.split()
+                        if len(parts) >= 6:
+                            # Filesystem 1024-blocks Used Available Capacity Mounted on
+                            try:
+                                usage = StorageUsage(
+                                    device=parts[0],
+                                    total=int(parts[1]) * 1024,
+                                    used=int(parts[2]) * 1024,
+                                    free=int(parts[3]) * 1024,
+                                    percent=float(parts[4].rstrip("%")),
+                                    mount_point=parts[5],
+                                )
+                                resources.storage.append(usage)
+
+                                # Update legacy fields for compatibility
+                                if usage.mount_point in ("/", "/overlay"):
+                                    if (
+                                        usage.mount_point == "/overlay"
+                                        or resources.filesystem_total == 0
+                                    ):
+                                        resources.filesystem_total = usage.total
+                                        resources.filesystem_used = usage.used
+                                        resources.filesystem_free = usage.free
+                            except ValueError, IndexError:
+                                continue
+        except Exception:  # noqa: BLE001
+            pass
 
         return resources
 
@@ -1452,6 +1472,7 @@ class UbusClient(OpenWrtClient):
                         return True
         except UbusError as err:
             _LOGGER.error("Failed to set WPS: %s", err)
+        return False
 
     async def get_system_logs(self, count: int = 10) -> list[str]:
         """Get recent system log entries via logread."""
@@ -1485,16 +1506,33 @@ class UbusClient(OpenWrtClient):
         return services
 
     async def manage_service(self, name: str, action: str) -> bool:
-        """Manage (start/stop/restart/enable/disable) an init.d service."""
+        """Manage a system service (start/stop/restart/enable/disable)."""
         try:
+            # 1. Try standard ubus rc.init (best practice)
             await self._call("rc", "init", {"name": name, "action": action})
             return True
-        except UbusPermissionError as err:
-            _LOGGER.debug("Service %s via ubus denied (permissions): %s", action, err)
-            return False
-        except UbusError as err:
-            _LOGGER.error("Failed to %s service %s: %s", action, name, err)
-            return False
+        except (UbusPermissionError, UbusError):
+            try:
+                # 2. Try ubus file.exec (direct init script call)
+                await self._call(
+                    "file",
+                    "exec",
+                    {"command": f"/etc/init.d/{name}", "params": [action]},
+                )
+                return True
+            except Exception:
+                # 3. Final fallback to shell execute_command
+                try:
+                    await self.execute_command(f"/etc/init.d/{name} {action}")
+                    return True
+                except Exception as err:
+                    _LOGGER.debug(
+                        "Failed to manage service %s (%s) via any method: %s",
+                        name,
+                        action,
+                        err,
+                    )
+                    return False
 
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages via apk or opkg."""
@@ -1886,9 +1924,12 @@ class UbusClient(OpenWrtClient):
                 return True
         except Exception as err:
             _LOGGER.error("Failed to download file via ubus: %s", err)
+        return False
+
     async def get_adblock_status(self) -> AdBlockStatus:
         """Get adblock status via ubus/uci."""
         from .base import AdBlockStatus
+
         status = AdBlockStatus()
         try:
             # Try ubus first
@@ -1900,7 +1941,7 @@ class UbusClient(OpenWrtClient):
                 status.blocked_domains = int(res.get("blocked_domains", 0))
                 status.last_update = res.get("last_run")
                 return status
-            
+
             # Fallback to uci
             enabled = await self.execute_command("uci -q get adblock.global.enabled")
             status.enabled = enabled.strip() == "1"
@@ -1908,28 +1949,15 @@ class UbusClient(OpenWrtClient):
         except Exception:
             pass
         return status
-    async def manage_service(self, name: str, action: str) -> bool:
-        """Manage a system service (start/stop/restart/enable/disable)."""
-        try:
-            # Try via ubus file.exec first (best for structured systems)
-            await self._call(
-                "file", "exec", {"command": f"/etc/init.d/{name}", "params": [action]}
-            )
-            return True
-        except Exception:
-            # Fallback to execute_command
-            try:
-                await self.execute_command(f"/etc/init.d/{name} {action}")
-                return True
-            except Exception as err:
-                _LOGGER.debug("Failed to manage service %s (%s): %s", name, action, err)
-                return False
+
 
     async def set_adblock_enabled(self, enabled: bool) -> bool:
         """Enable/disable adblock service."""
         val = "1" if enabled else "0"
         try:
-            await self.execute_command(f"uci set adblock.global.enabled='{val}' && uci commit adblock")
+            await self.execute_command(
+                f"uci set adblock.global.enabled='{val}' && uci commit adblock"
+            )
             action = "start" if enabled else "stop"
             await self.execute_command(f"/etc/init.d/adblock {action}")
             return True
@@ -1939,13 +1967,16 @@ class UbusClient(OpenWrtClient):
     async def get_simple_adblock_status(self) -> SimpleAdBlockStatus:
         """Get simple-adblock status via uci."""
         from .base import SimpleAdBlockStatus
+
         status = SimpleAdBlockStatus()
         try:
             res = await self.execute_command("uci -q get simple-adblock.config.enabled")
             status.enabled = res.strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
             # Optional: try to count blocked domains if file exists
-            count = await self.execute_command("wc -l < /tmp/simple-adblock.blocked 2>/dev/null")
+            count = await self.execute_command(
+                "wc -l < /tmp/simple-adblock.blocked 2>/dev/null"
+            )
             if count and count.strip().isdigit():
                 status.blocked_domains = int(count.strip())
         except Exception:
@@ -1956,7 +1987,9 @@ class UbusClient(OpenWrtClient):
         """Enable/disable simple-adblock service."""
         val = "1" if enabled else "0"
         try:
-            await self.execute_command(f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock")
+            await self.execute_command(
+                f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock"
+            )
             action = "start" if enabled else "stop"
             await self.execute_command(f"/etc/init.d/simple-adblock {action}")
             return True
@@ -1966,6 +1999,7 @@ class UbusClient(OpenWrtClient):
     async def get_banip_status(self) -> BanIpStatus:
         """Get ban-ip status."""
         from .base import BanIpStatus
+
         status = BanIpStatus()
         try:
             res = await self.execute_command("uci -q get ban-ip.config.enabled")
@@ -1979,7 +2013,9 @@ class UbusClient(OpenWrtClient):
         """Enable/disable ban-ip service."""
         val = "1" if enabled else "0"
         try:
-            await self.execute_command(f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip")
+            await self.execute_command(
+                f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip"
+            )
             action = "start" if enabled else "stop"
             await self.execute_command(f"/etc/init.d/ban-ip {action}")
             return True

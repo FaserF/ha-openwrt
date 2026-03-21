@@ -26,7 +26,6 @@ from .base import (
     LldpNeighbor,
     NetworkInterface,
     OpenWrtClient,
-    OpenWrtData,
     OpenWrtPackages,
     OpenWrtPermissions,
     ServiceInfo,
@@ -348,7 +347,7 @@ class SshClient(OpenWrtClient):
             "cat /proc/loadavg",
             "cat /proc/uptime",
             "cat /proc/stat",
-            "df /overlay 2>/dev/null || df / 2>/dev/null",
+            "df -Pk 2>/dev/null",
         ]
 
         results = await asyncio.gather(
@@ -409,15 +408,37 @@ class SshClient(OpenWrtClient):
         # 5. Storage
         df_output = results[4]
         if isinstance(df_output, str) and df_output:
+            from .base import StorageUsage
+
             try:
                 lines = df_output.strip().split("\n")
-                if len(lines) >= 2:
-                    parts = lines[1].split()
-                    if len(parts) >= 4:
-                        resources.filesystem_total = int(parts[1]) * 1024
-                        resources.filesystem_used = int(parts[2]) * 1024
-                        resources.filesystem_free = int(parts[3]) * 1024
-            except ValueError, IndexError:
+                if len(lines) > 1:
+                    for line in lines[1:]:
+                        parts = line.split()
+                        if len(parts) >= 6:
+                            try:
+                                usage = StorageUsage(
+                                    device=parts[0],
+                                    total=int(parts[1]) * 1024,
+                                    used=int(parts[2]) * 1024,
+                                    free=int(parts[3]) * 1024,
+                                    percent=float(parts[4].rstrip("%")),
+                                    mount_point=parts[5],
+                                )
+                                resources.storage.append(usage)
+
+                                # Update legacy fields for compatibility
+                                if usage.mount_point in ("/", "/overlay"):
+                                    if (
+                                        usage.mount_point == "/overlay"
+                                        or resources.filesystem_total == 0
+                                    ):
+                                        resources.filesystem_total = usage.total
+                                        resources.filesystem_used = usage.used
+                                        resources.filesystem_free = usage.free
+                            except ValueError, IndexError:
+                                continue
+            except Exception:  # noqa: BLE001
                 pass
 
         # Memory fallback if needed (e.g. if /proc/meminfo was missing or empty)
@@ -765,6 +786,8 @@ class SshClient(OpenWrtClient):
             except Exception:
                 pass
 
+        return list(devices.values())
+
     async def get_system_logs(self, count: int = 10) -> list[str]:
         """Get recent system log entries via SSH."""
         try:
@@ -806,14 +829,6 @@ class SshClient(OpenWrtClient):
 
         return services
 
-    async def manage_service(self, name: str, action: str) -> bool:
-        """Manage a service."""
-        try:
-            await self._exec(f"/etc/init.d/{name} {action}")
-            return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to %s service %s: %s", action, name, err)
-            return False
 
     async def reboot(self) -> bool:
         """Reboot the device."""
@@ -1359,12 +1374,14 @@ class SshClient(OpenWrtClient):
     async def get_adblock_status(self) -> AdBlockStatus:
         """Get adblock status via SSH."""
         from .base import AdBlockStatus
+
         status = AdBlockStatus()
         try:
             # Try ubus over ssh first
             out = await self._exec("ubus call adblock status 2>/dev/null")
             if out:
                 import json
+
                 try:
                     res = json.loads(out)
                     status.enabled = res.get("adblock_status") == "enabled"
@@ -1383,6 +1400,7 @@ class SshClient(OpenWrtClient):
         except Exception:
             pass
         return status
+
     async def manage_service(self, name: str, action: str) -> bool:
         """Manage a system service (start/stop/restart/enable/disable) via SSH."""
         try:
@@ -1398,7 +1416,9 @@ class SshClient(OpenWrtClient):
         """Enable/disable adblock service via SSH."""
         val = "1" if enabled else "0"
         try:
-            await self._exec(f"uci set adblock.global.enabled='{val}' && uci commit adblock")
+            await self._exec(
+                f"uci set adblock.global.enabled='{val}' && uci commit adblock"
+            )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/adblock {action}")
             return True
@@ -1408,6 +1428,7 @@ class SshClient(OpenWrtClient):
     async def get_simple_adblock_status(self) -> SimpleAdBlockStatus:
         """Get simple-adblock status via SSH."""
         from .base import SimpleAdBlockStatus
+
         status = SimpleAdBlockStatus()
         try:
             res = await self._exec("uci -q get simple-adblock.config.enabled")
@@ -1424,7 +1445,9 @@ class SshClient(OpenWrtClient):
         """Enable/disable simple-adblock service via SSH."""
         val = "1" if enabled else "0"
         try:
-            await self._exec(f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock")
+            await self._exec(
+                f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock"
+            )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/simple-adblock {action}")
             return True
@@ -1434,6 +1457,7 @@ class SshClient(OpenWrtClient):
     async def get_banip_status(self) -> BanIpStatus:
         """Get ban-ip status via SSH."""
         from .base import BanIpStatus
+
         status = BanIpStatus()
         try:
             res = await self._exec("uci -q get ban-ip.config.enabled")
@@ -1447,7 +1471,9 @@ class SshClient(OpenWrtClient):
         """Enable/disable ban-ip service via SSH."""
         val = "1" if enabled else "0"
         try:
-            await self._exec(f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip")
+            await self._exec(
+                f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip"
+            )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/ban-ip {action}")
             return True

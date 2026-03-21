@@ -294,6 +294,19 @@ class ConnectedDevice:
 
 
 @dataclass
+class StorageUsage:
+    """Detailed storage usage information for a mount point."""
+
+    mount_point: str = ""
+    device: str = ""
+    filesystem: str = ""
+    total: int = 0
+    used: int = 0
+    free: int = 0
+    percent: float = 0.0
+
+
+@dataclass
 class SystemResources:
     """System resource information."""
 
@@ -315,6 +328,7 @@ class SystemResources:
     filesystem_total: int = 0
     filesystem_used: int = 0
     filesystem_free: int = 0
+    storage: list[StorageUsage] = field(default_factory=list)
 
 
 @dataclass

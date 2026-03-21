@@ -678,7 +678,7 @@ class LuciRpcClient(OpenWrtClient):
             "cat /proc/loadavg",
             "cat /proc/uptime",
             "cat /proc/stat",
-            "df /overlay 2>/dev/null || df / 2>/dev/null",
+            "df -Pk 2>/dev/null",
             "ubus call system info 2>/dev/null",
             "ubus call luci getMountPoints 2>/dev/null",
         ]
@@ -796,20 +796,42 @@ class LuciRpcClient(OpenWrtClient):
                 except Exception:
                     pass
 
-        # 6. Storage fallback via df
-        if resources.filesystem_total == 0:
-            df_out = results[4]
-            if isinstance(df_out, str) and df_out:
-                lines = df_out.strip().split("\n")
-                if len(lines) >= 2:
-                    parts = lines[1].split()
-                    if len(parts) >= 4:
-                        try:
-                            resources.filesystem_total = int(parts[1]) * 1024
-                            resources.filesystem_used = int(parts[2]) * 1024
-                            resources.filesystem_free = int(parts[3]) * 1024
-                        except ValueError, IndexError:
-                            pass
+        # 5. Detailed Storage monitoring via df
+        df_output = results[4]
+        if isinstance(df_output, str) and df_output:
+            from .base import StorageUsage
+
+            try:
+                lines = df_output.strip().split("\n")
+                if len(lines) > 1:
+                    for line in lines[1:]:
+                        parts = line.split()
+                        if len(parts) >= 6:
+                            try:
+                                usage = StorageUsage(
+                                    device=parts[0],
+                                    total=int(parts[1]) * 1024,
+                                    used=int(parts[2]) * 1024,
+                                    free=int(parts[3]) * 1024,
+                                    percent=float(parts[4].rstrip("%")),
+                                    mount_point=parts[5],
+                                )
+                                resources.storage.append(usage)
+
+                                # Update legacy fields for compatibility
+                                if usage.mount_point in ("/", "/overlay"):
+                                    if (
+                                        usage.mount_point == "/overlay"
+                                        or resources.filesystem_total == 0
+                                    ):
+                                        resources.filesystem_total = usage.total
+                                        resources.filesystem_used = usage.used
+                                        resources.filesystem_free = usage.free
+                            except ValueError, IndexError:
+                                continue
+            except Exception:  # noqa: BLE001
+                pass
+        pass
 
         # 7. CPU usage fallback from /proc/stat
         if resources.cpu_usage == 0.0:
@@ -1663,12 +1685,16 @@ class LuciRpcClient(OpenWrtClient):
     async def get_adblock_status(self) -> AdBlockStatus:
         """Get adblock status via LuCI RPC."""
         from .base import AdBlockStatus
+
         status = AdBlockStatus()
         try:
             # Try ubus via sys.exec
-            out = await self._rpc_call("sys", "exec", ["ubus call adblock status 2>/dev/null"])
+            out = await self._rpc_call(
+                "sys", "exec", ["ubus call adblock status 2>/dev/null"]
+            )
             if out:
                 import json
+
                 try:
                     res = json.loads(out)
                     status.enabled = res.get("adblock_status") == "enabled"
@@ -1681,12 +1707,15 @@ class LuciRpcClient(OpenWrtClient):
                     pass
 
             # Fallback to uci
-            enabled = await self._rpc_call("sys", "exec", ["uci -q get adblock.global.enabled"])
+            enabled = await self._rpc_call(
+                "sys", "exec", ["uci -q get adblock.global.enabled"]
+            )
             status.enabled = enabled.strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
         except Exception:
             pass
         return status
+
     async def manage_service(self, name: str, action: str) -> bool:
         """Manage a system service (start/stop/restart/enable/disable) via LuCI RPC."""
         try:
@@ -1702,7 +1731,11 @@ class LuciRpcClient(OpenWrtClient):
         """Enable/disable adblock service via LuCI RPC."""
         val = "1" if enabled else "0"
         try:
-            await self._rpc_call("sys", "exec", [f"uci set adblock.global.enabled='{val}' && uci commit adblock"])
+            await self._rpc_call(
+                "sys",
+                "exec",
+                [f"uci set adblock.global.enabled='{val}' && uci commit adblock"],
+            )
             action = "start" if enabled else "stop"
             await self._rpc_call("sys", "exec", [f"/etc/init.d/adblock {action}"])
             return True
@@ -1712,12 +1745,17 @@ class LuciRpcClient(OpenWrtClient):
     async def get_simple_adblock_status(self) -> SimpleAdBlockStatus:
         """Get simple-adblock status via LuCI RPC."""
         from .base import SimpleAdBlockStatus
+
         status = SimpleAdBlockStatus()
         try:
-            res = await self._rpc_call("sys", "exec", ["uci -q get simple-adblock.config.enabled"])
+            res = await self._rpc_call(
+                "sys", "exec", ["uci -q get simple-adblock.config.enabled"]
+            )
             status.enabled = res.strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
-            count = await self._rpc_call("sys", "exec", ["wc -l < /tmp/simple-adblock.blocked 2>/dev/null"])
+            count = await self._rpc_call(
+                "sys", "exec", ["wc -l < /tmp/simple-adblock.blocked 2>/dev/null"]
+            )
             if count and count.strip().isdigit():
                 status.blocked_domains = int(count.strip())
         except Exception:
@@ -1728,9 +1766,17 @@ class LuciRpcClient(OpenWrtClient):
         """Enable/disable simple-adblock service via LuCI RPC."""
         val = "1" if enabled else "0"
         try:
-            await self._rpc_call("sys", "exec", [f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock"])
+            await self._rpc_call(
+                "sys",
+                "exec",
+                [
+                    f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock"
+                ],
+            )
             action = "start" if enabled else "stop"
-            await self._rpc_call("sys", "exec", [f"/etc/init.d/simple-adblock {action}"])
+            await self._rpc_call(
+                "sys", "exec", [f"/etc/init.d/simple-adblock {action}"]
+            )
             return True
         except Exception:
             return False
@@ -1738,9 +1784,12 @@ class LuciRpcClient(OpenWrtClient):
     async def get_banip_status(self) -> BanIpStatus:
         """Get ban-ip status via LuCI RPC."""
         from .base import BanIpStatus
+
         status = BanIpStatus()
         try:
-            res = await self._rpc_call("sys", "exec", ["uci -q get ban-ip.config.enabled"])
+            res = await self._rpc_call(
+                "sys", "exec", ["uci -q get ban-ip.config.enabled"]
+            )
             status.enabled = res.strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
         except Exception:
@@ -1751,7 +1800,11 @@ class LuciRpcClient(OpenWrtClient):
         """Enable/disable ban-ip service via LuCI RPC."""
         val = "1" if enabled else "0"
         try:
-            await self._rpc_call("sys", "exec", [f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip"])
+            await self._rpc_call(
+                "sys",
+                "exec",
+                [f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip"],
+            )
             action = "start" if enabled else "stop"
             await self._rpc_call("sys", "exec", [f"/etc/init.d/ban-ip {action}"])
             return True

@@ -178,7 +178,9 @@ class OpenWrtAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         await self.coordinator.async_request_refresh()
 
 
-class OpenWrtSimpleAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+class OpenWrtSimpleAdBlockSwitch(
+    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
+):
     """Switch to enable/disable Simple AdBlock."""
 
     _attr_has_entity_name = True
@@ -221,7 +223,9 @@ class OpenWrtSimpleAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], Swit
         try:
             await self._client.set_simple_adblock_enabled(False)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to disable Simple AdBlock: {err}") from err
+            raise HomeAssistantError(
+                f"Failed to disable Simple AdBlock: {err}"
+            ) from err
         await self.coordinator.async_request_refresh()
 
 

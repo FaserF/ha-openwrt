@@ -31,7 +31,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api.base import OpenWrtData
+from .api.base import OpenWrtData, StorageUsage
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import OpenWrtDataCoordinator
 
@@ -43,6 +43,13 @@ class OpenWrtSensorDescription(SensorEntityDescription):
     value_fn: Callable[[OpenWrtData], StateType]
     attrs_fn: Callable[[OpenWrtData], dict[str, Any]] | None = None
     available_fn: Callable[[OpenWrtData], bool] | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class OpenWrtStorageSensorDescription(SensorEntityDescription):
+    """Describe an OpenWrt storage sensor."""
+
+    value_fn: Callable[[StorageUsage], StateType]
 
 
 class OpenWrtSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
@@ -127,6 +134,44 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
             model="Access Point",
             via_device=(DOMAIN, cast(str, entry.unique_id)),
         )
+        self._attr_translation_placeholders = {"iface": iface_name}
+
+
+class OpenWrtStorageSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
+    """Sensor for a specific storage mount point."""
+
+    entity_description: OpenWrtStorageSensorDescription
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        description: OpenWrtStorageSensorDescription,
+        mount_point: str,
+    ) -> None:
+        """Initialize the storage sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._mount_point = mount_point
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}_{mount_point}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, cast(str, entry.unique_id or entry.data[CONF_HOST]))},
+        )
+        self._attr_translation_placeholders = {"mount": mount_point}
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the sensor value."""
+        if (
+            not self.coordinator.data
+            or not self.coordinator.data.system_resources.storage
+        ):
+            return None
+        for usage in self.coordinator.data.system_resources.storage:
+            if usage.mount_point == self._mount_point:
+                return self.entity_description.value_fn(usage)
+        return None
 
 
 class OpenWrtQModemSensorEntity(OpenWrtSensorEntity):
@@ -499,15 +544,17 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             icon="mdi:script-text",
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
-            value_fn=lambda data: "Error"
-            if any(
-                any(
-                    e in line.lower()
-                    for e in ["err", "fail", "crit", "alert", "emerg"]
+            value_fn=lambda data: (
+                "Error"
+                if any(
+                    any(
+                        e in line.lower()
+                        for e in ["err", "fail", "crit", "alert", "emerg"]
+                    )
+                    for line in data.system_logs
                 )
-                for line in data.system_logs
-            )
-            else "OK",
+                else "OK"
+            ),
             attrs_fn=lambda data: {
                 "logs": "\n".join(data.system_logs),
                 "log_count": len(data.system_logs),
@@ -729,15 +776,82 @@ async def async_setup_entry(
 
             if pkgs.adblock:
                 for description in _get_adblock_sensors():
-                    entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+                    entities.append(
+                        OpenWrtSensorEntity(coordinator, entry, description)
+                    )
 
             if pkgs.simple_adblock:
                 for description in _get_simple_adblock_sensors():
-                    entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+                    entities.append(
+                        OpenWrtSensorEntity(coordinator, entry, description)
+                    )
 
             if pkgs.ban_ip:
                 for description in _get_banip_sensors():
-                    entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+                    entities.append(
+                        OpenWrtSensorEntity(coordinator, entry, description)
+                    )
+
+            # Storage sensors (dynamic per mount point)
+            if coordinator.data.system_resources.storage:
+                storage_sensors = [
+                    OpenWrtStorageSensorDescription(
+                        key="storage_total",
+                        translation_key="mount_storage_total",
+                        native_unit_of_measurement=UnitOfInformation.BYTES,
+                        device_class=SensorDeviceClass.DATA_SIZE,
+                        state_class=SensorStateClass.MEASUREMENT,
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        value_fn=lambda usage: usage.total,
+                    ),
+                    OpenWrtStorageSensorDescription(
+                        key="storage_used",
+                        translation_key="mount_storage_used",
+                        native_unit_of_measurement=UnitOfInformation.BYTES,
+                        device_class=SensorDeviceClass.DATA_SIZE,
+                        state_class=SensorStateClass.MEASUREMENT,
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        value_fn=lambda usage: usage.used,
+                    ),
+                    OpenWrtStorageSensorDescription(
+                        key="storage_free",
+                        translation_key="mount_storage_free",
+                        native_unit_of_measurement=UnitOfInformation.BYTES,
+                        device_class=SensorDeviceClass.DATA_SIZE,
+                        state_class=SensorStateClass.MEASUREMENT,
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        value_fn=lambda usage: usage.free,
+                    ),
+                    OpenWrtStorageSensorDescription(
+                        key="storage_usage",
+                        translation_key="mount_storage_usage",
+                        native_unit_of_measurement=PERCENTAGE,
+                        state_class=SensorStateClass.MEASUREMENT,
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        value_fn=lambda usage: usage.percent,
+                    ),
+                ]
+
+                for usage in coordinator.data.system_resources.storage:
+                    # Filter out system-internal filesystems that aren't useful for monitoring
+                    if usage.filesystem in (
+                        "devtmpfs",
+                        "proc",
+                        "sysfs",
+                        "debugfs",
+                        "pstore",
+                    ):
+                        continue
+                    # Optional: exclude read-only squashfs if it's just the firmware
+                    if usage.filesystem == "squashfs" and usage.mount_point == "/rom":
+                        continue
+
+                    for description in storage_sensors:
+                        entities.append(
+                            OpenWrtStorageSensor(
+                                coordinator, entry, description, usage.mount_point
+                            )
+                        )
         if perms.read_wireless and pkgs.iwinfo is not False:
             for wifi in coordinator.data.wireless_interfaces:
                 if not wifi.name:

@@ -233,6 +233,21 @@
       "architecture": {
         "name": "Architektur"
       },
+      "filesystem_free": {
+        "name": "Dateisystem frei"
+      },
+      "mount_storage_total": {
+        "name": "{mount} Gesamtspeicher"
+      },
+      "mount_storage_used": {
+        "name": "{mount} Belegter Speicher"
+      },
+      "mount_storage_free": {
+        "name": "{mount} Freier Speicher"
+      },
+      "mount_storage_usage": {
+        "name": "{mount} Speicherbelegung"
+      },
       "system_logs": {
         "name": "System-Logs"
       },
