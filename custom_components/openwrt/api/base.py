@@ -541,6 +541,7 @@ class OpenWrtData:
     ip_neighbors: list[IpNeighbor] = field(default_factory=list)
     mwan_status: list[MwanStatus] = field(default_factory=list)
     wps_status: WpsStatus = field(default_factory=WpsStatus)
+    system_logs: list[str] = field(default_factory=list)
     services: list[ServiceInfo] = field(default_factory=list)
     leds: list[LedInfo] = field(default_factory=list)
     firewall_redirects: list[FirewallRedirect] = field(default_factory=list)
@@ -807,6 +808,10 @@ class OpenWrtClient(abc.ABC):
 
     async def get_services(self) -> list[ServiceInfo]:
         """Get list of system services."""
+        return []
+
+    async def get_system_logs(self, count: int = 10) -> list[str]:
+        """Get recent system log entries."""
         return []
 
     async def manage_service(self, name: str, action: str) -> bool:
