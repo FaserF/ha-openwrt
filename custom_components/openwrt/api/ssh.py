@@ -829,7 +829,6 @@ class SshClient(OpenWrtClient):
 
         return services
 
-
     async def reboot(self) -> bool:
         """Reboot the device."""
         try:

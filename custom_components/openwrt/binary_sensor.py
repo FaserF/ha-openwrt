@@ -71,6 +71,8 @@ async def async_setup_entry(
                             translation_key="mwan_online",
                             translation_placeholders={"interface": mwan.interface_name},
                             device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                            entity_registry_enabled_default=False,
                             is_on_fn=lambda data, n=mwan.interface_name: any(
                                 m.status == "online"
                                 for m in data.mwan_status

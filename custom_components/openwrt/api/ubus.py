@@ -1511,7 +1511,7 @@ class UbusClient(OpenWrtClient):
             # 1. Try standard ubus rc.init (best practice)
             await self._call("rc", "init", {"name": name, "action": action})
             return True
-        except (UbusPermissionError, UbusError):
+        except UbusPermissionError, UbusError:
             try:
                 # 2. Try ubus file.exec (direct init script call)
                 await self._call(
@@ -1949,7 +1949,6 @@ class UbusClient(OpenWrtClient):
         except Exception:
             pass
         return status
-
 
     async def set_adblock_enabled(self, enabled: bool) -> bool:
         """Enable/disable adblock service."""

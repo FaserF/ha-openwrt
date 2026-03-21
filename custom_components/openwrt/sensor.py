@@ -462,6 +462,7 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             native_unit_of_measurement=PERCENTAGE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
             value_fn=lambda data: (
                 round(
                     data.system_resources.filesystem_used
@@ -527,6 +528,7 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             name="Neighbor Devices",
             translation_key="neighbor_devices",
             state_class=SensorStateClass.MEASUREMENT,
+            entity_registry_enabled_default=False,
             value_fn=lambda data: len(data.ip_neighbors),
             attrs_fn=lambda data: {
                 "reachable": sum(
@@ -571,6 +573,7 @@ def _get_qmodem_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             name="Modem Manufacturer",
             translation_key="qmodem_manufacturer",
             entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
             value_fn=lambda data: data.qmodem_info.manufacturer,
         ),
         OpenWrtSensorDescription(
@@ -578,6 +581,7 @@ def _get_qmodem_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             name="Modem Revision",
             translation_key="qmodem_revision",
             entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
             value_fn=lambda data: data.qmodem_info.revision,
         ),
         OpenWrtSensorDescription(
@@ -802,6 +806,7 @@ async def async_setup_entry(
                         device_class=SensorDeviceClass.DATA_SIZE,
                         state_class=SensorStateClass.MEASUREMENT,
                         entity_category=EntityCategory.DIAGNOSTIC,
+                        entity_registry_enabled_default=False,
                         value_fn=lambda usage: usage.total,
                     ),
                     OpenWrtStorageSensorDescription(
@@ -811,6 +816,7 @@ async def async_setup_entry(
                         device_class=SensorDeviceClass.DATA_SIZE,
                         state_class=SensorStateClass.MEASUREMENT,
                         entity_category=EntityCategory.DIAGNOSTIC,
+                        entity_registry_enabled_default=False,
                         value_fn=lambda usage: usage.used,
                     ),
                     OpenWrtStorageSensorDescription(
@@ -820,6 +826,7 @@ async def async_setup_entry(
                         device_class=SensorDeviceClass.DATA_SIZE,
                         state_class=SensorStateClass.MEASUREMENT,
                         entity_category=EntityCategory.DIAGNOSTIC,
+                        entity_registry_enabled_default=False,
                         value_fn=lambda usage: usage.free,
                     ),
                     OpenWrtStorageSensorDescription(
@@ -828,6 +835,7 @@ async def async_setup_entry(
                         native_unit_of_measurement=PERCENTAGE,
                         state_class=SensorStateClass.MEASUREMENT,
                         entity_category=EntityCategory.DIAGNOSTIC,
+                        entity_registry_enabled_default=False,
                         value_fn=lambda usage: usage.percent,
                     ),
                 ]
@@ -1367,6 +1375,7 @@ def _create_sqm_sensors(
                 translation_key="sqm_interface",
                 name=f"SQM {name} Interface",
                 entity_category=EntityCategory.DIAGNOSTIC,
+                entity_registry_enabled_default=False,
                 value_fn=lambda data, sid=section_id: next(
                     (s.interface for s in data.sqm if s.section_id == sid), None
                 ),
@@ -1384,6 +1393,7 @@ def _create_sqm_sensors(
                 translation_key="sqm_qdisc",
                 name=f"SQM {name} Qdisc",
                 entity_category=EntityCategory.DIAGNOSTIC,
+                entity_registry_enabled_default=False,
                 value_fn=lambda data, sid=section_id: next(
                     (s.qdisc for s in data.sqm if s.section_id == sid), None
                 ),
@@ -1401,6 +1411,7 @@ def _create_sqm_sensors(
                 translation_key="sqm_script",
                 name=f"SQM {name} Script",
                 entity_category=EntityCategory.DIAGNOSTIC,
+                entity_registry_enabled_default=False,
                 value_fn=lambda data, sid=section_id: next(
                     (s.script for s in data.sqm if s.section_id == sid), None
                 ),
