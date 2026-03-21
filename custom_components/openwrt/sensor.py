@@ -797,8 +797,11 @@ async def async_setup_entry(
                     )
 
             # Storage sensors (dynamic per mount point)
-            if coordinator.data.system_resources.storage:
-                storage_sensors = [
+            if (
+                coordinator.data.system_resources
+                and coordinator.data.system_resources.storage
+            ):
+                storage_descriptions = [
                     OpenWrtStorageSensorDescription(
                         key="storage_total",
                         translation_key="mount_storage_total",
@@ -854,10 +857,10 @@ async def async_setup_entry(
                     if usage.filesystem == "squashfs" and usage.mount_point == "/rom":
                         continue
 
-                    for description in storage_sensors:
+                    for storage_description in storage_descriptions:
                         entities.append(
                             OpenWrtStorageSensor(
-                                coordinator, entry, description, usage.mount_point
+                                coordinator, entry, storage_description, usage.mount_point
                             )
                         )
         if perms.read_wireless and pkgs.iwinfo is not False:
