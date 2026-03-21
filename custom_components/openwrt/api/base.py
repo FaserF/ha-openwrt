@@ -1214,6 +1214,7 @@ class OpenWrtClient(abc.ABC):
             self.get_external_ip(),
             self.get_gateway_mac(),
             self.get_lldp_neighbors(),
+            self.get_system_logs(),
         ]
 
         fast_results = await asyncio.gather(
@@ -1237,6 +1238,7 @@ class OpenWrtClient(abc.ABC):
         data.external_ip = get_val(fast_results[8], None, "external IP")
         data.device_info.gateway_mac = get_val(fast_results[9], None, "gateway MAC")
         data.lldp_neighbors = get_val(fast_results[10], [], "LLDP neighbors")
+        data.system_logs = get_val(fast_results[11], [], "system logs")
 
         # Slow-changing optional data (services, LEDs, firewall, access control, packages, permissions)
         if is_full_poll:
