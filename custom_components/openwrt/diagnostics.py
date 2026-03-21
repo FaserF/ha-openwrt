@@ -107,5 +107,18 @@ async def async_get_config_entry_diagnostics(
             for m in data.mwan_status
         ]
         diag["services_count"] = len(data.services)
+        diag["packages"] = {
+            "sqm_scripts": data.packages.sqm_scripts,
+            "mwan3": data.packages.mwan3,
+            "iwinfo": data.packages.iwinfo,
+            "etherwake": data.packages.etherwake,
+            "wireguard": data.packages.wireguard,
+            "openvpn": data.packages.openvpn,
+            "luci_mod_rpc": data.packages.luci_mod_rpc,
+            "asu": data.packages.asu,
+            "adblock": data.packages.adblock,
+            "simple_adblock": data.packages.simple_adblock,
+            "ban_ip": data.packages.ban_ip,
+        }
 
     return diag
