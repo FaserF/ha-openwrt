@@ -179,3 +179,4 @@ ruff_errors.json
 /dummy_ha
 *.txt
 *output*.json
+test_live.py

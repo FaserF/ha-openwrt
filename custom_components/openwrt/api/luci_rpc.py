@@ -576,11 +576,11 @@ class LuciRpcClient(OpenWrtClient):
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
                 if packages.luci_mod_rpc is not True:
-                    packages.luci_mod_rpc = detect_status(6) or (len(objects) > 0)
-                packages.asu = detect_status(7) or detect_status(8)
-                packages.adblock = detect_status(9)
-                packages.simple_adblock = detect_status(10)
-                packages.ban_ip = detect_status(11)
+                    packages.luci_mod_rpc = detect_status(6) or detect_status(7) or (len(objects) > 0)
+                packages.asu = detect_status(8) or detect_status(9)
+                packages.adblock = detect_status(10)
+                packages.simple_adblock = detect_status(11)
+                packages.ban_ip = detect_status(12)
 
             # Step 3: Check UCI configs for remaining packages (very robust fallback)
             if packages.sqm_scripts is not True:
@@ -646,6 +646,12 @@ class LuciRpcClient(OpenWrtClient):
                                 packages,
                                 attr,
                                 any(pkg in p for p in installed),
+                            )
+                        elif attr == "asu":
+                            setattr(
+                                packages,
+                                attr,
+                                any(p in installed for p in ["luci-app-attendedsysupgrade", "attendedsysupgrade-common"]),
                             )
                         else:
                             setattr(packages, attr, pkg in installed)

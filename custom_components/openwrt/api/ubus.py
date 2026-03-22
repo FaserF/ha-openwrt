@@ -1138,15 +1138,15 @@ class UbusClient(OpenWrtClient):
                 packages.etherwake = detect_status(3)
                 packages.wireguard = detect_status(4)
                 packages.openvpn = detect_status(5)
-                packages.asu = detect_status(6)
+                packages.luci_mod_rpc = detect_status(6) or detect_status(7)
                 if packages.luci_mod_rpc is not True:
-                    packages.luci_mod_rpc = "luci-rpc" in objects or detect_status(6)
+                    packages.luci_mod_rpc = "luci-rpc" in objects or detect_status(6) or detect_status(7)
                 if packages.asu is not True:
-                    packages.asu = detect_status(7) or detect_status(8)
+                    packages.asu = detect_status(8) or detect_status(9)
                 if packages.adblock is not True:
-                    packages.adblock = detect_status(9)
-                packages.simple_adblock = detect_status(10)
-                packages.ban_ip = detect_status(11)
+                    packages.adblock = detect_status(10)
+                packages.simple_adblock = detect_status(11)
+                packages.ban_ip = detect_status(12)
             except Exception as err:
                 _LOGGER.debug(
                     "Package check via file.exec failed (expected on restricted routers): %s",

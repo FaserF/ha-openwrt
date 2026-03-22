@@ -839,7 +839,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         client = create_client(data)
 
         try:
-            async with asyncio.timeout(15):
+            async with asyncio.timeout(30):
                 await client.connect()
                 self._homeassistant_user_exists = False
                 if data.get(CONF_USERNAME) == "root":

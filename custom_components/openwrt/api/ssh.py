@@ -969,11 +969,12 @@ class SshClient(OpenWrtClient):
             packages.etherwake = detect_status(3)
             packages.wireguard = detect_status(4)
             packages.openvpn = detect_status(5)
-            packages.luci_mod_rpc = detect_status(6)
-            packages.asu = detect_status(7) or detect_status(8)
-            packages.adblock = detect_status(9)
-            packages.simple_adblock = detect_status(10)
-            packages.ban_ip = detect_status(11)
+            packages.openvpn = detect_status(5)
+            packages.luci_mod_rpc = detect_status(6) or detect_status(7)
+            packages.asu = detect_status(8) or detect_status(9)
+            packages.adblock = detect_status(10)
+            packages.simple_adblock = detect_status(11)
+            packages.ban_ip = detect_status(12)
 
             # Step 2: Fallback to get_installed_packages (full list check)
             installed = await self.get_installed_packages()
@@ -993,7 +994,7 @@ class SshClient(OpenWrtClient):
                 if not packages.luci_mod_rpc:
                     packages.luci_mod_rpc = "luci-mod-rpc" in installed
                 if not packages.asu:
-                    packages.asu = "luci-app-attendedsysupgrade" in installed
+                    packages.asu = any(p in installed for p in ["luci-app-attendedsysupgrade", "attendedsysupgrade-common"])
                 if not packages.adblock:
                     packages.adblock = "adblock" in installed
                 if not packages.simple_adblock:
