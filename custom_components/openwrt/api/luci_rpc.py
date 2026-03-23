@@ -743,7 +743,7 @@ class LuciRpcClient(OpenWrtClient):
         if isinstance(uptime_str, str) and uptime_str:
             try:
                 resources.uptime = int(float(uptime_str.strip().split()[0]))
-            except ValueError, IndexError:
+            except (ValueError, IndexError):
                 pass
 
         # 4. System Info (Memory fallback and CPU/Disk)
@@ -833,7 +833,7 @@ class LuciRpcClient(OpenWrtClient):
                                         resources.filesystem_total = usage.total
                                         resources.filesystem_used = usage.used
                                         resources.filesystem_free = usage.free
-                            except ValueError, IndexError:
+                            except (ValueError, IndexError):
                                 continue
             except Exception:  # noqa: BLE001
                 pass
@@ -882,7 +882,7 @@ class LuciRpcClient(OpenWrtClient):
                             ipv4_addrs = iface_data.get("ipv4-address", [])
                             if ipv4_addrs:
                                 return ipv4_addrs[0].get("address")
-        except LuciRpcError, json.JSONDecodeError:
+        except (LuciRpcError, json.JSONDecodeError):
             pass
         return None
 
@@ -952,7 +952,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except ValueError, IndexError:
+                                            except (ValueError, IndexError):
                                                 pass
                                         elif "Access Point:" in line:
                                             try:
@@ -970,7 +970,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except ValueError, IndexError:
+                                            except (ValueError, IndexError):
                                                 pass
                                         elif "Noise:" in line:
                                             try:
@@ -979,7 +979,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except ValueError, IndexError:
+                                            except (ValueError, IndexError):
                                                 pass
                                         elif "Bit Rate:" in line:
                                             try:
@@ -988,7 +988,7 @@ class LuciRpcClient(OpenWrtClient):
                                                     .strip()
                                                     .split()[0]
                                                 )
-                                            except ValueError, IndexError:
+                                            except (ValueError, IndexError):
                                                 pass
                                         elif "Frequency:" in line:
                                             try:
@@ -1013,7 +1013,7 @@ class LuciRpcClient(OpenWrtClient):
                                                         .split(")")[0]
                                                         .strip()
                                                     )
-                                                except IndexError, ValueError:
+                                                except (IndexError, ValueError):
                                                     pass
 
                                     # Fallback 2: Infer from channel number
@@ -1288,7 +1288,7 @@ class LuciRpcClient(OpenWrtClient):
                                 dev.connection_type = "2.4GHz"
                             elif not dev.connection_type:
                                 dev.connection_type = "wireless"
-                except json.JSONDecodeError, KeyError:
+                except (json.JSONDecodeError, KeyError):
                     continue
 
         # 4. Final refinement from IP neighbors (for states)

@@ -745,7 +745,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             current_parts = [int(p) for p in current.split(".")]
             latest_parts = [int(p) for p in latest.split(".")]
             return latest_parts > current_parts
-        except ValueError, AttributeError:
+        except (ValueError, AttributeError):
             return current != latest
 
     async def async_shutdown(self) -> None:

@@ -239,7 +239,7 @@ class SshClient(OpenWrtClient):
             self._connected = True
             _LOGGER.debug("SSH connected to %s", self.host)
             return True
-        except SshError, SshAuthError:
+        except (SshError, SshAuthError):
             raise
         except Exception as err:
             raise SshError(f"SSH connection error: {err}") from err
@@ -436,7 +436,7 @@ class SshClient(OpenWrtClient):
                                         resources.filesystem_total = usage.total
                                         resources.filesystem_used = usage.used
                                         resources.filesystem_free = usage.free
-                            except ValueError, IndexError:
+                            except (ValueError, IndexError):
                                 continue
             except Exception:  # noqa: BLE001
                 pass
@@ -482,7 +482,7 @@ class SshClient(OpenWrtClient):
                 else:
                     resources.temperature = float(temp_val)
                 break
-            except ValueError, Exception:  # noqa: BLE001
+            except (ValueError, Exception):  # noqa: BLE001
                 continue
 
         return resources
@@ -542,7 +542,7 @@ class SshClient(OpenWrtClient):
                                                 .strip()
                                                 .split()[0]
                                             )
-                                        except ValueError, IndexError:
+                                        except (ValueError, IndexError):
                                             pass
                                     elif "Access Point:" in line:
                                         try:
@@ -560,7 +560,7 @@ class SshClient(OpenWrtClient):
                                                 .strip()
                                                 .split()[0]
                                             )
-                                        except ValueError, IndexError:
+                                        except (ValueError, IndexError):
                                             pass
                                     elif "Frequency:" in line:
                                         try:
@@ -584,7 +584,7 @@ class SshClient(OpenWrtClient):
                                                     .split(")")[0]
                                                     .strip()
                                                 )
-                                            except IndexError, ValueError:
+                                            except (IndexError, ValueError):
                                                 pass
 
                                 # Fallback 2: Infer from channel number
