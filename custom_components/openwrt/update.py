@@ -293,9 +293,9 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
 
     async def async_install(
         self,
-        _version: str | None,
-        _backup: bool,  # noqa: FBT001
-        **_kwargs: Any,
+        version: str | None,
+        backup: bool,  # noqa: FBT001
+        **kwargs: Any,
     ) -> None:
         """Install the latest firmware version."""
         data = self.coordinator.data
