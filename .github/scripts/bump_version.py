@@ -104,7 +104,10 @@ def update_files(new_version):
         content = f.read()
     # Match version = "X.Y.Z"
     content = re.sub(
-        r'version\s*=\s*"[^"]+"', f'version = "{new_version}"', content, count=1,
+        r'version\s*=\s*"[^"]+"',
+        f'version = "{new_version}"',
+        content,
+        count=1,
     )
     with open("pyproject.toml", "w") as f:
         f.write(content)

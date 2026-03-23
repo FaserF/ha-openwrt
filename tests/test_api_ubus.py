@@ -183,7 +183,9 @@ async def test_ubus_provision_user(ubus_client: UbusClient):
     """Test user provisioning via ubus."""
     ubus_client._session_id = "test_token"
     with patch.object(
-        ubus_client, "execute_command", new_callable=AsyncMock,
+        ubus_client,
+        "execute_command",
+        new_callable=AsyncMock,
     ) as mock_exec:
         mock_exec.return_value = "LOG: Provisioning SUCCESS"
 

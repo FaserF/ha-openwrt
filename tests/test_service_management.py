@@ -19,7 +19,9 @@ async def test_ubus_manage_service():
         success = await client.manage_service("dnsmasq", "restart")
         assert success is True
         mock_call.assert_called_with(
-            "rc", "init", {"name": "dnsmasq", "action": "restart"},
+            "rc",
+            "init",
+            {"name": "dnsmasq", "action": "restart"},
         )
 
 
@@ -55,11 +57,18 @@ async def test_ubus_manage_service_fallback():
     client._connected = True
 
     # Tier 1: rc.init fails -> Tier 2: file.exec fails -> Tier 3: execute_command
-    with patch.object(
-        client, "_call", side_effect=[UbusError("rc fail"), Exception("file fail")],
-    ) as mock_call, patch.object(
-        client, "execute_command", new_callable=AsyncMock,
-    ) as mock_exec:
+    with (
+        patch.object(
+            client,
+            "_call",
+            side_effect=[UbusError("rc fail"), Exception("file fail")],
+        ) as mock_call,
+        patch.object(
+            client,
+            "execute_command",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+    ):
         success = await client.manage_service("sqm", "start")
         assert success is True
         assert mock_call.call_count == 2

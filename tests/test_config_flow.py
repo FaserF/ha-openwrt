@@ -69,7 +69,8 @@ async def test_full_user_flow(hass) -> None:
     mock_client.connect.return_value = True
     mock_client.disconnect.return_value = None
     mock_client.get_device_info.return_value = DeviceInfo(
-        hostname="OpenWrtTest", mac_address="AA:BB:CC:DD:EE:FF",
+        hostname="OpenWrtTest",
+        mac_address="AA:BB:CC:DD:EE:FF",
     )
     mock_client.check_permissions.return_value = OpenWrtPermissions(read_system=True)
     mock_client.check_packages.return_value = OpenWrtPackages(sqm_scripts=True)
@@ -146,7 +147,8 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
     mock_client.connect.return_value = True
     mock_client.disconnect.return_value = None
     mock_client.get_device_info.return_value = DeviceInfo(
-        hostname="OpenWrtTest", mac_address="AA:BB:CC:DD:EE:FF",
+        hostname="OpenWrtTest",
+        mac_address="AA:BB:CC:DD:EE:FF",
     )
     mock_client.check_permissions.side_effect = Exception("Permission Error")
     mock_client.check_packages.side_effect = Exception("Package Error")

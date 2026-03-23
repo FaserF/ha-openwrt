@@ -28,7 +28,11 @@ class AsuClient:
         self._session = async_get_clientsession(hass)
 
     async def _request(
-        self, method: str, path: str, payload: dict | None = None, timeout: float = 60.0,
+        self,
+        method: str,
+        path: str,
+        payload: dict | None = None,
+        timeout: float = 60.0,
     ) -> dict:
         """Make an HTTP request to the ASU server."""
         url = f"{self._base_url}{path}"
@@ -94,7 +98,10 @@ class AsuClient:
         return request_hash
 
     async def poll_build_status(
-        self, request_hash: str, timeout: float = 600.0, step: float = 5.0,
+        self,
+        request_hash: str,
+        timeout: float = 600.0,
+        step: float = 5.0,
     ) -> str:
         """Poll the ASU server until the build is ready.
 

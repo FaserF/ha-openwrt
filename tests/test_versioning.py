@@ -3,7 +3,9 @@ import sys
 
 # Add the script directory to path
 sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".github", "scripts")),
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", ".github", "scripts")
+    ),
 )
 
 from bump_version import bump_version

@@ -41,7 +41,8 @@ async def test_luci_connect_success(luci_client: LuciRpcClient):
     with patch("aiohttp.ClientSession.post") as mock_post:
         # LuCI returns the token as result directly
         mock_post.return_value = MockResponse(
-            200, {"id": 1, "result": "luci_test_token"},
+            200,
+            {"id": 1, "result": "luci_test_token"},
         )
 
         await luci_client.connect()
@@ -55,7 +56,8 @@ async def test_luci_connect_auth_error(luci_client: LuciRpcClient):
     """Test auth error handling."""
     with patch("aiohttp.ClientSession.post") as mock_post:
         mock_post.return_value = MockResponse(
-            200, {"id": 1, "error": {"message": "Invalid credentials"}},
+            200,
+            {"id": 1, "error": {"message": "Invalid credentials"}},
         )
 
         with pytest.raises(LuciRpcAuthError):
@@ -134,7 +136,9 @@ async def test_luci_provision_user(luci_client: LuciRpcClient):
     """Test user provisioning via LuCI RPC."""
     luci_client._auth_token = "luci_test_token"
     with patch.object(
-        luci_client, "execute_command", new_callable=AsyncMock,
+        luci_client,
+        "execute_command",
+        new_callable=AsyncMock,
     ) as mock_exec:
         mock_exec.return_value = "LOG: Provisioning SUCCESS"
 

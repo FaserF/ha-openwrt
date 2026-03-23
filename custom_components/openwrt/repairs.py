@@ -156,7 +156,8 @@ class AuthFailedRepairFlow(RepairsFlow):
     """Handler for auth failure repair flow - triggers re-authentication."""
 
     async def async_step_init(
-        self, user_input: dict[str, Any] | None = None,
+        self,
+        user_input: dict[str, Any] | None = None,
     ) -> FlowResult:
         """Handle the init step - redirect to reauth."""
         if user_input is not None:

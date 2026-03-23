@@ -78,7 +78,11 @@ async def async_setup_entry(
                 if rule.name and rule.section_id and not rule.name.startswith("cfg"):
                     entities.append(
                         OpenWrtFirewallRuleSwitch(
-                            coordinator, entry, client, rule.section_id, rule.name,
+                            coordinator,
+                            entry,
+                            client,
+                            rule.section_id,
+                            rule.name,
                         ),
                     )
 
@@ -117,7 +121,11 @@ async def async_setup_entry(
                 if sqm.section_id:
                     entities.append(
                         OpenWrtSqmSwitch(
-                            coordinator, entry, client, sqm.section_id, sqm.name,
+                            coordinator,
+                            entry,
+                            client,
+                            sqm.section_id,
+                            sqm.name,
                         ),
                     )
 
@@ -181,7 +189,8 @@ class OpenWrtAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
 
 
 class OpenWrtSimpleAdBlockSwitch(
-    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity,
+    CoordinatorEntity[OpenWrtDataCoordinator],
+    SwitchEntity,
 ):
     """Switch to enable/disable Simple AdBlock."""
 
@@ -536,7 +545,8 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
 
 
 class OpenWrtAccessControlSwitch(
-    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity,
+    CoordinatorEntity[OpenWrtDataCoordinator],
+    SwitchEntity,
 ):
     """Switch to block/unblock internet access for a device (Parental Control)."""
 
@@ -603,7 +613,8 @@ class OpenWrtAccessControlSwitch(
 
 
 class OpenWrtFirewallRuleSwitch(
-    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity,
+    CoordinatorEntity[OpenWrtDataCoordinator],
+    SwitchEntity,
 ):
     """Switch to enable/disable a general firewall rule."""
 

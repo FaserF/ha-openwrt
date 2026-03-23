@@ -75,7 +75,13 @@ class SshClient(OpenWrtClient):
     ) -> None:
         """Initialize the SSH client."""
         super().__init__(
-            host, username, password, port, use_ssl, verify_ssl, dhcp_software,
+            host,
+            username,
+            password,
+            port,
+            use_ssl,
+            verify_ssl,
+            dhcp_software,
         )
         self._ssh_key = ssh_key
         self._client: Any = None
@@ -99,7 +105,10 @@ class SshClient(OpenWrtClient):
             error = err_bytes.decode("utf-8", errors="replace")
             if exit_code != 0 and error:
                 _LOGGER.debug(
-                    "SSH command '%s' returned %d: %s", command, exit_code, error,
+                    "SSH command '%s' returned %d: %s",
+                    command,
+                    exit_code,
+                    error,
                 )
             return output
 
@@ -120,7 +129,8 @@ class SshClient(OpenWrtClient):
                         return await self._exec(command, retry=False)
                 except Exception as reconnect_err:
                     _LOGGER.debug(
-                        "SSH reconnection failed during retry: %s", reconnect_err,
+                        "SSH reconnection failed during retry: %s",
+                        reconnect_err,
                     )
 
             return ""
@@ -130,7 +140,9 @@ class SshClient(OpenWrtClient):
         return await self._exec(command)
 
     async def provision_user(
-        self, username: str, password: str,
+        self,
+        username: str,
+        password: str,
     ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via SSH."""
         # Use the harmonized provisioning script from base
@@ -139,7 +151,9 @@ class SshClient(OpenWrtClient):
             output = await self._exec(script)
             if output:
                 _LOGGER.debug(
-                    "Provisioning output for %s via SSH: %s", username, output,
+                    "Provisioning output for %s via SSH: %s",
+                    username,
+                    output,
                 )
 
             if "Provisioning SUCCESS" in output:
@@ -361,7 +375,8 @@ class SshClient(OpenWrtClient):
         ]
 
         results = await asyncio.gather(
-            *[self._exec(cmd) for cmd in cmds], return_exceptions=True,
+            *[self._exec(cmd) for cmd in cmds],
+            return_exceptions=True,
         )
 
         # 1. Memory
@@ -552,7 +567,9 @@ class SshClient(OpenWrtClient):
                                 for line in iwinfo.split("\n"):
                                     line = line.strip()
                                     if "Channel:" in line:
-                                        with contextlib.suppress(ValueError, IndexError):
+                                        with contextlib.suppress(
+                                            ValueError, IndexError
+                                        ):
                                             wifi.channel = int(
                                                 line.split("Channel:")[1]
                                                 .strip()
@@ -566,7 +583,9 @@ class SshClient(OpenWrtClient):
                                                 .upper()
                                             )
                                     elif "Signal:" in line:
-                                        with contextlib.suppress(ValueError, IndexError):
+                                        with contextlib.suppress(
+                                            ValueError, IndexError
+                                        ):
                                             wifi.signal = int(
                                                 line.split("Signal:")[1]
                                                 .strip()
@@ -586,7 +605,9 @@ class SshClient(OpenWrtClient):
                                             and "(" in line
                                             and "GHz)" in line
                                         ):
-                                            with contextlib.suppress(IndexError, ValueError):
+                                            with contextlib.suppress(
+                                                IndexError, ValueError
+                                            ):
                                                 wifi.frequency = (
                                                     line.split("(")[1]
                                                     .split(")")[0]
@@ -638,7 +659,8 @@ class SshClient(OpenWrtClient):
                         up=iface_data.get("up", False),
                         protocol=iface_data.get("proto", ""),
                         device=iface_data.get(
-                            "l3_device", iface_data.get("device", ""),
+                            "l3_device",
+                            iface_data.get("device", ""),
                         ),
                         uptime=iface_data.get("uptime", 0),
                     )
@@ -769,7 +791,8 @@ class SshClient(OpenWrtClient):
                                 # Create ConnectedDevice object from ubus data
                                 if mac.lower() not in devices:
                                     dev = ConnectedDevice(
-                                        mac=mac.lower(), connected=True,
+                                        mac=mac.lower(),
+                                        connected=True,
                                     )
                                     devices[mac.lower()] = dev
                                 else:
@@ -1116,7 +1139,9 @@ class SshClient(OpenWrtClient):
         return redirects
 
     async def set_firewall_redirect_enabled(
-        self, section_id: str, enabled: bool,
+        self,
+        section_id: str,
+        enabled: bool,
     ) -> bool:
         """Enable or disable a firewall redirect via UCI over SSH."""
         try:
@@ -1242,7 +1267,8 @@ class SshClient(OpenWrtClient):
                 )
                 return
             _LOGGER.warning(
-                "Sysupgrade command might have failed or disconnected: %s", err,
+                "Sysupgrade command might have failed or disconnected: %s",
+                err,
             )
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
@@ -1419,7 +1445,10 @@ class SshClient(OpenWrtClient):
             return True
         except Exception as err:
             _LOGGER.exception(
-                "Failed to manage service %s (%s) via SSH: %s", name, action, err,
+                "Failed to manage service %s (%s) via SSH: %s",
+                name,
+                action,
+                err,
             )
             return False
 
@@ -1596,17 +1625,20 @@ class SshClient(OpenWrtClient):
                                         local_interface=name or "",
                                         neighbor_name=neigh.get("name", ""),
                                         neighbor_port=neigh.get("port", {}).get(
-                                            "id", "",
+                                            "id",
+                                            "",
                                         )
                                         if isinstance(neigh.get("port"), dict)
                                         else "",
                                         neighbor_chassis=neigh.get("chassis", {}).get(
-                                            "id", "",
+                                            "id",
+                                            "",
                                         )
                                         if isinstance(neigh.get("chassis"), dict)
                                         else "",
                                         neighbor_description=neigh.get(
-                                            "description", "",
+                                            "description",
+                                            "",
                                         ),
                                         neighbor_system_name=neigh.get("sysname", ""),
                                     ),
@@ -1642,7 +1674,8 @@ class SshClient(OpenWrtClient):
                                         if isinstance(neigh.get("chassis"), dict)
                                         else "",
                                         neighbor_description=neigh.get(
-                                            "description", "",
+                                            "description",
+                                            "",
                                         ),
                                         neighbor_system_name=neigh.get("sysname", ""),
                                     ),

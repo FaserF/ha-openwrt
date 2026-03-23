@@ -94,7 +94,9 @@ class MockClient(OpenWrtClient):
         return True
 
     async def set_firewall_redirect_enabled(
-        self, section_id: str, enabled: bool,
+        self,
+        section_id: str,
+        enabled: bool,
     ) -> bool:
         return True
 
@@ -111,7 +113,9 @@ class MockClient(OpenWrtClient):
         return []
 
     async def provision_user(
-        self, username: str, password: str,
+        self,
+        username: str,
+        password: str,
     ) -> tuple[bool, str | None]:
         return True, None
 

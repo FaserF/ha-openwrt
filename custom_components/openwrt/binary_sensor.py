@@ -136,7 +136,8 @@ async def async_setup_entry(
 
 
 class OpenWrtBinarySensorEntity(
-    CoordinatorEntity[OpenWrtDataCoordinator], BinarySensorEntity,
+    CoordinatorEntity[OpenWrtDataCoordinator],
+    BinarySensorEntity,
 ):
     """Representation of an OpenWrt binary sensor."""
 

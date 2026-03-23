@@ -91,7 +91,13 @@ class UbusClient(OpenWrtClient):
     ) -> None:
         """Initialize the ubus client."""
         super().__init__(
-            host, username, password, port, use_ssl, verify_ssl, dhcp_software,
+            host,
+            username,
+            password,
+            port,
+            use_ssl,
+            verify_ssl,
+            dhcp_software,
         )
         self._ubus_path = ubus_path
         self._session_id: str = "00000000000000000000000000000000"
@@ -156,7 +162,9 @@ class UbusClient(OpenWrtClient):
             msg = f"Timeout communicating with {self.host}"
             raise UbusTimeoutError(msg) from err
         except aiohttp.ClientConnectorError as err:
-            msg = f"Cannot connect to {self.host}. Is the IP correct and uhttpd running?"
+            msg = (
+                f"Cannot connect to {self.host}. Is the IP correct and uhttpd running?"
+            )
             raise UbusConnectionError(
                 msg,
             ) from err
@@ -181,13 +189,17 @@ class UbusClient(OpenWrtClient):
         except aiohttp.ClientError as err:
             if not reauthenticated:
                 _LOGGER.debug(
-                    "Ubus connection error (%s), retrying after session reset", err,
+                    "Ubus connection error (%s), retrying after session reset",
+                    err,
                 )
                 if self._session and not self._session.closed:
                     await self._session.close()
                 self._session = None
                 return await self._call(
-                    ubus_object, ubus_method, params, reauthenticated=True,
+                    ubus_object,
+                    ubus_method,
+                    params,
+                    reauthenticated=True,
                 )
             self._connected = False
             msg = f"Communication error with {self.host}: {err}"
@@ -204,11 +216,16 @@ class UbusClient(OpenWrtClient):
             if code == 6 and not reauthenticated:
                 await self.connect()
                 return await self._call(
-                    ubus_object, ubus_method, params, reauthenticated=True,
+                    ubus_object,
+                    ubus_method,
+                    params,
+                    reauthenticated=True,
                 )
             if code != 0:
                 if code == 2:
-                    msg = f"RPC Error ({code}): Invalid command or object '{ubus_object}'"
+                    msg = (
+                        f"RPC Error ({code}): Invalid command or object '{ubus_object}'"
+                    )
                     raise UbusError(
                         msg,
                     )
@@ -319,7 +336,9 @@ class UbusClient(OpenWrtClient):
 
         self._connected = True
         _LOGGER.debug(
-            "Authenticated with %s, session: %s...", self.host, self._session_id[:8],
+            "Authenticated with %s, session: %s...",
+            self.host,
+            self._session_id[:8],
         )
         return True
 
@@ -450,7 +469,8 @@ class UbusClient(OpenWrtClient):
                     resources.filesystem_total = root.get("total", 0)
                     resources.filesystem_used = root.get("used", 0)
                     resources.filesystem_free = root.get("total", 0) - root.get(
-                        "used", 0,
+                        "used",
+                        0,
                     )
 
             # Check if system info HAS a cpu field (common in some OpenWrt versions)
@@ -474,7 +494,8 @@ class UbusClient(OpenWrtClient):
                         if mount.get("mount") in ("/", "/overlay"):
                             resources.filesystem_total = mount.get("size", 0)
                             resources.filesystem_free = mount.get(
-                                "free", 0,
+                                "free",
+                                0,
                             ) or mount.get("avail", 0)
                             resources.filesystem_used = (
                                 resources.filesystem_total - resources.filesystem_free
@@ -650,7 +671,9 @@ class UbusClient(OpenWrtClient):
                 try:
                     if iface_name:
                         iwinfo = await self._call(
-                            "iwinfo", "info", {"device": iface_name},
+                            "iwinfo",
+                            "info",
+                            {"device": iface_name},
                         )
                         wifi.mac_address = iwinfo.get("bssid", "").upper()
                         wifi.channel = iwinfo.get("channel", 0)
@@ -688,7 +711,9 @@ class UbusClient(OpenWrtClient):
                 try:
                     if iface_name:
                         clients = await self._call(
-                            "iwinfo", "assoclist", {"device": iface_name},
+                            "iwinfo",
+                            "assoclist",
+                            {"device": iface_name},
                         )
                         wifi.clients_count = len(clients.get("results", []))
                 except UbusError:
@@ -731,7 +756,9 @@ class UbusClient(OpenWrtClient):
             if dev_name:
                 try:
                     dev_status = await self._call(
-                        "network.device", "status", {"name": dev_name},
+                        "network.device",
+                        "status",
+                        {"name": dev_name},
                     )
                     stats = dev_status.get("statistics", {})
                     iface.rx_bytes = stats.get("rx_bytes", 0)
@@ -789,7 +816,9 @@ class UbusClient(OpenWrtClient):
                         continue
                     try:
                         assoc = await self._call(
-                            "iwinfo", "assoclist", {"device": iface_name},
+                            "iwinfo",
+                            "assoclist",
+                            {"device": iface_name},
                         )
                         for client in assoc.get("results", []):
                             mac = client.get("mac", "").lower()
@@ -856,7 +885,8 @@ class UbusClient(OpenWrtClient):
                 )
         except Exception as neigh_err:  # noqa: BLE001
             _LOGGER.debug(
-                "Error processing IP neighbors in get_connected_devices: %s", neigh_err,
+                "Error processing IP neighbors in get_connected_devices: %s",
+                neigh_err,
             )
 
         if wireless_data:
@@ -869,10 +899,12 @@ class UbusClient(OpenWrtClient):
                         continue
                     try:
                         hostapd_data = await self._call(
-                            f"hostapd.{iface_name}", "get_clients",
+                            f"hostapd.{iface_name}",
+                            "get_clients",
                         )
                         for mac_addr, client_data in hostapd_data.get(
-                            "clients", {},
+                            "clients",
+                            {},
                         ).items():
                             mac = mac_addr.lower()
                             if mac in devices:
@@ -915,7 +947,8 @@ class UbusClient(OpenWrtClient):
                             try:
                                 hostapd_data = await self._call(obj_name, "get_clients")
                                 for mac_addr, client_data in hostapd_data.get(
-                                    "clients", {},
+                                    "clients",
+                                    {},
                                 ).items():
                                     mac = mac_addr.lower()
                                     if mac in devices:
@@ -986,7 +1019,11 @@ class UbusClient(OpenWrtClient):
                             if section in acls and isinstance(acls[section], dict):
                                 for pattern, methods in acls[section].items():
                                     if (
-                                        pattern in ("*", obj) or (pattern.endswith("*") and obj.startswith(pattern[:-1]))
+                                        pattern in ("*", obj)
+                                        or (
+                                            pattern.endswith("*")
+                                            and obj.startswith(pattern[:-1])
+                                        )
                                     ) and ("*" in methods or method in methods):
                                         return True
 
@@ -994,16 +1031,19 @@ class UbusClient(OpenWrtClient):
                     access = session_list.get("values", {}).get("access", {})
                     for pattern, methods in access.items():
                         if (
-                            pattern in ("*", obj) or (pattern.endswith("*") and obj.startswith(pattern[:-1]))
+                            pattern in ("*", obj)
+                            or (pattern.endswith("*") and obj.startswith(pattern[:-1]))
                         ) and ("*" in methods or method in methods):
                             return True
                     return False
 
                 perms.read_system = has_perm("system", "board") or has_perm(
-                    "system", "read",
+                    "system",
+                    "read",
                 )
                 perms.write_system = has_perm("system", "reboot") or has_perm(
-                    "system", "write",
+                    "system",
+                    "write",
                 )
                 perms.read_network = (
                     has_perm("network.interface", "dump")
@@ -1016,10 +1056,12 @@ class UbusClient(OpenWrtClient):
                     or has_perm("network", "write")
                 )
                 perms.read_firewall = has_perm("firewall", "read") or has_perm(
-                    "uci", "read",
+                    "uci",
+                    "read",
                 )
                 perms.write_firewall = has_perm("firewall", "write") or has_perm(
-                    "uci", "write",
+                    "uci",
+                    "write",
                 )
                 perms.read_wireless = (
                     has_perm("iwinfo", "read")
@@ -1044,7 +1086,8 @@ class UbusClient(OpenWrtClient):
                 perms.read_sqm = has_perm("uci", "read") or has_perm("luci", "read")
                 perms.write_sqm = has_perm("uci", "write") or has_perm("luci", "write")
                 perms.read_vpn = has_perm("network.interface", "read") or has_perm(
-                    "uci", "read",
+                    "uci",
+                    "read",
                 )
                 perms.read_mwan = has_perm("uci", "read") or has_perm("file", "read")
                 perms.read_led = has_perm("file", "read") or has_perm("uci", "read")
@@ -1055,10 +1098,12 @@ class UbusClient(OpenWrtClient):
                     or has_perm("file", "read")
                 )
                 perms.write_devices = has_perm("file", "exec") or has_perm(
-                    "hostapd.*", "write",
+                    "hostapd.*",
+                    "write",
                 )
                 perms.write_access_control = has_perm("uci", "write") or has_perm(
-                    "firewall", "write",
+                    "firewall",
+                    "write",
                 )
 
                 # If we got definitive access list, we are done
@@ -1066,7 +1111,9 @@ class UbusClient(OpenWrtClient):
 
             # Fallback to manual probes
             async def can_call(
-                obj: str, method: str, params: dict | None = None,
+                obj: str,
+                method: str,
+                params: dict | None = None,
             ) -> bool:
                 try:
                     await self._call(obj, method, params)
@@ -1080,7 +1127,9 @@ class UbusClient(OpenWrtClient):
             perms.write_system = await can_call("uci", "set", {"config": "system"})
             perms.read_network = await can_call("network.interface", "dump")
             perms.write_network = await can_call(
-                "network.interface", "up", {"interface": "loopback"},
+                "network.interface",
+                "up",
+                {"interface": "loopback"},
             )
             perms.read_firewall = await can_call("uci", "get", {"config": "firewall"})
             perms.write_firewall = await can_call("uci", "set", {"config": "firewall"})
@@ -1096,7 +1145,9 @@ class UbusClient(OpenWrtClient):
                 await can_call("dhcp", "ipv4leases") or perms.read_network
             )
             perms.write_devices = await can_call(
-                "file", "exec", {"command": "/usr/bin/id"},
+                "file",
+                "exec",
+                {"command": "/usr/bin/id"},
             ) or await can_call("file", "exec", {"command": "id"})
             perms.write_access_control = perms.write_firewall
             perms.read_services = await can_call("service", "list")
@@ -1140,7 +1191,9 @@ class UbusClient(OpenWrtClient):
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
-                    "file", "exec", {"command": "/bin/sh", "params": ["-c", cmd]},
+                    "file",
+                    "exec",
+                    {"command": "/bin/sh", "params": ["-c", cmd]},
                 )
                 out = result.get("stdout", "")
                 results = out.strip().splitlines()
@@ -1305,7 +1358,9 @@ class UbusClient(OpenWrtClient):
         existing_macs = {n.mac for n in neighbors}
         try:
             result = await self._call(
-                "file", "exec", {"command": "ip", "params": ["neigh", "show"]},
+                "file",
+                "exec",
+                {"command": "ip", "params": ["neigh", "show"]},
             )
             content = result.get("stdout", "")
 
@@ -1463,7 +1518,8 @@ class UbusClient(OpenWrtClient):
                     if iface_name:
                         try:
                             result = await self._call(
-                                f"hostapd.{iface_name}", "wps_status",
+                                f"hostapd.{iface_name}",
+                                "wps_status",
                             )
                             return WpsStatus(
                                 enabled=result.get("pbc_status", "") == "Active",
@@ -1657,7 +1713,9 @@ class UbusClient(OpenWrtClient):
         return redirects
 
     async def set_firewall_redirect_enabled(
-        self, section_id: str, enabled: bool,
+        self,
+        section_id: str,
+        enabled: bool,
     ) -> bool:
         """Enable or disable a firewall redirect via UCI."""
         try:
@@ -1720,7 +1778,9 @@ class UbusClient(OpenWrtClient):
             if blocked:
                 if not section_id:
                     res = await self._call(
-                        "uci", "add", {"config": "firewall", "type": "rule"},
+                        "uci",
+                        "add",
+                        {"config": "firewall", "type": "rule"},
                     )
                     section_id = res.get("section")
                     if not section_id:
@@ -1832,7 +1892,9 @@ class UbusClient(OpenWrtClient):
             # Split command and params if needed, but ubus file.exec expects base command and params list
             # For simplicity, we wrap in shell
             res = await self._call(
-                "file", "exec", {"command": "sh", "params": ["-c", command]},
+                "file",
+                "exec",
+                {"command": "sh", "params": ["-c", command]},
             )
             if not res or not isinstance(res, dict):
                 return ""
@@ -1863,7 +1925,9 @@ class UbusClient(OpenWrtClient):
         return await super().user_exists(username)
 
     async def provision_user(
-        self, username: str, password: str,
+        self,
+        username: str,
+        password: str,
     ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via ubus."""
         # Use the harmonized provisioning script from base
@@ -1927,7 +1991,8 @@ class UbusClient(OpenWrtClient):
                 )
                 return
             _LOGGER.warning(
-                "Sysupgrade command might have failed or disconnected: %s", err,
+                "Sysupgrade command might have failed or disconnected: %s",
+                err,
             )
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
@@ -2089,7 +2154,9 @@ class UbusClient(OpenWrtClient):
                 )
             await self._call("uci", "commit", {"config": "sqm"})
             await self._call(
-                "file", "exec", {"command": "/etc/init.d/sqm", "params": ["reload"]},
+                "file",
+                "exec",
+                {"command": "/etc/init.d/sqm", "params": ["reload"]},
             )
             return True
         except UbusPermissionError as err:
@@ -2168,7 +2235,8 @@ class UbusClient(OpenWrtClient):
                                     if isinstance(neigh.get("port"), dict)
                                     else "",
                                     neighbor_chassis=neigh.get("chassis", {}).get(
-                                        "id", "",
+                                        "id",
+                                        "",
                                     )
                                     if isinstance(neigh.get("chassis"), dict)
                                     else "",

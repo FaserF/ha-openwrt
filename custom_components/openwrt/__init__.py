@@ -79,7 +79,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if device_info.mac_address:
                 new_unique_id = dr.format_mac(device_info.mac_address)
                 hass.config_entries.async_update_entry(
-                    entry, unique_id=new_unique_id, version=2,
+                    entry,
+                    unique_id=new_unique_id,
+                    version=2,
                 )
                 _LOGGER.info(
                     "Migrated OpenWrt entry %s to version 2 (MAC: %s)",
@@ -146,7 +148,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
     # during async_forward_entry_setups which calls sync import_module
     for platform in PLATFORMS:
         hass.async_add_import_executor_job(
-            importlib.import_module, f"custom_components.{DOMAIN}.{platform}",
+            importlib.import_module,
+            f"custom_components.{DOMAIN}.{platform}",
         )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -172,7 +175,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> 
 
 
 async def _async_update_listener(
-    hass: HomeAssistant, entry: OpenWrtConfigEntry,
+    hass: HomeAssistant,
+    entry: OpenWrtConfigEntry,
 ) -> None:
     """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)

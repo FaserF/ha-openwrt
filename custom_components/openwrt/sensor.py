@@ -214,7 +214,9 @@ class OpenWrtQModemSensorEntity(OpenWrtSensorEntity):
         """Return True if entity is available."""
         if not super().available:
             return False
-        return not (self.coordinator.data and not self.coordinator.data.qmodem_info.enabled)
+        return not (
+            self.coordinator.data and not self.coordinator.data.qmodem_info.enabled
+        )
 
 
 class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
@@ -902,7 +904,10 @@ async def async_setup_entry(
                 if sqm.section_id:
                     entities.extend(
                         _create_sqm_sensors(
-                            coordinator, entry, sqm.section_id, sqm.name,
+                            coordinator,
+                            entry,
+                            sqm.section_id,
+                            sqm.name,
                         ),
                     )
 
@@ -966,7 +971,9 @@ async def async_setup_entry(
                 if neighbor.local_interface:
                     entities.extend(
                         _create_lldp_sensors(
-                            coordinator, entry, neighbor.local_interface,
+                            coordinator,
+                            entry,
+                            neighbor.local_interface,
                         ),
                     )
 
@@ -1014,7 +1021,8 @@ async def async_setup_entry(
                         entity_registry_enabled_default=False,
                     ),
                     lambda data, m=device.mac: next(
-                        (d.signal for d in data.connected_devices if d.mac == m), None,
+                        (d.signal for d in data.connected_devices if d.mac == m),
+                        None,
                     ),
                     lambda data, m=device.mac: any(
                         d.mac == m and d.is_wireless for d in data.connected_devices
@@ -1093,7 +1101,8 @@ async def async_setup_entry(
                         entity_registry_enabled_default=False,
                     ),
                     lambda data, m=device.mac: next(
-                        (d.noise for d in data.connected_devices if d.mac == m), None,
+                        (d.noise for d in data.connected_devices if d.mac == m),
+                        None,
                     ),
                     lambda data, m=device.mac: any(
                         d.mac == m and d.is_wireless for d in data.connected_devices
@@ -1178,7 +1187,8 @@ def _create_wifi_sensors(
                 name=f"{label} Channel",
                 entity_category=EntityCategory.DIAGNOSTIC,
                 value_fn=lambda data, n=iface_name: next(
-                    (w.channel for w in data.wireless_interfaces if w.name == n), None,
+                    (w.channel for w in data.wireless_interfaces if w.name == n),
+                    None,
                 ),
             ),
             iface_name,
@@ -1199,7 +1209,8 @@ def _create_wifi_sensors(
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
-                    (w.txpower for w in data.wireless_interfaces if w.name == n), None,
+                    (w.txpower for w in data.wireless_interfaces if w.name == n),
+                    None,
                 ),
             ),
             iface_name,
@@ -1219,7 +1230,8 @@ def _create_wifi_sensors(
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
-                    (w.htmode for w in data.wireless_interfaces if w.name == n), None,
+                    (w.htmode for w in data.wireless_interfaces if w.name == n),
+                    None,
                 ),
             ),
             iface_name,
@@ -1239,7 +1251,8 @@ def _create_wifi_sensors(
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
-                    (w.hwmode for w in data.wireless_interfaces if w.name == n), None,
+                    (w.hwmode for w in data.wireless_interfaces if w.name == n),
+                    None,
                 ),
             ),
             iface_name,
@@ -1349,7 +1362,8 @@ def _create_wifi_sensors(
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
                     value_fn=lambda data, n=iface_name: next(
-                        (w.noise for w in data.wireless_interfaces if w.name == n), None,
+                        (w.noise for w in data.wireless_interfaces if w.name == n),
+                        None,
                     ),
                 ),
                 iface_name,
@@ -1381,7 +1395,8 @@ def _create_sqm_sensors(
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, sid=section_id: next(
-                    (s.interface for s in data.sqm if s.section_id == sid), None,
+                    (s.interface for s in data.sqm if s.section_id == sid),
+                    None,
                 ),
             ),
         ),
@@ -1399,7 +1414,8 @@ def _create_sqm_sensors(
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, sid=section_id: next(
-                    (s.qdisc for s in data.sqm if s.section_id == sid), None,
+                    (s.qdisc for s in data.sqm if s.section_id == sid),
+                    None,
                 ),
             ),
         ),
@@ -1417,7 +1433,8 @@ def _create_sqm_sensors(
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, sid=section_id: next(
-                    (s.script for s in data.sqm if s.section_id == sid), None,
+                    (s.script for s in data.sqm if s.section_id == sid),
+                    None,
                 ),
             ),
         ),

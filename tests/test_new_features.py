@@ -23,7 +23,10 @@ def _make_data(**kwargs: Any) -> OpenWrtData:
     """Create a default OpenWrtData with overrides."""
     defaults: dict[str, Any] = {
         "system_resources": SystemResources(
-            uptime=120, memory_total=1000, memory_used=500, load_1min=0.1,
+            uptime=120,
+            memory_total=1000,
+            memory_used=500,
+            load_1min=0.1,
         ),
         "connected_devices": [],
         "network_interfaces": [],
@@ -233,7 +236,9 @@ class TestDhcpLeaseCount:
                 DhcpLease(hostname="pc1", mac="AA:BB:CC:DD:EE:01", ip="192.168.1.10"),
                 DhcpLease(hostname="phone", mac="AA:BB:CC:DD:EE:02", ip="192.168.1.11"),
                 DhcpLease(
-                    hostname="laptop", mac="AA:BB:CC:DD:EE:03", ip="192.168.1.12",
+                    hostname="laptop",
+                    mac="AA:BB:CC:DD:EE:03",
+                    ip="192.168.1.12",
                 ),
             ],
         )

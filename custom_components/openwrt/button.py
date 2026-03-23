@@ -110,7 +110,8 @@ async def async_setup_entry(
                             device_class=ButtonDeviceClass.RESTART,
                             entity_category=EntityCategory.CONFIG,
                             press_fn=lambda c, n=service.name: c.manage_service(
-                                n, "restart",
+                                n,
+                                "restart",
                             ),
                         ),
                         client,
@@ -127,7 +128,8 @@ async def async_setup_entry(
                             translation_placeholders={"service": service.name},
                             entity_category=EntityCategory.CONFIG,
                             press_fn=lambda c, n=service.name: c.manage_service(
-                                n, "stop",
+                                n,
+                                "stop",
                             ),
                         ),
                         client,
@@ -147,7 +149,8 @@ async def async_setup_entry(
                             translation_placeholders={"interface": iface.name.upper()},
                             entity_category=EntityCategory.CONFIG,
                             press_fn=lambda c, n=iface.name: c.manage_interface(
-                                n, "reconnect",
+                                n,
+                                "reconnect",
                             ),
                         ),
                         client,

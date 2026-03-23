@@ -249,8 +249,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             f"&target={target}&id={board}"
         )
         notes += (
-            f"**🚀 Official Downloads:**\n"
-            f"[Firmware Selector ({latest})]({fs_url})\n\n"
+            f"**🚀 Official Downloads:**\n[Firmware Selector ({latest})]({fs_url})\n\n"
         )
 
         if data.firmware_install_url:
@@ -339,7 +338,8 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 from .helpers.asu import AsuClient
 
                 asu_url = self.coordinator.config_entry.options.get(
-                    CONF_ASU_URL, "https://sysupgrade.openwrt.org",
+                    CONF_ASU_URL,
+                    "https://sysupgrade.openwrt.org",
                 )
                 asu_client = AsuClient(self.hass, asu_url)
 
@@ -360,12 +360,14 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 download_url = await asu_client.poll_build_status(request_hash)
 
                 _LOGGER.info(
-                    "ASU build complete. Flashing image from: %s", download_url,
+                    "ASU build complete. Flashing image from: %s",
+                    download_url,
                 )
                 # ASU builds always keep settings by default in OpenWrt logic,
                 # but we pass it anyway.
                 await self.coordinator.client.install_firmware(
-                    download_url, keep_settings=True,
+                    download_url,
+                    keep_settings=True,
                 )
 
             except Exception as err:
@@ -411,7 +413,8 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
 
             # 3. Download to HA
             success = await self.coordinator.client.download_file(
-                remote_path, local_path,
+                remote_path,
+                local_path,
             )
             if success:
                 _LOGGER.info("Backup successfully saved to: %s", local_path)

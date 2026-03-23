@@ -203,7 +203,6 @@ class MockOptionsFlow(MockConfigFlow):
     """Mock OptionsFlow."""
 
 
-
 sys.modules["homeassistant.config_entries"] = MagicMock()
 sys.modules["homeassistant.config_entries"].ConfigFlow = MockConfigFlow
 sys.modules["homeassistant.config_entries"].OptionsFlow = MockOptionsFlow
@@ -289,7 +288,8 @@ sys.modules["homeassistant.components.update"].UpdateEntityFeature = MockEnum(
 def mock_setup_entry() -> Generator[AsyncMock]:
     """Override async_setup_entry."""
     with patch(
-        "custom_components.openwrt.async_setup_entry", return_value=True,
+        "custom_components.openwrt.async_setup_entry",
+        return_value=True,
     ) as mock_setup_entry:
         yield mock_setup_entry
 
@@ -298,7 +298,8 @@ def mock_setup_entry() -> Generator[AsyncMock]:
 def mock_ubus_client() -> Generator[AsyncMock]:
     """Mock the Ubus API client."""
     with patch(
-        "custom_components.openwrt.api.ubus.UbusClient", autospec=True,
+        "custom_components.openwrt.api.ubus.UbusClient",
+        autospec=True,
     ) as mock_client:
         client = mock_client.return_value
         client.connect = AsyncMock()

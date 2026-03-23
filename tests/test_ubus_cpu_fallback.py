@@ -21,7 +21,9 @@ async def test_ubus_cpu_priority_1_system_info(ubus_client: UbusClient):
     with (
         patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call,
         patch.object(
-            ubus_client, "execute_command", new_callable=AsyncMock,
+            ubus_client,
+            "execute_command",
+            new_callable=AsyncMock,
         ) as mock_exec,
     ):
         # Mock system info with cpu field
@@ -80,7 +82,9 @@ async def test_ubus_cpu_priority_2_file_read(ubus_client: UbusClient):
     with (
         patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call,
         patch.object(
-            ubus_client, "execute_command", new_callable=AsyncMock,
+            ubus_client,
+            "execute_command",
+            new_callable=AsyncMock,
         ) as mock_exec,
     ):
         # Mock system info WITHOUT cpu field, but file.read WITH data
@@ -119,7 +123,9 @@ async def test_ubus_cpu_priority_3_file_exec(ubus_client: UbusClient):
     with (
         patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call,
         patch.object(
-            ubus_client, "execute_command", new_callable=AsyncMock,
+            ubus_client,
+            "execute_command",
+            new_callable=AsyncMock,
         ) as mock_exec,
     ):
         # Mock everything restricted except file.exec (via execute_command)
