@@ -94,7 +94,7 @@ class MockClient(OpenWrtClient):
         return True
 
     async def set_firewall_redirect_enabled(
-        self, section_id: str, enabled: bool
+        self, section_id: str, enabled: bool,
     ) -> bool:
         return True
 
@@ -111,7 +111,7 @@ class MockClient(OpenWrtClient):
         return []
 
     async def provision_user(
-        self, username: str, password: str
+        self, username: str, password: str,
     ) -> tuple[bool, str | None]:
         return True, None
 
@@ -162,7 +162,7 @@ async def test_get_all_data_populates_mac_address() -> None:
             NetworkInterface(name="lo", mac_address="00:00:00:00:00:00"),
             NetworkInterface(name="br-lan", mac_address="AA:BB:CC:DD:EE:FF"),
             NetworkInterface(name="eth0", mac_address="11:22:33:44:55:66"),
-        ]
+        ],
     )
     client.get_connected_devices = AsyncMock(return_value=[])
 
@@ -202,7 +202,7 @@ async def test_get_all_data_falls_back_to_eth0() -> None:
     client.get_network_interfaces = AsyncMock(
         return_value=[
             NetworkInterface(name="eth0", mac_address="11:22:33:44:55:66"),
-        ]
+        ],
     )
     client.get_connected_devices = AsyncMock(return_value=[])
 

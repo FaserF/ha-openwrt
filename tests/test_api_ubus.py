@@ -101,7 +101,7 @@ async def test_ubus_get_sqm_status(ubus_client: UbusClient):
                 "upload": "50000",
                 "qdisc": "fq_codel",
                 "script": "simple.qos",
-            }
+            },
         }
 
         status = await ubus_client.get_sqm_status()
@@ -151,7 +151,8 @@ async def test_ubus_check_permissions(ubus_client: UbusClient):
                 # Return restricted permissions via session list
                 return {"values": {"access": {"system": {"read": True, "write": True}}}}
             if obj == "uci" and method == "get":
-                raise UbusPermissionError("Access denied")
+                msg = "Access denied"
+                raise UbusPermissionError(msg)
             return {}
 
         mock_call.side_effect = side_effect
@@ -182,7 +183,7 @@ async def test_ubus_provision_user(ubus_client: UbusClient):
     """Test user provisioning via ubus."""
     ubus_client._session_id = "test_token"
     with patch.object(
-        ubus_client, "execute_command", new_callable=AsyncMock
+        ubus_client, "execute_command", new_callable=AsyncMock,
     ) as mock_exec:
         mock_exec.return_value = "LOG: Provisioning SUCCESS"
 

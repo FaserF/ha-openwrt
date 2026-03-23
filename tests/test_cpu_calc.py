@@ -57,8 +57,8 @@ class TestCpuCalculation(unittest.TestCase):
         # cpu  user nice system idle iowait irq softirq steal guest guest_nice
         stat1 = "cpu  100 0 50 1000 0 0 0 0 0 0"
         # Total: 1150, Idle: 1000
-        self.assertEqual(client._calculate_cpu_usage(stat1), 0.0)
-        self.assertEqual(client._last_cpu_stats, (1150, 1000))
+        assert client._calculate_cpu_usage(stat1) == 0.0
+        assert client._last_cpu_stats == (1150, 1000)
 
         # Second poll:
         # Increase user by 50, system by 50, idle by 100
@@ -66,7 +66,7 @@ class TestCpuCalculation(unittest.TestCase):
         # Total: 1350, Idle: 1100
         # DiffTotal: 200, DiffIdle: 100
         # Usage: (200 - 100) / 200 = 0.5 = 50.0%
-        self.assertEqual(client._calculate_cpu_usage(stat2), 50.0)
+        assert client._calculate_cpu_usage(stat2) == 50.0
 
         # Third poll: High usage
         # Increase user by 100, idle by 0
@@ -74,7 +74,7 @@ class TestCpuCalculation(unittest.TestCase):
         # Total: 1450, Idle: 1100
         # DiffTotal: 100, DiffIdle: 0
         # Usage: (100 - 0) / 100 = 100.0%
-        self.assertEqual(client._calculate_cpu_usage(stat3), 100.0)
+        assert client._calculate_cpu_usage(stat3) == 100.0
 
         # Fourth poll: Idle usage
         # Increase idle by 100
@@ -82,7 +82,7 @@ class TestCpuCalculation(unittest.TestCase):
         # Total: 1550, Idle: 1200
         # DiffTotal: 100, DiffIdle: 100
         # Usage: (100 - 100) / 100 = 0.0%
-        self.assertEqual(client._calculate_cpu_usage(stat4), 0.0)
+        assert client._calculate_cpu_usage(stat4) == 0.0
 
 
 if __name__ == "__main__":

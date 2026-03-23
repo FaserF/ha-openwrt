@@ -64,7 +64,7 @@ def test_translation_files_parity():
 
 def test_translation_values_not_empty():
     """Ensure no translation value is empty or remains as a placeholder."""
-    for lang in REQUIRED_LANGUAGES + ["strings"]:
+    for lang in [*REQUIRED_LANGUAGES, "strings"]:
         if lang == "strings":
             file_path = STRINGS_FILE
         else:
@@ -173,7 +173,7 @@ def test_steps_and_errors_translated():
     # 1. Check step_id="..."
     found_steps = set(re.findall(r'step_id=["\']([^"\']+)["\']', content))
     translated_steps = set(config_data.get("step", {}).keys()) | set(
-        options_data.get("step", {}).keys()
+        options_data.get("step", {}).keys(),
     )
 
     missing_steps = found_steps - translated_steps
@@ -188,7 +188,7 @@ def test_steps_and_errors_translated():
         found_error_keys.update(re.findall(r':\s*["\']([^"\']+)["\']', sec))
 
     translated_errors = set(config_data.get("error", {}).keys()) | set(
-        options_data.get("error", {}).keys()
+        options_data.get("error", {}).keys(),
     )
     missing_errors = found_error_keys - translated_errors - found_steps
 
@@ -203,10 +203,10 @@ def test_steps_and_errors_translated():
 
     # 3. Check async_abort(reason="...")
     found_abort_reasons = set(
-        re.findall(r'async_abort\(reason=["\']([^"\']+)["\']', content)
+        re.findall(r'async_abort\(reason=["\']([^"\']+)["\']', content),
     )
     translated_aborts = set(config_data.get("abort", {}).keys()) | set(
-        options_data.get("abort", {}).keys()
+        options_data.get("abort", {}).keys(),
     )
     missing_aborts = found_abort_reasons - translated_aborts
     assert not missing_aborts, (

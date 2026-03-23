@@ -28,7 +28,7 @@ class AsuClient:
         self._session = async_get_clientsession(hass)
 
     async def _request(
-        self, method: str, path: str, payload: dict | None = None, timeout: float = 60.0
+        self, method: str, path: str, payload: dict | None = None, timeout: float = 60.0,
     ) -> dict:
         """Make an HTTP request to the ASU server."""
         url = f"{self._base_url}{path}"
@@ -44,12 +44,15 @@ class AsuClient:
             ) as resp:
                 if resp.status not in (200, 202):
                     text = await resp.text()
-                    raise AsuClientError(f"ASU API error ({resp.status}): {text}")
+                    msg = f"ASU API error ({resp.status}): {text}"
+                    raise AsuClientError(msg)
                 return await resp.json()
         except aiohttp.ClientError as err:
-            raise AsuClientError(f"Connection to ASU failed: {err}") from err
+            msg = f"Connection to ASU failed: {err}"
+            raise AsuClientError(msg) from err
         except TimeoutError as err:
-            raise AsuClientError("Request to ASU timed out") from err
+            msg = "Request to ASU timed out"
+            raise AsuClientError(msg) from err
 
     async def request_build(
         self,
@@ -85,12 +88,13 @@ class AsuClient:
         resp = await self._request("POST", "/api/v1/build", payload)
         request_hash = resp.get("request_hash")
         if not request_hash:
-            raise AsuClientError("ASU response missing request_hash")
+            msg = "ASU response missing request_hash"
+            raise AsuClientError(msg)
 
         return request_hash
 
     async def poll_build_status(
-        self, request_hash: str, timeout: float = 600.0, step: float = 5.0
+        self, request_hash: str, timeout: float = 600.0, step: float = 5.0,
     ) -> str:
         """Poll the ASU server until the build is ready.
 
@@ -131,14 +135,17 @@ class AsuClient:
                     _LOGGER.info("ASU build complete. Image URL: %s", url)
                     return url
 
+                msg = f"Build marked as Done, but missing image info: {resp}"
                 raise AsuClientError(
-                    f"Build marked as Done, but missing image info: {resp}"
+                    msg,
                 )
 
             if "error" in status or resp.get("status") in (400, 500):
-                raise AsuClientError(f"ASU build failed: {status}")
+                msg = f"ASU build failed: {status}"
+                raise AsuClientError(msg)
 
             _LOGGER.debug("ASU build status: %s", status)
             await asyncio.sleep(step)
 
-        raise AsuClientError(f"Timeout waiting for ASU build ({timeout}s)")
+        msg = f"Timeout waiting for ASU build ({timeout}s)"
+        raise AsuClientError(msg)

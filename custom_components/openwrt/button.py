@@ -92,7 +92,7 @@ async def async_setup_entry(
             if description.key == "create_backup" and not perms.write_system:
                 continue
             entities.append(
-                OpenWrtButtonEntity(coordinator, entry, description, client)
+                OpenWrtButtonEntity(coordinator, entry, description, client),
             )
         if perms.read_services:
             for service in coordinator.data.services:
@@ -110,11 +110,11 @@ async def async_setup_entry(
                             device_class=ButtonDeviceClass.RESTART,
                             entity_category=EntityCategory.CONFIG,
                             press_fn=lambda c, n=service.name: c.manage_service(
-                                n, "restart"
+                                n, "restart",
                             ),
                         ),
                         client,
-                    )
+                    ),
                 )
                 entities.append(
                     OpenWrtButtonEntity(
@@ -127,11 +127,11 @@ async def async_setup_entry(
                             translation_placeholders={"service": service.name},
                             entity_category=EntityCategory.CONFIG,
                             press_fn=lambda c, n=service.name: c.manage_service(
-                                n, "stop"
+                                n, "stop",
                             ),
                         ),
                         client,
-                    )
+                    ),
                 )
 
         for iface in coordinator.data.network_interfaces:
@@ -147,11 +147,11 @@ async def async_setup_entry(
                             translation_placeholders={"interface": iface.name.upper()},
                             entity_category=EntityCategory.CONFIG,
                             press_fn=lambda c, n=iface.name: c.manage_interface(
-                                n, "reconnect"
+                                n, "reconnect",
                             ),
                         ),
                         client,
-                    )
+                    ),
                 )
 
         # Add Wake on LAN and Kick buttons for each device
@@ -186,7 +186,7 @@ async def async_setup_entry(
                             device.mac,
                             dev_name,
                             device.interface,
-                        )
+                        ),
                     )
                 if (
                     perms.read_wireless
@@ -202,7 +202,7 @@ async def async_setup_entry(
                             device.mac,
                             device.interface,
                             dev_name,
-                        )
+                        ),
                     )
 
     async_add_entities(entities)
@@ -235,8 +235,9 @@ class OpenWrtButtonEntity(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntit
         try:
             await self.entity_description.press_fn(self._client)
         except Exception as err:
+            msg = f"Failed to execute {self.entity_description.key}: {err}"
             raise HomeAssistantError(
-                f"Failed to execute {self.entity_description.key}: {err}"
+                msg,
             ) from err
         await self.coordinator.async_request_refresh()
 
@@ -303,11 +304,15 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
                 await self._client.execute_command(command)
         except Exception as err:
             if "not found" in str(err).lower():
-                raise HomeAssistantError(
+                msg = (
                     "Wake on LAN command (ether-wake/etherwake) not found on router. "
                     "Please install the 'etherwake' package on OpenWrt."
+                )
+                raise HomeAssistantError(
+                    msg,
                 ) from err
-            raise HomeAssistantError(f"Failed to send WoL packet: {err}") from err
+            msg = f"Failed to send WoL packet: {err}"
+            raise HomeAssistantError(msg) from err
 
 
 class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity):
@@ -363,9 +368,11 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
         try:
             success = await self._client.kick_device(self._mac, self._interface)
             if not success:
+                msg = f"Failed to disconnect {self._mac} from {self._interface}. Ensure hostapd is running."
                 raise HomeAssistantError(
-                    f"Failed to disconnect {self._mac} from {self._interface}. Ensure hostapd is running."
+                    msg,
                 )
         except Exception as err:
-            raise HomeAssistantError(f"Failed to execute device kick: {err}") from err
+            msg = f"Failed to execute device kick: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()

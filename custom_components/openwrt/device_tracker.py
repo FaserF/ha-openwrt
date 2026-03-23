@@ -125,7 +125,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             seconds=entry.options.get(
                 CONF_CONSIDER_HOME,
                 entry.data.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME),
-            )
+            ),
         )
         self._last_seen: datetime | None = None
 
@@ -177,10 +177,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             return True
 
         # Not currently seen, check if within consider_home window
-        if self._last_seen and (now - self._last_seen) < self._consider_home:
-            return True
-
-        return False
+        return bool(self._last_seen and now - self._last_seen < self._consider_home)
 
     @property
     def mac_address(self) -> str:
@@ -238,10 +235,10 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                 if device.mac.lower() in self.coordinator._device_history:
                     history = self.coordinator._device_history[device.mac.lower()]
                     attrs["initially_seen"] = datetime.fromtimestamp(
-                        history["initially_seen"]
+                        history["initially_seen"],
                     ).isoformat()
                     attrs["last_seen"] = datetime.fromtimestamp(
-                        history["last_seen"]
+                        history["last_seen"],
                     ).isoformat()
 
                 if device.interface:

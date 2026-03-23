@@ -35,7 +35,7 @@ async def test_router_device_registration_with_mac(hass):
     )
 
     network_interfaces = [
-        NetworkInterface(name="br-lan", mac_address="AA:BB:CC:DD:EE:FF", up=True)
+        NetworkInterface(name="br-lan", mac_address="AA:BB:CC:DD:EE:FF", up=True),
     ]
 
     data = OpenWrtData(

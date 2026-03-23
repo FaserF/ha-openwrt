@@ -46,17 +46,17 @@ async def test_wol_button_restriction(hass) -> None:
     async_add_entities = MagicMock()
 
     hass.data[DOMAIN] = {
-        entry.entry_id: {DATA_COORDINATOR: coordinator, DATA_CLIENT: MagicMock()}
+        entry.entry_id: {DATA_COORDINATOR: coordinator, DATA_CLIENT: MagicMock()},
     }
     with patch(
-        "custom_components.openwrt.button.OpenWrtWakeOnLanButton"
+        "custom_components.openwrt.button.OpenWrtWakeOnLanButton",
     ) as mock_wol_button:
         await async_setup_entry(hass, entry, async_add_entities)
 
         # Check calls to OpenWrtWakeOnLanButton
         # Only the wired device should have triggered a button creation
         assert mock_wol_button.call_count == 1
-        args, kwargs = mock_wol_button.call_args
+        args, _kwargs = mock_wol_button.call_args
         # args[3] is the mac address in OpenWrtWakeOnLanButton(coordinator, entry, client, mac, name, interface)
         assert args[3] == "AA:BB:CC:DD:EE:01"
 
@@ -86,7 +86,7 @@ async def test_kick_button_default_disabled(hass) -> None:
     async_add_entities = MagicMock()
 
     hass.data[DOMAIN] = {
-        entry.entry_id: {DATA_COORDINATOR: coordinator, DATA_CLIENT: MagicMock()}
+        entry.entry_id: {DATA_COORDINATOR: coordinator, DATA_CLIENT: MagicMock()},
     }
 
     await async_setup_entry(hass, entry, async_add_entities)

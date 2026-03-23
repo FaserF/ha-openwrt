@@ -79,7 +79,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if device_info.mac_address:
                 new_unique_id = dr.format_mac(device_info.mac_address)
                 hass.config_entries.async_update_entry(
-                    entry, unique_id=new_unique_id, version=2
+                    entry, unique_id=new_unique_id, version=2,
                 )
                 _LOGGER.info(
                     "Migrated OpenWrt entry %s to version 2 (MAC: %s)",
@@ -93,7 +93,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     entry.entry_id,
                 )
         except Exception as err:
-            _LOGGER.error("Migration failed for %s: %s", entry.entry_id, err)
+            _LOGGER.exception("Migration failed for %s: %s", entry.entry_id, err)
             return False
 
     return True
@@ -106,10 +106,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
     try:
         await client.connect()
     except (UbusAuthError, LuciRpcAuthError, SshAuthError) as err:
-        raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
+        msg = f"Authentication failed: {err}"
+        raise ConfigEntryAuthFailed(msg) from err
     except (UbusError, LuciRpcError, SshError) as err:
+        msg = f"Cannot connect to {entry.data[CONF_HOST]}: {err}"
         raise ConfigEntryNotReady(
-            f"Cannot connect to {entry.data[CONF_HOST]}: {err}"
+            msg,
         ) from err
 
     coordinator = OpenWrtDataCoordinator(hass, entry, client)
@@ -144,7 +146,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
     # during async_forward_entry_setups which calls sync import_module
     for platform in PLATFORMS:
         hass.async_add_import_executor_job(
-            importlib.import_module, f"custom_components.{DOMAIN}.{platform}"
+            importlib.import_module, f"custom_components.{DOMAIN}.{platform}",
         )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -170,7 +172,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> 
 
 
 async def _async_update_listener(
-    hass: HomeAssistant, entry: OpenWrtConfigEntry
+    hass: HomeAssistant, entry: OpenWrtConfigEntry,
 ) -> None:
     """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)
@@ -214,7 +216,8 @@ def _register_services(hass: HomeAssistant) -> None:
         option = call.data.get("option")
 
         if entry_id not in hass.data[DOMAIN]:
-            raise vol.Invalid(f"Config entry {entry_id} not found")
+            msg = f"Config entry {entry_id} not found"
+            raise vol.Invalid(msg)
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
 
@@ -229,7 +232,8 @@ def _register_services(hass: HomeAssistant) -> None:
             result = await client.execute_command(cmd)
             return {"value": result.strip() if result else ""}
         except Exception as err:
-            raise HomeAssistantError(f"Failed to get UCI value: {err}") from err
+            msg = f"Failed to get UCI value: {err}"
+            raise HomeAssistantError(msg) from err
 
     async def _handle_uci_set(call: ServiceCall) -> None:
         """Handle UCI set service call."""
@@ -240,7 +244,8 @@ def _register_services(hass: HomeAssistant) -> None:
         value = call.data["value"]
 
         if entry_id not in hass.data[DOMAIN]:
-            raise vol.Invalid(f"Config entry {entry_id} not found")
+            msg = f"Config entry {entry_id} not found"
+            raise vol.Invalid(msg)
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
 
@@ -252,7 +257,8 @@ def _register_services(hass: HomeAssistant) -> None:
         try:
             await client.execute_command(cmd)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to set UCI value: {err}") from err
+            msg = f"Failed to set UCI value: {err}"
+            raise HomeAssistantError(msg) from err
 
     async def _handle_wol(call: ServiceCall) -> None:
         """Handle Wake-on-LAN service call."""
@@ -261,7 +267,8 @@ def _register_services(hass: HomeAssistant) -> None:
         interface = call.data.get("interface")
 
         if entry_id not in hass.data[DOMAIN]:
-            raise vol.Invalid(f"Config entry {entry_id} not found")
+            msg = f"Config entry {entry_id} not found"
+            raise vol.Invalid(msg)
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
         command = f"ether-wake {mac}"
@@ -274,7 +281,8 @@ def _register_services(hass: HomeAssistant) -> None:
                 command = command.replace("ether-wake", "etherwake")
                 await client.execute_command(command)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to send WoL packet: {err}") from err
+            msg = f"Failed to send WoL packet: {err}"
+            raise HomeAssistantError(msg) from err
 
     hass.services.async_register(
         DOMAIN,
@@ -283,7 +291,7 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema(
             {
                 vol.Optional("entry_id"): cv.string,
-            }
+            },
         ),
     )
 
@@ -295,7 +303,7 @@ def _register_services(hass: HomeAssistant) -> None:
             {
                 vol.Required("entry_id"): cv.string,
                 vol.Required("command"): cv.string,
-            }
+            },
         ),
     )
 
@@ -308,9 +316,9 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required("entry_id"): cv.string,
                 vol.Required("service_name"): cv.string,
                 vol.Required("action"): vol.In(
-                    ["start", "stop", "restart", "enable", "disable"]
+                    ["start", "stop", "restart", "enable", "disable"],
                 ),
-            }
+            },
         ),
     )
 
@@ -323,7 +331,7 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required("target"): cv.string,
                 vol.Required("mac"): cv.string,
                 vol.Optional("interface"): cv.string,
-            }
+            },
         ),
     )
 
@@ -337,7 +345,7 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required("config"): cv.string,
                 vol.Optional("section"): cv.string,
                 vol.Optional("option"): cv.string,
-            }
+            },
         ),
         supports_response=SupportsResponse.ONLY,
     )
@@ -353,7 +361,7 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required("section"): cv.string,
                 vol.Optional("option"): cv.string,
                 vol.Required("value"): cv.string,
-            }
+            },
         ),
     )
 
@@ -361,14 +369,16 @@ def _register_services(hass: HomeAssistant) -> None:
         """Handle create backup service call."""
         entry_id = call.data["entry_id"]
         if entry_id not in hass.data[DOMAIN]:
-            raise vol.Invalid(f"Config entry {entry_id} not found")
+            msg = f"Config entry {entry_id} not found"
+            raise vol.Invalid(msg)
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
         try:
             backup_path = await client.create_backup()
             return {"backup_path": backup_path}
         except Exception as err:
-            raise HomeAssistantError(f"Failed to create backup: {err}") from err
+            msg = f"Failed to create backup: {err}"
+            raise HomeAssistantError(msg) from err
 
     hass.services.async_register(
         DOMAIN,
@@ -377,7 +387,7 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema(
             {
                 vol.Required("entry_id"): cv.string,
-            }
+            },
         ),
         supports_response=SupportsResponse.ONLY,
     )

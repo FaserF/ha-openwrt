@@ -86,18 +86,16 @@ def bump_version(current, bump_type, release_status, all_tags=None):
         current_core = (major, minor, patch)
         if current_core == target_core and is_curr_beta:
             return f"{target_core_str}-beta.{curr_beta_num + 1}"
-        else:
-            return f"{target_core_str}-beta.0"
-    else:
-        # Stable release
-        # If we are currently on a beta for this EXACT core, just strip the beta
-        # (e.g. 1.1.0-beta.5 -> 1.1.0)
-        current_core = (major, minor, patch)
-        if current_core == target_core and is_curr_beta:
-            return target_core_str
-
-        # Otherwise, if we were on an OLDER version, the target_core is already bumped
+        return f"{target_core_str}-beta.0"
+    # Stable release
+    # If we are currently on a beta for this EXACT core, just strip the beta
+    # (e.g. 1.1.0-beta.5 -> 1.1.0)
+    current_core = (major, minor, patch)
+    if current_core == target_core and is_curr_beta:
         return target_core_str
+
+    # Otherwise, if we were on an OLDER version, the target_core is already bumped
+    return target_core_str
 
 
 def update_files(new_version):
@@ -106,7 +104,7 @@ def update_files(new_version):
         content = f.read()
     # Match version = "X.Y.Z"
     content = re.sub(
-        r'version\s*=\s*"[^"]+"', f'version = "{new_version}"', content, count=1
+        r'version\s*=\s*"[^"]+"', f'version = "{new_version}"', content, count=1,
     )
     with open("pyproject.toml", "w") as f:
         f.write(content)
@@ -124,7 +122,6 @@ def update_files(new_version):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python bump_version.py <major|minor|patch> <stable|beta>")
         sys.exit(1)
 
     bump_type = sys.argv[1].lower()
@@ -134,7 +131,6 @@ if __name__ == "__main__":
     current_v = latest_tag.lstrip("v") if latest_tag else None
 
     new_v = bump_version(current_v, bump_type, release_status)
-    print(f"New Version: {new_v}")
 
     update_files(new_v)
 

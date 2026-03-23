@@ -117,8 +117,9 @@ class OpenWrtLedLight(CoordinatorEntity[OpenWrtDataCoordinator], LightEntity):
                     try:
                         await client.set_led(self._led_name, hw_brightness)
                     except Exception as err:
+                        msg = f"Failed to set LED {self._led_name}: {err}"
                         raise HomeAssistantError(
-                            f"Failed to set LED {self._led_name}: {err}"
+                            msg,
                         ) from err
                     break
         await self.coordinator.async_request_refresh()
@@ -129,7 +130,8 @@ class OpenWrtLedLight(CoordinatorEntity[OpenWrtDataCoordinator], LightEntity):
         try:
             await client.set_led(self._led_name, 0)
         except Exception as err:
+            msg = f"Failed to turn off LED {self._led_name}: {err}"
             raise HomeAssistantError(
-                f"Failed to turn off LED {self._led_name}: {err}"
+                msg,
             ) from err
         await self.coordinator.async_request_refresh()

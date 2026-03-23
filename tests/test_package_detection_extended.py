@@ -20,7 +20,7 @@ async def test_ubus_package_detection_extended():
         patch.object(client, "_list_objects", new_callable=AsyncMock) as mock_list,
         patch.object(client, "_call", new_callable=AsyncMock) as mock_call,
         patch.object(
-            client, "get_installed_packages", new_callable=AsyncMock
+            client, "get_installed_packages", new_callable=AsyncMock,
         ) as mock_pkg,
     ):
         mock_list.return_value = ["adblock", "luci-rpc", "sqm"]
@@ -28,7 +28,7 @@ async def test_ubus_package_detection_extended():
 
         def call_side_effect(obj, method, params=None):
             if obj == "file" and method == "exec":
-                return {"stdout": "0\n0\n1\n0\n1\n0\n0\n0\n0\n0\n0\n1\n"}
+                return {"stdout": "1\n0\n1\n0\n1\n0\n0\n0\n0\n0\n1\n0\n1\n"}
             if obj == "system" and method == "info":
                 return {"release": {"distribution": "OpenWrt", "version": "23.05"}}
             return {}
@@ -53,10 +53,10 @@ async def test_ssh_package_detection_extended():
     with (
         patch.object(client, "_exec", new_callable=AsyncMock) as mock_exec,
         patch.object(
-            client, "get_installed_packages", new_callable=AsyncMock
+            client, "get_installed_packages", new_callable=AsyncMock,
         ) as mock_pkg,
     ):
-        mock_exec.return_value = "0\n0\n0\n0\n0\n1\n0\n0\n0\n0\n1\n0\n"
+        mock_exec.return_value = "0\n0\n0\n0\n0\n1\n0\n0\n0\n0\n0\n1\n0\n"
         mock_pkg.return_value = ["sqm-scripts"]
 
         packages = await client.check_packages()
@@ -77,10 +77,10 @@ async def test_luci_rpc_package_detection_extended():
         patch.object(client, "_rpc_call", new_callable=AsyncMock) as mock_rpc,
         patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec,
         patch.object(
-            client, "get_installed_packages", new_callable=AsyncMock
+            client, "get_installed_packages", new_callable=AsyncMock,
         ) as mock_pkg,
     ):
-        mock_rpc.return_value = "0\n0\n0\n0\n0\n0\n0\n0\n0\n1\n0\n0\n"
+        mock_rpc.return_value = "0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n1\n0\n0\n"
         mock_exec.return_value = "mwan3"
         mock_pkg.return_value = ["etherwake"]
 

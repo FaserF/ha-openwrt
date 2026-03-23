@@ -35,7 +35,7 @@ async def test_probe_openwrt_success_luci(flow, hass) -> None:
     """Test successful OpenWrt probe via LuCI."""
     mock_session = MagicMock()
     mock_session.get.return_value = create_mock_response(
-        text="<html>LuCI - OpenWrt Control Board</html>"
+        text="<html>LuCI - OpenWrt Control Board</html>",
     )
     mock_session.post.return_value = create_mock_response(status=404)
 
@@ -44,7 +44,7 @@ async def test_probe_openwrt_success_luci(flow, hass) -> None:
         return_value=mock_session,
     ):
         assert await flow._async_probe_openwrt("192.168.1.1") == [
-            CONNECTION_TYPE_LUCI_RPC
+            CONNECTION_TYPE_LUCI_RPC,
         ]
 
 
@@ -69,7 +69,7 @@ async def test_probe_openwrt_success_asset(flow, hass) -> None:
         return_value=mock_session,
     ):
         assert await flow._async_probe_openwrt("192.168.1.1") == [
-            CONNECTION_TYPE_LUCI_RPC
+            CONNECTION_TYPE_LUCI_RPC,
         ]
 
 
@@ -77,7 +77,7 @@ async def test_probe_openwrt_exclusion_valetudo(flow, hass) -> None:
     """Test that Valetudo is excluded."""
     mock_session = MagicMock()
     mock_session.get.return_value = create_mock_response(
-        text="<html>Welcome to Valetudo - Manual Control</html>"
+        text="<html>Welcome to Valetudo - Manual Control</html>",
     )
     mock_session.post.return_value = create_mock_response(status=404)
 
@@ -119,7 +119,7 @@ async def test_probe_openwrt_exclusion_vacuum(flow, hass) -> None:
 
         # Case 3: Excluded because UBus probe (405) didn't return JSON content type
         mock_session.post.return_value = create_mock_response(
-            status=405, headers={"Content-Type": "text/html"}
+            status=405, headers={"Content-Type": "text/html"},
         )
         assert await flow._async_probe_openwrt("192.168.1.67") == []
 
@@ -140,7 +140,7 @@ async def test_probe_router_exclusion_logic(flow, hass) -> None:
         # 1. Excluded via hinted hostname
         assert (
             await flow._async_probe_router(
-                "192.168.1.67", "Valetudo WittyIdealisticSnake"
+                "192.168.1.67", "Valetudo WittyIdealisticSnake",
             )
             is None
         )

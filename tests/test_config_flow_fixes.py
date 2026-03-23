@@ -32,7 +32,8 @@ class MockResponse:
 
     def raise_for_status(self):
         if self.status >= 400:
-            raise Exception(f"HTTP Error {self.status}")
+            msg = f"HTTP Error {self.status}"
+            raise Exception(msg)
 
     async def json(self):
         return self._json_data
@@ -84,7 +85,7 @@ async def test_manual_entry_in_selection(hass):
             "hostname": "OpenWrt",
             "capabilities": ["ubus"],
             "method": "ubus",
-        }
+        },
     ]
 
     # Check selection form
@@ -117,7 +118,7 @@ async def test_create_entry_data_options_split(hass):
     ) as mock_create:
         await flow._create_entry()
 
-        args, kwargs = mock_create.call_args
+        _args, kwargs = mock_create.call_args
         data = kwargs["data"]
         options = kwargs["options"]
 

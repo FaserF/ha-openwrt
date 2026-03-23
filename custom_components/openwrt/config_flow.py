@@ -116,7 +116,7 @@ def _generate_permission_table(perms: Any) -> str:
             missing.extend(features)
         return ", ".join(missing) if missing else "-"
 
-    table = (
+    return (
         "| Subsystem | Read | Write | Missing Features |\n"
         "|-----------|------|-------|------------------|\n"
         f"| **System** | {to_icon(perms.read_system)} | {to_icon(perms.write_system)} | {get_missing(perms.read_system, perms.write_system, 'System', ['Reboot', 'Upgrade', 'Backup'])} |\n"
@@ -130,7 +130,6 @@ def _generate_permission_table(perms: Any) -> str:
         f"| **LEDs** | {to_icon(perms.read_led)} | {to_icon(perms.write_led)} | {get_missing(perms.read_led, perms.write_led, 'LED', ['Control LEDs'])} |\n"
         f"| **MWAN3** | {to_icon(perms.read_mwan)} | - | {'-' if perms.read_mwan else 'Multi-WAN Sensors'} |"
     )
-    return table
 
 
 def _generate_package_table(
@@ -146,7 +145,7 @@ def _generate_package_table(
         return "✅" if val else "❌"
 
     def get_missing(
-        val: bool | None, name: str, key: str | None = None, required: bool = False
+        val: bool | None, name: str, key: str | None = None, required: bool = False,
     ) -> str:
         if val is None:
             return "Check failed"
@@ -172,7 +171,7 @@ def _generate_package_table(
         else "LuCI Web API (not needed for this connection method)"
     )
 
-    table = (
+    return (
         "| Package | Installed | Missing Features |\n"
         "|---------|-----------|------------------|\n"
         f"| **sqm-scripts** | {to_icon(packages.sqm_scripts)} | {get_missing(packages.sqm_scripts, 'SQM QoS Settings', 'sqm_scripts')} |\n"
@@ -184,7 +183,6 @@ def _generate_package_table(
         f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, 'luci_mod_rpc', required=luci_required)} |\n"
         f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)', 'asu')} |"
     )
-    return table
 
 
 class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -212,7 +210,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         return OpenWrtOptionsFlow(config_entry)
 
     async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Handle the initial step - Welcome Screen."""
         if user_input is not None:
@@ -225,21 +223,21 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        "flow_type", default="manual"
+                        "flow_type", default="manual",
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=["discovery", "manual"],
                             translation_key="flow_type",
                             mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    )
-                }
+                        ),
+                    ),
+                },
             ),
             description_placeholders={"docs_url": DOCS_URL},
         )
 
     async def async_step_discovery(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Scan for routers in the background."""
         if user_input is not None or self._discovered_routers:
@@ -272,8 +270,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     if local_ip:
                         parts = local_ip.split(".")
                         if len(parts) == 4:
-                            potential_hosts.add(".".join(parts[:-1] + ["1"]))
-                            potential_hosts.add(".".join(parts[:-1] + ["254"]))
+                            potential_hosts.add(".".join([*parts[:-1], "1"]))
+                            potential_hosts.add(".".join([*parts[:-1], "254"]))
         except Exception:
             pass
 
@@ -301,7 +299,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_discovery(user_input={})
 
     async def async_step_manual_entry(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Handle manual entry if discovery fails or if chosen."""
         if user_input is not None:
@@ -316,14 +314,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(CONF_HOST, default="192.168.1.1"): str,
                     vol.Required(
-                        CONF_CONNECTION_TYPE, default=CONNECTION_TYPE_LUCI_RPC
+                        CONF_CONNECTION_TYPE, default=CONNECTION_TYPE_LUCI_RPC,
                     ): vol.In(CONNECTION_TYPE_MAP),
-                }
+                },
             ),
         )
 
     async def async_step_select_device(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Handle selecting a router when multiple are found."""
         if user_input is not None:
@@ -350,7 +348,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required("device"): vol.In(device_options),
-                }
+                },
             ),
             description_placeholders={"public_info": ""},
         )
@@ -407,14 +405,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if any(exc in search_target for exc in exclusions):
             _LOGGER.info(
-                "Definitively excluded %s (%s) as a non-router device", host, hostname
+                "Definitively excluded %s (%s) as a non-router device", host, hostname,
             )
             return True
 
         return False
 
     async def _async_probe_router(
-        self, host: str, hostname: str | None = None
+        self, host: str, hostname: str | None = None,
     ) -> dict[str, Any] | None:
         """Probe a host and return metadata if it's OpenWrt."""
         _LOGGER.debug("Probing router logic for %s (hint: %s)", host, hostname)
@@ -521,7 +519,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         return False
 
     async def async_step_ssdp(
-        self, discovery_info: SsdpServiceInfo
+        self, discovery_info: SsdpServiceInfo,
     ) -> ConfigFlowResult:
         """Handle SSDP auto-discovery."""
         host = (
@@ -545,7 +543,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
         hostname = discovery_info.upnp.get("friendlyName") or discovery_info.upnp.get(
-            "modelName"
+            "modelName",
         )
         if self._is_excluded(host, hostname, discovery_info.upnp):
             return self.async_abort(reason="not_openwrt")
@@ -565,7 +563,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_confirm_discovery()
 
     async def async_step_dhcp(
-        self, discovery_info: DhcpServiceInfo
+        self, discovery_info: DhcpServiceInfo,
     ) -> ConfigFlowResult:
         """Handle DHCP auto-discovery."""
         host = discovery_info.ip
@@ -585,14 +583,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 "title_placeholders": {
                     "name": self._discovered_name,
                     "host": host,
-                }
-            }
+                },
+            },
         )
 
         return await self.async_step_confirm_discovery()
 
     async def async_step_zeroconf(
-        self, discovery_info: ZeroconfServiceInfo
+        self, discovery_info: ZeroconfServiceInfo,
     ) -> ConfigFlowResult:
         """Handle Zeroconf auto-discovery."""
         host = discovery_info.host
@@ -620,14 +618,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 "title_placeholders": {
                     "name": self._discovered_name,
                     "host": host,
-                }
-            }
+                },
+            },
         )
 
         return await self.async_step_confirm_discovery()
 
     async def async_step_confirm_discovery(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Confirm the discovered device."""
         if user_input is not None:
@@ -637,13 +635,13 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             router = self._discovered_routers[-1]
             self._data[CONF_HOST] = router["host"]
             self._data[CONF_CONNECTION_TYPE] = user_input.get(
-                CONF_CONNECTION_TYPE, router["method"]
+                CONF_CONNECTION_TYPE, router["method"],
             )
             return await self.async_step_credentials()
 
         router = self._discovered_routers[-1]
         capabilities = ", ".join(
-            [CONNECTION_TYPE_MAP.get(c, c) for c in router.get("capabilities", [])]
+            [CONNECTION_TYPE_MAP.get(c, c) for c in router.get("capabilities", [])],
         )
 
         schema = vol.Schema({})
@@ -655,15 +653,15 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             schema = vol.Schema(
                 {
                     vol.Required(
-                        CONF_CONNECTION_TYPE, default=router["method"]
+                        CONF_CONNECTION_TYPE, default=router["method"],
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=options,
                             translation_key="connection_type",
                             mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    )
-                }
+                        ),
+                    ),
+                },
             )
 
         return self.async_show_form(
@@ -678,7 +676,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_credentials(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Handle credentials step for ubus/LuCI RPC."""
         errors: dict[str, str] = {}
@@ -717,7 +715,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "host": host,
                 "connection_type": CONNECTION_TYPE_MAP.get(
-                    connection_type, connection_type
+                    connection_type, connection_type,
                 ),
                 "auto_detected_info": auto_detected_info,
             },
@@ -738,7 +736,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     options=["auto", "dnsmasq", "odhcpd", "none"],
                     translation_key="dhcp_software",
                     mode=selector.SelectSelectorMode.DROPDOWN,
-                )
+                ),
             ),
             vol.Optional(CONF_TRACK_DEVICES, default=True): bool,
             vol.Optional(CONF_PORT): int,
@@ -750,7 +748,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         return vol.Schema(schema_dict)
 
     async def async_step_ssh(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Handle SSH connection step."""
         errors: dict[str, str] = {}
@@ -788,11 +786,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_PASSWORD): str,
                 vol.Optional(CONF_SSH_KEY): str,
                 vol.Optional(CONF_DHCP_SOFTWARE, default="auto"): vol.In(
-                    ["auto", "dnsmasq", "odhcpd", "none"]
+                    ["auto", "dnsmasq", "odhcpd", "none"],
                 ),
                 vol.Optional(CONF_TRACK_DEVICES, default=True): bool,
                 vol.Optional(CONF_PORT, default=DEFAULT_PORT_SSH): int,
-            }
+            },
         )
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
@@ -801,7 +799,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Handle re-authentication confirmation."""
         errors: dict[str, str] = {}
@@ -813,11 +811,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = error
             else:
                 entry = self.hass.config_entries.async_get_entry(
-                    self.context["entry_id"]
+                    self.context["entry_id"],
                 )
                 if entry:
                     self.hass.config_entries.async_update_entry(
-                        entry, data={**entry.data, **user_input}
+                        entry, data={**entry.data, **user_input},
                     )
                     await self.hass.config_entries.async_reload(entry.entry_id)
                     return self.async_abort(reason="reauth_successful")
@@ -829,7 +827,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     default=self._data.get(CONF_USERNAME, DEFAULT_USERNAME),
                 ): str,
                 vol.Required(CONF_PASSWORD): str,
-            }
+            },
         )
 
         return self.async_show_form(
@@ -850,7 +848,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 if data.get(CONF_USERNAME) == "root":
                     try:
                         self._homeassistant_user_exists = await client.user_exists(
-                            "homeassistant"
+                            "homeassistant",
                         )
                     except Exception:  # noqa: BLE001
                         pass
@@ -899,7 +897,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         except (UbusError, LuciRpcError, SshError) as err:
             _LOGGER.warning("API error during connection test: %s", err)
             return "cannot_connect"
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             _LOGGER.exception(
                 "Unexpected error during connection test for %s: %s",
                 data.get(CONF_USERNAME),
@@ -908,7 +906,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             return "unknown"
 
     async def _async_probe_openwrt(
-        self, host: str, hostname: str | None = None
+        self, host: str, hostname: str | None = None,
     ) -> list[str]:
         """Probe a host to see if it responds like OpenWrt (LuCI/UBus)."""
         _LOGGER.debug("Probing %s (%s) for OpenWrt endpoints", host, hostname)
@@ -976,7 +974,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     async with session.get(asset_url) as response:
                         if response.status == 200:
                             _LOGGER.info(
-                                "Found OpenWrt via LuCI asset probe at %s", host
+                                "Found OpenWrt via LuCI asset probe at %s", host,
                             )
                             found_methods.append(CONNECTION_TYPE_LUCI_RPC)
             except (
@@ -1064,7 +1062,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             if len(parts) == 4:
                 # Common gateway is .1 or .254
                 for suffix in ["1", "254"]:
-                    gateway_ip = ".".join(parts[:-1] + [suffix])
+                    gateway_ip = ".".join([*parts[:-1], suffix])
                     if gateway_ip not in potential_hosts:
                         potential_hosts.append(gateway_ip)
         except Exception as err:
@@ -1093,7 +1091,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         if user_input is not None:
             mode = user_input.get("mode")
-            if mode == "create" or mode == "reset":
+            if mode in {"create", "reset"}:
                 return await self.async_step_do_provision()
             if mode == "reuse":
                 return await self.async_step_reuse_user()
@@ -1117,9 +1115,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                             options=options,
                             translation_key="provision_mode",
                             mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
+                        ),
                     ),
-                }
+                },
             ),
             errors=errors or {},
             description_placeholders={
@@ -1129,7 +1127,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_reuse_user(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Step to ask for existing user password."""
         errors: dict[str, str] = {}
@@ -1163,7 +1161,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 # The provisioning script will restart services in background
                 # it's possible the connection drops exactly when/after sending SUCCESS
                 success, self._provision_error = await client.provision_user(
-                    "homeassistant", self._generated_password
+                    "homeassistant", self._generated_password,
                 )
 
                 # Fallback to SSH for root if ubus provisioning fails with permission error
@@ -1187,7 +1185,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     try:
                         if await ssh_client.connect():
                             success, ssh_error = await ssh_client.provision_user(
-                                "homeassistant", self._generated_password
+                                "homeassistant", self._generated_password,
                             )
                             if success:
                                 self._provision_error = None
@@ -1223,8 +1221,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 # The next step 'display_new_user' does a thorough re-connect test
                 success = True
             else:
-                _LOGGER.error(
-                    "Provisioning failed for %s: %s", self._data.get(CONF_HOST), err
+                _LOGGER.exception(
+                    "Provisioning failed for %s: %s", self._data.get(CONF_HOST), err,
                 )
                 self._provision_error = str(err)
 
@@ -1239,18 +1237,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="provision_failed",
             errors={"base": "provision_failed"},
             description_placeholders={
-                "error": self._provision_error or "Unknown error"
+                "error": self._provision_error or "Unknown error",
             },
         )
 
     async def async_step_provision_failed(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Handle provisioning failure (only skip available)."""
         return await self.async_step_permissions()
 
     async def async_step_display_new_user(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Display the new user credentials and ask to use them."""
         if user_input is not None:
@@ -1262,7 +1260,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 # Slower devices need more time for rpcd to come back up
                 # We wait 10s now initially as it's a critical phase
                 _LOGGER.info(
-                    "Provisioning finished. Waiting 10s for router services to restart..."
+                    "Provisioning finished. Waiting 10s for router services to restart...",
                 )
                 await asyncio.sleep(10)
 
@@ -1300,7 +1298,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                         error,
                     )
                     return await self.async_step_provision_user(
-                        errors={"base": error or "invalid_auth"}
+                        errors={"base": error or "invalid_auth"},
                     )
             return await self.async_step_permissions()
 
@@ -1314,7 +1312,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_permissions(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show permissions summary."""
         if user_input is not None:
@@ -1343,13 +1341,13 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_permissions_ubus(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show permissions summary (ubus variant)."""
         return await self.async_step_permissions(user_input)
 
     async def async_step_packages(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show packages summary."""
         if user_input is not None:
@@ -1360,7 +1358,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Get translations for package features
         translations = await translation.async_get_translations(
-            self.hass, self.hass.config.language, "entity", [DOMAIN]
+            self.hass, self.hass.config.language, "entity", [DOMAIN],
         )
         prefix = f"component.{DOMAIN}.entity.sensor.package_feature.state."
         feature_translations = {
@@ -1452,7 +1450,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
         self._packages: Any = None
 
     async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
@@ -1499,15 +1497,15 @@ class OpenWrtOptionsFlow(OptionsFlow):
                         options=["auto", "dnsmasq", "odhcpd", "none"],
                         translation_key="dhcp_software",
                         mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
+                    ),
                 ),
-            }
+            },
         )
 
         return self.async_show_form(step_id="init", data_schema=schema)
 
     async def async_step_permissions(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show permissions summary."""
         if user_input is not None:
@@ -1553,13 +1551,13 @@ class OpenWrtOptionsFlow(OptionsFlow):
         )
 
     async def async_step_permissions_ubus(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show permissions summary (ubus variant)."""
         return await self.async_step_permissions(user_input)
 
     async def async_step_packages(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show packages summary."""
         if user_input is not None:
@@ -1570,7 +1568,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
         # Get translations for package features
         translations = await translation.async_get_translations(
-            self.hass, self.hass.config.language, "entity", [DOMAIN]
+            self.hass, self.hass.config.language, "entity", [DOMAIN],
         )
         prefix = f"component.{DOMAIN}.entity.sensor.package_feature.state."
         feature_translations = {

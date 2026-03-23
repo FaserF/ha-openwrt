@@ -85,9 +85,9 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
 
         # ASU capability check
         if data.asu_supported:
-            # If using LuCI/Ubus, we prefer having luci-app-attendedsysupgrade for consistency,
-            # but technically we can install if we have the build capability.
-            # User requested that it's checked.
+            # If using LuCI/Ubus, we prefer having luci-app-attendedsysupgrade
+            # for consistency, but technically we can install if we have the
+            # build capability. User requested that it's checked.
             conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
             if conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS):
                 if data.packages.asu:
@@ -114,7 +114,8 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         if self.coordinator.data is None:
             return None
 
-        # If we determined the latest remote version is not newer than our current system, we are up to date
+        # If we determined the latest remote version is not newer than our
+        # current system, we are up to date
         if not self.coordinator.data.firmware_upgradable:
             return self.installed_version
 
@@ -163,7 +164,110 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         if not latest:
             return None
 
-        # Determine if install is possible to show clear explanations
+        # 1. Header and Checksum
+        notes = self._get_release_notes_header(data, latest)
+
+        # 2. Device Info
+        notes += (
+            f"**Target:** `{data.device_info.target}`\n"
+            f"**Board:** `{data.device_info.board_name}`\n\n"
+        )
+
+        # 3. Backup info
+        notes += self._get_release_notes_backup_info()
+
+        # 4. Installation info (if not possible)
+        notes += self._get_release_notes_install_info(data, latest)
+
+        return notes
+
+    def _get_release_notes_header(self, data: Any, latest: str) -> str:
+        """Get the header portion of release notes."""
+        if data.is_custom_build:
+            notes = f"## Custom Firmware: {latest}\n\n"
+            if data.firmware_checksum:
+                notes += f"**SHA256 Checksum:** `{data.firmware_checksum}`\n\n"
+            notes += (
+                "This firmware update is retrieved from your configured "
+                "custom repository.\n\n"
+            )
+        else:
+            notes = f"## OpenWrt {latest}\n\n"
+            notes += "A new official OpenWrt release is available.\n\n"
+            notes += (
+                f"Visit the [OpenWrt release page]"
+                f"(https://openwrt.org/releases/{latest}) for details.\n\n"
+            )
+        return notes
+
+    def _get_release_notes_backup_info(self) -> str:
+        """Get the backup information portion of release notes."""
+        notes = "⚠️ **Always back up your configuration before upgrading!**\n\n"
+        auto_backup = self.coordinator.config_entry.options.get(CONF_AUTO_BACKUP, True)
+        if auto_backup:
+            notes += (
+                "🛡️ *Note: Automatic Backups are enabled in your integration "
+                "options. A configuration backup will be automatically created "
+                "and stored sequentially in your Home Assistant `.storage` "
+                "folder before the update begins.*\n\n"
+            )
+        else:
+            notes += (
+                "*(Automatic Backup is currently disabled in your "
+                "integration options)*\n\n"
+            )
+        return notes
+
+    def _get_release_notes_install_info(self, data: Any, latest: str) -> str:
+        """Get the installation information portion of release notes."""
+        can_install, install_barrier = self._check_installability(data)
+        if can_install:
+            return ""
+
+        notes = "---\n\n"
+        notes += "### ⚠️ Automatic Installation Disabled\n"
+        notes += f"{install_barrier}\n\n"
+
+        # Inject dynamic Firmware Selector URL
+        target = (
+            data.device_info.target.replace("/", "%2F")
+            if data.device_info.target
+            else ""
+        )
+        board = (
+            data.device_info.board_name.replace(",", "_").replace(" ", "_")
+            if data.device_info.board_name
+            else ""
+        )
+
+        version_param = latest
+        if "SNAPSHOT" in latest.upper():
+            version_param = "SNAPSHOT"
+
+        fs_url = (
+            f"https://firmware-selector.openwrt.org/?version={version_param}"
+            f"&target={target}&id={board}"
+        )
+        notes += (
+            f"**🚀 Official Downloads:**\n"
+            f"[Firmware Selector ({latest})]({fs_url})\n\n"
+        )
+
+        if data.firmware_install_url:
+            notes += (
+                f"**Direct Link:**\n"
+                f"[Download Firmware Image globally]({data.firmware_install_url})\n"
+            )
+        elif data.firmware_release_url:
+            notes += (
+                f"**Repository / Changelog:**\n"
+                f"[View Release and Source]({data.firmware_release_url})\n"
+            )
+
+        return notes
+
+    def _check_installability(self, data: Any) -> tuple[bool, str]:
+        """Check if firmware can be installed automatically."""
         can_install = bool(data.firmware_install_url)
         conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
         install_barrier = ""
@@ -173,74 +277,36 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 if data.packages.asu:
                     can_install = True
                 else:
-                    install_barrier = "The `luci-app-attendedsysupgrade` package is not installed on the router."
+                    install_barrier = (
+                        "The `luci-app-attendedsysupgrade` package is not "
+                        "installed on the router."
+                    )
             else:
                 can_install = True
 
         if not can_install and not install_barrier:
-            install_barrier = "No direct installation URL is available for this update or your device does not support Attended Sysupgrade (ASU)."
-
-        if data.is_custom_build:
-            notes = f"## Custom Firmware: {latest}\n\n"
-            if data.firmware_checksum:
-                notes += f"**SHA256 Checksum:** `{data.firmware_checksum}`\n\n"
-            notes += "This firmware update is retrieved from your configured custom repository.\n\n"
-        else:
-            notes = f"## OpenWrt {latest}\n\n"
-            notes += "A new official OpenWrt release is available.\n\n"
-            notes += f"Visit the [OpenWrt release page](https://openwrt.org/releases/{latest}) for details.\n\n"
-
-        notes += f"**Target:** `{data.device_info.target}`\n"
-        notes += f"**Board:** `{data.device_info.board_name}`\n\n"
-        notes += "⚠️ **Always back up your configuration before upgrading!**\n\n"
-
-        auto_backup = self.coordinator.config_entry.options.get(CONF_AUTO_BACKUP, True)
-        if auto_backup:
-            notes += "🛡️ *Note: Automatic Backups are enabled in your integration options. A configuration backup will be automatically created and stored sequentially in your Home Assistant `.storage` folder before the update begins.*\n\n"
-        else:
-            notes += "*(Automatic Backup is currently disabled in your integration options)*\n\n"
-
-        if not can_install:
-            notes += "---\n\n"
-            notes += "### ⚠️ Automatic Installation Disabled\n"
-            notes += f"{install_barrier}\n\n"
-
-            # Inject dynamic Firmware Selector URL with specific router parameters
-            target = (
-                data.device_info.target.replace("/", "%2F")
-                if data.device_info.target
-                else ""
-            )
-            board = (
-                data.device_info.board_name.replace(",", "_").replace(" ", "_")
-                if data.device_info.board_name
-                else ""
+            install_barrier = (
+                "No direct installation URL is available for this update or "
+                "your device does not support Attended Sysupgrade (ASU)."
             )
 
-            version_param = latest
-            if "SNAPSHOT" in latest.upper():
-                version_param = "SNAPSHOT"
-
-            fs_url = f"https://firmware-selector.openwrt.org/?version={version_param}&target={target}&id={board}"
-            notes += f"**🚀 Official Downloads:**\n[Firmware Selector ({latest})]({fs_url})\n\n"
-
-            if data.firmware_install_url:
-                notes += f"**Direct Link:**\n[Download Firmware Image globally]({data.firmware_install_url})\n"
-            elif data.firmware_release_url:
-                notes += f"**Repository / Changelog:**\n[View Release and Source]({data.firmware_release_url})\n"
-
-        return notes
+        return can_install, install_barrier
 
     async def async_install(
-        self, version: str | None, backup: bool, **kwargs: Any
+        self,
+        _version: str | None,
+        _backup: bool,  # noqa: FBT001
+        **_kwargs: Any,
     ) -> None:
         """Install the latest firmware version."""
         data = self.coordinator.data
         if not data:
-            raise HomeAssistantError("No data available to process firmware update.")
+            msg = "No data available to process firmware update."
+            raise HomeAssistantError(msg)
 
         if not data.firmware_install_url and not data.asu_supported:
-            raise ValueError("No firmware URL available for installation.")
+            msg = "No firmware URL available for installation."
+            raise ValueError(msg)
 
         # Check for auto-backup option
         auto_backup = self.coordinator.config_entry.options.get(CONF_AUTO_BACKUP, True)
@@ -254,9 +320,12 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS)
                 and not data.packages.asu
             ):
+                msg = (
+                    "Attended Sysupgrade package (luci-app-attendedsysupgrade) "
+                    "is missing on the router. Cannot perform firmware upgrade."
+                )
                 raise HomeAssistantError(
-                    "Attended Sysupgrade package (luci-app-attendedsysupgrade) is missing on the router. "
-                    "Cannot perform firmware upgrade."
+                    msg,
                 )
 
         # ASU Update Flow
@@ -270,7 +339,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 from .helpers.asu import AsuClient
 
                 asu_url = self.coordinator.config_entry.options.get(
-                    CONF_ASU_URL, "https://sysupgrade.openwrt.org"
+                    CONF_ASU_URL, "https://sysupgrade.openwrt.org",
                 )
                 asu_client = AsuClient(self.hass, asu_url)
 
@@ -279,26 +348,30 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                     target=data.device_info.target,
                     board_name=data.device_info.board_name,
                     packages=data.installed_packages,
-                    client_name=f"Home Assistant OpenWrt Integration ({self.coordinator.name})",
+                    client_name=(
+                        f"Home Assistant OpenWrt Integration ({self.coordinator.name})"
+                    ),
                 )
 
                 _LOGGER.info(
-                    "ASU build requested (hash: %s). Waiting for image...", request_hash
+                    "ASU build requested (hash: %s). Waiting for image...",
+                    request_hash,
                 )
                 download_url = await asu_client.poll_build_status(request_hash)
 
                 _LOGGER.info(
-                    "ASU build complete. Flashing image from: %s", download_url
+                    "ASU build complete. Flashing image from: %s", download_url,
                 )
                 # ASU builds always keep settings by default in OpenWrt logic,
                 # but we pass it anyway.
                 await self.coordinator.client.install_firmware(
-                    download_url, keep_settings=True
+                    download_url, keep_settings=True,
                 )
 
             except Exception as err:
-                _LOGGER.error("ASU firmware update failed: %s", err)
-                raise HomeAssistantError(f"ASU firmware update failed: {err}") from err
+                _LOGGER.exception("ASU firmware update failed")
+                msg = f"ASU firmware update failed: {err}"
+                raise HomeAssistantError(msg) from err
 
             return
 
@@ -306,15 +379,15 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         url = data.firmware_install_url
         _LOGGER.info("Initiating standard firmware installation from: %s", url)
         if not url:
-            raise ValueError("No firmware URL available for installation.")
+            msg = "No firmware URL available for installation."
+            raise ValueError(msg)
 
         try:
             # We assume keep_settings=True for official updates from HA
             await self.coordinator.client.install_firmware(url, keep_settings=True)
         except Exception as err:
-            raise HomeAssistantError(
-                f"Failed to initiate firmware installation: {err}"
-            ) from err
+            msg = f"Failed to initiate firmware installation: {err}"
+            raise HomeAssistantError(msg) from err
 
     async def _async_perform_backup(self) -> None:
         """Perform a backup and download it to HA."""
@@ -328,17 +401,18 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
 
             # 2. Prepare local path
             import os
+            from pathlib import Path
 
-            backup_dir = self.hass.config.path("backups", "openwrt")
-            if not os.path.exists(backup_dir):
-                os.makedirs(backup_dir, exist_ok=True)
+            backup_dir = Path(self.hass.config.path("backups", "openwrt"))
+            if not backup_dir.exists():
+                backup_dir.mkdir(parents=True, exist_ok=True)
 
-            local_filename = os.path.basename(remote_path)
-            local_path = os.path.join(backup_dir, local_filename)
+            local_filename = Path(remote_path).name
+            local_path = str(backup_dir / local_filename)
 
             # 3. Download to HA
             success = await self.coordinator.client.download_file(
-                remote_path, local_path
+                remote_path, local_path,
             )
             if success:
                 _LOGGER.info("Backup successfully saved to: %s", local_path)
@@ -347,8 +421,8 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             else:
                 _LOGGER.error("Failed to download backup from router to %s", local_path)
 
-        except Exception as err:
-            _LOGGER.error("Automatic backup failed: %s", err)
+        except Exception:
+            _LOGGER.exception("Automatic backup failed")
             # We don't raise here to avoid blocking the update if backup fails,
             # unless the user really wants it. But usually, an update is more important.
             # However, safety first - maybe we should raise?

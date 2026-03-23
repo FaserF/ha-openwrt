@@ -10,6 +10,7 @@ Supports authentication via LuCI sysauth token.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -80,7 +81,7 @@ class LuciRpcClient(OpenWrtClient):
     ) -> None:
         """Initialize the LuCI RPC client."""
         super().__init__(
-            host, username, password, port, use_ssl, verify_ssl, dhcp_software
+            host, username, password, port, use_ssl, verify_ssl, dhcp_software,
         )
         self._auth_token: str = ""
         self._session: aiohttp.ClientSession | None = None
@@ -97,7 +98,7 @@ class LuciRpcClient(OpenWrtClient):
         if self._session is None or self._session.closed:
             timeout = aiohttp.ClientTimeout(total=30)
             connector = aiohttp.TCPConnector(
-                ssl=self.verify_ssl if self.use_ssl else False
+                ssl=self.verify_ssl if self.use_ssl else False,
             )
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
@@ -137,13 +138,15 @@ class LuciRpcClient(OpenWrtClient):
                         self._auth_token = ""
                         await self.connect()
                         return await self._rpc_call(
-                            endpoint, method, params, reauthenticated=True
+                            endpoint, method, params, reauthenticated=True,
                         )
-                    raise LuciRpcError(f"Access denied to LuCI RPC on {self.host}")
+                    msg = f"Access denied to LuCI RPC on {self.host}"
+                    raise LuciRpcError(msg)
 
                 if response.status == 404:
+                    msg = f"LuCI RPC endpoint not found on {self.host}. Is 'luci-mod-rpc' installed?"
                     raise LuciRpcPackageMissingError(
-                        f"LuCI RPC endpoint not found on {self.host}. Is 'luci-mod-rpc' installed?"
+                        msg,
                     )
 
                 response.raise_for_status()
@@ -157,37 +160,43 @@ class LuciRpcClient(OpenWrtClient):
                             "Received HTML instead of JSON from LuCI RPC: %s",
                             text[:200],
                         )
+                        msg = "LuCI RPC returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
                         raise LuciRpcPackageMissingError(
-                            "LuCI RPC returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
+                            msg,
                         )
+                    msg = f"Unexpected content type from LuCI RPC: {content_type}"
                     raise LuciRpcError(
-                        f"Unexpected content type from LuCI RPC: {content_type}"
+                        msg,
                     )
 
                 data = await response.json()
         except TimeoutError as err:
+            msg = f"Timeout communicating with LuCI on {self.host}"
             raise LuciRpcTimeoutError(
-                f"Timeout communicating with LuCI on {self.host}"
+                msg,
             ) from err
         except aiohttp.ClientConnectorError as err:
+            msg = f"Cannot connect to LuCI on {self.host}: {err}"
             raise LuciRpcConnectionError(
-                f"Cannot connect to LuCI on {self.host}: {err}"
+                msg,
             ) from err
         except aiohttp.ClientSSLError as err:
+            msg = f"SSL error connecting to LuCI on {self.host}: {err}"
             raise LuciRpcSslError(
-                f"SSL error connecting to LuCI on {self.host}: {err}"
+                msg,
             ) from err
         except aiohttp.ClientError as err:
             if not reauthenticated:
                 _LOGGER.debug(
-                    "LuCI RPC connection error (%s), retrying after session reset", err
+                    "LuCI RPC connection error (%s), retrying after session reset", err,
                 )
                 await self.disconnect()
                 return await self._rpc_call(
-                    endpoint, method, params, reauthenticated=True
+                    endpoint, method, params, reauthenticated=True,
                 )
             self._connected = False
-            raise LuciRpcError(f"Communication error: {err}") from err
+            msg = f"Communication error: {err}"
+            raise LuciRpcError(msg) from err
 
         return data.get("result")
 
@@ -204,7 +213,7 @@ class LuciRpcClient(OpenWrtClient):
         # 1. Try via LuCI RPC (often more restricted than ubus, but let's try reading passwd)
         try:
             res = await self.execute_command(
-                f"grep -q '^{username}:' /etc/passwd && echo 'exists'"
+                f"grep -q '^{username}:' /etc/passwd && echo 'exists'",
             )
             if res and isinstance(res, str) and "exists" in res:
                 return True
@@ -215,7 +224,7 @@ class LuciRpcClient(OpenWrtClient):
         return await super().user_exists(username)
 
     async def provision_user(
-        self, username: str, password: str
+        self, username: str, password: str,
     ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via LuCI RPC."""
         # Use the harmonized provisioning script from base
@@ -224,7 +233,7 @@ class LuciRpcClient(OpenWrtClient):
             output = await self.execute_command(script)
             if output:
                 _LOGGER.debug(
-                    "Provisioning output for %s via LuCI RPC: %s", username, output
+                    "Provisioning output for %s via LuCI RPC: %s", username, output,
                 )
 
             if "Provisioning SUCCESS" in output:
@@ -240,7 +249,7 @@ class LuciRpcClient(OpenWrtClient):
                 "Provisioning script returned failure without specific error via LuCI RPC. Check router logs (logread).",
             )
         except Exception as err:
-            _LOGGER.error("Failed to provision user %s via LuCI RPC: %s", username, err)
+            _LOGGER.exception("Failed to provision user %s via LuCI RPC: %s", username, err)
             return False, str(err)
 
     async def connect(self) -> bool:
@@ -262,8 +271,9 @@ class LuciRpcClient(OpenWrtClient):
                 headers={"Content-Type": "application/json"},
             ) as response:
                 if response.status == 404:
+                    msg = "LuCI RPC auth endpoint not found. Is 'luci-mod-rpc' installed?"
                     raise LuciRpcPackageMissingError(
-                        "LuCI RPC auth endpoint not found. Is 'luci-mod-rpc' installed?"
+                        msg,
                     )
                 response.raise_for_status()
 
@@ -276,22 +286,28 @@ class LuciRpcClient(OpenWrtClient):
                             "Received HTML instead of JSON from LuCI Auth: %s",
                             text[:200],
                         )
+                        msg = "LuCI Auth returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
                         raise LuciRpcPackageMissingError(
-                            "LuCI Auth returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
+                            msg,
                         )
+                    msg = f"Unexpected content type from LuCI Auth: {content_type}"
                     raise LuciRpcError(
-                        f"Unexpected content type from LuCI Auth: {content_type}"
+                        msg,
                     )
 
                 data = await response.json()
         except TimeoutError as err:
-            raise LuciRpcTimeoutError(f"Login timeout for LuCI on {self.host}") from err
+            msg = f"Login timeout for LuCI on {self.host}"
+            raise LuciRpcTimeoutError(msg) from err
         except aiohttp.ClientConnectorError as err:
-            raise LuciRpcConnectionError(f"Cannot connect to LuCI: {err}") from err
+            msg = f"Cannot connect to LuCI: {err}"
+            raise LuciRpcConnectionError(msg) from err
         except aiohttp.ClientSSLError as err:
-            raise LuciRpcSslError(f"SSL error connecting to LuCI: {err}") from err
+            msg = f"SSL error connecting to LuCI: {err}"
+            raise LuciRpcSslError(msg) from err
         except aiohttp.ClientError as err:
-            raise LuciRpcError(f"Cannot connect: {err}") from err
+            msg = f"Cannot connect: {err}"
+            raise LuciRpcError(msg) from err
 
         result = data.get("result")
         if (
@@ -300,8 +316,9 @@ class LuciRpcClient(OpenWrtClient):
             or (isinstance(result, str) and not result)
         ):
             _LOGGER.error("LuCI RPC auth returned no token: %s", data)
+            msg = f"Authentication failed for {self.username}@{self.host}. Check credentials."
             raise LuciRpcAuthError(
-                f"Authentication failed for {self.username}@{self.host}. Check credentials."
+                msg,
             )
 
         self._auth_token = result
@@ -333,7 +350,7 @@ class LuciRpcClient(OpenWrtClient):
 
         try:
             version_str = await self._rpc_call(
-                "sys", "exec", ["cat /etc/openwrt_release"]
+                "sys", "exec", ["cat /etc/openwrt_release"],
             )
             if version_str:
                 for line in version_str.strip().split("\n"):
@@ -369,7 +386,7 @@ class LuciRpcClient(OpenWrtClient):
             # Fallback for model
             try:
                 model_out = await self.execute_command(
-                    "cat /tmp/sysinfo/model 2>/dev/null"
+                    "cat /tmp/sysinfo/model 2>/dev/null",
                 )
                 if model_out:
                     info.model = model_out.strip()
@@ -383,7 +400,7 @@ class LuciRpcClient(OpenWrtClient):
                 "if [ -f /sys/class/net/br-lan/address ]; then cat /sys/class/net/br-lan/address; "
                 "elif [ -f /sys/class/net/lan/address ]; then cat /sys/class/net/lan/address; "
                 "elif [ -f /sys/class/net/eth0/address ]; then cat /sys/class/net/eth0/address; "
-                "else cat /sys/class/net/*/address | grep -v '00:00:00:00:00:00' | head -n 1; fi"
+                "else cat /sys/class/net/*/address | grep -v '00:00:00:00:00:00' | head -n 1; fi",
             )
             if mac_out and isinstance(mac_out, str) and ":" in mac_out:
                 info.mac_address = mac_out.strip().lower()
@@ -394,7 +411,7 @@ class LuciRpcClient(OpenWrtClient):
         if not info.mac_address:
             try:
                 ip_addr_out = await self.execute_command(
-                    "ip addr show br-lan || ip addr show lan || ip addr show eth0"
+                    "ip addr show br-lan || ip addr show lan || ip addr show eth0",
                 )
                 if "link/ether" in ip_addr_out:
                     mac = ip_addr_out.split("link/ether")[1].strip().split()[0]
@@ -441,16 +458,15 @@ class LuciRpcClient(OpenWrtClient):
             if out and out.strip().startswith("{"):
                 data = json.loads(out)
                 for neighbor_data in data.get("lldp", []):
-                    for _interface_name, details in neighbor_data.items():
+                    for details in neighbor_data.values():
                         if not isinstance(details, dict):
                             continue
                         # details is a list of neighbors for this interface?
                         # Actually 'lldp show' structure varies, but let's try a common one
-                        pass
 
             # Fallback to lldpcli -f json
             out = await self.execute_command(
-                "lldpcli show neighbors -f json 2>/dev/null"
+                "lldpcli show neighbors -f json 2>/dev/null",
             )
             if out and out.strip().startswith("{"):
                 data = json.loads(out)
@@ -672,7 +688,7 @@ class LuciRpcClient(OpenWrtClient):
                     setattr(packages, field.name, False)
 
         except Exception as err:
-            _LOGGER.error("Failed to check packages via LuCI RPC: %s", err)
+            _LOGGER.exception("Failed to check packages via LuCI RPC: %s", err)
             # Ensure no None values are returned
             import dataclasses
 
@@ -749,13 +765,8 @@ class LuciRpcClient(OpenWrtClient):
         # 3. Uptime (from /proc/uptime)
         uptime_str = results[2]
         if isinstance(uptime_str, str) and uptime_str:
-            try:
+            with contextlib.suppress(ValueError, IndexError):
                 resources.uptime = int(float(uptime_str.strip().split()[0]))
-            except (
-                ValueError,
-                IndexError,
-            ):
-                pass
 
         # 4. System Info (Memory fallback and CPU/Disk)
         sys_info = results[5]
@@ -787,7 +798,7 @@ class LuciRpcClient(OpenWrtClient):
                         resources.filesystem_total = root.get("total", 0)
                         resources.filesystem_used = root.get("used", 0)
                         resources.filesystem_free = root.get("total", 0) - root.get(
-                            "used", 0
+                            "used", 0,
                         )
             except Exception:
                 pass
@@ -803,7 +814,7 @@ class LuciRpcClient(OpenWrtClient):
                             if mount.get("mount") in ("/", "/overlay"):
                                 resources.filesystem_total = mount.get("size", 0)
                                 resources.filesystem_free = mount.get(
-                                    "free", 0
+                                    "free", 0,
                                 ) or mount.get("avail", 0)
                                 resources.filesystem_used = (
                                     resources.filesystem_total
@@ -851,7 +862,6 @@ class LuciRpcClient(OpenWrtClient):
                                 continue
             except Exception:  # noqa: BLE001
                 pass
-        pass
 
         # 7. CPU usage fallback from /proc/stat
         if resources.cpu_usage == 0.0:
@@ -885,7 +895,7 @@ class LuciRpcClient(OpenWrtClient):
         """Get public/external IP address."""
         try:
             status = await self._rpc_call(
-                "sys", "exec", ["ubus call network.interface dump"]
+                "sys", "exec", ["ubus call network.interface dump"],
             )
             if status:
                 data = json.loads(status)
@@ -907,14 +917,12 @@ class LuciRpcClient(OpenWrtClient):
         """Get wireless interfaces via iwinfo."""
         interfaces: list[WirelessInterface] = []
 
-        try:
+        with contextlib.suppress(LuciRpcError):
             await self._rpc_call(
                 "sys",
                 "exec",
                 ["iwinfo | grep -E 'ESSID|Channel|Signal|Noise|Bit Rate'"],
             )
-        except LuciRpcError:
-            pass
 
         uci_to_sys, sys_to_uci = await self._get_wireless_mapping()
 
@@ -933,7 +941,7 @@ class LuciRpcClient(OpenWrtClient):
                                         "sys",
                                         "exec",
                                         [
-                                            f"iwinfo 2>/dev/null | grep -F '\"{ssid}\"' | awk '{{print $1}}'"
+                                            f"iwinfo 2>/dev/null | grep -F '\"{ssid}\"' | awk '{{print $1}}'",
                                         ],
                                     )
                                     if match_out:
@@ -963,69 +971,45 @@ class LuciRpcClient(OpenWrtClient):
                                 if iw_info:
                                     for line in iw_info.splitlines():
                                         if "Channel:" in line:
-                                            try:
+                                            with contextlib.suppress(ValueError, IndexError):
                                                 wifi.channel = int(
                                                     line.split("Channel:")[1]
                                                     .strip()
-                                                    .split()[0]
+                                                    .split()[0],
                                                 )
-                                            except (
-                                                ValueError,
-                                                IndexError,
-                                            ):
-                                                pass
                                         elif "Access Point:" in line:
-                                            try:
+                                            with contextlib.suppress(IndexError):
                                                 wifi.mac_address = (
                                                     line.split("Access Point:")[1]
                                                     .strip()
                                                     .upper()
                                                 )
-                                            except IndexError:
-                                                pass
                                         elif "Signal:" in line:
-                                            try:
+                                            with contextlib.suppress(ValueError, IndexError):
                                                 wifi.signal = int(
                                                     line.split("Signal:")[1]
                                                     .strip()
-                                                    .split()[0]
+                                                    .split()[0],
                                                 )
-                                            except (
-                                                ValueError,
-                                                IndexError,
-                                            ):
-                                                pass
                                         elif "Noise:" in line:
-                                            try:
+                                            with contextlib.suppress(ValueError, IndexError):
                                                 wifi.noise = int(
                                                     line.split("Noise:")[1]
                                                     .strip()
-                                                    .split()[0]
+                                                    .split()[0],
                                                 )
-                                            except (
-                                                ValueError,
-                                                IndexError,
-                                            ):
-                                                pass
                                         elif "Bit Rate:" in line:
-                                            try:
+                                            with contextlib.suppress(ValueError, IndexError):
                                                 wifi.bitrate = float(
                                                     line.split("Bit Rate:")[1]
                                                     .strip()
-                                                    .split()[0]
+                                                    .split()[0],
                                                 )
-                                            except (
-                                                ValueError,
-                                                IndexError,
-                                            ):
-                                                pass
                                         elif "Frequency:" in line:
-                                            try:
+                                            with contextlib.suppress(IndexError):
                                                 wifi.frequency = line.split(
-                                                    "Frequency:"
+                                                    "Frequency:",
                                                 )[1].strip()
-                                            except IndexError:
-                                                pass
 
                                     # Fallback: Extract frequency from Channel line if still missing
                                     if not wifi.frequency and "Channel:" in iw_info:
@@ -1072,7 +1056,7 @@ class LuciRpcClient(OpenWrtClient):
                                             line
                                             for line in assoc.strip().splitlines()
                                             if line.strip() and ":" in line.split()[0]
-                                        ]
+                                        ],
                                     )
 
                                 # Fallback: hostapd ubus call
@@ -1081,17 +1065,17 @@ class LuciRpcClient(OpenWrtClient):
                                         "sys",
                                         "exec",
                                         [
-                                            f"ubus call hostapd.{iface_name} get_clients 2>/dev/null"
+                                            f"ubus call hostapd.{iface_name} get_clients 2>/dev/null",
                                         ],
                                     )
                                     if hostapd_out and hostapd_out.strip().startswith(
-                                        "{"
+                                        "{",
                                     ):
                                         try:
                                             h_data = json.loads(hostapd_out)
                                             if "clients" in h_data:
                                                 wifi.clients_count = len(
-                                                    h_data["clients"]
+                                                    h_data["clients"],
                                                 )
                                         except Exception:
                                             pass
@@ -1115,7 +1099,7 @@ class LuciRpcClient(OpenWrtClient):
 
         try:
             dump = await self._rpc_call(
-                "sys", "exec", ["ubus call network.interface dump 2>/dev/null"]
+                "sys", "exec", ["ubus call network.interface dump 2>/dev/null"],
             )
             if dump and dump.strip().startswith("{"):
                 data = json.loads(dump)
@@ -1125,7 +1109,7 @@ class LuciRpcClient(OpenWrtClient):
                         up=iface_data.get("up", False),
                         protocol=iface_data.get("proto", ""),
                         device=iface_data.get(
-                            "l3_device", iface_data.get("device", "")
+                            "l3_device", iface_data.get("device", ""),
                         ),
                         uptime=iface_data.get("uptime", 0),
                     )
@@ -1157,7 +1141,7 @@ class LuciRpcClient(OpenWrtClient):
                     if iface.device:
                         try:
                             mac = await self.execute_command(
-                                f"cat /sys/class/net/{iface.device}/address 2>/dev/null"
+                                f"cat /sys/class/net/{iface.device}/address 2>/dev/null",
                             )
                             if mac and ":" in mac:
                                 iface.mac_address = mac.strip().lower()
@@ -1176,7 +1160,7 @@ class LuciRpcClient(OpenWrtClient):
         # 1. DHCP Leases
         try:
             leases_str = await self._rpc_call(
-                "sys", "exec", ["cat /tmp/dhcp.leases 2>/dev/null"]
+                "sys", "exec", ["cat /tmp/dhcp.leases 2>/dev/null"],
             )
             if leases_str:
                 for line in leases_str.strip().split("\n"):
@@ -1229,7 +1213,7 @@ class LuciRpcClient(OpenWrtClient):
                 ifaces = iw_out.strip().split()
                 for iface in ifaces:
                     assoc = await self._rpc_call(
-                        "sys", "exec", [f"iwinfo {iface} assoclist 2>/dev/null"]
+                        "sys", "exec", [f"iwinfo {iface} assoclist 2>/dev/null"],
                     )
                     if assoc:
                         for line in assoc.strip().split("\n"):
@@ -1263,7 +1247,7 @@ class LuciRpcClient(OpenWrtClient):
                                         dev.connection_type = "wireless"
                                 # Map system interface name to UCI section if possible
                                 dev.interface = getattr(self, "_sys_to_uci", {}).get(
-                                    iface, iface
+                                    iface, iface,
                                 )
                                 if len(parts) >= 2:
                                     dev.signal = (
@@ -1309,7 +1293,7 @@ class LuciRpcClient(OpenWrtClient):
                             dev.is_wireless = True
                             # Map system interface name to UCI section if possible
                             dev.interface = getattr(self, "_sys_to_uci", {}).get(
-                                iface_name, iface_name
+                                iface_name, iface_name,
                             )
                             if not dev.signal:
                                 dev.signal = info.get("signal", 0)
@@ -1362,7 +1346,7 @@ class LuciRpcClient(OpenWrtClient):
         try:
             # Discovery of wireless interfaces via ubus
             wireless_status = await self._rpc_call(
-                "sys", "exec", ["ubus call network.wireless status 2>/dev/null"]
+                "sys", "exec", ["ubus call network.wireless status 2>/dev/null"],
             )
             if wireless_status:
                 try:
@@ -1380,7 +1364,7 @@ class LuciRpcClient(OpenWrtClient):
             if not uci_to_sys:
                 try:
                     hostapd_list = await self._rpc_call(
-                        "sys", "exec", ["ubus list 'hostapd.*'"]
+                        "sys", "exec", ["ubus list 'hostapd.*'"],
                     )
                     if hostapd_list:
                         for obj in hostapd_list.splitlines():
@@ -1388,7 +1372,6 @@ class LuciRpcClient(OpenWrtClient):
                                 iface = obj.split(".", 1)[1]
                                 # Check if we can find this iface in wireless config via SSID
                                 # We'll do this mapping in get_wireless_interfaces
-                                pass
                 except Exception:
                     pass
         except LuciRpcError:
@@ -1415,7 +1398,7 @@ class LuciRpcClient(OpenWrtClient):
         if self.dhcp_software in ("auto", "odhcpd"):
             try:
                 stdout = await self._rpc_call(
-                    "sys", "exec", ["ubus call dhcp ipv4leases 2>/dev/null"]
+                    "sys", "exec", ["ubus call dhcp ipv4leases 2>/dev/null"],
                 )
                 if stdout and stdout.strip().startswith("{"):
                     data = json.loads(stdout)
@@ -1427,14 +1410,14 @@ class LuciRpcClient(OpenWrtClient):
                                     mac=lease_data.get("mac", "").lower(),
                                     ip=lease_data.get("ipaddr", ""),
                                     expires=lease_data.get("expires", 0),
-                                )
+                                ),
                             )
                     if leases and self.dhcp_software == "odhcpd":
                         return leases
             except Exception:  # noqa: BLE001
                 if self.dhcp_software == "odhcpd":
                     _LOGGER.debug(
-                        "Requested odhcpd but 'ubus call dhcp' failed via LuCI RPC"
+                        "Requested odhcpd but 'ubus call dhcp' failed via LuCI RPC",
                     )
                     return []
 
@@ -1442,7 +1425,7 @@ class LuciRpcClient(OpenWrtClient):
         if self.dhcp_software in ("auto", "dnsmasq"):
             try:
                 leases_str = await self._rpc_call(
-                    "sys", "exec", ["cat /tmp/dhcp.leases 2>/dev/null"]
+                    "sys", "exec", ["cat /tmp/dhcp.leases 2>/dev/null"],
                 )
                 if leases_str:
                     for line in leases_str.strip().split("\n"):
@@ -1454,12 +1437,12 @@ class LuciRpcClient(OpenWrtClient):
                                     mac=parts[1].lower(),
                                     ip=parts[2],
                                     hostname=parts[3] if parts[3] != "*" else "",
-                                )
+                                ),
                             )
             except LuciRpcError:
                 if self.dhcp_software == "dnsmasq":
                     _LOGGER.debug(
-                        "Requested dnsmasq but cat /tmp/dhcp.leases failed via LuCI RPC"
+                        "Requested dnsmasq but cat /tmp/dhcp.leases failed via LuCI RPC",
                     )
 
         return leases
@@ -1493,7 +1476,7 @@ class LuciRpcClient(OpenWrtClient):
                                 max_brightness=max_b,
                                 trigger=parts[3],
                                 active=brightness > 0,
-                            )
+                            ),
                         )
         except LuciRpcError:
             _LOGGER.debug("Cannot list LEDs via LuCI RPC")
@@ -1530,7 +1513,7 @@ class LuciRpcClient(OpenWrtClient):
                                     mac=mac,
                                     interface=interface,
                                     state=state,
-                                )
+                                ),
                             )
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Failed to get IP neighbors via LuCI RPC: %s", err)
@@ -1598,11 +1581,12 @@ class LuciRpcClient(OpenWrtClient):
                 ]
             ):
                 _LOGGER.info(
-                    "LuCI RPC connection lost during sysupgrade - device is rebooting"
+                    "LuCI RPC connection lost during sysupgrade - device is rebooting",
                 )
             else:
-                _LOGGER.error("Failed to execute sysupgrade via LuCI RPC: %s", err)
-                raise LuciRpcError(f"sysupgrade execution failed: {err}") from err
+                _LOGGER.exception("Failed to execute sysupgrade via LuCI RPC: %s", err)
+                msg = f"sysupgrade execution failed: {err}"
+                raise LuciRpcError(msg) from err
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
         """Download a file from the router via LuCI RPC file.read."""
@@ -1616,7 +1600,7 @@ class LuciRpcClient(OpenWrtClient):
                     f.write(base64.b64decode(res))
                 return True
         except Exception as err:
-            _LOGGER.error("Failed to download file via LuCI RPC: %s", err)
+            _LOGGER.exception("Failed to download file via LuCI RPC: %s", err)
         return False
 
     async def get_installed_packages(self) -> list[str]:
@@ -1658,10 +1642,10 @@ class LuciRpcClient(OpenWrtClient):
                             target=data.get("target", ""),
                             src=data.get("src", ""),
                             dest=data.get("dest", ""),
-                        )
+                        ),
                     )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to get firewall rules via LuCI RPC: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to get firewall rules via LuCI RPC: %s", err)
         return rules
 
     async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
@@ -1671,8 +1655,8 @@ class LuciRpcClient(OpenWrtClient):
             cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
             await self.execute_command(cmd)
             return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to set firewall rule via LuCI RPC: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to set firewall rule via LuCI RPC: %s", err)
             return False
 
     async def get_firewall_redirects(self) -> list[FirewallRedirect]:
@@ -1704,14 +1688,14 @@ class LuciRpcClient(OpenWrtClient):
                             protocol=data.get("proto", "tcp"),
                             enabled=data.get("enabled", "1") == "1",
                             section_id=section_id,
-                        )
+                        ),
                     )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to get firewall redirects via LuCI RPC: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to get firewall redirects via LuCI RPC: %s", err)
         return redirects
 
     async def set_firewall_redirect_enabled(
-        self, section_id: str, enabled: bool
+        self, section_id: str, enabled: bool,
     ) -> bool:
         """Enable or disable a firewall redirect via UCI over LuCI RPC."""
         try:
@@ -1719,8 +1703,8 @@ class LuciRpcClient(OpenWrtClient):
             cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
             await self.execute_command(cmd)
             return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to set firewall redirect via LuCI RPC: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to set firewall redirect via LuCI RPC: %s", err)
             return False
 
     async def get_adblock_status(self) -> AdBlockStatus:
@@ -1731,7 +1715,7 @@ class LuciRpcClient(OpenWrtClient):
         try:
             # Try ubus via sys.exec
             out = await self._rpc_call(
-                "sys", "exec", ["ubus call adblock status 2>/dev/null"]
+                "sys", "exec", ["ubus call adblock status 2>/dev/null"],
             )
             if out:
                 import json
@@ -1749,7 +1733,7 @@ class LuciRpcClient(OpenWrtClient):
 
             # Fallback to uci
             enabled = await self._rpc_call(
-                "sys", "exec", ["uci -q get adblock.global.enabled"]
+                "sys", "exec", ["uci -q get adblock.global.enabled"],
             )
             status.enabled = enabled.strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
@@ -1763,8 +1747,8 @@ class LuciRpcClient(OpenWrtClient):
             await self._rpc_call("sys", "exec", [f"/etc/init.d/{name} {action}"])
             return True
         except Exception as err:
-            _LOGGER.error(
-                "Failed to manage service %s (%s) via LuCI RPC: %s", name, action, err
+            _LOGGER.exception(
+                "Failed to manage service %s (%s) via LuCI RPC: %s", name, action, err,
             )
             return False
 
@@ -1790,12 +1774,12 @@ class LuciRpcClient(OpenWrtClient):
         status = SimpleAdBlockStatus()
         try:
             res = await self._rpc_call(
-                "sys", "exec", ["uci -q get simple-adblock.config.enabled"]
+                "sys", "exec", ["uci -q get simple-adblock.config.enabled"],
             )
             status.enabled = res.strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
             count = await self._rpc_call(
-                "sys", "exec", ["wc -l < /tmp/simple-adblock.blocked 2>/dev/null"]
+                "sys", "exec", ["wc -l < /tmp/simple-adblock.blocked 2>/dev/null"],
             )
             if count and count.strip().isdigit():
                 status.blocked_domains = int(count.strip())
@@ -1811,12 +1795,12 @@ class LuciRpcClient(OpenWrtClient):
                 "sys",
                 "exec",
                 [
-                    f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock"
+                    f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock",
                 ],
             )
             action = "start" if enabled else "stop"
             await self._rpc_call(
-                "sys", "exec", [f"/etc/init.d/simple-adblock {action}"]
+                "sys", "exec", [f"/etc/init.d/simple-adblock {action}"],
             )
             return True
         except Exception:
@@ -1829,7 +1813,7 @@ class LuciRpcClient(OpenWrtClient):
         status = BanIpStatus()
         try:
             res = await self._rpc_call(
-                "sys", "exec", ["uci -q get ban-ip.config.enabled"]
+                "sys", "exec", ["uci -q get ban-ip.config.enabled"],
             )
             status.enabled = res.strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
@@ -1906,7 +1890,7 @@ class LuciRpcClient(OpenWrtClient):
                             upload=int(values.get("upload", "0")),
                             qdisc=values.get("qdisc", ""),
                             script=values.get("script", ""),
-                        )
+                        ),
                     )
         except Exception:
             pass
@@ -1924,7 +1908,7 @@ class LuciRpcClient(OpenWrtClient):
             await self._rpc_call("sys", "exec", ["/etc/init.d/sqm reload"])
             return True
         except Exception as err:
-            _LOGGER.error("Failed to set SQM config via LuCI RPC: %s", err)
+            _LOGGER.exception("Failed to set SQM config via LuCI RPC: %s", err)
             return False
 
     async def get_system_logs(self, count: int = 10) -> list[str]:

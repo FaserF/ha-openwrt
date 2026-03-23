@@ -8,6 +8,7 @@ This is the most compatible method that works with any OpenWrt installation.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from typing import Any
@@ -74,7 +75,7 @@ class SshClient(OpenWrtClient):
     ) -> None:
         """Initialize the SSH client."""
         super().__init__(
-            host, username, password, port, use_ssl, verify_ssl, dhcp_software
+            host, username, password, port, use_ssl, verify_ssl, dhcp_software,
         )
         self._ssh_key = ssh_key
         self._client: Any = None
@@ -86,7 +87,8 @@ class SshClient(OpenWrtClient):
 
         def _run() -> str:
             if self._client is None:
-                raise SshError("Not connected")
+                msg = "Not connected"
+                raise SshError(msg)
             _stdin, stdout, stderr = self._client.exec_command(command, timeout=15)
             # Read streams to prevent blocking
             out_bytes = stdout.read()
@@ -97,7 +99,7 @@ class SshClient(OpenWrtClient):
             error = err_bytes.decode("utf-8", errors="replace")
             if exit_code != 0 and error:
                 _LOGGER.debug(
-                    "SSH command '%s' returned %d: %s", command, exit_code, error
+                    "SSH command '%s' returned %d: %s", command, exit_code, error,
                 )
             return output
 
@@ -107,10 +109,8 @@ class SshClient(OpenWrtClient):
             _LOGGER.debug("SSH command failed, marking as disconnected: %s", err)
             self._connected = False
             if self._client:
-                try:
+                with contextlib.suppress(Exception):
                     self._client.close()
-                except Exception:
-                    pass
                 self._client = None
 
             if retry:
@@ -120,7 +120,7 @@ class SshClient(OpenWrtClient):
                         return await self._exec(command, retry=False)
                 except Exception as reconnect_err:
                     _LOGGER.debug(
-                        "SSH reconnection failed during retry: %s", reconnect_err
+                        "SSH reconnection failed during retry: %s", reconnect_err,
                     )
 
             return ""
@@ -130,7 +130,7 @@ class SshClient(OpenWrtClient):
         return await self._exec(command)
 
     async def provision_user(
-        self, username: str, password: str
+        self, username: str, password: str,
     ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via SSH."""
         # Use the harmonized provisioning script from base
@@ -139,7 +139,7 @@ class SshClient(OpenWrtClient):
             output = await self._exec(script)
             if output:
                 _LOGGER.debug(
-                    "Provisioning output for %s via SSH: %s", username, output
+                    "Provisioning output for %s via SSH: %s", username, output,
                 )
 
             if "Provisioning SUCCESS" in output:
@@ -155,7 +155,7 @@ class SshClient(OpenWrtClient):
                 "Provisioning script returned failure without specific error via SSH. Check router logs (logread).",
             )
         except Exception as err:
-            _LOGGER.error("Failed to provision user %s via SSH: %s", username, err)
+            _LOGGER.exception("Failed to provision user %s via SSH: %s", username, err)
             return False, str(err)
 
     async def get_installed_packages(self) -> list[str]:
@@ -207,26 +207,32 @@ class SshClient(OpenWrtClient):
             try:
                 client.connect(**connect_kwargs)
             except paramiko.AuthenticationException as err:
+                msg = f"SSH auth failed for {self.username}@{self.host}. Check credentials/key."
                 raise SshAuthError(
-                    f"SSH auth failed for {self.username}@{self.host}. Check credentials/key."
+                    msg,
                 ) from err
             except TimeoutError as err:
+                msg = f"SSH connection timed out for {self.host}"
                 raise SshTimeoutError(
-                    f"SSH connection timed out for {self.host}"
+                    msg,
                 ) from err
             except (OSError, paramiko.SSHException) as err:
                 err_str = str(err).lower()
                 if "connection refused" in err_str:
+                    msg = f"SSH connection refused on {self.host}:{self.port}. Is SSH enabled?"
                     raise SshConnectionError(
-                        f"SSH connection refused on {self.host}:{self.port}. Is SSH enabled?"
+                        msg,
                     ) from err
                 if "no route to host" in err_str:
+                    msg = f"Host {self.host} is unreachable."
                     raise SshConnectionError(
-                        f"Host {self.host} is unreachable."
+                        msg,
                     ) from err
-                raise SshError(f"SSH connection failed: {err}") from err
+                msg = f"SSH connection failed: {err}"
+                raise SshError(msg) from err
             except Exception as err:
-                raise SshError(f"SSH connection failed: {err}") from err
+                msg = f"SSH connection failed: {err}"
+                raise SshError(msg) from err
 
             transport = client.get_transport()
             if transport:
@@ -245,7 +251,8 @@ class SshClient(OpenWrtClient):
         ):
             raise
         except Exception as err:
-            raise SshError(f"SSH connection error: {err}") from err
+            msg = f"SSH connection error: {err}"
+            raise SshError(msg) from err
 
     async def disconnect(self) -> None:
         """Disconnect SSH."""
@@ -260,7 +267,7 @@ class SshClient(OpenWrtClient):
         info = DeviceInfo()
 
         board_json = await self._exec(
-            "ubus call system board 2>/dev/null || cat /etc/board.json 2>/dev/null"
+            "ubus call system board 2>/dev/null || cat /etc/board.json 2>/dev/null",
         )
         if board_json and board_json.strip() and board_json.strip().startswith("{"):
             data = json.loads(board_json)
@@ -313,7 +320,7 @@ class SshClient(OpenWrtClient):
                 "if [ -f /sys/class/net/br-lan/address ]; then cat /sys/class/net/br-lan/address; "
                 "elif [ -f /sys/class/net/lan/address ]; then cat /sys/class/net/lan/address; "
                 "elif [ -f /sys/class/net/eth0/address ]; then cat /sys/class/net/eth0/address; "
-                "else cat /sys/class/net/*/address | grep -v '00:00:00:00:00:00' | head -n 1; fi"
+                "else cat /sys/class/net/*/address | grep -v '00:00:00:00:00:00' | head -n 1; fi",
             )
             if mac_out and isinstance(mac_out, str) and ":" in mac_out:
                 info.mac_address = mac_out.strip().lower()
@@ -324,7 +331,7 @@ class SshClient(OpenWrtClient):
         if not info.mac_address:
             try:
                 ip_addr_out = await self._exec(
-                    "ip addr show br-lan || ip addr show lan || ip addr show eth0"
+                    "ip addr show br-lan || ip addr show lan || ip addr show eth0",
                 )
                 if isinstance(ip_addr_out, str) and "link/ether" in ip_addr_out:
                     mac = ip_addr_out.split("link/ether")[1].strip().split()[0]
@@ -354,7 +361,7 @@ class SshClient(OpenWrtClient):
         ]
 
         results = await asyncio.gather(
-            *[self._exec(cmd) for cmd in cmds], return_exceptions=True
+            *[self._exec(cmd) for cmd in cmds], return_exceptions=True,
         )
 
         # 1. Memory
@@ -491,7 +498,7 @@ class SshClient(OpenWrtClient):
             except (
                 ValueError,
                 Exception,
-            ):  # noqa: BLE001
+            ):
                 continue
 
         return resources
@@ -518,11 +525,11 @@ class SshClient(OpenWrtClient):
 
         try:
             wifi_json = await self._exec(
-                "ubus call network.wireless status 2>/dev/null"
+                "ubus call network.wireless status 2>/dev/null",
             )
             if wifi_json and wifi_json.strip().startswith("{"):
                 data = json.loads(wifi_json)
-                for _radio_name, radio_data in data.items():
+                for radio_data in data.values():
                     if not isinstance(radio_data, dict):
                         continue
                     for iface in radio_data.get("interfaces", []):
@@ -540,50 +547,36 @@ class SshClient(OpenWrtClient):
                         if iface_name:
                             try:
                                 iwinfo = await self._exec(
-                                    f"iwinfo {iface_name} info 2>/dev/null"
+                                    f"iwinfo {iface_name} info 2>/dev/null",
                                 )
                                 for line in iwinfo.split("\n"):
                                     line = line.strip()
                                     if "Channel:" in line:
-                                        try:
+                                        with contextlib.suppress(ValueError, IndexError):
                                             wifi.channel = int(
                                                 line.split("Channel:")[1]
                                                 .strip()
-                                                .split()[0]
+                                                .split()[0],
                                             )
-                                        except (
-                                            ValueError,
-                                            IndexError,
-                                        ):
-                                            pass
                                     elif "Access Point:" in line:
-                                        try:
+                                        with contextlib.suppress(IndexError):
                                             wifi.mac_address = (
                                                 line.split("Access Point:")[1]
                                                 .strip()
                                                 .upper()
                                             )
-                                        except IndexError:
-                                            pass
                                     elif "Signal:" in line:
-                                        try:
+                                        with contextlib.suppress(ValueError, IndexError):
                                             wifi.signal = int(
                                                 line.split("Signal:")[1]
                                                 .strip()
-                                                .split()[0]
+                                                .split()[0],
                                             )
-                                        except (
-                                            ValueError,
-                                            IndexError,
-                                        ):
-                                            pass
                                     elif "Frequency:" in line:
-                                        try:
+                                        with contextlib.suppress(IndexError):
                                             wifi.frequency = line.split("Frequency:")[
                                                 1
                                             ].strip()
-                                        except IndexError:
-                                            pass
 
                                 # Fallback: Extract frequency from Channel line if still missing
                                 if not wifi.frequency and iwinfo:
@@ -593,17 +586,12 @@ class SshClient(OpenWrtClient):
                                             and "(" in line
                                             and "GHz)" in line
                                         ):
-                                            try:
+                                            with contextlib.suppress(IndexError, ValueError):
                                                 wifi.frequency = (
                                                     line.split("(")[1]
                                                     .split(")")[0]
                                                     .strip()
                                                 )
-                                            except (
-                                                IndexError,
-                                                ValueError,
-                                            ):
-                                                pass
 
                                 # Fallback 2: Infer from channel number
                                 if not wifi.frequency and wifi.channel > 0:
@@ -613,19 +601,19 @@ class SshClient(OpenWrtClient):
                                         wifi.frequency = "5 GHz"
 
                                 assoclist = await self._exec(
-                                    f"iwinfo {iface_name} assoclist 2>/dev/null"
+                                    f"iwinfo {iface_name} assoclist 2>/dev/null",
                                 )
                                 if assoclist.strip():
                                     wifi.clients_count = len(
                                         [
                                             line_item
                                             for line_item in assoclist.strip().split(
-                                                "\n"
+                                                "\n",
                                             )
                                             if line_item.strip()
                                             and ":" in line_item.split()[0]
                                             if line_item.split()
-                                        ]
+                                        ],
                                     )
                             except Exception:  # noqa: BLE001
                                 pass
@@ -650,7 +638,7 @@ class SshClient(OpenWrtClient):
                         up=iface_data.get("up", False),
                         protocol=iface_data.get("proto", ""),
                         device=iface_data.get(
-                            "l3_device", iface_data.get("device", "")
+                            "l3_device", iface_data.get("device", ""),
                         ),
                         uptime=iface_data.get("uptime", 0),
                     )
@@ -721,7 +709,7 @@ class SshClient(OpenWrtClient):
         try:
             # Get wireless interfaces first
             iw_out = await self._exec(
-                "iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'"
+                "iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'",
             )
             ifaces = iw_out.strip().split()
             for iface in ifaces:
@@ -781,7 +769,7 @@ class SshClient(OpenWrtClient):
                                 # Create ConnectedDevice object from ubus data
                                 if mac.lower() not in devices:
                                     dev = ConnectedDevice(
-                                        mac=mac.lower(), connected=True
+                                        mac=mac.lower(), connected=True,
                                     )
                                     devices[mac.lower()] = dev
                                 else:
@@ -830,17 +818,17 @@ class SshClient(OpenWrtClient):
                 running = False
                 try:
                     enabled_check = await self._exec(
-                        f"/etc/init.d/{svc_name} enabled && echo yes || echo no"
+                        f"/etc/init.d/{svc_name} enabled && echo yes || echo no",
                     )
                     enabled = "yes" in enabled_check
                     running_check = await self._exec(
-                        f"/etc/init.d/{svc_name} running && echo yes || echo no"
+                        f"/etc/init.d/{svc_name} running && echo yes || echo no",
                     )
                     running = "yes" in running_check
                 except Exception:  # noqa: BLE001
                     pass
                 services.append(
-                    ServiceInfo(name=svc_name, enabled=enabled, running=running)
+                    ServiceInfo(name=svc_name, enabled=enabled, running=running),
                 )
         except Exception:  # noqa: BLE001
             pass
@@ -852,8 +840,8 @@ class SshClient(OpenWrtClient):
         try:
             await self._exec("reboot")
             return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to reboot: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to reboot: %s", err)
             return False
 
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
@@ -864,8 +852,8 @@ class SshClient(OpenWrtClient):
             await self._exec("uci commit wireless")
             await self._exec("wifi reload")
             return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to set wireless %s: %s", interface, err)
+        except Exception as err:
+            _LOGGER.exception("Failed to set wireless %s: %s", interface, err)
             return False
 
     async def get_leds(self) -> list:
@@ -881,7 +869,7 @@ class SshClient(OpenWrtClient):
                 'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
                 'trigger=$(cat "$led/trigger" 2>/dev/null | tr " " "\\n" | grep "^\\[" | tr -d "[]" || echo none); '
                 'echo "$name|$brightness|$max|$trigger"; '
-                "done"
+                "done",
             )
             for line in output.strip().splitlines():
                 parts = line.strip().split("|")
@@ -895,7 +883,7 @@ class SshClient(OpenWrtClient):
                             max_brightness=max_b,
                             trigger=parts[3],
                             active=brightness > 0,
-                        )
+                        ),
                     )
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Cannot list LEDs via SSH")
@@ -907,8 +895,8 @@ class SshClient(OpenWrtClient):
         try:
             await self._exec(f"echo {brightness} > /sys/class/leds/{name}/brightness")
             return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to set LED %s: %s", name, err)
+        except Exception as err:
+            _LOGGER.exception("Failed to set LED %s: %s", name, err)
             return False
 
     async def check_permissions(self) -> OpenWrtPermissions:
@@ -1027,7 +1015,7 @@ class SshClient(OpenWrtClient):
                     packages.ban_ip = "ban-ip" in installed
 
         except Exception as err:
-            _LOGGER.error("Failed to check packages via SSH: %s", err)
+            _LOGGER.exception("Failed to check packages via SSH: %s", err)
             # Initialize to False if we failed (to avoid staying at None)
             for attr in [
                 "sqm_scripts",
@@ -1074,10 +1062,10 @@ class SshClient(OpenWrtClient):
                             target=data.get("target", ""),
                             src=data.get("src", ""),
                             dest=data.get("dest", ""),
-                        )
+                        ),
                     )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to get firewall rules via SSH: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to get firewall rules via SSH: %s", err)
         return rules
 
     async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
@@ -1088,8 +1076,8 @@ class SshClient(OpenWrtClient):
             await self._exec("uci commit firewall")
             await self._exec("/etc/init.d/firewall reload")
             return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to set firewall rule via SSH: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to set firewall rule via SSH: %s", err)
             return False
 
     async def get_firewall_redirects(self) -> list[FirewallRedirect]:
@@ -1121,14 +1109,14 @@ class SshClient(OpenWrtClient):
                             protocol=data.get("proto", "tcp"),
                             enabled=data.get("enabled", "1") == "1",
                             section_id=section_id,
-                        )
+                        ),
                     )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to get firewall redirects via SSH: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to get firewall redirects via SSH: %s", err)
         return redirects
 
     async def set_firewall_redirect_enabled(
-        self, section_id: str, enabled: bool
+        self, section_id: str, enabled: bool,
     ) -> bool:
         """Enable or disable a firewall redirect via UCI over SSH."""
         try:
@@ -1137,8 +1125,8 @@ class SshClient(OpenWrtClient):
             await self._exec("uci commit firewall")
             await self._exec("/etc/init.d/firewall reload")
             return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to set firewall redirect via SSH: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to set firewall redirect via SSH: %s", err)
             return False
 
     async def get_access_control(self) -> list[AccessControl]:
@@ -1175,10 +1163,10 @@ class SshClient(OpenWrtClient):
                             blocked=data.get("enabled", "1") == "1"
                             and data.get("target") in ("REJECT", "DROP"),
                             section_id=section_id,
-                        )
+                        ),
                     )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to get access control via SSH: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to get access control via SSH: %s", err)
         return rules
 
     async def set_access_control_blocked(self, mac: str, blocked: bool) -> bool:
@@ -1196,25 +1184,24 @@ class SshClient(OpenWrtClient):
                     await self._exec(f"uci set firewall.{rule_name}=rule")
                     section_id = rule_name
                     await self._exec(
-                        f"uci set firewall.{section_id}.name='{rule_name}'"
+                        f"uci set firewall.{section_id}.name='{rule_name}'",
                     )
                     await self._exec(f"uci set firewall.{section_id}.src='lan'")
                     await self._exec(f"uci set firewall.{section_id}.dest='wan'")
                     await self._exec(
-                        f"uci set firewall.{section_id}.src_mac='{mac_upper}'"
+                        f"uci set firewall.{section_id}.src_mac='{mac_upper}'",
                     )
                     await self._exec(f"uci set firewall.{section_id}.target='REJECT'")
 
                 await self._exec(f"uci set firewall.{section_id}.enabled='1'")
-            else:
-                if section_id:
-                    await self._exec(f"uci set firewall.{section_id}.enabled='0'")
+            elif section_id:
+                await self._exec(f"uci set firewall.{section_id}.enabled='0'")
 
             await self._exec("uci commit firewall")
             await self._exec("/etc/init.d/firewall reload")
             return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to set access control via SSH: %s", err)
+        except Exception as err:
+            _LOGGER.exception("Failed to set access control via SSH: %s", err)
             return False
 
     async def manage_interface(self, name: str, action: str) -> bool:
@@ -1227,8 +1214,8 @@ class SshClient(OpenWrtClient):
             elif action == "down":
                 await self._exec(f"ifdown {name}")
             return True
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.error("Failed to manage interface %s: %s", name, err)
+        except Exception as err:
+            _LOGGER.exception("Failed to manage interface %s: %s", name, err)
             return False
 
     async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
@@ -1251,11 +1238,11 @@ class SshClient(OpenWrtClient):
                 for msg in ["connection reset", "broken pipe", "closed", "eof"]
             ):
                 _LOGGER.info(
-                    "SSH connection lost during sysupgrade - device is likely rebooting"
+                    "SSH connection lost during sysupgrade - device is likely rebooting",
                 )
                 return
             _LOGGER.warning(
-                "Sysupgrade command might have failed or disconnected: %s", err
+                "Sysupgrade command might have failed or disconnected: %s", err,
             )
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
@@ -1275,7 +1262,7 @@ class SshClient(OpenWrtClient):
                     f.write(base64.b64decode(b64_content))
                 return True
         except Exception as err:
-            _LOGGER.error("Failed to download file via SSH: %s", err)
+            _LOGGER.exception("Failed to download file via SSH: %s", err)
         return False
 
     async def get_dhcp_leases(self) -> list[DhcpLease]:
@@ -1299,14 +1286,14 @@ class SshClient(OpenWrtClient):
                                     mac=lease_data.get("mac", "").lower(),
                                     ip=lease_data.get("ipaddr", ""),
                                     expires=lease_data.get("expires", 0),
-                                )
+                                ),
                             )
                     if leases and self.dhcp_software == "odhcpd":
                         return leases
             except Exception:  # noqa: BLE001
                 if self.dhcp_software == "odhcpd":
                     _LOGGER.debug(
-                        "Requested odhcpd but 'ubus call dhcp' failed via SSH"
+                        "Requested odhcpd but 'ubus call dhcp' failed via SSH",
                     )
                     return []
 
@@ -1326,12 +1313,12 @@ class SshClient(OpenWrtClient):
                                 connected=True,
                                 is_wireless=False,
                                 connection_type="wired",
-                            )
+                            ),
                         )
             except Exception:  # noqa: BLE001
                 if self.dhcp_software == "dnsmasq":
                     _LOGGER.debug(
-                        "Requested dnsmasq but cat /tmp/dhcp.leases failed via SSH"
+                        "Requested dnsmasq but cat /tmp/dhcp.leases failed via SSH",
                     )
 
         return leases
@@ -1368,7 +1355,7 @@ class SshClient(OpenWrtClient):
                                 mac=mac.upper(),
                                 interface=interface,
                                 state=state,
-                            )
+                            ),
                         )
         except Exception:  # noqa: BLE001
             pass
@@ -1388,7 +1375,7 @@ class SshClient(OpenWrtClient):
                                     mac=parts[3].upper(),
                                     interface=parts[5] if len(parts) > 5 else "",
                                     state="REACHABLE" if parts[2] != "0x0" else "STALE",
-                                )
+                                ),
                             )
             except Exception:  # noqa: BLE001
                 pass
@@ -1431,8 +1418,8 @@ class SshClient(OpenWrtClient):
             await self._exec(f"/etc/init.d/{name} {action}")
             return True
         except Exception as err:
-            _LOGGER.error(
-                "Failed to manage service %s (%s) via SSH: %s", name, action, err
+            _LOGGER.exception(
+                "Failed to manage service %s (%s) via SSH: %s", name, action, err,
             )
             return False
 
@@ -1441,7 +1428,7 @@ class SshClient(OpenWrtClient):
         val = "1" if enabled else "0"
         try:
             await self._exec(
-                f"uci set adblock.global.enabled='{val}' && uci commit adblock"
+                f"uci set adblock.global.enabled='{val}' && uci commit adblock",
             )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/adblock {action}")
@@ -1470,7 +1457,7 @@ class SshClient(OpenWrtClient):
         val = "1" if enabled else "0"
         try:
             await self._exec(
-                f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock"
+                f"uci set simple-adblock.config.enabled='{val}' && uci commit simple-adblock",
             )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/simple-adblock {action}")
@@ -1496,7 +1483,7 @@ class SshClient(OpenWrtClient):
         val = "1" if enabled else "0"
         try:
             await self._exec(
-                f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip"
+                f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip",
             )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/ban-ip {action}")
@@ -1540,7 +1527,7 @@ class SshClient(OpenWrtClient):
                             upload=int(data.get("upload", "0")),
                             qdisc=data.get("qdisc", ""),
                             script=data.get("script", ""),
-                        )
+                        ),
                     )
         except Exception as err:
             _LOGGER.debug("Failed to get SQM status via SSH: %s", err)
@@ -1558,7 +1545,7 @@ class SshClient(OpenWrtClient):
             await self._exec("/etc/init.d/sqm reload")
             return True
         except Exception as err:
-            _LOGGER.error("Failed to set SQM config via SSH: %s", err)
+            _LOGGER.exception("Failed to set SQM config via SSH: %s", err)
             return False
 
     async def get_gateway_mac(self) -> str | None:
@@ -1609,20 +1596,20 @@ class SshClient(OpenWrtClient):
                                         local_interface=name or "",
                                         neighbor_name=neigh.get("name", ""),
                                         neighbor_port=neigh.get("port", {}).get(
-                                            "id", ""
+                                            "id", "",
                                         )
                                         if isinstance(neigh.get("port"), dict)
                                         else "",
                                         neighbor_chassis=neigh.get("chassis", {}).get(
-                                            "id", ""
+                                            "id", "",
                                         )
                                         if isinstance(neigh.get("chassis"), dict)
                                         else "",
                                         neighbor_description=neigh.get(
-                                            "description", ""
+                                            "description", "",
                                         ),
                                         neighbor_system_name=neigh.get("sysname", ""),
-                                    )
+                                    ),
                                 )
                 if neighbors:
                     return neighbors
@@ -1655,10 +1642,10 @@ class SshClient(OpenWrtClient):
                                         if isinstance(neigh.get("chassis"), dict)
                                         else "",
                                         neighbor_description=neigh.get(
-                                            "description", ""
+                                            "description", "",
                                         ),
                                         neighbor_system_name=neigh.get("sysname", ""),
-                                    )
+                                    ),
                                 )
         except Exception as err:
             _LOGGER.debug("Failed to get LLDP neighbors via SSH: %s", err)

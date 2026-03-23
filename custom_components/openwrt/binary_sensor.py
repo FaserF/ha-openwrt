@@ -79,7 +79,7 @@ async def async_setup_entry(
                                 if m.interface_name == n
                             ),
                         ),
-                    )
+                    ),
                 )
 
         if perms.read_network:
@@ -94,14 +94,14 @@ async def async_setup_entry(
                                 name=f"{iface.name.upper()} Connected",
                                 translation_key="interface_up",
                                 translation_placeholders={
-                                    "interface": iface.name.upper()
+                                    "interface": iface.name.upper(),
                                 },
                                 device_class=BinarySensorDeviceClass.CONNECTIVITY,
                                 is_on_fn=lambda data, n=iface.name: any(
                                     i.up for i in data.network_interfaces if i.name == n
                                 ),
                             ),
-                        )
+                        ),
                     )
 
         # VPN tunnel binary sensors
@@ -129,14 +129,14 @@ async def async_setup_entry(
                                 v.up for v in data.vpn_interfaces if v.name == n
                             ),
                         ),
-                    )
+                    ),
                 )
 
     async_add_entities(entities)
 
 
 class OpenWrtBinarySensorEntity(
-    CoordinatorEntity[OpenWrtDataCoordinator], BinarySensorEntity
+    CoordinatorEntity[OpenWrtDataCoordinator], BinarySensorEntity,
 ):
     """Representation of an OpenWrt binary sensor."""
 

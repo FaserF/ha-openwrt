@@ -50,14 +50,14 @@ async def async_setup_entry(
                             wifi.name,
                             wifi.ssid,
                             wifi.frequency,
-                        )
+                        ),
                     )
 
         if perms.write_services:
             for service in coordinator.data.services:
                 if service.name:
                     entities.append(
-                        OpenWrtServiceSwitch(coordinator, entry, client, service.name)
+                        OpenWrtServiceSwitch(coordinator, entry, client, service.name),
                     )
 
         if perms.write_firewall:
@@ -70,7 +70,7 @@ async def async_setup_entry(
                             client,
                             redirect.section_id,
                             redirect.name,
-                        )
+                        ),
                     )
 
             for rule in coordinator.data.firewall_rules:
@@ -78,8 +78,8 @@ async def async_setup_entry(
                 if rule.name and rule.section_id and not rule.name.startswith("cfg"):
                     entities.append(
                         OpenWrtFirewallRuleSwitch(
-                            coordinator, entry, client, rule.section_id, rule.name
-                        )
+                            coordinator, entry, client, rule.section_id, rule.name,
+                        ),
                     )
 
         if perms.write_access_control:
@@ -109,7 +109,7 @@ async def async_setup_entry(
                         device.mac,
                         dev_name,
                         ac_rule_entry.section_id if ac_rule_entry else None,
-                    )
+                    ),
                 )
 
         if perms.write_sqm and pkgs.sqm_scripts is not False:
@@ -117,8 +117,8 @@ async def async_setup_entry(
                 if sqm.section_id:
                     entities.append(
                         OpenWrtSqmSwitch(
-                            coordinator, entry, client, sqm.section_id, sqm.name
-                        )
+                            coordinator, entry, client, sqm.section_id, sqm.name,
+                        ),
                     )
 
         if pkgs.adblock:
@@ -166,7 +166,8 @@ class OpenWrtAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         try:
             await self._client.set_adblock_enabled(True)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to enable AdBlock: {err}") from err
+            msg = f"Failed to enable AdBlock: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -174,12 +175,13 @@ class OpenWrtAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         try:
             await self._client.set_adblock_enabled(False)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to disable AdBlock: {err}") from err
+            msg = f"Failed to disable AdBlock: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
 
 class OpenWrtSimpleAdBlockSwitch(
-    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
+    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity,
 ):
     """Switch to enable/disable Simple AdBlock."""
 
@@ -215,7 +217,8 @@ class OpenWrtSimpleAdBlockSwitch(
         try:
             await self._client.set_simple_adblock_enabled(True)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to enable Simple AdBlock: {err}") from err
+            msg = f"Failed to enable Simple AdBlock: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -223,8 +226,9 @@ class OpenWrtSimpleAdBlockSwitch(
         try:
             await self._client.set_simple_adblock_enabled(False)
         except Exception as err:
+            msg = f"Failed to disable Simple AdBlock: {err}"
             raise HomeAssistantError(
-                f"Failed to disable Simple AdBlock: {err}"
+                msg,
             ) from err
         await self.coordinator.async_request_refresh()
 
@@ -264,7 +268,8 @@ class OpenWrtBanIpSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
         try:
             await self._client.set_banip_enabled(True)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to enable Ban-IP: {err}") from err
+            msg = f"Failed to enable Ban-IP: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -272,7 +277,8 @@ class OpenWrtBanIpSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
         try:
             await self._client.set_banip_enabled(False)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to disable Ban-IP: {err}") from err
+            msg = f"Failed to disable Ban-IP: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
 
@@ -311,7 +317,8 @@ class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         try:
             await self._client.set_wps(True)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to enable WPS: {err}") from err
+            msg = f"Failed to enable WPS: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -319,7 +326,8 @@ class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         try:
             await self._client.set_wps(False)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to disable WPS: {err}") from err
+            msg = f"Failed to disable WPS: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
 
@@ -385,8 +393,9 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         try:
             await self._client.set_wireless_enabled(self._iface_name, True)
         except Exception as err:
+            msg = f"Failed to enable wireless interface {self._iface_name}: {err}"
             raise HomeAssistantError(
-                f"Failed to enable wireless interface {self._iface_name}: {err}"
+                msg,
             ) from err
         await self.coordinator.async_request_refresh()
 
@@ -395,8 +404,9 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         try:
             await self._client.set_wireless_enabled(self._iface_name, False)
         except Exception as err:
+            msg = f"Failed to disable wireless interface {self._iface_name}: {err}"
             raise HomeAssistantError(
-                f"Failed to disable wireless interface {self._iface_name}: {err}"
+                msg,
             ) from err
         await self.coordinator.async_request_refresh()
 
@@ -452,8 +462,9 @@ class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         try:
             await self._client.manage_service(self._service_name, "start")
         except Exception as err:
+            msg = f"Failed to start service {self._service_name}: {err}"
             raise HomeAssistantError(
-                f"Failed to start service {self._service_name}: {err}"
+                msg,
             ) from err
         await self.coordinator.async_request_refresh()
 
@@ -462,8 +473,9 @@ class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         try:
             await self._client.manage_service(self._service_name, "stop")
         except Exception as err:
+            msg = f"Failed to stop service {self._service_name}: {err}"
             raise HomeAssistantError(
-                f"Failed to stop service {self._service_name}: {err}"
+                msg,
             ) from err
         await self.coordinator.async_request_refresh()
 
@@ -509,7 +521,8 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         try:
             await self._client.set_firewall_redirect_enabled(self._section_id, True)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to enable port forward: {err}") from err
+            msg = f"Failed to enable port forward: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -517,12 +530,13 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         try:
             await self._client.set_firewall_redirect_enabled(self._section_id, False)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to disable port forward: {err}") from err
+            msg = f"Failed to disable port forward: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
 
 class OpenWrtAccessControlSwitch(
-    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
+    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity,
 ):
     """Switch to block/unblock internet access for a device (Parental Control)."""
 
@@ -570,8 +584,9 @@ class OpenWrtAccessControlSwitch(
         try:
             await self._client.set_access_control_blocked(self._mac, False)
         except Exception as err:
+            msg = f"Failed to unblock device {self._mac}: {err}"
             raise HomeAssistantError(
-                f"Failed to unblock device {self._mac}: {err}"
+                msg,
             ) from err
         await self.coordinator.async_request_refresh()
 
@@ -580,14 +595,15 @@ class OpenWrtAccessControlSwitch(
         try:
             await self._client.set_access_control_blocked(self._mac, True)
         except Exception as err:
+            msg = f"Failed to block device {self._mac}: {err}"
             raise HomeAssistantError(
-                f"Failed to block device {self._mac}: {err}"
+                msg,
             ) from err
         await self.coordinator.async_request_refresh()
 
 
 class OpenWrtFirewallRuleSwitch(
-    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
+    CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity,
 ):
     """Switch to enable/disable a general firewall rule."""
 
@@ -643,7 +659,8 @@ class OpenWrtFirewallRuleSwitch(
         try:
             await self._client.set_firewall_rule_enabled(self._section_id, True)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to enable firewall rule: {err}") from err
+            msg = f"Failed to enable firewall rule: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -651,7 +668,8 @@ class OpenWrtFirewallRuleSwitch(
         try:
             await self._client.set_firewall_rule_enabled(self._section_id, False)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to disable firewall rule: {err}") from err
+            msg = f"Failed to disable firewall rule: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
 
@@ -712,7 +730,8 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         try:
             await self._client.set_sqm_config(self._section_id, enabled=True)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to enable SQM: {err}") from err
+            msg = f"Failed to enable SQM: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -720,5 +739,6 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         try:
             await self._client.set_sqm_config(self._section_id, enabled=False)
         except Exception as err:
-            raise HomeAssistantError(f"Failed to disable SQM: {err}") from err
+            msg = f"Failed to disable SQM: {err}"
+            raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()

@@ -30,7 +30,7 @@ async def test_ssh_connect_auth_error(ssh_client: SshClient):
 
     with patch("paramiko.SSHClient") as mock_ssh:
         mock_ssh.return_value.connect.side_effect = paramiko.AuthenticationException(
-            "Auth Failed"
+            "Auth Failed",
         )
 
         with pytest.raises(SshAuthError):

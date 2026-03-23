@@ -3,7 +3,7 @@ import sys
 
 # Add the script directory to path
 sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".github", "scripts"))
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".github", "scripts")),
 )
 
 from bump_version import bump_version
@@ -28,17 +28,13 @@ def test_logic():
     for current, bump, status, tags, expected in scenarios:
         result = bump_version(current, bump, status, all_tags=tags)
         if result == expected:
-            print(f"PASS: {current} + {bump} ({status}) -> {result}")
+            pass
         else:
-            print(
-                f"FAIL: {current} + {bump} ({status}) -> {result} (Expected: {expected})"
-            )
             failed += 1
 
     if failed == 0:
-        print("\nAll logical tests passed!")
+        pass
     else:
-        print(f"\n{failed} tests failed.")
         sys.exit(1)
 
 

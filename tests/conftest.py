@@ -175,7 +175,6 @@ class MockConfigFlow:
 
     async def async_set_unique_id(self, unique_id, *, raise_on_progress=True):
         self.unique_id = unique_id
-        return None
 
     def _abort_if_unique_id_configured(self, *args, **kwargs):
         pass
@@ -203,7 +202,6 @@ class MockConfigFlow:
 class MockOptionsFlow(MockConfigFlow):
     """Mock OptionsFlow."""
 
-    pass
 
 
 sys.modules["homeassistant.config_entries"] = MagicMock()
@@ -271,19 +269,19 @@ class MockEnum(str):
 sys.modules["homeassistant.const"].UnitOfTime = MockEnum("UnitOfTime")
 sys.modules["homeassistant.const"].PERCENTAGE = "%"
 sys.modules["homeassistant.components.sensor"].SensorStateClass = MockEnum(
-    "SensorStateClass"
+    "SensorStateClass",
 )
 sys.modules["homeassistant.components.sensor"].SensorDeviceClass = MockEnum(
-    "SensorDeviceClass"
+    "SensorDeviceClass",
 )
 sys.modules[
     "homeassistant.components.binary_sensor"
 ].BinarySensorDeviceClass = MockEnum("BinarySensorDeviceClass")
 sys.modules["homeassistant.components.update"].UpdateDeviceClass = MockEnum(
-    "UpdateDeviceClass"
+    "UpdateDeviceClass",
 )
 sys.modules["homeassistant.components.update"].UpdateEntityFeature = MockEnum(
-    "UpdateEntityFeature"
+    "UpdateEntityFeature",
 )
 
 
@@ -291,7 +289,7 @@ sys.modules["homeassistant.components.update"].UpdateEntityFeature = MockEnum(
 def mock_setup_entry() -> Generator[AsyncMock]:
     """Override async_setup_entry."""
     with patch(
-        "custom_components.openwrt.async_setup_entry", return_value=True
+        "custom_components.openwrt.async_setup_entry", return_value=True,
     ) as mock_setup_entry:
         yield mock_setup_entry
 
@@ -300,7 +298,7 @@ def mock_setup_entry() -> Generator[AsyncMock]:
 def mock_ubus_client() -> Generator[AsyncMock]:
     """Mock the Ubus API client."""
     with patch(
-        "custom_components.openwrt.api.ubus.UbusClient", autospec=True
+        "custom_components.openwrt.api.ubus.UbusClient", autospec=True,
     ) as mock_client:
         client = mock_client.return_value
         client.connect = AsyncMock()

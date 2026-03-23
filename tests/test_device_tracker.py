@@ -61,7 +61,7 @@ def test_device_tracker_is_connected_logic(mock_coordinator, mock_config_entry) 
     # 2. Device appears
     # Ensure mac is lowercased as real coordinator would do
     mock_coordinator.data.connected_devices = [
-        ConnectedDevice(mac=mac.lower(), connected=True)
+        ConnectedDevice(mac=mac.lower(), connected=True),
     ]
     assert tracker.is_connected is True
     assert tracker._last_seen is not None
@@ -98,7 +98,7 @@ def test_device_tracker_attributes(mock_coordinator, mock_config_entry) -> None:
             connection_type="wired",
             neighbor_state="REACHABLE",
             uptime=3600,
-        )
+        ),
     ]
 
     assert tracker.hostname == "my-phone"

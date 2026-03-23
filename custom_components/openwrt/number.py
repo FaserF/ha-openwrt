@@ -44,7 +44,7 @@ async def async_setup_entry(
             for wifi in coordinator.data.wireless_interfaces:
                 if wifi.name and wifi.txpower > 0:
                     entities.append(
-                        OpenWrtTxPowerNumber(coordinator, entry, wifi.name, wifi.ssid)
+                        OpenWrtTxPowerNumber(coordinator, entry, wifi.name, wifi.ssid),
                     )
 
         if perms.write_sqm and pkgs.sqm_scripts is not False:
@@ -52,13 +52,13 @@ async def async_setup_entry(
                 if sqm.section_id:
                     entities.append(
                         OpenWrtSqmDownloadNumber(
-                            coordinator, entry, sqm.section_id, sqm.name
-                        )
+                            coordinator, entry, sqm.section_id, sqm.name,
+                        ),
                     )
                     entities.append(
                         OpenWrtSqmUploadNumber(
-                            coordinator, entry, sqm.section_id, sqm.name
-                        )
+                            coordinator, entry, sqm.section_id, sqm.name,
+                        ),
                     )
 
     async_add_entities(entities)
@@ -125,11 +125,11 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
             try:
                 await client.execute_command(
                     f"uci set wireless.{radio}.txpower='{txpower}' && "
-                    f"uci commit wireless && wifi reload"
+                    f"uci commit wireless && wifi reload",
                 )
             except Exception as err:
-                _LOGGER.error(
-                    "Failed to set TX power for %s: %s", self._iface_name, err
+                _LOGGER.exception(
+                    "Failed to set TX power for %s: %s", self._iface_name, err,
                 )
                 raise
 
@@ -181,11 +181,11 @@ class OpenWrtSqmNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEntity):
         client = self.hass.data[DOMAIN][self._entry.entry_id][DATA_CLIENT]
         try:
             await client.set_sqm_config(
-                self._section_id, **{self._option_key: int(value)}
+                self._section_id, **{self._option_key: int(value)},
             )
         except Exception as err:
-            _LOGGER.error(
-                "Failed to set SQM %s for %s: %s", self._option_key, self._sqm_name, err
+            _LOGGER.exception(
+                "Failed to set SQM %s for %s: %s", self._option_key, self._sqm_name, err,
             )
             raise
         await self.coordinator.async_request_refresh()

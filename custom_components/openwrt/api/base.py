@@ -700,7 +700,7 @@ class OpenWrtClient(abc.ABC):
 
     @abc.abstractmethod
     async def provision_user(
-        self, username: str, password: str
+        self, username: str, password: str,
     ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions.
 
@@ -879,7 +879,7 @@ class OpenWrtClient(abc.ABC):
         return []
 
     async def set_firewall_redirect_enabled(
-        self, section_id: str, enabled: bool
+        self, section_id: str, enabled: bool,
     ) -> bool:
         """Enable or disable a firewall redirect."""
         return False
@@ -954,16 +954,16 @@ class OpenWrtClient(abc.ABC):
                             )
                             # Check if interface is up
                             ip_out = await self.execute_command(
-                                f"ip link show {iface_name} 2>/dev/null"
+                                f"ip link show {iface_name} 2>/dev/null",
                             )
                             vpn.up = bool(ip_out and "UP" in ip_out)
 
                             # Get RX/TX bytes
                             rx_out = await self.execute_command(
-                                f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null"
+                                f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null",
                             )
                             tx_out = await self.execute_command(
-                                f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null"
+                                f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null",
                             )
                             try:
                                 vpn.rx_bytes = (
@@ -991,8 +991,7 @@ class OpenWrtClient(abc.ABC):
                                     # parts[4] = latest-handshake
                                     if len(parts) > 4 and parts[4].isdigit():
                                         handshake = int(parts[4])
-                                        if handshake > vpn.latest_handshake:
-                                            vpn.latest_handshake = handshake
+                                        vpn.latest_handshake = max(vpn.latest_handshake, handshake)
                                     break
         except Exception as err:
             _LOGGER.debug("WireGuard status check failed: %s", err)
@@ -1003,7 +1002,7 @@ class OpenWrtClient(abc.ABC):
             if output and "not found" not in output.lower() and output.strip():
                 # OpenVPN is running – check interfaces
                 tun_output = await self.execute_command(
-                    "ip -br link show type tun 2>/dev/null"
+                    "ip -br link show type tun 2>/dev/null",
                 )
                 if tun_output:
                     for line in tun_output.strip().splitlines():
@@ -1018,10 +1017,10 @@ class OpenWrtClient(abc.ABC):
                             )
                             # Get RX/TX bytes
                             rx_out = await self.execute_command(
-                                f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null"
+                                f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null",
                             )
                             tx_out = await self.execute_command(
-                                f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null"
+                                f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null",
                             )
                             try:
                                 vpn.rx_bytes = (
@@ -1106,7 +1105,7 @@ class OpenWrtClient(abc.ABC):
                 return path
             return ""
         except Exception as err:
-            _LOGGER.error("Backup creation failed: %s", err)
+            _LOGGER.exception("Backup creation failed: %s", err)
             raise
 
     @abc.abstractmethod
@@ -1308,7 +1307,7 @@ class OpenWrtClient(abc.ABC):
             fast_optional_tasks.append(self.get_banip_status())
 
         fast_results = await asyncio.gather(
-            *fast_optional_tasks, return_exceptions=True
+            *fast_optional_tasks, return_exceptions=True,
         )
 
         def get_val(res: Any, default: Any, name: str) -> Any:
@@ -1333,7 +1332,7 @@ class OpenWrtClient(abc.ABC):
         # Handle adblock-related results
         if "adblock" in extra_tasks_map:
             data.adblock = get_val(
-                fast_results[extra_tasks_map["adblock"]], AdBlockStatus(), "adblock"
+                fast_results[extra_tasks_map["adblock"]], AdBlockStatus(), "adblock",
             )
         if "simple_adblock" in extra_tasks_map:
             data.simple_adblock = get_val(
@@ -1343,7 +1342,7 @@ class OpenWrtClient(abc.ABC):
             )
         if "ban_ip" in extra_tasks_map:
             data.ban_ip = get_val(
-                fast_results[extra_tasks_map["ban_ip"]], BanIpStatus(), "ban-ip"
+                fast_results[extra_tasks_map["ban_ip"]], BanIpStatus(), "ban-ip",
             )
 
         # Slow-changing optional data (services, LEDs, firewall, access control, packages, permissions)
@@ -1359,7 +1358,7 @@ class OpenWrtClient(abc.ABC):
                 self.check_permissions(),
             ]
             slow_results = await asyncio.gather(
-                *slow_optional_tasks, return_exceptions=True
+                *slow_optional_tasks, return_exceptions=True,
             )
 
             data.services = get_val(slow_results[0], [], "services")
@@ -1370,7 +1369,7 @@ class OpenWrtClient(abc.ABC):
             data.sqm = get_val(slow_results[5], [], "SQM")
             data.packages = get_val(slow_results[6], OpenWrtPackages(), "packages")
             data.permissions = get_val(
-                slow_results[7], OpenWrtPermissions(), "permissions"
+                slow_results[7], OpenWrtPermissions(), "permissions",
             )
 
             # Cache slow results
@@ -1385,7 +1384,7 @@ class OpenWrtClient(abc.ABC):
                 "permissions": data.permissions,
             }
             _LOGGER.debug(
-                "Full poll cycle %d: refreshed slow-changing data", self._poll_count
+                "Full poll cycle %d: refreshed slow-changing data", self._poll_count,
             )
         else:
             # Reuse cached slow-changing data

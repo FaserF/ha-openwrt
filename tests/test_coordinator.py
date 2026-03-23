@@ -39,10 +39,12 @@ async def test_coordinator_stale_data_on_timeout() -> None:
     coordinator.data = initial_data
 
     async def get_all_data_err(*args, **kwargs):
-        raise TimeoutError("Connection timed out")
+        msg = "Connection timed out"
+        raise TimeoutError(msg)
 
     async def connect_err(*args, **kwargs):
-        raise Exception("Reconnect failed")
+        msg = "Reconnect failed"
+        raise Exception(msg)
 
     mock_client.get_all_data = get_all_data_err
     mock_client.connect = connect_err
@@ -75,10 +77,12 @@ async def test_coordinator_update_failed_on_new_install() -> None:
     coordinator.data = None
 
     async def get_all_data_err(*args, **kwargs):
-        raise TimeoutError("Connection timed out")
+        msg = "Connection timed out"
+        raise TimeoutError(msg)
 
     async def connect_err(*args, **kwargs):
-        raise Exception("Reconnect failed")
+        msg = "Reconnect failed"
+        raise Exception(msg)
 
     mock_client.get_all_data = get_all_data_err
     mock_client.connect = connect_err
