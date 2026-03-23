@@ -511,7 +511,12 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     writer.close()
                     await writer.wait_closed()
                     return True
-            except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError):
+            except (
+                TimeoutError,
+                socket.gaierror,
+                ConnectionRefusedError,
+                OSError,
+            ):
                 continue
         return False
 
@@ -957,7 +962,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     ):
                         _LOGGER.info("Found OpenWrt via LuCI probe at %s", host)
                         found_methods.append(CONNECTION_TYPE_LUCI_RPC)
-        except (TimeoutError, aiohttp.ClientError):
+        except (
+            TimeoutError,
+            aiohttp.ClientError,
+        ):
             pass
 
         # 2. Try LuCI static asset (more specific to OpenWrt)
@@ -971,7 +979,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                                 "Found OpenWrt via LuCI asset probe at %s", host
                             )
                             found_methods.append(CONNECTION_TYPE_LUCI_RPC)
-            except (TimeoutError, aiohttp.ClientError):
+            except (
+                TimeoutError,
+                aiohttp.ClientError,
+            ):
                 pass
 
         # Check exclusions again before UBus if we didn't find LuCI yet
@@ -1029,7 +1040,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                                 found_methods.append(CONNECTION_TYPE_UBUS)
                         except Exception:
                             pass
-        except (TimeoutError, aiohttp.ClientError):
+        except (
+            TimeoutError,
+            aiohttp.ClientError,
+        ):
             pass
 
         return list(set(found_methods))

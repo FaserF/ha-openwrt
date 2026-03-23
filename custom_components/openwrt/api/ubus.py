@@ -507,7 +507,11 @@ class UbusClient(OpenWrtClient):
                             if 0 < temp < 150:
                                 resources.temperature = temp
                                 break
-                except (UbusError, KeyError, AttributeError):
+                except (
+                    UbusError,
+                    KeyError,
+                    AttributeError,
+                ):
                     continue
 
             # Fallback to execute_command if ubus file read failed
@@ -561,7 +565,10 @@ class UbusClient(OpenWrtClient):
                                         resources.filesystem_total = usage.total
                                         resources.filesystem_used = usage.used
                                         resources.filesystem_free = usage.free
-                            except (ValueError, IndexError):
+                            except (
+                                ValueError,
+                                IndexError,
+                            ):
                                 continue
         except Exception:  # noqa: BLE001
             pass
@@ -741,7 +748,10 @@ class UbusClient(OpenWrtClient):
                     is_wireless=False,
                     connected=False,  # DHCP leases are just records, not proof of connectivity
                 )
-        except (UbusError, Exception):  # noqa: BLE001
+        except (
+            UbusError,
+            Exception,
+        ):  # noqa: BLE001
             pass
 
         # Fetch wireless_data once for both iwinfo and hostapd processing
@@ -1140,7 +1150,9 @@ class UbusClient(OpenWrtClient):
                 packages.openvpn = detect_status(5)
                 packages.luci_mod_rpc = detect_status(6) or detect_status(7)
                 if packages.luci_mod_rpc is not True:
-                    packages.luci_mod_rpc = "luci-rpc" in objects or detect_status(6) or detect_status(7)
+                    packages.luci_mod_rpc = (
+                        "luci-rpc" in objects or detect_status(6) or detect_status(7)
+                    )
                 if packages.asu is not True:
                     packages.asu = detect_status(8) or detect_status(9)
                 if packages.adblock is not True:
@@ -1511,7 +1523,10 @@ class UbusClient(OpenWrtClient):
             # 1. Try standard ubus rc.init (best practice)
             await self._call("rc", "init", {"name": name, "action": action})
             return True
-        except (UbusPermissionError, UbusError):
+        except (
+            UbusPermissionError,
+            UbusError,
+        ):
             try:
                 # 2. Try ubus file.exec (direct init script call)
                 await self._call(
