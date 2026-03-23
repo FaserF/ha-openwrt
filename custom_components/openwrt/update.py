@@ -400,7 +400,6 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 return
 
             # 2. Prepare local path
-            import os
             from pathlib import Path
 
             backup_dir = Path(self.hass.config.path("backups", "openwrt"))
