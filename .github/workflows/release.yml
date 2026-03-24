@@ -164,6 +164,7 @@ jobs:
           if ! git diff --staged --quiet; then
             git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]"
           fi
+          git pull --rebase origin main
           git tag v${{ env.NEW_VERSION }}
           git push origin main --tags
 
