@@ -1614,7 +1614,7 @@ class LuciRpcClient(OpenWrtClient):
         """Install firmware from the given URL via LuCI RPC."""
         keep = "" if keep_settings else "-n"
         cmd = (
-            f"wget -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
+            f"wget --no-check-certificate -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
         )
         try:
             _LOGGER.info("Initiating firmware installation via LuCI RPC from: %s", url)
@@ -1645,12 +1645,22 @@ class LuciRpcClient(OpenWrtClient):
         try:
             import base64
 
-            # LuCI file.read returns base64 encoded data
-            res = await self._rpc_call("file", "read", [remote_path])
-            if res and isinstance(res, str):
-                with open(local_path, "wb") as f:
-                    f.write(base64.b64decode(res))
-                return True
+            # Try LuCI file.read first
+            try:
+                res = await self._rpc_call("file", "read", [remote_path])
+                if res and isinstance(res, str):
+                    with open(local_path, "wb") as f:
+                        f.write(base64.b64decode(res))
+                    return True
+            except LuciRpcPackageMissingError:
+                # Fallback to sys.exec if file read is not available
+                # Fabian's AX3600 has openssl but no standalone base64 command
+                cmd = f"openssl base64 -in {remote_path} || base64 {remote_path} || cat {remote_path} | base64"
+                output = await self.execute_command(cmd)
+                if output:
+                    with open(local_path, "wb") as f:
+                        f.write(base64.b64decode(output.replace("\n", "").replace("\r", "")))
+                    return True
         except Exception as err:
             _LOGGER.exception("Failed to download file via LuCI RPC: %s", err)
         return False

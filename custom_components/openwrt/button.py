@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -102,7 +103,7 @@ async def async_setup_entry(
                 continue
             if description.key == "create_backup" and not perms.write_system:
                 continue
-            
+
             tracked_keys.add(description.key)
             new_entities.append(
                 OpenWrtButtonEntity(coordinator, entry, description, client),
@@ -117,7 +118,7 @@ async def async_setup_entry(
                     key = f"{action}_{service.name}"
                     if key in tracked_keys:
                         continue
-                    
+
                     tracked_keys.add(key)
                     new_entities.append(
                         OpenWrtButtonEntity(
@@ -143,7 +144,7 @@ async def async_setup_entry(
                 key = f"reconnect_{iface.name}"
                 if key in tracked_keys:
                     continue
-                
+
                 tracked_keys.add(key)
                 new_entities.append(
                     OpenWrtButtonEntity(
@@ -324,7 +325,7 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
                     break
 
         return DeviceInfo(
-            connections={("mac", self._mac)},
+            connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
             name=self._initial_name,
             via_device=via_device,
         )

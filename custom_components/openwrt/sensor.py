@@ -26,6 +26,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -263,7 +264,7 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
                     break
 
         return DeviceInfo(
-            connections={("mac", self._mac)},
+            connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
             name=self.name or self._initial_name,
             via_device=via_device,
         )

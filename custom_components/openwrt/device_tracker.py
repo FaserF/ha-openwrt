@@ -75,7 +75,9 @@ async def async_setup_entry(
         new_entities: list[OpenWrtDeviceTracker] = []
 
         for device in coordinator.data.connected_devices:
-            mac = dr.format_mac(device.mac)
+            if not device.mac:
+                continue
+            mac = device.mac.lower()
             if mac in tracked_macs:
                 continue
             if not track_wired and not device.is_wireless:
@@ -110,7 +112,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     ) -> None:
         """Initialize the device tracker."""
         super().__init__(coordinator)
-        self._mac = dr.format_mac(mac)
+        self._mac = mac.lower()
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_tracker_{self._mac}"
 
