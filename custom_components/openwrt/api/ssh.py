@@ -1378,7 +1378,7 @@ class SshClient(OpenWrtClient):
                         neighbors.append(
                             IpNeighbor(
                                 ip=ip,
-                                mac=mac.upper(),
+                                mac=mac.lower(),
                                 interface=interface,
                                 state=state,
                             ),

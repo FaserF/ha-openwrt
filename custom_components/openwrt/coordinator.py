@@ -251,8 +251,14 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             data.firmware_latest_version = self.data.firmware_latest_version
             data.firmware_upgradable = self.data.firmware_upgradable
             data.firmware_release_url = self.data.firmware_release_url
+            data.firmware_install_url = self.data.firmware_install_url
             data.firmware_checksum = self.data.firmware_checksum
             data.is_custom_build = self.data.is_custom_build
+            data.asu_supported = self.data.asu_supported
+            data.asu_update_available = self.data.asu_update_available
+            data.asu_image_status = self.data.asu_image_status
+            data.asu_image_url = self.data.asu_image_url
+            data.installed_packages = self.data.installed_packages
         else:
             data.firmware_current_version = (
                 data.device_info.firmware_version or data.device_info.release_version
@@ -360,10 +366,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # Identify gateway device for topology mapping
         via_device = None
         if device_info.gateway_mac:
-            gw_mac = device_info.gateway_mac.upper()
+            gw_mac = device_info.gateway_mac.lower()
             for dev in device_registry.devices.values():
                 if any(
-                    conn[0] == dr.CONNECTION_NETWORK_MAC and conn[1].upper() == gw_mac
+                    conn[0] == dr.CONNECTION_NETWORK_MAC and conn[1].lower() == gw_mac
                     for conn in dev.connections
                 ):
                     if dev.identifiers:

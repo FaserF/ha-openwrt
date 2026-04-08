@@ -135,7 +135,12 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         via_device = (DOMAIN, self._entry.unique_id or self._entry.data[CONF_HOST])
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
-                if device.mac == self._mac and device.is_wireless and device.interface:
+                if (
+                    device.mac
+                    and device.mac.lower() == self._mac
+                    and device.is_wireless
+                    and device.interface
+                ):
                     via_device = (
                         DOMAIN,
                         f"{self._entry.unique_id or self._entry.data[CONF_HOST]}_ap_{device.interface}",
@@ -153,7 +158,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         """Return the source type."""
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
-                if device.mac == self._mac and device.is_wireless:
+                if device.mac and device.mac.lower() == self._mac and device.is_wireless:
                     return SourceType.ROUTER
         return SourceType.ROUTER
 
@@ -164,7 +169,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             return self._check_consider_home(False)
 
         connected = any(
-            d.mac == self._mac and d.connected
+            d.mac and d.mac.lower() == self._mac and d.connected
             for d in self.coordinator.data.connected_devices
         )
         return self._check_consider_home(connected)
@@ -189,7 +194,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         """Return the hostname."""
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
-                if device.mac == self._mac:
+                if device.mac and device.mac.lower() == self._mac:
                     return device.hostname or None
         return None
 
@@ -198,7 +203,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         """Return the IP address."""
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
-                if device.mac == self._mac:
+                if device.mac and device.mac.lower() == self._mac:
                     return device.ip or None
         return None
 
@@ -224,7 +229,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             return {}
 
         for device in self.coordinator.data.connected_devices:
-            if device.mac == self._mac:
+            if device.mac and device.mac.lower() == self._mac:
                 attrs: dict[str, Any] = {
                     "mac": device.mac,
                     "is_wireless": device.is_wireless,

@@ -237,10 +237,10 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         """Initialize the device sensor."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._mac = mac
+        self._mac = mac.lower()
         self._value_fn = value_fn
         self._available_fn = available_fn
-        self._attr_unique_id = f"{entry.entry_id}_{mac}_{description.key}"
+        self._attr_unique_id = f"{entry.entry_id}_{self._mac}_{description.key}"
         self._entry = entry
         self._initial_name = device_name or mac
 
@@ -250,7 +250,12 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         via_device = (DOMAIN, cast(str, self._entry.unique_id))
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
-                if device.mac == self._mac and device.is_wireless and device.interface:
+                if (
+                    device.mac
+                    and device.mac.lower() == self._mac
+                    and device.is_wireless
+                    and device.interface
+                ):
                     via_device = (
                         DOMAIN,
                         f"{self._entry.unique_id}_ap_{device.interface}",
@@ -291,7 +296,7 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
             return {}
 
         for device in self.coordinator.data.connected_devices:
-            if device.mac == self._mac:
+            if device.mac and device.mac.lower() == self._mac:
                 attrs: dict[str, Any] = {
                     "mac": device.mac,
                     "is_wireless": device.is_wireless,
@@ -991,10 +996,13 @@ async def async_setup_entry(
 
         new_entities: list[OpenWrtDeviceSensor] = []
         for device in coordinator.data.connected_devices:
-            if not device.mac or device.mac in tracked_macs:
+            if not device.mac:
+                continue
+            mac = device.mac.lower()
+            if mac in tracked_macs:
                 continue
 
-            tracked_macs.add(device.mac)
+            tracked_macs.add(mac)
 
             # Determine initial device name
             dev_name = device.mac

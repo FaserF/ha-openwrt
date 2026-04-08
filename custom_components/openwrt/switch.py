@@ -102,7 +102,11 @@ async def async_setup_entry(
                         dev_name = device.hostname
 
                 ac_rule_entry = next(
-                    (r for r in coordinator.data.access_control if r.mac == device.mac),
+                    (
+                        r
+                        for r in coordinator.data.access_control
+                        if r.mac and r.mac.lower() == device.mac.lower()
+                    ),
                     None,
                 )
                 entities.append(
@@ -110,7 +114,7 @@ async def async_setup_entry(
                         coordinator,
                         entry,
                         client,
-                        device.mac,
+                        device.mac.lower(),
                         dev_name,
                         ac_rule_entry.section_id if ac_rule_entry else None,
                     ),
@@ -566,12 +570,12 @@ class OpenWrtAccessControlSwitch(
         """Initialize the access control switch."""
         super().__init__(coordinator)
         self._client = client
-        self._mac = mac
-        self._attr_unique_id = f"{entry.entry_id}_access_{mac.replace(':', '_')}"
+        self._mac = mac.lower()
+        self._attr_unique_id = f"{entry.entry_id}_access_{self._mac.replace(':', '_')}"
         self._attr_name = name
         self._attr_translation_key = "device_access"
         self._attr_device_info = DeviceInfo(
-            connections={("mac", mac)},
+            connections={("mac", self._mac)},
             name=name,
             via_device=(DOMAIN, cast(str, entry.unique_id)),
         )
@@ -582,7 +586,11 @@ class OpenWrtAccessControlSwitch(
         if self.coordinator.data is None:
             return None
         rule = next(
-            (r for r in self.coordinator.data.access_control if r.mac == self._mac),
+            (
+                r
+                for r in self.coordinator.data.access_control
+                if r.mac and r.mac.lower() == self._mac
+            ),
             None,
         )
         if not rule:

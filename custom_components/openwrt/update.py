@@ -187,6 +187,8 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             notes = f"## Custom Firmware: {latest}\n\n"
             if data.firmware_checksum:
                 notes += f"**SHA256 Checksum:** `{data.firmware_checksum}`\n\n"
+            if data.firmware_install_url:
+                notes += f"**Firmware File:** [{data.firmware_install_url}]({data.firmware_install_url})\n\n"
             notes += (
                 "This firmware update is retrieved from your configured "
                 "custom repository.\n\n"

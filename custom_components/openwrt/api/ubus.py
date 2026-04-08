@@ -1346,7 +1346,7 @@ class UbusClient(OpenWrtClient):
                             neighbors.append(
                                 IpNeighbor(
                                     ip=ip,
-                                    mac=mac.upper(),
+                                    mac=mac.lower(),
                                     interface=dev_name,
                                     state=neigh.get("state", "REACHABLE"),
                                 ),
