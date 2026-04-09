@@ -57,6 +57,7 @@ async def async_setup_entry(
 
     async_add_entities(entities)
 
+
 def _add_wireless_switches(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
@@ -69,9 +70,15 @@ def _add_wireless_switches(
         if wifi.name:
             entities.append(
                 OpenWrtWirelessSwitch(
-                    coordinator, entry, client, wifi.name, wifi.ssid, wifi.frequency,
+                    coordinator,
+                    entry,
+                    client,
+                    wifi.name,
+                    wifi.ssid,
+                    wifi.frequency,
                 ),
             )
+
 
 def _add_service_switches(
     coordinator: OpenWrtDataCoordinator,
@@ -82,7 +89,10 @@ def _add_service_switches(
     """Add switches for system services."""
     for service in coordinator.data.services:
         if service.name:
-            entities.append(OpenWrtServiceSwitch(coordinator, entry, client, service.name))
+            entities.append(
+                OpenWrtServiceSwitch(coordinator, entry, client, service.name)
+            )
+
 
 def _add_firewall_switches(
     coordinator: OpenWrtDataCoordinator,
@@ -95,16 +105,25 @@ def _add_firewall_switches(
         if redirect.section_id:
             entities.append(
                 OpenWrtFirewallSwitch(
-                    coordinator, entry, client, redirect.section_id, redirect.name,
+                    coordinator,
+                    entry,
+                    client,
+                    redirect.section_id,
+                    redirect.name,
                 ),
             )
     for rule in coordinator.data.firewall_rules:
         if rule.name and rule.section_id and not rule.name.startswith("cfg"):
             entities.append(
                 OpenWrtFirewallRuleSwitch(
-                    coordinator, entry, client, rule.section_id, rule.name,
+                    coordinator,
+                    entry,
+                    client,
+                    rule.section_id,
+                    rule.name,
                 ),
             )
+
 
 def _add_access_control_switches(
     coordinator: OpenWrtDataCoordinator,
@@ -113,21 +132,36 @@ def _add_access_control_switches(
     entities: list[SwitchEntity],
 ) -> None:
     """Add access control (blocking) switches for devices."""
-    router_hostname = coordinator.data.device_info.hostname if coordinator.data.device_info else ""
+    router_hostname = (
+        coordinator.data.device_info.hostname if coordinator.data.device_info else ""
+    )
     for device in coordinator.data.connected_devices:
         if not device.mac:
             continue
-        dev_name = device.hostname if device.hostname and device.hostname not in ("*", router_hostname) else device.mac
+        dev_name = (
+            device.hostname
+            if device.hostname and device.hostname not in ("*", router_hostname)
+            else device.mac
+        )
         ac_rule = next(
-            (r for r in coordinator.data.access_control if r.mac and r.mac.lower() == device.mac.lower()),
-            None
+            (
+                r
+                for r in coordinator.data.access_control
+                if r.mac and r.mac.lower() == device.mac.lower()
+            ),
+            None,
         )
         entities.append(
             OpenWrtAccessControlSwitch(
-                coordinator, entry, client, device.mac.lower(), dev_name,
+                coordinator,
+                entry,
+                client,
+                device.mac.lower(),
+                dev_name,
                 ac_rule.section_id if ac_rule else None,
             ),
         )
+
 
 def _add_sqm_switches(
     coordinator: OpenWrtDataCoordinator,
@@ -138,7 +172,10 @@ def _add_sqm_switches(
     """Add SQM QoS switches."""
     for sqm in coordinator.data.sqm:
         if sqm.section_id:
-            entities.append(OpenWrtSqmSwitch(coordinator, entry, client, sqm.section_id, sqm.name))
+            entities.append(
+                OpenWrtSqmSwitch(coordinator, entry, client, sqm.section_id, sqm.name)
+            )
+
 
 def _add_package_switches(
     coordinator: OpenWrtDataCoordinator,

@@ -1613,9 +1613,7 @@ class LuciRpcClient(OpenWrtClient):
     async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         """Install firmware from the given URL via LuCI RPC."""
         keep = "" if keep_settings else "-n"
-        cmd = (
-            f"wget --no-check-certificate -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
-        )
+        cmd = f"wget --no-check-certificate -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin"
         try:
             _LOGGER.info("Initiating firmware installation via LuCI RPC from: %s", url)
             await self.execute_command(cmd)
@@ -1659,7 +1657,9 @@ class LuciRpcClient(OpenWrtClient):
                 output = await self.execute_command(cmd)
                 if output:
                     with open(local_path, "wb") as f:
-                        f.write(base64.b64decode(output.replace("\n", "").replace("\r", "")))
+                        f.write(
+                            base64.b64decode(output.replace("\n", "").replace("\r", ""))
+                        )
                     return True
         except Exception as err:
             _LOGGER.exception("Failed to download file via LuCI RPC: %s", err)

@@ -218,9 +218,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             return await self.client.get_all_data()
         except (UbusAuthError, LuciRpcAuthError, SshAuthError) as err:
             async_create_auth_repair(self.hass, self.config_entry)
-            raise UpdateFailed("Authentication failed. Check your credentials.") from err
+            raise UpdateFailed(
+                "Authentication failed. Check your credentials."
+            ) from err
         except (UbusPackageMissingError, LuciRpcPackageMissingError) as err:
-            packages = ["uhttpd-mod-ubus"] if "ubus" in str(err).lower() else ["luci-mod-rpc"]
+            packages = (
+                ["uhttpd-mod-ubus"] if "ubus" in str(err).lower() else ["luci-mod-rpc"]
+            )
             async_create_missing_packages_repair(self.hass, self.config_entry, packages)
             raise UpdateFailed(f"Missing required OpenWrt package: {err}") from err
         except (
@@ -252,7 +256,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         """Sync firmware metadata from previous data if revision is unchanged."""
         if (
             self.data
-            and self.data.device_info.release_revision == data.device_info.release_revision
+            and self.data.device_info.release_revision
+            == data.device_info.release_revision
         ):
             data.firmware_current_version = self.data.firmware_current_version
             data.firmware_latest_version = self.data.firmware_latest_version
@@ -281,8 +286,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     rx_diff = iface.rx_bytes - prev.get("rx_bytes", 0)
                     tx_diff = iface.tx_bytes - prev.get("tx_bytes", 0)
                     if rx_diff >= 0 and tx_diff >= 0:
-                        iface.rx_rate = round((rx_diff * 8) / (1024 * 1024) / elapsed, 2)
-                        iface.tx_rate = round((tx_diff * 8) / (1024 * 1024) / elapsed, 2)
+                        iface.rx_rate = round(
+                            (rx_diff * 8) / (1024 * 1024) / elapsed, 2
+                        )
+                        iface.tx_rate = round(
+                            (tx_diff * 8) / (1024 * 1024) / elapsed, 2
+                        )
 
         for iface in data.network_interfaces:
             self._prev_network_stats[iface.name] = {
@@ -342,8 +351,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if wifi_iface.mac_address:
                 own_macs.add(wifi_iface.mac_address.lower())
         return own_macs
-
-
 
     async def _async_update_device_registry(self, data: OpenWrtData) -> None:
         """Update the device registry with fresh device information."""
@@ -416,7 +423,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         else:
             await self._check_stable_release_update(data, session)
 
-    async def _check_snapshot_update(self, data: OpenWrtData, session: aiohttp.ClientSession) -> None:
+    async def _check_snapshot_update(
+        self, data: OpenWrtData, session: aiohttp.ClientSession
+    ) -> None:
         """Check for updates in SNAPSHOT builds."""
         if not data.device_info.target:
             return
@@ -425,7 +434,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         url = f"https://downloads.openwrt.org/snapshots/targets/{target}/profiles.json"
 
         with contextlib.suppress(Exception):
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
                 if resp.status != 200:
                     return
                 profile_data = await resp.json()
@@ -434,29 +445,43 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     return
 
                 latest_snapshot = f"SNAPSHOT ({version_code})"
-                if self._version_is_newer(data.device_info.release_version, latest_snapshot):
+                if self._version_is_newer(
+                    data.device_info.release_version, latest_snapshot
+                ):
                     data.firmware_latest_version = latest_snapshot
                     data.firmware_upgradable = True
-                    data.firmware_release_url = f"https://downloads.openwrt.org/snapshots/targets/{target}/"
+                    data.firmware_release_url = (
+                        f"https://downloads.openwrt.org/snapshots/targets/{target}/"
+                    )
 
                     # Find sysupgrade image
                     profiles = profile_data.get("profiles", {})
-                    board_key = data.device_info.board_name.replace("-", "_").replace(",", "_")
+                    board_key = data.device_info.board_name.replace("-", "_").replace(
+                        ",", "_"
+                    )
                     board_profile = profiles.get(board_key)
                     if board_profile:
                         for img in board_profile.get("images", []):
                             if "sysupgrade" in img.get("name", ""):
-                                data.firmware_install_url = f"{data.firmware_release_url}{img.get('name')}"
+                                data.firmware_install_url = (
+                                    f"{data.firmware_release_url}{img.get('name')}"
+                                )
                                 break
 
-    async def _check_stable_release_update(self, data: OpenWrtData, session: aiohttp.ClientSession) -> None:
+    async def _check_stable_release_update(
+        self, data: OpenWrtData, session: aiohttp.ClientSession
+    ) -> None:
         """Check for updates in stable releases."""
         with contextlib.suppress(Exception):
-            async with session.get(OPENWRT_RELEASE_API, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            async with session.get(
+                OPENWRT_RELEASE_API, timeout=aiohttp.ClientTimeout(total=15)
+            ) as resp:
                 if resp.status != 200:
                     return
                 versions_data = await resp.json()
-                latest_stable = versions_data.get("stable_version", versions_data.get("latest", ""))
+                latest_stable = versions_data.get(
+                    "stable_version", versions_data.get("latest", "")
+                )
 
                 if not latest_stable and isinstance(versions_data, dict):
                     for key in sorted(versions_data.keys(), reverse=True):
@@ -464,7 +489,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                             latest_stable = key
                             break
 
-                if latest_stable and self._version_is_newer(data.device_info.release_version, latest_stable):
+                if latest_stable and self._version_is_newer(
+                    data.device_info.release_version, latest_stable
+                ):
                     data.firmware_latest_version = latest_stable
                     data.firmware_upgradable = True
                     self._set_stable_release_urls(data, latest_stable)
@@ -527,7 +554,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if is_snapshot:
                 url += "&version=SNAPSHOT"
             with contextlib.suppress(Exception):
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
                     if resp.status == 200:
                         return await resp.json()
                     if resp.status == 404:
@@ -553,7 +582,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         with contextlib.suppress(Exception):
             data.installed_packages = await self.client.get_installed_packages()
 
-        if self._version_is_newer(data.firmware_latest_version or "0.0.0", latest_version):
+        if self._version_is_newer(
+            data.firmware_latest_version or "0.0.0", latest_version
+        ):
             data.firmware_latest_version = latest_version
             data.firmware_upgradable = True
             data.firmware_release_url = f"https://openwrt.org/releases/{latest_version}"
@@ -584,7 +615,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # 1. Get releases
         with contextlib.suppress(Exception):
             url = f"https://api.github.com/repos/{owner}/{repo}/releases"
-            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            async with session.get(
+                url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
                 if resp.status != 200:
                     return
                 releases = await resp.json()
@@ -594,7 +627,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
             # 2. Try to identify current version by commit hash if unknown
             if router_hash:
-                await self._find_tag_by_hash(data, owner, repo, router_hash, headers, session)
+                await self._find_tag_by_hash(
+                    data, owner, repo, router_hash, headers, session
+                )
 
             # 3. Determine latest version and meta
             latest_tag = latest_release.get("tag_name", "")
@@ -604,9 +639,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             data.firmware_release_url = latest_release.get("html_url", "")
 
             # 4. Check if upgradable
-            is_upgradable = self._version_is_newer(data.firmware_current_version or "", latest_tag)
+            is_upgradable = self._version_is_newer(
+                data.firmware_current_version or "", latest_tag
+            )
             if not is_upgradable and latest_version != latest_tag:
-                is_upgradable = self._version_is_newer(data.firmware_current_version or "", latest_version)
+                is_upgradable = self._version_is_newer(
+                    data.firmware_current_version or "", latest_version
+                )
             data.firmware_upgradable = is_upgradable
 
             # 5. Find sysupgrade image and checksum
@@ -620,12 +659,20 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         return ""
 
     async def _find_tag_by_hash(
-        self, data: OpenWrtData, owner: str, repo: str, router_hash: str, headers: dict, session: aiohttp.ClientSession
+        self,
+        data: OpenWrtData,
+        owner: str,
+        repo: str,
+        router_hash: str,
+        headers: dict,
+        session: aiohttp.ClientSession,
     ) -> None:
         """Find a GitHub tag that matches the router's commit hash."""
         with contextlib.suppress(Exception):
             url = f"https://api.github.com/repos/{owner}/{repo}/tags"
-            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            async with session.get(
+                url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
                 if resp.status == 200:
                     tags = await resp.json()
                     for tag in tags:
@@ -667,17 +714,25 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         if not best_asset:
             board = data.device_info.board_name.replace(",", "_").replace(" ", "_")
             for asset in assets:
-                if board in asset.get("name", "") and "sysupgrade" in asset.get("name", ""):
+                if board in asset.get("name", "") and "sysupgrade" in asset.get(
+                    "name", ""
+                ):
                     best_asset = asset
                     break
 
         if best_asset:
             data.firmware_install_url = best_asset.get("browser_download_url")
             if sha_url:
-                await self._fetch_custom_checksum(data, sha_url, best_asset.get("name", ""), session)
+                await self._fetch_custom_checksum(
+                    data, sha_url, best_asset.get("name", ""), session
+                )
 
     async def _fetch_custom_checksum(
-        self, data: OpenWrtData, sha_url: str, asset_name: str, session: aiohttp.ClientSession
+        self,
+        data: OpenWrtData,
+        sha_url: str,
+        asset_name: str,
+        session: aiohttp.ClientSession,
     ) -> None:
         """Fetch and parse checksum file from GitHub."""
         with contextlib.suppress(Exception):

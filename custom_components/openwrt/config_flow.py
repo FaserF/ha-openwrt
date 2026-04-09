@@ -274,7 +274,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             if router_info:
                 host = router_info["host"]
                 # Skip already configured routers or duplicates
-                if host not in existing_hosts and not any(r["host"] == host for r in self._discovered_routers):
+                if host not in existing_hosts and not any(
+                    r["host"] == host for r in self._discovered_routers
+                ):
                     self._discovered_routers.append(router_info)
 
         if not self._discovered_routers:
@@ -288,6 +290,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
         with contextlib.suppress(Exception):
             from homeassistant.components import network
+
             adapters = await network.async_get_adapters(self.hass)
             for adapter in adapters:
                 for ipv4 in adapter.get("ipv4", []):
@@ -869,7 +872,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self._homeassistant_user_exists = False
         if data.get(CONF_USERNAME) == "root":
             with contextlib.suppress(Exception):
-                self._homeassistant_user_exists = await client.user_exists("homeassistant")
+                self._homeassistant_user_exists = await client.user_exists(
+                    "homeassistant"
+                )
 
         info = await client.get_device_info()
         self._device_info = {
@@ -888,13 +893,27 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def _handle_test_error(self, err: Exception, username: str | None) -> str:
         """Map connection exceptions to translation keys."""
-        if isinstance(err, (UbusAuthError, LuciRpcAuthError, SshAuthError, SshKeyError)):
+        if isinstance(
+            err, (UbusAuthError, LuciRpcAuthError, SshAuthError, SshKeyError)
+        ):
             _LOGGER.warning("Authentication failed: %s", err)
             return "invalid_auth"
-        if isinstance(err, (UbusTimeoutError, LuciRpcTimeoutError, SshTimeoutError, TimeoutError)):
+        if isinstance(
+            err, (UbusTimeoutError, LuciRpcTimeoutError, SshTimeoutError, TimeoutError)
+        ):
             _LOGGER.warning("Timeout during test: %s", err)
             return "timeout"
-        if isinstance(err, (UbusConnectionError, LuciRpcConnectionError, SshConnectionError, UbusError, LuciRpcError, SshError)):
+        if isinstance(
+            err,
+            (
+                UbusConnectionError,
+                LuciRpcConnectionError,
+                SshConnectionError,
+                UbusError,
+                LuciRpcError,
+                SshError,
+            ),
+        ):
             _LOGGER.warning("Connection/API error: %s", err)
             return "cannot_connect"
         if isinstance(err, (UbusSslError, LuciRpcSslError)):
@@ -907,7 +926,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             _LOGGER.warning("Permission error: %s", err)
             return "permission_error"
 
-        _LOGGER.exception("Unexpected error during connection test for %s: %s", username, err)
+        _LOGGER.exception(
+            "Unexpected error during connection test for %s: %s", username, err
+        )
         return "unknown"
 
     async def _async_probe_openwrt(
@@ -947,10 +968,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
                     text = await resp.text()
                     # Common non-router exclusions in text
-                    if any(s in text.lower() for s in ["valetudo", "dreame", "roborock", "vacuum"]):
+                    if any(
+                        s in text.lower()
+                        for s in ["valetudo", "dreame", "roborock", "vacuum"]
+                    ):
                         return False
 
-                    patterns = ["luci - openwrt", "<title>luci", "ubus rpc", "cgi-bin/luci"]
+                    patterns = [
+                        "luci - openwrt",
+                        "<title>luci",
+                        "ubus rpc",
+                        "cgi-bin/luci",
+                    ]
                     if any(p in text.lower() for p in patterns) or "uhttpd" in server:
                         return True
 
@@ -993,7 +1022,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
                     # Try specific JSON-RPC check
                     with contextlib.suppress(Exception):
-                        if isinstance(await resp.json(), dict) and "jsonrpc" in await resp.json():
+                        if (
+                            isinstance(await resp.json(), dict)
+                            and "jsonrpc" in await resp.json()
+                        ):
                             return True
         return False
 

@@ -72,6 +72,7 @@ async def async_setup_entry(
 
     async_add_entities(entities)
 
+
 def _async_setup_mwan_binary_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
@@ -100,6 +101,7 @@ def _async_setup_mwan_binary_sensors(
             ),
         )
 
+
 def _async_setup_interface_binary_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
@@ -126,6 +128,7 @@ def _async_setup_interface_binary_sensors(
                     ),
                 ),
             )
+
 
 def _async_setup_vpn_binary_sensors(
     coordinator: OpenWrtDataCoordinator,

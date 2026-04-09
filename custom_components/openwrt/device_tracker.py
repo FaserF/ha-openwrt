@@ -172,8 +172,12 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         if not self.coordinator.data:
             return None
         return next(
-            (d for d in self.coordinator.data.connected_devices if d.mac and d.mac.lower() == self._mac),
-            None
+            (
+                d
+                for d in self.coordinator.data.connected_devices
+                if d.mac and d.mac.lower() == self._mac
+            ),
+            None,
         )
 
     def _check_consider_home(self, connected: bool) -> bool:
@@ -234,10 +238,16 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         # Add historical seen data
         if device.mac.lower() in self.coordinator._device_history:
             history = self.coordinator._device_history[device.mac.lower()]
-            attrs.update({
-                "initially_seen": datetime.fromtimestamp(history["initially_seen"]).isoformat(),
-                "last_seen": datetime.fromtimestamp(history["last_seen"]).isoformat(),
-            })
+            attrs.update(
+                {
+                    "initially_seen": datetime.fromtimestamp(
+                        history["initially_seen"]
+                    ).isoformat(),
+                    "last_seen": datetime.fromtimestamp(
+                        history["last_seen"]
+                    ).isoformat(),
+                }
+            )
 
         # Add optional metrics
         optional_metrics = {
@@ -249,11 +259,13 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             "connection_info": device.connection_info,
         }
         if device.is_wireless:
-            optional_metrics.update({
-                "signal_strength": device.signal,
-                "rx_rate": device.rx_rate,
-                "tx_rate": device.tx_rate,
-            })
+            optional_metrics.update(
+                {
+                    "signal_strength": device.signal,
+                    "rx_rate": device.rx_rate,
+                    "tx_rate": device.tx_rate,
+                }
+            )
 
         attrs.update({k: v for k, v in optional_metrics.items() if v})
         return attrs

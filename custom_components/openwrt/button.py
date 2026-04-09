@@ -126,7 +126,9 @@ def _add_static_buttons(
             continue
 
         tracked_keys.add(description.key)
-        new_entities.append(OpenWrtButtonEntity(coordinator, entry, description, client))
+        new_entities.append(
+            OpenWrtButtonEntity(coordinator, entry, description, client)
+        )
 
 
 def _add_service_buttons(
@@ -255,7 +257,9 @@ def _add_device_buttons(
             )
 
 
-def _get_unique_devices(coordinator: OpenWrtDataCoordinator) -> dict[str, dict[str, Any]]:
+def _get_unique_devices(
+    coordinator: OpenWrtDataCoordinator,
+) -> dict[str, dict[str, Any]]:
     """Aggregate unique devices from connected devices and DHCP leases."""
     unique: dict[str, dict[str, Any]] = {}
 

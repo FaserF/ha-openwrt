@@ -713,7 +713,9 @@ class SshClient(OpenWrtClient):
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("DHCP device discovery failed (SSH): %s", err)
 
-    async def _add_neighbor_devices_ssh(self, devices: dict[str, ConnectedDevice]) -> None:
+    async def _add_neighbor_devices_ssh(
+        self, devices: dict[str, ConnectedDevice]
+    ) -> None:
         """Add or update devices discovered via IP neighbors (ARP)."""
         try:
             neighbors = await self.get_ip_neighbors()
@@ -741,10 +743,14 @@ class SshClient(OpenWrtClient):
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("Neighbor device discovery failed (SSH): %s", err)
 
-    async def _add_wireless_devices_iwinfo_ssh(self, devices: dict[str, ConnectedDevice]) -> None:
+    async def _add_wireless_devices_iwinfo_ssh(
+        self, devices: dict[str, ConnectedDevice]
+    ) -> None:
         """Add or update wireless devices via iwinfo."""
         try:
-            iw_out = await self._exec("iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'")
+            iw_out = await self._exec(
+                "iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'"
+            )
             ifaces = iw_out.strip().split()
             for iface in ifaces:
                 assoc = await self._exec(f"iwinfo {iface} assoclist 2>/dev/null")
@@ -752,18 +758,32 @@ class SshClient(OpenWrtClient):
                     if not line.strip() or "No information" in line:
                         continue
                     parts = line.split()
-                    if len(parts) >= 1 and parts[0].count(":") == 5 and len(parts[0]) == 17:
+                    if (
+                        len(parts) >= 1
+                        and parts[0].count(":") == 5
+                        and len(parts[0]) == 17
+                    ):
                         mac = parts[0].lower()
-                        dev = devices.setdefault(mac, ConnectedDevice(mac=mac, connected=True))
+                        dev = devices.setdefault(
+                            mac, ConnectedDevice(mac=mac, connected=True)
+                        )
                         dev.is_wireless = True
                         dev.interface = iface
                         if len(parts) >= 2 and parts[1].lstrip("-").isdigit():
                             dev.signal = int(parts[1])
-                        dev.connection_type = "5GHz" if "5g" in iface.lower() else "2.4GHz" if "2g" in iface.lower() else "wireless"
+                        dev.connection_type = (
+                            "5GHz"
+                            if "5g" in iface.lower()
+                            else "2.4GHz"
+                            if "2g" in iface.lower()
+                            else "wireless"
+                        )
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("iwinfo wireless discovery failed: %s", err)
 
-    async def _add_wireless_devices_ubus_ssh(self, devices: dict[str, ConnectedDevice]) -> None:
+    async def _add_wireless_devices_ubus_ssh(
+        self, devices: dict[str, ConnectedDevice]
+    ) -> None:
         """Add or update wireless devices via ubus hostapd."""
         try:
             cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
@@ -781,12 +801,21 @@ class SshClient(OpenWrtClient):
                     if data and isinstance(data, dict) and "clients" in data:
                         for mac, info in data["clients"].items():
                             mac_lower = mac.lower()
-                            dev = devices.setdefault(mac_lower, ConnectedDevice(mac=mac_lower, connected=True))
+                            dev = devices.setdefault(
+                                mac_lower,
+                                ConnectedDevice(mac=mac_lower, connected=True),
+                            )
                             dev.is_wireless = True
                             dev.interface = iface_name
                             dev.signal = info.get("signal", 0)
-                            dev.connection_type = "5GHz" if "5g" in iface_name.lower() else "2.4GHz" if "2g" in iface_name.lower() else "wireless"
-                except (json.JSONDecodeError, KeyError):
+                            dev.connection_type = (
+                                "5GHz"
+                                if "5g" in iface_name.lower()
+                                else "2.4GHz"
+                                if "2g" in iface_name.lower()
+                                else "wireless"
+                            )
+                except json.JSONDecodeError, KeyError:
                     continue
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("ubus hostapd discovery failed (SSH): %s", err)
@@ -1018,6 +1047,7 @@ class SshClient(OpenWrtClient):
     def _ensure_all_packages_initialized(self, packages: OpenWrtPackages) -> None:
         """Ensure no package attributes remain as None (default to False)."""
         import dataclasses
+
         for field in dataclasses.fields(packages):
             if getattr(packages, field.name) is None:
                 setattr(packages, field.name, False)
@@ -1484,6 +1514,7 @@ class SshClient(OpenWrtClient):
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status via SSH."""
         from .base import SqmStatus
+
         sqm_instances: list[SqmStatus] = []
         try:
             output = await self._exec("uci show sqm")
@@ -1587,18 +1618,25 @@ class SshClient(OpenWrtClient):
                     for iface in interfaces:
                         name = iface.get("name")
                         for neigh in iface.get("neighbor", []):
-                            neighbors.append(self._parse_ubus_lldp_neigh(name or "", neigh))
+                            neighbors.append(
+                                self._parse_ubus_lldp_neigh(name or "", neigh)
+                            )
 
-    def _parse_ubus_lldp_neigh(self, local_iface: str, neigh: dict[str, Any]) -> LldpNeighbor:
+    def _parse_ubus_lldp_neigh(
+        self, local_iface: str, neigh: dict[str, Any]
+    ) -> LldpNeighbor:
         """Parse a single LLDP neighbor entry from ubus output."""
         from .base import LldpNeighbor
+
         return LldpNeighbor(
             local_interface=local_iface,
             neighbor_name=neigh.get("name", ""),
             neighbor_port=neigh.get("port", {}).get("id", "")
-            if isinstance(neigh.get("port"), dict) else "",
+            if isinstance(neigh.get("port"), dict)
+            else "",
             neighbor_chassis=neigh.get("chassis", {}).get("id", "")
-            if isinstance(neigh.get("chassis"), dict) else "",
+            if isinstance(neigh.get("chassis"), dict)
+            else "",
             neighbor_description=neigh.get("description", ""),
             neighbor_system_name=neigh.get("sysname", ""),
         )
@@ -1615,19 +1653,26 @@ class SshClient(OpenWrtClient):
                         neighs = iface_data.get("neighbor", [])
                         if isinstance(neighs, dict):
                             neighs = [neighs]
-                        for neigh in (neighs if isinstance(neighs, list) else []):
-                            neighbors.append(self._parse_lldpcli_neigh(iface_name, neigh))
+                        for neigh in neighs if isinstance(neighs, list) else []:
+                            neighbors.append(
+                                self._parse_lldpcli_neigh(iface_name, neigh)
+                            )
 
-    def _parse_lldpcli_neigh(self, local_iface: str, neigh: dict[str, Any]) -> LldpNeighbor:
+    def _parse_lldpcli_neigh(
+        self, local_iface: str, neigh: dict[str, Any]
+    ) -> LldpNeighbor:
         """Parse a single LLDP neighbor entry from lldpcli JSON output."""
         from .base import LldpNeighbor
+
         return LldpNeighbor(
             local_interface=local_iface,
             neighbor_name=neigh.get("name", ""),
             neighbor_port=neigh.get("port", {}).get("id", {}).get("value", "")
-            if isinstance(neigh.get("port"), dict) else "",
+            if isinstance(neigh.get("port"), dict)
+            else "",
             neighbor_chassis=neigh.get("chassis", {}).get("id", {}).get("value", "")
-            if isinstance(neigh.get("chassis"), dict) else "",
+            if isinstance(neigh.get("chassis"), dict)
+            else "",
             neighbor_description=neigh.get("description", ""),
             neighbor_system_name=neigh.get("sysname", ""),
         )
