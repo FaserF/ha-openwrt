@@ -427,165 +427,162 @@ class UbusClient(OpenWrtClient):
         # 1. System Info (Memory, Swap, Uptime, Load, and maybe CPU)
         data = results[0]
         if not isinstance(data, Exception) and isinstance(data, dict):
-            # Memory parsing
-            mem = data.get("memory", {})
-            resources.memory_total = mem.get("total", 0)
-            resources.memory_free = mem.get("free", 0)
-            resources.memory_buffered = mem.get("buffered", 0)
-            resources.memory_cached = mem.get("cached", 0)
-            resources.memory_used = (
-                resources.memory_total
-                - resources.memory_free
-                - resources.memory_buffered
-                - resources.memory_cached
-            )
-
-            # Swap parsing
-            swap = data.get("swap", {})
-            resources.swap_total = swap.get("total", 0)
-            resources.swap_free = swap.get("free", 0)
-            resources.swap_used = resources.swap_total - resources.swap_free
-
-            resources.uptime = data.get("uptime", 0)
-
-            # Load parsing
-            load = data.get("load", [])
-            if len(load) >= 3:
-                # Some OpenWrt versions return load scaled by 65536, others as float
-                if any(isinstance(val, int) and val > 500 for val in load):
-                    resources.load_1min = round(load[0] / 65536.0, 2)
-                    resources.load_5min = round(load[1] / 65536.0, 2)
-                    resources.load_15min = round(load[2] / 65536.0, 2)
-                else:
-                    resources.load_1min = float(load[0])
-                    resources.load_5min = float(load[1])
-                    resources.load_15min = float(load[2])
-
-            # Disk info from ubus if available
-            if "disk" in data:
-                disk = data["disk"]
-                root = disk.get("root", disk.get("/", {}))
-                if isinstance(root, dict) and root.get("total"):
-                    resources.filesystem_total = root.get("total", 0)
-                    resources.filesystem_used = root.get("used", 0)
-                    resources.filesystem_free = root.get("total", 0) - root.get(
-                        "used",
-                        0,
-                    )
-
-            # Check if system info HAS a cpu field (common in some OpenWrt versions)
-            if "cpu" in data and isinstance(data["cpu"], dict):
-                cpu = data["cpu"]
-                # Format it like /proc/stat line for _calculate_cpu_usage
-                stat_line = (
-                    f"cpu  {cpu.get('user', 0)} {cpu.get('nice', 0)} "
-                    f"{cpu.get('system', 0)} {cpu.get('idle', 0)} "
-                    f"{cpu.get('iowait', 0)} {cpu.get('irq', 0)} "
-                    f"{cpu.get('softirq', 0)} {cpu.get('steal', 0)}"
-                )
-                resources.cpu_usage = self._calculate_cpu_usage(stat_line)
+            self._parse_system_info(resources, data)
 
         # 2. Storage fallback via luci.getMountPoints
         if resources.filesystem_total == 0:
-            try:
-                mounts = await self._call("luci", "getMountPoints")
-                if isinstance(mounts, dict) and "result" in mounts:
-                    for mount in mounts["result"]:
-                        if mount.get("mount") in ("/", "/overlay"):
-                            resources.filesystem_total = mount.get("size", 0)
-                            resources.filesystem_free = mount.get(
-                                "free",
-                                0,
-                            ) or mount.get("avail", 0)
-                            resources.filesystem_used = (
-                                resources.filesystem_total - resources.filesystem_free
-                            )
-                            break
-            except Exception:
-                pass
+            await self._fetch_mount_points(resources)
 
         # 3. CPU usage fallback from /proc/stat
         if resources.cpu_usage == 0.0:
-            # Try Priority 2: file.read (more standard and less restricted than file.exec)
-            file_read = results[2]
-            if (
-                not isinstance(file_read, Exception)
-                and isinstance(file_read, dict)
-                and file_read.get("data")
-            ):
-                resources.cpu_usage = self._calculate_cpu_usage(file_read["data"])
+            self._fetch_cpu_usage(resources, results[1], results[2])
 
-            # Try Priority 3: file.exec (original method)
-            if resources.cpu_usage == 0.0:
-                proc_stat = results[1]
-                if not isinstance(proc_stat, Exception) and proc_stat:
-                    resources.cpu_usage = self._calculate_cpu_usage(proc_stat)
+        # 4. Temperature fetching
+        await self._fetch_temperature(resources)
 
-        # 3. Temperature fetching
-        try:
-            # Try via ubus file first (more standard for rpc users)
-            temp_paths = [
-                "/sys/class/thermal/thermal_zone0/temp",
-                "/sys/class/thermal/thermal_zone1/temp",
-                "/sys/class/thermal/thermal_zone2/temp",
-                "/sys/class/hwmon/hwmon0/temp1_input",
-                "/sys/class/hwmon/hwmon1/temp1_input",
-                "/sys/class/hwmon/hwmon2/temp1_input",
-                "/sys/devices/virtual/thermal/thermal_zone0/temp",
-            ]
-            for path in temp_paths:
-                try:
-                    res = await self._call("file", "read", {"path": path})
-                    if res and isinstance(res, dict) and res.get("data"):
-                        temp_raw = res.get("data", "").strip()
-                        import re
+        # 5. Detailed Storage monitoring via df
+        await self._fetch_detailed_storage(resources)
 
-                        match = re.search(r"(\d+)", temp_raw)
-                        if match:
-                            temp = float(match.group(1))
-                            if temp > 200:  # Usually millidegrees
-                                temp /= 1000.0
-                            if 0 < temp < 150:
-                                resources.temperature = temp
-                                break
-                except (
-                    UbusError,
-                    KeyError,
-                    AttributeError,
-                ):
-                    continue
+        return resources
 
-            # Fallback to execute_command if ubus file read failed
-            if resources.temperature is None:
-                for path in temp_paths:
-                    try:
-                        temp_raw = await self.execute_command(f"cat {path} 2>/dev/null")
-                        if temp_raw:
-                            match = re.search(r"(\d+)", temp_raw)
-                            if match:
-                                temp = float(match.group(1))
-                                if temp > 200:
-                                    temp /= 1000.0
-                                if 0 < temp < 150:
-                                    resources.temperature = temp
-                                    break
-                    except Exception:  # noqa: BLE001
-                        continue
-        except Exception:  # noqa: BLE001
-            pass
+    def _parse_system_info(self, resources: SystemResources, data: dict[str, Any]) -> None:
+        """Parse core system information from ubus 'system info'."""
+        # Memory parsing
+        mem = data.get("memory", {})
+        resources.memory_total = mem.get("total", 0)
+        resources.memory_free = mem.get("free", 0)
+        resources.memory_buffered = mem.get("buffered", 0)
+        resources.memory_cached = mem.get("cached", 0)
+        resources.memory_used = (
+            resources.memory_total
+            - resources.memory_free
+            - resources.memory_buffered
+            - resources.memory_cached
+        )
 
-        # 4. Detailed Storage monitoring via df
-        try:
+        # Swap parsing
+        swap = data.get("swap", {})
+        resources.swap_total = swap.get("total", 0)
+        resources.swap_free = swap.get("free", 0)
+        resources.swap_used = resources.swap_total - resources.swap_free
+
+        resources.uptime = data.get("uptime", 0)
+
+        # Load parsing
+        load = data.get("load", [])
+        if len(load) >= 3:
+            # Some OpenWrt versions return load scaled by 65536, others as float
+            if any(isinstance(val, int) and val > 500 for val in load):
+                resources.load_1min = round(load[0] / 65536.0, 2)
+                resources.load_5min = round(load[1] / 65536.0, 2)
+                resources.load_15min = round(load[2] / 65536.0, 2)
+            else:
+                resources.load_1min = float(load[0])
+                resources.load_5min = float(load[1])
+                resources.load_15min = float(load[2])
+
+        # Disk info from ubus if available
+        self._parse_disk_info_ubus(resources, data)
+
+        # Check if system info HAS a cpu field (common in some OpenWrt versions)
+        if "cpu" in data and isinstance(data["cpu"], dict):
+            cpu = data["cpu"]
+            # Format it like /proc/stat line for _calculate_cpu_usage
+            stat_line = (
+                f"cpu  {cpu.get('user', 0)} {cpu.get('nice', 0)} "
+                f"{cpu.get('system', 0)} {cpu.get('idle', 0)} "
+                f"{cpu.get('iowait', 0)} {cpu.get('irq', 0)} "
+                f"{cpu.get('softirq', 0)} {cpu.get('steal', 0)}"
+            )
+            resources.cpu_usage = self._calculate_cpu_usage(stat_line)
+
+    def _parse_disk_info_ubus(self, resources: SystemResources, data: dict[str, Any]) -> None:
+        """Parse disk info if present in system info."""
+        if "disk" in data:
+            disk = data["disk"]
+            root = disk.get("root", disk.get("/", {}))
+            if isinstance(root, dict) and root.get("total"):
+                resources.filesystem_total = root.get("total", 0)
+                resources.filesystem_used = root.get("used", 0)
+                resources.filesystem_free = (
+                    resources.filesystem_total - resources.filesystem_used
+                )
+
+    async def _fetch_mount_points(self, resources: SystemResources) -> None:
+        """Fallback to luci.getMountPoints for disk info."""
+        with contextlib.suppress(Exception):
+            mounts = await self._call("luci", "getMountPoints")
+            if isinstance(mounts, dict) and "result" in mounts:
+                for mount in mounts["result"]:
+                    if mount.get("mount") in ("/", "/overlay"):
+                        resources.filesystem_total = mount.get("size", 0)
+                        resources.filesystem_free = mount.get("free", 0) or mount.get("avail", 0)
+                        resources.filesystem_used = (
+                            resources.filesystem_total - resources.filesystem_free
+                        )
+                        break
+
+    def _fetch_cpu_usage(self, resources: SystemResources, cmd_res: Any, file_res: Any) -> None:
+        """Calculate CPU usage from proc stat fallback results."""
+        # Try Priority 2: file.read results
+        if not isinstance(file_res, Exception) and isinstance(file_res, dict) and file_res.get("data"):
+            resources.cpu_usage = self._calculate_cpu_usage(file_res["data"])
+
+        # Try Priority 3: command execution results
+        if resources.cpu_usage == 0.0 and not isinstance(cmd_res, Exception) and cmd_res:
+            resources.cpu_usage = self._calculate_cpu_usage(cmd_res)
+
+    async def _fetch_temperature(self, resources: SystemResources) -> None:
+        """Fetch system temperature from known sysfs paths."""
+        temp_paths = [
+            "/sys/class/thermal/thermal_zone0/temp",
+            "/sys/class/thermal/thermal_zone1/temp",
+            "/sys/class/thermal/thermal_zone2/temp",
+            "/sys/class/hwmon/hwmon0/temp1_input",
+            "/sys/class/hwmon/hwmon1/temp1_input",
+            "/sys/class/hwmon/hwmon2/temp1_input",
+            "/sys/devices/virtual/thermal/thermal_zone0/temp",
+        ]
+
+        # 1. Try ubus file read (RPC restricted)
+        for path in temp_paths:
+            with contextlib.suppress(Exception):
+                res = await self._call("file", "read", {"path": path})
+                if res and isinstance(res, dict) and res.get("data"):
+                    if self._parse_temp_raw(resources, res.get("data", "")):
+                        return
+
+        # 2. Fallback to shell command
+        for path in temp_paths:
+            with contextlib.suppress(Exception):
+                temp_raw = await self.execute_command(f"cat {path} 2>/dev/null")
+                if temp_raw and self._parse_temp_raw(resources, temp_raw):
+                    return
+
+    def _parse_temp_raw(self, resources: SystemResources, raw: str) -> bool:
+        """Parse raw temperature string into resources."""
+        import re
+        match = re.search(r"(\d+)", raw)
+        if match:
+            temp = float(match.group(1))
+            if temp > 200:  # millidegrees
+                temp /= 1000.0
+            if 0 < temp < 150:
+                resources.temperature = temp
+                return True
+        return False
+
+    async def _fetch_detailed_storage(self, resources: SystemResources) -> None:
+        """Fetch detailed storage usage via 'df' command."""
+        with contextlib.suppress(Exception):
             df_output = await self.execute_command("df -Pk 2>/dev/null")
             if df_output:
                 from .base import StorageUsage
-
                 lines = df_output.strip().split("\n")
                 if len(lines) > 1:
                     for line in lines[1:]:
                         parts = line.split()
                         if len(parts) >= 6:
-                            # Filesystem 1024-blocks Used Available Capacity Mounted on
                             try:
                                 usage = StorageUsage(
                                     device=parts[0],
@@ -596,25 +593,21 @@ class UbusClient(OpenWrtClient):
                                     mount_point=parts[5],
                                 )
                                 resources.storage.append(usage)
-
-                                # Update legacy fields for compatibility
-                                if usage.mount_point in ("/", "/overlay"):
-                                    if (
-                                        usage.mount_point == "/overlay"
-                                        or resources.filesystem_total == 0
-                                    ):
-                                        resources.filesystem_total = usage.total
-                                        resources.filesystem_used = usage.used
-                                        resources.filesystem_free = usage.free
-                            except (
-                                ValueError,
-                                IndexError,
-                            ):
+                                self._update_legacy_fs_fields(resources, usage)
+                            except (ValueError, IndexError):
                                 continue
-        except Exception:  # noqa: BLE001
-            pass
 
-        return resources
+    def _update_legacy_fs_fields(self, resources: SystemResources, usage: Any) -> None:
+        """Keep legacy filesystem fields updated for backward compatibility."""
+        if resources.filesystem_total == 0 and usage.mount_point in ("/", "/overlay"):
+            resources.filesystem_total = usage.total
+            resources.filesystem_used = usage.used
+            resources.filesystem_free = usage.free
+        elif usage.mount_point == "/overlay":
+            # Overlay has priority for root filesystem metrics
+            resources.filesystem_total = usage.total
+            resources.filesystem_used = usage.used
+            resources.filesystem_free = usage.free
 
     async def get_external_ip(self) -> str | None:
         """Get public/external IP address by checking the WAN interface."""
@@ -784,7 +777,37 @@ class UbusClient(OpenWrtClient):
         """Get connected devices by combining DHCP leases, ARP, and wireless clients."""
         devices: dict[str, ConnectedDevice] = {}
 
-        try:
+        # 1. Start with DHCP leases
+        await self._get_devices_from_dhcp(devices)
+
+        # 2. Get wireless status for iwinfo and hostapd processing
+        wireless_data: dict[str, Any] = {}
+        with contextlib.suppress(UbusError):
+            wireless_data = await self._call("network.wireless", "status")
+
+        # 3. Process wireless associations (iwinfo)
+        if wireless_data:
+            await self._process_iwinfo_assoc(devices, wireless_data)
+
+        # 4. Process IP neighbor (ARP/NDP) findings
+        await self._merge_neighbor_data(devices)
+
+        # 5. Process wireless client details (hostapd)
+        if wireless_data:
+            await self._process_hostapd_clients(devices, wireless_data)
+        else:
+            await self._process_hostapd_fallback(devices)
+
+        # Final cleanup/standardization
+        for dev in devices.values():
+            if not dev.connection_type:
+                dev.connection_type = "wireless" if dev.is_wireless else "wired"
+
+        return list(devices.values())
+
+    async def _get_devices_from_dhcp(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Populate initial device list from DHCP leases."""
+        with contextlib.suppress(Exception):
             leases = await self.get_dhcp_leases()
             for lease in leases:
                 mac = lease.mac.lower()
@@ -793,201 +816,111 @@ class UbusClient(OpenWrtClient):
                     ip=lease.ip,
                     hostname=lease.hostname,
                     is_wireless=False,
-                    connected=False,  # DHCP leases are just records, not proof of connectivity
+                    connected=False,
                 )
-        except (
-            UbusError,
-            Exception,
-        ):
-            pass
 
-        # Fetch wireless_data once for both iwinfo and hostapd processing
-        wireless_data: dict[str, Any] = {}
-        with contextlib.suppress(UbusError):
-            wireless_data = await self._call("network.wireless", "status")
-
-        if wireless_data:
-            for radio_data in wireless_data.values():
-                if not isinstance(radio_data, dict):
+    async def _process_iwinfo_assoc(self, devices: dict[str, ConnectedDevice], wireless_data: dict[str, Any]) -> None:
+        """Fetch and merge iwinfo association lists."""
+        for radio_data in wireless_data.values():
+            if not isinstance(radio_data, dict):
+                continue
+            for iface in radio_data.get("interfaces", []):
+                ifname = iface.get("ifname") or iface.get("device", "")
+                if not ifname:
                     continue
-                for iface in radio_data.get("interfaces", []):
-                    iface_name = iface.get("ifname") or iface.get("device", "")
-                    if not iface_name:
-                        continue
-                    try:
-                        assoc = await self._call(
-                            "iwinfo",
-                            "assoclist",
-                            {"device": iface_name},
-                        )
-                        for client in assoc.get("results", []):
-                            mac = client.get("mac", "").lower()
-                            if mac in devices:
-                                dev = devices[mac]
-                            else:
-                                dev = ConnectedDevice(mac=mac, connected=True)
-                                devices[mac] = dev
+                with contextlib.suppress(UbusError):
+                    assoc = await self._call("iwinfo", "assoclist", {"device": ifname})
+                    for client in assoc.get("results", []):
+                        mac = client.get("mac", "").lower()
+                        dev = devices.setdefault(mac, ConnectedDevice(mac=mac, connected=True))
+                        dev.connected = True
+                        dev.is_wireless = True
+                        dev.interface = ifname
+                        self._set_wireless_connection_type(dev, ifname)
+                        dev.signal = client.get("signal", 0)
+                        dev.noise = client.get("noise", 0)
+                        dev.rx_rate = self._get_assoc_rate(client, "rx")
+                        dev.tx_rate = self._get_assoc_rate(client, "tx")
 
-                            dev.is_wireless = True
-                            dev.interface = iface_name
-                            if (
-                                not dev.connection_type
-                                or dev.connection_type == "wired"
-                            ):
-                                if "5g" in iface_name.lower():
-                                    dev.connection_type = "5GHz"
-                                elif "2g" in iface_name.lower():
-                                    dev.connection_type = "2.4GHz"
-                                else:
-                                    dev.connection_type = "wireless"
-                            dev.signal = client.get("signal", 0)
-                            dev.noise = client.get("noise", 0)
-                            dev.rx_rate = (
-                                client.get("rx", {}).get("rate", 0)
-                                if isinstance(client.get("rx"), dict)
-                                else client.get("rx_rate", 0)
-                            )
-                            dev.tx_rate = (
-                                client.get("tx", {}).get("rate", 0)
-                                if isinstance(client.get("tx"), dict)
-                                else client.get("tx_rate", 0)
-                            )
-                    except UbusError:
-                        pass
+    def _get_assoc_rate(self, client: dict[str, Any], direction: str) -> int:
+        """Helper to safely extract wireless rate from assoclist data."""
+        val = client.get(direction)
+        if isinstance(val, dict):
+            return val.get("rate", 0)
+        return client.get(f"{direction}_rate", 0)
 
-        try:
+    async def _merge_neighbor_data(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Update devices with ARP/neighbor information."""
+        with contextlib.suppress(Exception):
             neighbors = await self.get_ip_neighbors()
+            active_states = ("REACHABLE", "DELAY", "PROBE", "PERMANENT")
             for neigh in neighbors:
                 mac = neigh.mac.lower()
-                if not mac or mac in devices:
-                    # Update existing device if it was found via DHCP but not neighbors
-                    if mac in devices:
-                        dev = devices[mac]
-                        if not dev.neighbor_state:
-                            dev.neighbor_state = neigh.state
-                        if not dev.interface:
-                            dev.interface = neigh.interface
+                if not mac:
                     continue
+                if mac in devices:
+                    dev = devices[mac]
+                    dev.neighbor_state = dev.neighbor_state or neigh.state
+                    dev.interface = dev.interface or neigh.interface
+                    # If it's a new or seen-via-DHCP device, maybe mark connected
+                    if not dev.is_wireless and neigh.state.upper() in active_states:
+                        dev.connected = True
+                else:
+                    is_active = neigh.state.upper() in active_states
+                    devices[mac] = ConnectedDevice(
+                        mac=mac, ip=neigh.ip, interface=neigh.interface,
+                        connected=is_active, connection_type="wired",
+                        neighbor_state=neigh.state,
+                    )
 
-                # Consider connected only if state is active (REACHABLE, DELAY, PROBE)
-                # STALE or FAILED means it was seen but is not currently active
-                active_states = ("REACHABLE", "DELAY", "PROBE", "PERMANENT")
-                is_active = neigh.state.upper() in active_states
-
-                devices[mac] = ConnectedDevice(
-                    mac=mac,
-                    ip=neigh.ip,
-                    interface=neigh.interface,
-                    is_wireless=False,
-                    connected=is_active,
-                    connection_type="wired",
-                    neighbor_state=neigh.state,
-                )
-        except Exception as neigh_err:  # noqa: BLE001
-            _LOGGER.debug(
-                "Error processing IP neighbors in get_connected_devices: %s",
-                neigh_err,
-            )
-
-        if wireless_data:
-            for radio_data in wireless_data.values():
-                if not isinstance(radio_data, dict):
+    async def _process_hostapd_clients(self, devices: dict[str, ConnectedDevice], wireless_data: dict[str, Any]) -> None:
+        """Fetch and merge hostapd client details (bytes/counters)."""
+        for radio_data in wireless_data.values():
+            if not isinstance(radio_data, dict):
+                continue
+            for iface in radio_data.get("interfaces", []):
+                ifname = iface.get("ifname", "")
+                if not ifname:
                     continue
-                for iface in radio_data.get("interfaces", []):
-                    iface_name = iface.get("ifname", "")
-                    if not iface_name:
-                        continue
-                    try:
-                        hostapd_data = await self._call(
-                            f"hostapd.{iface_name}",
-                            "get_clients",
-                        )
-                        for mac_addr, client_data in hostapd_data.get(
-                            "clients",
-                            {},
-                        ).items():
-                            mac = mac_addr.lower()
-                            if mac in devices:
-                                dev = devices[mac]
-                            else:
-                                dev = ConnectedDevice(mac=mac, connected=True)
-                                devices[mac] = dev
-                            dev.is_wireless = True
-                            dev.interface = iface_name
-                            dev.rx_bytes = (
-                                client_data.get("bytes", {}).get("rx", 0)
-                                if isinstance(client_data.get("bytes"), dict)
-                                else 0
-                            )
-                            dev.tx_bytes = (
-                                client_data.get("bytes", {}).get("tx", 0)
-                                if isinstance(client_data.get("bytes"), dict)
-                                else 0
-                            )
-                            if (
-                                not dev.connection_type
-                                or dev.connection_type == "wired"
-                            ):
-                                dev.connection_type = "wireless"
-                                if "5g" in iface_name.lower():
-                                    dev.connection_type = "5GHz"
-                                elif "2g" in iface_name.lower():
-                                    dev.connection_type = "2.4GHz"
+                with contextlib.suppress(UbusError):
+                    hostapd_data = await self._call(f"hostapd.{ifname}", "get_clients")
+                    self._merge_hostapd_clients(devices, hostapd_data.get("clients", {}), ifname)
 
-                    except UbusError:
-                        pass
-        else:
-            # Fallback: list all hostapd objects directly
-            try:
-                ubus_objects = await self._call("ubus", "list")
-                if isinstance(ubus_objects, dict):
-                    for obj_name in ubus_objects:
-                        if obj_name.startswith("hostapd."):
-                            iface_name = obj_name.split(".", 1)[1]
-                            try:
-                                hostapd_data = await self._call(obj_name, "get_clients")
-                                for mac_addr, client_data in hostapd_data.get(
-                                    "clients",
-                                    {},
-                                ).items():
-                                    mac = mac_addr.lower()
-                                    if mac in devices:
-                                        dev = devices[mac]
-                                    else:
-                                        dev = ConnectedDevice(mac=mac, connected=False)
-                                        devices[mac] = dev
-                                    dev.connected = True  # Wireless association
-                                    dev.is_wireless = True
-                                    dev.interface = iface_name
-                                    dev.rx_bytes = (
-                                        client_data.get("bytes", {}).get("rx", 0)
-                                        if isinstance(client_data.get("bytes"), dict)
-                                        else 0
-                                    )
-                                    dev.tx_bytes = (
-                                        client_data.get("bytes", {}).get("tx", 0)
-                                        if isinstance(client_data.get("bytes"), dict)
-                                        else 0
-                                    )
-                                    if (
-                                        not dev.connection_type
-                                        or dev.connection_type == "wired"
-                                    ):
-                                        dev.connection_type = "wireless"
-                                        if "5g" in iface_name.lower():
-                                            dev.connection_type = "5GHz"
-                                        elif "2g" in iface_name.lower():
-                                            dev.connection_type = "2.4GHz"
-                            except UbusError:
-                                continue
-            except Exception as list_err:
-                _LOGGER.debug("Error listing ubus objects for fallback: %s", list_err)
+    async def _process_hostapd_fallback(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Fallback: Discover and poll hostapd objects directly."""
+        with contextlib.suppress(Exception):
+            ubus_objects = await self._call("ubus", "list")
+            if isinstance(ubus_objects, dict):
+                for obj_name in ubus_objects:
+                    if obj_name.startswith("hostapd."):
+                        ifname = obj_name.split(".", 1)[1]
+                        with contextlib.suppress(UbusError):
+                            hostapd_data = await self._call(obj_name, "get_clients")
+                            self._merge_hostapd_clients(devices, hostapd_data.get("clients", {}), ifname)
 
-        for dev in devices.values():
-            if not dev.connection_type:
-                dev.connection_type = "wireless" if dev.is_wireless else "wired"
+    def _merge_hostapd_clients(self, devices: dict[str, ConnectedDevice], clients: dict[str, Any], ifname: str) -> None:
+        """Merge client data from hostapd into the devices dictionary."""
+        for mac_addr, client_data in clients.items():
+            mac = mac_addr.lower()
+            dev = devices.setdefault(mac, ConnectedDevice(mac=mac, connected=True))
+            dev.connected = True
+            dev.is_wireless = True
+            dev.interface = ifname
+            self._set_wireless_connection_type(dev, ifname)
 
-        return list(devices.values())
+            bytes_data = client_data.get("bytes", {})
+            if isinstance(bytes_data, dict):
+                dev.rx_bytes = bytes_data.get("rx", 0)
+                dev.tx_bytes = bytes_data.get("tx", 0)
+
+    def _set_wireless_connection_type(self, dev: ConnectedDevice, ifname: str) -> None:
+        """Determine specific wireless band from interface name."""
+        if not dev.connection_type or dev.connection_type == "wired":
+            dev.connection_type = "wireless"
+            if "5g" in ifname.lower():
+                dev.connection_type = "5GHz"
+            elif "2g" in ifname.lower():
+                dev.connection_type = "2.4GHz"
 
     async def check_permissions(self) -> OpenWrtPermissions:
         """Check user permissions via ubus session list and uci tests."""
@@ -997,169 +930,114 @@ class UbusClient(OpenWrtClient):
 
         perms = OpenWrtPermissions()
         try:
-            # Check if we are root user - root usually has full access even if ACL list is empty or restricted
+            # Check if we are root user - root usually has full access
             if self.username == "root":
                 for field in dataclasses.fields(perms):
                     if not field.name.startswith("_"):
                         setattr(perms, field.name, True)
                 return perms
 
-            # Check session access list - this is the most definitive way
-            session_list = await self._call("session", "list")
-            if session_list and (
-                "acls" in session_list or "access" in session_list.get("values", {})
-            ):
-
-                def has_perm(obj: str, method: str) -> bool:
-                    # Check in modern 'acls' structure if present
-                    acls = session_list.get("acls", {})
-                    if acls:
-                        # Check ubus/uci/file objects
-                        for section in ["ubus", "uci", "file"]:
-                            if section in acls and isinstance(acls[section], dict):
-                                for pattern, methods in acls[section].items():
-                                    if (
-                                        pattern in ("*", obj)
-                                        or (
-                                            pattern.endswith("*")
-                                            and obj.startswith(pattern[:-1])
-                                        )
-                                    ) and ("*" in methods or method in methods):
-                                        return True
-
-                    # Fallback to legacy 'values.access' structure
-                    access = session_list.get("values", {}).get("access", {})
-                    for pattern, methods in access.items():
-                        if (
-                            pattern in ("*", obj)
-                            or (pattern.endswith("*") and obj.startswith(pattern[:-1]))
-                        ) and ("*" in methods or method in methods):
-                            return True
-                    return False
-
-                perms.read_system = has_perm("system", "board") or has_perm(
-                    "system",
-                    "read",
-                )
-                perms.write_system = has_perm("system", "reboot") or has_perm(
-                    "system",
-                    "write",
-                )
-                perms.read_network = (
-                    has_perm("network.interface", "dump")
-                    or has_perm("network.interface", "read")
-                    or has_perm("network", "read")
-                )
-                perms.write_network = (
-                    has_perm("network.interface", "up")
-                    or has_perm("network.interface", "write")
-                    or has_perm("network", "write")
-                )
-                perms.read_firewall = has_perm("firewall", "read") or has_perm(
-                    "uci",
-                    "read",
-                )
-                perms.write_firewall = has_perm("firewall", "write") or has_perm(
-                    "uci",
-                    "write",
-                )
-                perms.read_wireless = (
-                    has_perm("iwinfo", "read")
-                    or has_perm("hostapd.*", "read")
-                    or has_perm("network.wireless", "read")
-                )
-                perms.write_wireless = (
-                    has_perm("iwinfo", "write")
-                    or has_perm("hostapd.*", "write")
-                    or has_perm("network.wireless", "write")
-                )
-                perms.read_services = (
-                    has_perm("file", "read")
-                    or has_perm("luci", "read")
-                    or has_perm("service", "read")
-                )
-                perms.write_services = (
-                    has_perm("file", "write")
-                    or has_perm("luci", "write")
-                    or has_perm("service", "write")
-                )
-                perms.read_sqm = has_perm("uci", "read") or has_perm("luci", "read")
-                perms.write_sqm = has_perm("uci", "write") or has_perm("luci", "write")
-                perms.read_vpn = has_perm("network.interface", "read") or has_perm(
-                    "uci",
-                    "read",
-                )
-                perms.read_mwan = has_perm("uci", "read") or has_perm("file", "read")
-                perms.read_led = has_perm("file", "read") or has_perm("uci", "read")
-                perms.write_led = has_perm("file", "write") or has_perm("uci", "write")
-                perms.read_devices = (
-                    has_perm("network.interface", "read")
-                    or has_perm("dhcp", "read")
-                    or has_perm("file", "read")
-                )
-                perms.write_devices = has_perm("file", "exec") or has_perm(
-                    "hostapd.*",
-                    "write",
-                )
-                perms.write_access_control = has_perm("uci", "write") or has_perm(
-                    "firewall",
-                    "write",
-                )
-
-                # If we got definitive access list, we are done
+            # 1. Try to get permissions from session list (definitive)
+            if await self._check_perms_from_session(perms):
                 return perms
 
-            # Fallback to manual probes
-            async def can_call(
-                obj: str,
-                method: str,
-                params: dict | None = None,
-            ) -> bool:
-                try:
-                    await self._call(obj, method, params)
-                    return True
-                except UbusPermissionError:
-                    return False
-                except Exception:
-                    return True
-
-            perms.read_system = await can_call("system", "board")
-            perms.write_system = await can_call("uci", "set", {"config": "system"})
-            perms.read_network = await can_call("network.interface", "dump")
-            perms.write_network = await can_call(
-                "network.interface",
-                "up",
-                {"interface": "loopback"},
-            )
-            perms.read_firewall = await can_call("uci", "get", {"config": "firewall"})
-            perms.write_firewall = await can_call("uci", "set", {"config": "firewall"})
-            perms.read_wireless = await can_call("network.wireless", "status")
-            perms.write_wireless = await can_call("uci", "set", {"config": "wireless"})
-            perms.read_sqm = await can_call("uci", "get", {"config": "sqm"})
-            perms.write_sqm = await can_call("uci", "set", {"config": "sqm"})
-            perms.read_led = await can_call("uci", "get", {"config": "system"})
-            perms.write_led = await can_call("uci", "set", {"config": "system"})
-            perms.read_vpn = perms.read_network
-            perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"})
-            perms.read_devices = (
-                await can_call("dhcp", "ipv4leases") or perms.read_network
-            )
-            perms.write_devices = await can_call(
-                "file",
-                "exec",
-                {"command": "/usr/bin/id"},
-            ) or await can_call("file", "exec", {"command": "id"})
-            perms.write_access_control = perms.write_firewall
-            perms.read_services = await can_call("service", "list")
-            perms.write_services = await can_call("service", "list")
+            # 2. Fallback to manual probes (trial and error)
+            await self._check_perms_from_probes(perms)
 
         except Exception as err:
             _LOGGER.debug("Error checking permissions via ubus: %s", err)
             if self.connected:
+                # Default safety fallbacks
                 perms.read_system = True
                 perms.read_network = True
 
         return perms
+
+    async def _check_perms_from_session(self, perms: OpenWrtPermissions) -> bool:
+        """Fetch and parse ACLs from the current ubus session."""
+        with contextlib.suppress(Exception):
+            session_info = await self._call("session", "list")
+            if not isinstance(session_info, dict):
+                return False
+
+            # Check for modern 'acls' or legacy 'values.access'
+            acls = session_info.get("acls", {}).get("access-group", {})
+            access = session_info.get("values", {}).get("access", {})
+
+            if not acls and not access:
+                return False
+
+            def has_perm(obj: str, method: str) -> bool:
+                # Check modern structure
+                obj_acls = acls.get(obj, {})
+                if method in obj_acls or "*" in obj_acls:
+                    return True
+
+                # Check legacy/values structure with pattern matching
+                for pattern, methods in access.items():
+                    if (
+                        pattern in ("*", obj)
+                        or (pattern.endswith("*") and obj.startswith(pattern[:-1]))
+                    ) and ("*" in methods or method in methods):
+                        return True
+                return False
+
+            perms.read_system = has_perm("system", "read")
+            perms.write_system = has_perm("system", "write") or has_perm("uci", "write")
+            perms.read_network = has_perm("network.interface", "read") or has_perm("network", "read")
+            perms.write_network = any(has_perm(obj, method) for obj, method in [
+                ("network.interface", "up"), ("network.interface", "write"), ("network", "write")
+            ])
+            perms.read_firewall = has_perm("firewall", "read") or has_perm("uci", "read")
+            perms.write_firewall = has_perm("firewall", "write") or has_perm("uci", "write")
+            perms.read_wireless = any(has_perm(obj, "read") for obj in ["iwinfo", "hostapd.*", "network.wireless"])
+            perms.write_wireless = any(has_perm(obj, "write") for obj in ["iwinfo", "hostapd.*", "network.wireless"])
+            perms.read_services = any(has_perm(obj, "read") for obj in ["file", "luci", "service"])
+            perms.write_services = any(has_perm(obj, "write") for obj in ["file", "luci", "service"])
+            perms.read_sqm = has_perm("uci", "read") or has_perm("luci", "read")
+            perms.write_sqm = has_perm("uci", "write") or has_perm("luci", "write")
+            perms.read_mwan = has_perm("uci", "read") or has_perm("file", "read")
+            perms.read_led = has_perm("file", "read") or has_perm("uci", "read")
+            perms.write_led = has_perm("file", "write") or has_perm("uci", "write")
+            perms.read_devices = any(has_perm(obj, "read") for obj in ["network.interface", "dhcp", "file"])
+            perms.write_devices = has_perm("file", "exec") or has_perm("hostapd.*", "write")
+            perms.write_access_control = has_perm("uci", "write") or has_perm("firewall", "write")
+            perms.read_vpn = perms.read_network or has_perm("uci", "read")
+
+            return True
+        return False
+
+    async def _check_perms_from_probes(self, perms: OpenWrtPermissions) -> None:
+        """Identify permissions by attempting to call various methods."""
+        async def can_call(obj: str, method: str, params: dict | None = None) -> bool:
+            try:
+                await self._call(obj, method, params)
+                return True
+            except UbusPermissionError:
+                return False
+            except Exception:
+                return True
+
+        perms.read_system = await can_call("system", "board")
+        perms.write_system = await can_call("uci", "set", {"config": "system"})
+        perms.read_network = await can_call("network.interface", "dump")
+        perms.write_network = await can_call("network.interface", "up", {"interface": "loopback"})
+        perms.read_firewall = await can_call("uci", "get", {"config": "firewall"})
+        perms.write_firewall = await can_call("uci", "set", {"config": "firewall"})
+        perms.read_wireless = await can_call("network.wireless", "status")
+        perms.write_wireless = await can_call("uci", "set", {"config": "wireless"})
+        perms.read_sqm = await can_call("uci", "get", {"config": "sqm"})
+        perms.write_sqm = await can_call("uci", "set", {"config": "sqm"})
+        perms.read_led = await can_call("uci", "get", {"config": "system"})
+        perms.write_led = await can_call("uci", "set", {"config": "system"})
+        perms.read_vpn = perms.read_network
+        perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"})
+        perms.read_devices = await can_call("dhcp", "ipv4leases") or perms.read_network
+        perms.write_devices = await can_call("file", "exec", {"command": "id"})
+        perms.write_access_control = perms.write_firewall
+        perms.read_services = await can_call("service", "list")
+        perms.write_services = await can_call("service", "list")
+
 
     async def check_packages(self) -> OpenWrtPackages:
         """Check installed packages."""
@@ -1222,124 +1100,132 @@ class UbusClient(OpenWrtClient):
                 packages.simple_adblock = detect_status(11)
                 packages.ban_ip = detect_status(12)
             except Exception as err:
-                _LOGGER.debug(
-                    "Package check via file.exec failed (expected on restricted routers): %s",
-                    err,
-                )
+                _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)
+                # Step 1: Check by ubus objects
+                ubus_objects = await self._call("ubus", "list")
+                objects = list(ubus_objects.keys()) if isinstance(ubus_objects, dict) else []
+                self._check_packages_from_ubus(packages, objects)
 
-            # Step 3: Check UCI configs for remaining packages (needs uci: ["*"])
-            if packages.sqm_scripts is not True:
-                try:
-                    await self._call("uci", "get", {"config": "sqm"})
-                    packages.sqm_scripts = True
-                except Exception:
-                    pass
-            if packages.mwan3 is not True:
-                try:
-                    await self._call("uci", "get", {"config": "mwan3"})
-                    packages.mwan3 = True
-                except Exception:
-                    pass
-            if packages.openvpn is not True:
-                try:
-                    await self._call("uci", "get", {"config": "openvpn"})
-                    packages.openvpn = True
-                except Exception:
-                    pass
-            if packages.wireguard is not True:
-                try:
-                    res = await self._call("uci", "get", {"config": "network"})
-                    # Look for wireguard interface sections
-                    if (
-                        res
-                        and isinstance(res, dict)
-                        and any(
-                            v.get("proto") == "wireguard"
-                            for v in res.values()
-                            if isinstance(v, dict)
-                        )
-                    ) or "wg" in objects:
-                        packages.wireguard = True
-                except Exception:
-                    pass
+                # Step 2: Check by UCI config exists
+                await self._check_packages_from_uci(packages, objects)
 
-            # Step 4: Fallback to file.stat (last resort, needs file: ["stat", "/path"])
-            check_list = [
-                ("/usr/bin/etherwake", "etherwake"),
-                ("/usr/bin/wg", "wireguard"),
-                ("/usr/lib/lua/luci/controller/attendedsysupgrade.lua", "asu"),
-                ("/etc/init.d/adblock", "adblock"),
-                ("/etc/init.d/simple-adblock", "simple_adblock"),
-                ("/etc/init.d/ban-ip", "ban_ip"),
-            ]
-            for path, attr in check_list:
-                if getattr(packages, attr) is not True:
-                    try:
-                        stat = await self._call("file", "stat", {"path": path})
-                        if stat and isinstance(stat, dict) and "type" in stat:
-                            setattr(packages, attr, True)
-                    except Exception:
-                        pass
+            # Step 3: Check by file paths (last resort)
+            await self._check_packages_from_files(packages)
 
-            # Step 5: Final fallback to get_installed_packages (full list check)
-            installed = await self.get_installed_packages()
-            if installed:
-                mapping = {
-                    "sqm_scripts": "sqm-scripts",
-                    "mwan3": "mwan3",
-                    "iwinfo": "iwinfo",
-                    "etherwake": "etherwake",
-                    "wireguard": "wireguard",
-                    "openvpn": "openvpn",
-                    "luci_mod_rpc": "luci-mod-rpc",
-                    "asu": "luci-app-attendedsysupgrade",
-                    "adblock": "adblock",
-                    "simple_adblock": "simple-adblock",
-                    "ban_ip": "ban-ip",
-                }
-                for attr, pkg_name in mapping.items():
-                    if getattr(packages, attr) is not True:
-                        if pkg_name in ["wireguard", "openvpn"]:
-                            setattr(
-                                packages,
-                                attr,
-                                any(pkg_name in p for p in installed),
-                            )
-                        else:
-                            setattr(packages, attr, pkg_name in installed)
-
-            # Final safety: Initialize remaining to False
-            import dataclasses
-
-            for field in dataclasses.fields(packages):
-                if getattr(packages, field.name) is None:
-                    setattr(packages, field.name, False)
+            # Step 4: Final verification via full package list
+            await self._check_packages_from_full_list(packages)
 
         except Exception as err:
             _LOGGER.debug("Package check failed: %s", err)
-            # Initialize to False if we failed (to avoid staying at None)
-            import dataclasses
 
-            for field in dataclasses.fields(packages):
-                if getattr(packages, field.name) is None:
-                    setattr(packages, field.name, False)
-
+        self._ensure_all_packages_initialized(packages)
         return packages
+
+    def _check_packages_from_ubus(self, packages: OpenWrtPackages, objects: list[str]) -> None:
+        """Identify packages based on existence of specific ubus objects."""
+        packages.luci_mod_rpc = "luci" in objects
+        packages.iwinfo = "iwinfo" in objects
+        packages.mwan3 = "mwan3" in objects or "mwan3.status" in objects
+        packages.sqm_scripts = "sqm" in objects
+        packages.wireguard = "wg" in objects
+        packages.asu = "attendedsysupgrade" in objects
+
+    async def _check_packages_from_uci(self, packages: OpenWrtPackages, objects: list[str]) -> None:
+        """Identify packages based on existence of specific UCI configs."""
+        configs = [
+            ("sqm", "sqm_scripts"),
+            ("mwan3", "mwan3"),
+            ("openvpn", "openvpn"),
+        ]
+        for config, attr in configs:
+            if getattr(packages, attr) is not True:
+                with contextlib.suppress(Exception):
+                    await self._call("uci", "get", {"config": config})
+                    setattr(packages, attr, True)
+
+        if packages.wireguard is not True:
+            with contextlib.suppress(Exception):
+                res = await self._call("uci", "get", {"config": "network"})
+                if res and isinstance(res, dict) and any(
+                    v.get("proto") == "wireguard" for v in res.values() if isinstance(v, dict)
+                ):
+                    packages.wireguard = True
+
+    async def _check_packages_from_files(self, packages: OpenWrtPackages) -> None:
+        """Identify packages by probing specific filesystem paths."""
+        check_list = [
+            ("/usr/bin/etherwake", "etherwake"),
+            ("/usr/bin/wg", "wireguard"),
+            ("/usr/lib/lua/luci/controller/attendedsysupgrade.lua", "asu"),
+            ("/etc/init.d/adblock", "adblock"),
+            ("/etc/init.d/simple-adblock", "simple_adblock"),
+            ("/etc/init.d/ban-ip", "ban_ip"),
+        ]
+        for path, attr in check_list:
+            if getattr(packages, attr) is not True:
+                with contextlib.suppress(Exception):
+                    stat = await self._call("file", "stat", {"path": path})
+                    if stat and isinstance(stat, dict) and "type" in stat:
+                        setattr(packages, attr, True)
+
+    async def _check_packages_from_full_list(self, packages: OpenWrtPackages) -> None:
+        """Last resort: check against the full list of installed packages."""
+        installed = await self.get_installed_packages()
+        if not installed:
+            return
+
+        mapping = {
+            "sqm_scripts": "sqm-scripts",
+            "mwan3": "mwan3",
+            "iwinfo": "iwinfo",
+            "etherwake": "etherwake",
+            "wireguard": "wireguard",
+            "openvpn": "openvpn",
+            "luci_mod_rpc": "luci-mod-rpc",
+            "asu": "luci-app-attendedsysupgrade",
+            "adblock": "adblock",
+            "simple_adblock": "simple-adblock",
+            "ban_ip": "ban-ip",
+        }
+        for attr, pkg_name in mapping.items():
+            if getattr(packages, attr) is not True:
+                if pkg_name in ["wireguard", "openvpn"]:
+                    setattr(packages, attr, any(pkg_name in p for p in installed))
+                else:
+                    setattr(packages, attr, pkg_name in installed)
+
+    def _ensure_all_packages_initialized(self, packages: OpenWrtPackages) -> None:
+        """Ensure no package attributes remain as None (default to False)."""
+        import dataclasses
+        for field in dataclasses.fields(packages):
+            if getattr(packages, field.name) is None:
+                setattr(packages, field.name, False)
 
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
         """Get IP neighbor (ARP/NDP) table."""
         neighbors: list[IpNeighbor] = []
 
         # 1. Try ubus network.device status
-        try:
+        await self._get_neighbors_ubus(neighbors)
+
+        # 2. Try file.exec ip neigh show (more complete on many systems)
+        await self._get_neighbors_ip_neigh(neighbors)
+
+        # 3. Fallback to /proc/net/arp via file.read (passive)
+        if not neighbors:
+            await self._get_neighbors_proc_arp(neighbors)
+
+        return neighbors
+
+    async def _get_neighbors_ubus(self, neighbors: list[IpNeighbor]) -> None:
+        """Fetch neighbors using 'network.device status' ubus call."""
+        with contextlib.suppress(Exception):
             status = await self._call("network.device", "status")
             if status and isinstance(status, dict):
                 for dev_name, dev_info in status.items():
                     if not isinstance(dev_info, dict):
                         continue
-                    # Some OpenWrt versions show neighbors here
-                    neighbors_list = dev_info.get("neighbors", [])
-                    for neigh in neighbors_list:
+                    for neigh in dev_info.get("neighbors", []):
                         mac = neigh.get("lladdr")
                         ip = neigh.get("address")
                         if mac and ip:
@@ -1351,75 +1237,65 @@ class UbusClient(OpenWrtClient):
                                     state=neigh.get("state", "REACHABLE"),
                                 ),
                             )
-        except Exception:  # noqa: BLE001
-            pass
 
-        # 2. Try file.exec ip neigh show (more complete on many systems)
-        existing_macs = {n.mac for n in neighbors}
-        try:
+    async def _get_neighbors_ip_neigh(self, neighbors: list[IpNeighbor]) -> None:
+        """Fetch neighbors using 'ip neigh show' via file.exec."""
+        existing_macs = {n.mac.lower() for n in neighbors}
+        with contextlib.suppress(Exception):
             result = await self._call(
                 "file",
                 "exec",
                 {"command": "ip", "params": ["neigh", "show"]},
             )
             content = result.get("stdout", "")
-
             if content:
                 for line in content.strip().split("\n"):
-                    if not line:
-                        continue
+                    neigh = self._parse_ip_neigh_line(line)
+                    if neigh and neigh.mac.lower() not in existing_macs:
+                        neighbors.append(neigh)
+                        existing_macs.add(neigh.mac.lower())
+
+    def _parse_ip_neigh_line(self, line: str) -> IpNeighbor | None:
+        """Parse a single line from 'ip neigh show' output."""
+        parts = line.split()
+        if len(parts) < 4:
+            return None
+
+        ip = parts[0]
+        mac = ""
+        interface = ""
+        state = parts[-1]
+
+        if "lladdr" in parts:
+            idx = parts.index("lladdr")
+            if len(parts) > idx + 1:
+                mac = parts[idx + 1].upper()
+        if "dev" in parts:
+            idx = parts.index("dev")
+            if len(parts) > idx + 1:
+                interface = parts[idx + 1]
+
+        if mac:
+            return IpNeighbor(ip=ip, mac=mac, interface=interface, state=state)
+        return None
+
+    async def _get_neighbors_proc_arp(self, neighbors: list[IpNeighbor]) -> None:
+        """Fetch neighbors from /proc/net/arp via file.read."""
+        with contextlib.suppress(Exception):
+            result = await self._call("file", "read", {"path": "/proc/net/arp"})
+            content = result.get("data", "")
+            if content:
+                for line in content.strip().split("\n")[1:]:  # Skip header
                     parts = line.split()
-                    if len(parts) >= 4:
-                        ip = parts[0]
-                        mac = ""
-                        interface = ""
-                        state = parts[-1]
-
-                        if "lladdr" in parts:
-                            idx = parts.index("lladdr")
-                            if len(parts) > idx + 1:
-                                mac = parts[idx + 1].upper()
-                        if "dev" in parts:
-                            idx = parts.index("dev")
-                            if len(parts) > idx + 1:
-                                interface = parts[idx + 1]
-
-                        if mac and mac not in existing_macs:
-                            neighbors.append(
-                                IpNeighbor(
-                                    ip=ip,
-                                    mac=mac,
-                                    interface=interface,
-                                    state=state,
-                                ),
-                            )
-                            existing_macs.add(mac)
-        except Exception:  # noqa: BLE001
-            pass
-
-        # 3. Fallback to /proc/net/arp via file.read (passive)
-        if not neighbors:
-            try:
-                result = await self._call("file", "read", {"path": "/proc/net/arp"})
-                content = result.get("data", "")
-                if content:
-                    lines = content.strip().split("\n")
-                    # Skip header
-                    for line in lines[1:]:
-                        parts = line.split()
-                        if len(parts) >= 6:
-                            neighbors.append(
-                                IpNeighbor(
-                                    ip=parts[0],
-                                    mac=parts[3].upper(),
-                                    interface=parts[5],
-                                    state="REACHABLE",
-                                ),
-                            )
-            except Exception as fallback_exc:  # noqa: BLE001
-                _LOGGER.debug("Fallback to /proc/net/arp failed: %s", fallback_exc)
-
-        return neighbors
+                    if len(parts) >= 6:
+                        neighbors.append(
+                            IpNeighbor(
+                                ip=parts[0],
+                                mac=parts[3].upper(),
+                                interface=parts[5],
+                                state="REACHABLE",
+                            ),
+                        )
 
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         """Get DHCP leases via ubus or file."""
@@ -1451,21 +1327,17 @@ class UbusClient(OpenWrtClient):
         # Parse dnsmasq leases from /tmp/dhcp.leases
         if self.dhcp_software in ("auto", "dnsmasq"):
             content = ""
-            try:
+            with contextlib.suppress(UbusError):
                 # Priority 1: file.read (more robust/standard)
                 result = await self._call("file", "read", {"path": "/tmp/dhcp.leases"})
                 content = result.get("data", "")
-            except UbusError:
-                pass
 
             if not content:
-                try:
+                with contextlib.suppress(Exception):
                     # Priority 2: file.exec (original fallback)
                     content = await self.execute_command(
                         "cat /tmp/dhcp.leases 2>/dev/null",
                     )
-                except Exception:
-                    pass
 
             if content:
                 for line in content.strip().split("\n"):
@@ -1915,9 +1787,13 @@ class UbusClient(OpenWrtClient):
         # 1. Try via ubus file.read (more robust/standard than exec)
         try:
             res = await self._call("file", "read", {"path": "/etc/passwd"})
-            if res and isinstance(res, dict) and "data" in res:
-                if f"{username}:" in res["data"]:
-                    return True
+            if (
+                res
+                and isinstance(res, dict)
+                and "data" in res
+                and f"{username}:" in res["data"]
+            ):
+                return True
         except Exception:
             pass
 
@@ -2167,48 +2043,58 @@ class UbusClient(OpenWrtClient):
             return False
 
     async def get_gateway_mac(self) -> str | None:
-        """Get the default gateway MAC address via ubus."""
+        """Get the default gateway MAC address via ubus and triangulation."""
         try:
             # 1. Get default gateway IP from network.interface dump
-            status = await self._call("network.interface", "dump")
-            gw_ip = None
-            for iface_data in status.get("interface", []):
-                # Look for wan and check ipv4-address
-                if iface_data.get("interface", "").lower() in [
-                    "wan",
-                    "wan6",
-                    "wwan",
-                    "modem",
-                ]:
-                    ipv4_addrs = iface_data.get("ipv4-address", [])
-                    for addr in ipv4_addrs:
-                        if addr.get("gateway"):
-                            gw_ip = addr.get("gateway")
-                            break
-                    if gw_ip:
-                        break
-
-            if not gw_ip:
-                # Fallback: check all interfaces if no obvious WAN
-                for iface_data in status.get("interface", []):
-                    ipv4_addrs = iface_data.get("ipv4-address", [])
-                    for addr in ipv4_addrs:
-                        if addr.get("gateway"):
-                            gw_ip = addr.get("gateway")
-                            break
-                    if gw_ip:
-                        break
-
+            gw_ip = await self._get_gateway_ip_from_ubus()
             if not gw_ip:
                 return None
 
-            # 2. Get MAC for that IP via ip neighbor (using execute_command fallback)
-            neigh_out = await self.execute_command(f"ip neigh show {gw_ip} 2>/dev/null")
-            if "lladdr" in neigh_out:
-                neigh_parts = neigh_out.split()
-                return neigh_parts[neigh_parts.index("lladdr") + 1].upper()
+            # 2. Get MAC for that IP via ip neighbor
+            return await self._get_mac_from_ip(gw_ip)
         except Exception as err:
             _LOGGER.debug("Failed to get gateway MAC via ubus: %s", err)
+        return None
+
+    async def _get_gateway_ip_from_ubus(self) -> str | None:
+        """Find the default gateway IP from 'network.interface dump'."""
+        status = await self._call("network.interface", "dump")
+        interfaces = status.get("interface", [])
+
+        # Priority 1: Common WAN interfaces
+        wan_names = ("wan", "wan6", "wwan", "modem")
+        for iface in interfaces:
+            if iface.get("interface", "").lower() in wan_names:
+                gw = self._extract_gateway_from_iface(iface)
+                if gw:
+                    return gw
+
+        # Priority 2: Any interface with a gateway
+        for iface in interfaces:
+            gw = self._extract_gateway_from_iface(iface)
+            if gw:
+                return gw
+
+        return None
+
+    def _extract_gateway_from_iface(self, iface_data: dict[str, Any]) -> str | None:
+        """Extract gateway IP from a single interface entry."""
+        for addr in iface_data.get("ipv4-address", []):
+            if addr.get("gateway"):
+                return addr.get("gateway")
+        return None
+
+    async def _get_mac_from_ip(self, ip: str) -> str | None:
+        """Get the MAC address for a specific IP from the ARP/neighbor table."""
+        neigh_out = await self.execute_command(f"ip neigh show {ip} 2>/dev/null")
+        if "lladdr" in neigh_out:
+            parts = neigh_out.split()
+            try:
+                idx = parts.index("lladdr")
+                if len(parts) > idx + 1:
+                    return parts[idx + 1].upper()
+            except (ValueError, IndexError):
+                pass
         return None
 
     async def get_lldp_neighbors(self) -> list[LldpNeighbor]:

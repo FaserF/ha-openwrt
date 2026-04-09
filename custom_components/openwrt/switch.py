@@ -39,108 +39,121 @@ async def async_setup_entry(
         pkgs = coordinator.data.packages
 
         if perms.write_wireless:
-            entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
-            for wifi in coordinator.data.wireless_interfaces:
-                if wifi.name:
-                    entities.append(
-                        OpenWrtWirelessSwitch(
-                            coordinator,
-                            entry,
-                            client,
-                            wifi.name,
-                            wifi.ssid,
-                            wifi.frequency,
-                        ),
-                    )
+            _add_wireless_switches(coordinator, entry, client, entities)
 
         if perms.write_services:
-            for service in coordinator.data.services:
-                if service.name:
-                    entities.append(
-                        OpenWrtServiceSwitch(coordinator, entry, client, service.name),
-                    )
+            _add_service_switches(coordinator, entry, client, entities)
 
         if perms.write_firewall:
-            for redirect in coordinator.data.firewall_redirects:
-                if redirect.section_id:
-                    entities.append(
-                        OpenWrtFirewallSwitch(
-                            coordinator,
-                            entry,
-                            client,
-                            redirect.section_id,
-                            redirect.name,
-                        ),
-                    )
-
-            for rule in coordinator.data.firewall_rules:
-                # Only expose named rules to avoid clutter and potentially accidental system changes
-                if rule.name and rule.section_id and not rule.name.startswith("cfg"):
-                    entities.append(
-                        OpenWrtFirewallRuleSwitch(
-                            coordinator,
-                            entry,
-                            client,
-                            rule.section_id,
-                            rule.name,
-                        ),
-                    )
+            _add_firewall_switches(coordinator, entry, client, entities)
 
         if perms.write_access_control:
-            for device in coordinator.data.connected_devices:
-                if not device.mac:
-                    continue
-
-                # Determine initial device name and sanitize hostname
-                dev_name = device.mac
-                if device.hostname and device.hostname != "*":
-                    router_hostname = ""
-                    if coordinator.data.device_info:
-                        router_hostname = coordinator.data.device_info.hostname
-
-                    if device.hostname != router_hostname:
-                        dev_name = device.hostname
-
-                ac_rule_entry = next(
-                    (
-                        r
-                        for r in coordinator.data.access_control
-                        if r.mac and r.mac.lower() == device.mac.lower()
-                    ),
-                    None,
-                )
-                entities.append(
-                    OpenWrtAccessControlSwitch(
-                        coordinator,
-                        entry,
-                        client,
-                        device.mac.lower(),
-                        dev_name,
-                        ac_rule_entry.section_id if ac_rule_entry else None,
-                    ),
-                )
+            _add_access_control_switches(coordinator, entry, client, entities)
 
         if perms.write_sqm and pkgs.sqm_scripts is not False:
-            for sqm in coordinator.data.sqm:
-                if sqm.section_id:
-                    entities.append(
-                        OpenWrtSqmSwitch(
-                            coordinator,
-                            entry,
-                            client,
-                            sqm.section_id,
-                            sqm.name,
-                        ),
-                    )
+            _add_sqm_switches(coordinator, entry, client, entities)
 
-        if pkgs.adblock:
-            entities.append(OpenWrtAdBlockSwitch(coordinator, entry, client))
-        if pkgs.simple_adblock:
-            entities.append(OpenWrtSimpleAdBlockSwitch(coordinator, entry, client))
-        if pkgs.ban_ip:
-            entities.append(OpenWrtBanIpSwitch(coordinator, entry, client))
+        _add_package_switches(coordinator, entry, client, entities, pkgs)
 
     async_add_entities(entities)
+
+def _add_wireless_switches(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    entities: list[SwitchEntity],
+) -> None:
+    """Add wireless-related switches."""
+    entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
+    for wifi in coordinator.data.wireless_interfaces:
+        if wifi.name:
+            entities.append(
+                OpenWrtWirelessSwitch(
+                    coordinator, entry, client, wifi.name, wifi.ssid, wifi.frequency,
+                ),
+            )
+
+def _add_service_switches(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    entities: list[SwitchEntity],
+) -> None:
+    """Add switches for system services."""
+    for service in coordinator.data.services:
+        if service.name:
+            entities.append(OpenWrtServiceSwitch(coordinator, entry, client, service.name))
+
+def _add_firewall_switches(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    entities: list[SwitchEntity],
+) -> None:
+    """Add firewall-related switches (redirects and rules)."""
+    for redirect in coordinator.data.firewall_redirects:
+        if redirect.section_id:
+            entities.append(
+                OpenWrtFirewallSwitch(
+                    coordinator, entry, client, redirect.section_id, redirect.name,
+                ),
+            )
+    for rule in coordinator.data.firewall_rules:
+        if rule.name and rule.section_id and not rule.name.startswith("cfg"):
+            entities.append(
+                OpenWrtFirewallRuleSwitch(
+                    coordinator, entry, client, rule.section_id, rule.name,
+                ),
+            )
+
+def _add_access_control_switches(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    entities: list[SwitchEntity],
+) -> None:
+    """Add access control (blocking) switches for devices."""
+    router_hostname = coordinator.data.device_info.hostname if coordinator.data.device_info else ""
+    for device in coordinator.data.connected_devices:
+        if not device.mac:
+            continue
+        dev_name = device.hostname if device.hostname and device.hostname not in ("*", router_hostname) else device.mac
+        ac_rule = next(
+            (r for r in coordinator.data.access_control if r.mac and r.mac.lower() == device.mac.lower()),
+            None
+        )
+        entities.append(
+            OpenWrtAccessControlSwitch(
+                coordinator, entry, client, device.mac.lower(), dev_name,
+                ac_rule.section_id if ac_rule else None,
+            ),
+        )
+
+def _add_sqm_switches(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    entities: list[SwitchEntity],
+) -> None:
+    """Add SQM QoS switches."""
+    for sqm in coordinator.data.sqm:
+        if sqm.section_id:
+            entities.append(OpenWrtSqmSwitch(coordinator, entry, client, sqm.section_id, sqm.name))
+
+def _add_package_switches(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    entities: list[SwitchEntity],
+    pkgs: Any,
+) -> None:
+    """Add package-specific toggle switches."""
+    if pkgs.adblock:
+        entities.append(OpenWrtAdBlockSwitch(coordinator, entry, client))
+    if pkgs.simple_adblock:
+        entities.append(OpenWrtSimpleAdBlockSwitch(coordinator, entry, client))
+    if pkgs.ban_ip:
+        entities.append(OpenWrtBanIpSwitch(coordinator, entry, client))
 
 
 class OpenWrtAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):

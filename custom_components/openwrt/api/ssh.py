@@ -682,6 +682,22 @@ class SshClient(OpenWrtClient):
         devices: dict[str, ConnectedDevice] = {}
 
         # 1. DHCP Leases
+        await self._add_dhcp_devices_ssh(devices)
+
+        # 2. IP Neighbors
+        await self._add_neighbor_devices_ssh(devices)
+
+        # 3. Wireless Clients (iwinfo station dump)
+        await self._add_wireless_devices_iwinfo_ssh(devices)
+
+        # 4. Fallback to wireless clients via ubus (hostapd)
+        if not any(d.is_wireless for d in devices.values()):
+            await self._add_wireless_devices_ubus_ssh(devices)
+
+        return list(devices.values())
+
+    async def _add_dhcp_devices_ssh(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Add devices discovered via DHCP leases."""
         try:
             leases = await self.get_dhcp_leases()
             for lease in leases:
@@ -694,22 +710,23 @@ class SshClient(OpenWrtClient):
                     is_wireless=False,
                     connection_type="wired",
                 )
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("DHCP device discovery failed (SSH): %s", err)
 
-        # 2. IP Neighbors
+    async def _add_neighbor_devices_ssh(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Add or update devices discovered via IP neighbors (ARP)."""
         try:
             neighbors = await self.get_ip_neighbors()
             for neigh in neighbors:
                 mac = neigh.mac.lower()
-                if not mac or mac in devices:
-                    # Update existing device if it was found via DHCP but not neighbors
-                    if mac in devices:
-                        dev = devices[mac]
-                        if not dev.neighbor_state:
-                            dev.neighbor_state = neigh.state
-                        if not dev.interface:
-                            dev.interface = neigh.interface
+                if not mac:
+                    continue
+                if mac in devices:
+                    dev = devices[mac]
+                    if not dev.neighbor_state:
+                        dev.neighbor_state = neigh.state
+                    if not dev.interface:
+                        dev.interface = neigh.interface
                     continue
 
                 devices[mac] = ConnectedDevice(
@@ -721,101 +738,58 @@ class SshClient(OpenWrtClient):
                     connection_type="wired",
                     neighbor_state=neigh.state,
                 )
-        except Exception as neigh_err:  # noqa: BLE001
-            _LOGGER.debug(
-                "Error processing IP neighbors in get_connected_devices (SSH): %s",
-                neigh_err,
-            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Neighbor device discovery failed (SSH): %s", err)
 
-        # 3. Wireless Clients (iwinfo station dump)
+    async def _add_wireless_devices_iwinfo_ssh(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Add or update wireless devices via iwinfo."""
         try:
-            # Get wireless interfaces first
-            iw_out = await self._exec(
-                "iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'",
-            )
+            iw_out = await self._exec("iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'")
             ifaces = iw_out.strip().split()
             for iface in ifaces:
                 assoc = await self._exec(f"iwinfo {iface} assoclist 2>/dev/null")
                 for line in assoc.strip().split("\n"):
                     if not line.strip() or "No information" in line:
                         continue
-                    # Parsing: MAC  Signal  Noise  RX_Rate  TX_Rate
                     parts = line.split()
-                    if (
-                        len(parts) >= 1
-                        and parts[0].count(":") == 5
-                        and len(parts[0]) == 17
-                    ):
+                    if len(parts) >= 1 and parts[0].count(":") == 5 and len(parts[0]) == 17:
                         mac = parts[0].lower()
-                        if mac in devices:
-                            dev = devices[mac]
-                        else:
-                            dev = ConnectedDevice(mac=mac, connected=True)
-                            devices[mac] = dev
-
+                        dev = devices.setdefault(mac, ConnectedDevice(mac=mac, connected=True))
                         dev.is_wireless = True
                         dev.interface = iface
-                        if len(parts) >= 2:
-                            dev.signal = (
-                                int(parts[1]) if parts[1].lstrip("-").isdigit() else 0
-                            )
+                        if len(parts) >= 2 and parts[1].lstrip("-").isdigit():
+                            dev.signal = int(parts[1])
+                        dev.connection_type = "5GHz" if "5g" in iface.lower() else "2.4GHz" if "2g" in iface.lower() else "wireless"
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("iwinfo wireless discovery failed: %s", err)
 
-                        if "5g" in iface.lower():
-                            dev.connection_type = "5GHz"
-                        elif "2g" in iface.lower():
-                            dev.connection_type = "2.4GHz"
-                        else:
-                            dev.connection_type = "wireless"
-
-        except Exception:  # noqa: BLE001
-            pass
-
-        # Fallback to ubus if iwinfo is missing or returns nothing
-        if not any(d.is_wireless for d in devices.values()):
-            try:
-                # Find all hostapd objects and get clients
-                cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
-                stdout = await self._exec(cmd)  # Changed from _exec_command to _exec
-                for line in stdout.splitlines():
-                    if not line.strip():
-                        continue
-                    parts = line.split(" ", 1)
-                    if len(parts) < 2:
-                        continue
-                    obj_name, data_str = parts
-                    iface_name = obj_name.split(".", 1)[1]
-                    try:
-                        data = json.loads(data_str)
-                        if data and isinstance(data, dict) and "clients" in data:
-                            for mac, info in data["clients"].items():
-                                # Create ConnectedDevice object from ubus data
-                                if mac.lower() not in devices:
-                                    dev = ConnectedDevice(
-                                        mac=mac.lower(),
-                                        connected=True,
-                                    )
-                                    devices[mac.lower()] = dev
-                                else:
-                                    dev = devices[mac.lower()]
-
-                                dev.is_wireless = True
-                                dev.interface = iface_name
-                                dev.signal = info.get("signal", 0)
-                                # ubus hostapd get_clients doesn't directly provide 2.4/5GHz info
-                                # We can infer from interface name if it contains '2g' or '5g'
-                                if "5g" in iface_name.lower():
-                                    dev.connection_type = "5GHz"
-                                elif "2g" in iface_name.lower():
-                                    dev.connection_type = "2.4GHz"
-                                else:
-                                    dev.connection_type = "wireless"
-
-                    except Exception:
-                        continue
-            except Exception:
-                pass
-
-        return list(devices.values())
+    async def _add_wireless_devices_ubus_ssh(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Add or update wireless devices via ubus hostapd."""
+        try:
+            cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
+            stdout = await self._exec(cmd)
+            for line in stdout.splitlines():
+                if not (line := line.strip()):
+                    continue
+                parts = line.split(" ", 1)
+                if len(parts) < 2:
+                    continue
+                obj_name, data_str = parts
+                iface_name = obj_name.split(".", 1)[1]
+                try:
+                    data = json.loads(data_str)
+                    if data and isinstance(data, dict) and "clients" in data:
+                        for mac, info in data["clients"].items():
+                            mac_lower = mac.lower()
+                            dev = devices.setdefault(mac_lower, ConnectedDevice(mac=mac_lower, connected=True))
+                            dev.is_wireless = True
+                            dev.interface = iface_name
+                            dev.signal = info.get("signal", 0)
+                            dev.connection_type = "5GHz" if "5g" in iface_name.lower() else "2.4GHz" if "2g" in iface_name.lower() else "wireless"
+                except (json.JSONDecodeError, KeyError):
+                    continue
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("ubus hostapd discovery failed (SSH): %s", err)
 
     async def get_system_logs(self, count: int = 10) -> list[str]:
         """Get recent system log entries via SSH."""
@@ -970,90 +944,83 @@ class SshClient(OpenWrtClient):
         return perms
 
     async def check_packages(self) -> OpenWrtPackages:
-        """Check installed packages."""
+        """Check installed packages via SSH probes."""
         packages = OpenWrtPackages()
         try:
-            # Step 1: Check existence of binaries or init scripts (fast)
-            cmd = (
-                "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
-                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
-                "/usr/lib/lua/luci/controller/rpc.lua "
-                "/usr/share/luci/menu.d/luci-mod-rpc.json "
-                "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
-                "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
-                "/etc/init.d/adblock "
-                "/etc/init.d/simple-adblock "
-                "/etc/init.d/ban-ip; do "
-                "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
-            )
-            out = await self._exec(cmd)
-            results = out.strip().splitlines()
+            # Step 1: Check existence of binaries or init scripts
+            await self._check_packages_from_files(packages)
 
-            def detect_status(idx: int) -> bool:
-                return len(results) > idx and results[idx].strip() == "1"
-
-            packages.sqm_scripts = detect_status(0)
-            packages.mwan3 = detect_status(1)
-            packages.iwinfo = detect_status(2)
-            packages.etherwake = detect_status(3)
-            packages.wireguard = detect_status(4)
-            packages.openvpn = detect_status(5)
-            packages.openvpn = detect_status(5)
-            packages.luci_mod_rpc = detect_status(6) or detect_status(7)
-            packages.asu = detect_status(8) or detect_status(9)
-            packages.adblock = detect_status(10)
-            packages.simple_adblock = detect_status(11)
-            packages.ban_ip = detect_status(12)
-
-            # Step 2: Fallback to get_installed_packages (full list check)
-            installed = await self.get_installed_packages()
-            if installed:
-                if not packages.sqm_scripts:
-                    packages.sqm_scripts = "sqm-scripts" in installed
-                if not packages.mwan3:
-                    packages.mwan3 = "mwan3" in installed
-                if not packages.iwinfo:
-                    packages.iwinfo = "iwinfo" in installed
-                if not packages.etherwake:
-                    packages.etherwake = "etherwake" in installed
-                if not packages.wireguard:
-                    packages.wireguard = any("wireguard" in p for p in installed)
-                if not packages.openvpn:
-                    packages.openvpn = any("openvpn" in p for p in installed)
-                if not packages.luci_mod_rpc:
-                    packages.luci_mod_rpc = "luci-mod-rpc" in installed
-                if not packages.asu:
-                    packages.asu = any(
-                        p in installed
-                        for p in [
-                            "luci-app-attendedsysupgrade",
-                            "attendedsysupgrade-common",
-                        ]
-                    )
-                if not packages.adblock:
-                    packages.adblock = "adblock" in installed
-                if not packages.simple_adblock:
-                    packages.simple_adblock = "simple-adblock" in installed
-                if not packages.ban_ip:
-                    packages.ban_ip = "ban-ip" in installed
+            # Step 2: Fallback to full list check
+            await self._check_packages_from_opkg(packages)
 
         except Exception as err:
-            _LOGGER.exception("Failed to check packages via SSH: %s", err)
-            # Initialize to False if we failed (to avoid staying at None)
-            for attr in [
-                "sqm_scripts",
-                "mwan3",
-                "iwinfo",
-                "etherwake",
-                "wireguard",
-                "openvpn",
-                "luci_mod_rpc",
-                "asu",
-            ]:
-                if getattr(packages, attr) is None:
-                    setattr(packages, attr, False)
+            _LOGGER.debug("Package check failed via SSH: %s", err)
 
+        self._ensure_all_packages_initialized(packages)
         return packages
+
+    async def _check_packages_from_files(self, packages: OpenWrtPackages) -> None:
+        """Identify packages by probing filesystem for binaries or scripts via SSH."""
+        cmd = (
+            "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
+            "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
+            "/usr/lib/lua/luci/controller/rpc.lua "
+            "/usr/share/luci/menu.d/luci-mod-rpc.json "
+            "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
+            "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
+            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip; do "
+            "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
+        )
+        out = await self._exec(cmd)
+        results = out.strip().splitlines()
+
+        def detect(idx: int) -> bool:
+            return len(results) > idx and results[idx].strip() == "1"
+
+        packages.sqm_scripts = detect(0)
+        packages.mwan3 = detect(1)
+        packages.iwinfo = detect(2)
+        packages.etherwake = detect(3)
+        packages.wireguard = detect(4)
+        packages.openvpn = detect(5)
+        packages.luci_mod_rpc = detect(6) or detect(7)
+        packages.asu = detect(8) or detect(9)
+        packages.adblock = detect(10)
+        packages.simple_adblock = detect(11)
+        packages.ban_ip = detect(12)
+
+    async def _check_packages_from_opkg(self, packages: OpenWrtPackages) -> None:
+        """Identify packages by checking the full installed package list."""
+        installed = await self.get_installed_packages()
+        if not installed:
+            return
+
+        mapping = {
+            "sqm_scripts": "sqm-scripts",
+            "mwan3": "mwan3",
+            "iwinfo": "iwinfo",
+            "etherwake": "etherwake",
+            "wireguard": "wireguard",
+            "openvpn": "openvpn",
+            "luci_mod_rpc": "luci-mod-rpc",
+            "asu": "luci-app-attendedsysupgrade",
+            "adblock": "adblock",
+            "simple_adblock": "simple-adblock",
+            "ban_ip": "ban-ip",
+        }
+        for attr, pkg_name in mapping.items():
+            if getattr(packages, attr) is not True:
+                if pkg_name in ("wireguard", "openvpn"):
+                    setattr(packages, attr, any(pkg_name in p for p in installed))
+                else:
+                    setattr(packages, attr, pkg_name in installed)
+
+    def _ensure_all_packages_initialized(self, packages: OpenWrtPackages) -> None:
+        """Ensure no package attributes remain as None (default to False)."""
+        import dataclasses
+        for field in dataclasses.fields(packages):
+            if getattr(packages, field.name) is None:
+                setattr(packages, field.name, False)
 
     async def get_firewall_rules(self) -> list[FirewallRule]:
         """Get firewall rules via UCI over SSH."""
@@ -1298,115 +1265,109 @@ class SshClient(OpenWrtClient):
 
         leases: list[DhcpLease] = []
 
-        # Try odhcpd via ubus over SSH
+        # 1. Try odhcpd via ubus
         if self.dhcp_software in ("auto", "odhcpd"):
-            try:
-                stdout = await self._exec("ubus call dhcp ipv4leases 2>/dev/null")
-                if stdout and stdout.strip().startswith("{"):
-                    data = json.loads(stdout)
-                    if data and isinstance(data, dict):
-                        for lease_data in data.get("dhcp_leases", []):
-                            leases.append(
-                                DhcpLease(
-                                    hostname=lease_data.get("hostname", ""),
-                                    mac=lease_data.get("mac", "").lower(),
-                                    ip=lease_data.get("ipaddr", ""),
-                                    expires=lease_data.get("expires", 0),
-                                ),
-                            )
-                    if leases and self.dhcp_software == "odhcpd":
-                        return leases
-            except Exception:  # noqa: BLE001
-                if self.dhcp_software == "odhcpd":
-                    _LOGGER.debug(
-                        "Requested odhcpd but 'ubus call dhcp' failed via SSH",
-                    )
-                    return []
+            await self._get_leases_odhcpd(leases)
+            if leases and self.dhcp_software == "odhcpd":
+                return leases
 
-        # Try dnsmasq via file over SSH
+        # 2. Try dnsmasq via file
         if self.dhcp_software in ("auto", "dnsmasq"):
-            try:
-                content = await self._exec("cat /tmp/dhcp.leases 2>/dev/null")
-                for line in content.strip().split("\n"):
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        leases.append(
-                            DhcpLease(
-                                expires=int(parts[0]) if parts[0].isdigit() else 0,
-                                mac=parts[1].lower(),
-                                ip=parts[2],
-                                hostname=parts[3] if parts[3] != "*" else "",
-                                connected=True,
-                                is_wireless=False,
-                                connection_type="wired",
-                            ),
-                        )
-            except Exception:  # noqa: BLE001
-                if self.dhcp_software == "dnsmasq":
-                    _LOGGER.debug(
-                        "Requested dnsmasq but cat /tmp/dhcp.leases failed via SSH",
-                    )
+            await self._get_leases_dnsmasq(leases)
 
         return leases
+
+    async def _get_leases_odhcpd(self, leases: list[DhcpLease]) -> None:
+        """Fetch DHCP leases from odhcpd via ubus over SSH."""
+        with contextlib.suppress(Exception):
+            stdout = await self._exec("ubus call dhcp ipv4leases 2>/dev/null")
+            if stdout and stdout.strip().startswith("{"):
+                data = json.loads(stdout)
+                for l_data in data.get("dhcp_leases", []):
+                    leases.append(
+                        DhcpLease(
+                            hostname=l_data.get("hostname", ""),
+                            mac=l_data.get("mac", "").lower(),
+                            ip=l_data.get("ipaddr", ""),
+                            expires=l_data.get("expires", 0),
+                        ),
+                    )
+
+    async def _get_leases_dnsmasq(self, leases: list[DhcpLease]) -> None:
+        """Fetch DHCP leases from dnsmasq lease file via SSH."""
+        with contextlib.suppress(Exception):
+            content = await self._exec("cat /tmp/dhcp.leases 2>/dev/null")
+            for line in content.strip().split("\n"):
+                parts = line.split()
+                if len(parts) >= 4:
+                    leases.append(
+                        DhcpLease(
+                            expires=int(parts[0]) if parts[0].isdigit() else 0,
+                            mac=parts[1].lower(),
+                            ip=parts[2],
+                            hostname=parts[3] if parts[3] != "*" else "",
+                        ),
+                    )
 
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
         """Get IP neighbor (ARP/NDP) table via SSH."""
         neighbors: list[IpNeighbor] = []
-        try:
-            # Try ip neigh show first (supports IPv6 and states)
-            content = await self._exec("ip neigh show 2>/dev/null")
-            for line in content.strip().split("\n"):
-                if not line:
-                    continue
-                parts = line.split()
-                if len(parts) >= 4:
-                    ip = parts[0]
-                    mac = ""
-                    interface = ""
-                    state = parts[-1]
 
-                    if "lladdr" in parts:
-                        idx = parts.index("lladdr")
-                        if len(parts) > idx + 1:
-                            mac = parts[idx + 1]
-                    if "dev" in parts:
-                        idx = parts.index("dev")
-                        if len(parts) > idx + 1:
-                            interface = parts[idx + 1]
+        # 1. Try ip neigh show
+        await self._get_neighbors_ip_neigh(neighbors)
 
-                    if mac:
-                        neighbors.append(
-                            IpNeighbor(
-                                ip=ip,
-                                mac=mac.lower(),
-                                interface=interface,
-                                state=state,
-                            ),
-                        )
-        except Exception:  # noqa: BLE001
-            pass
-
-        # Fallback to /proc/net/arp
+        # 2. Fallback to /proc/net/arp
         if not neighbors:
-            try:
-                content = await self._exec("cat /proc/net/arp 2>/dev/null")
-                lines = content.strip().split("\n")
-                if len(lines) > 1:
-                    for line in lines[1:]:
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            neighbors.append(
-                                IpNeighbor(
-                                    ip=parts[0],
-                                    mac=parts[3].upper(),
-                                    interface=parts[5] if len(parts) > 5 else "",
-                                    state="REACHABLE" if parts[2] != "0x0" else "STALE",
-                                ),
-                            )
-            except Exception:  # noqa: BLE001
-                pass
+            await self._get_neighbors_proc_arp(neighbors)
 
         return neighbors
+
+    async def _get_neighbors_ip_neigh(self, neighbors: list[IpNeighbor]) -> None:
+        """Fetch neighbors using 'ip neigh show' via SSH."""
+        with contextlib.suppress(Exception):
+            content = await self._exec("ip neigh show 2>/dev/null")
+            for line in content.strip().split("\n"):
+                neigh = self._parse_ip_neigh_line(line)
+                if neigh:
+                    neighbors.append(neigh)
+
+    def _parse_ip_neigh_line(self, line: str) -> IpNeighbor | None:
+        """Parse a single line from 'ip neigh show'."""
+        parts = line.split()
+        if len(parts) < 4:
+            return None
+
+        ip, mac, interface, state = parts[0], "", "", parts[-1]
+        if "lladdr" in parts:
+            idx = parts.index("lladdr")
+            if len(parts) > idx + 1:
+                mac = parts[idx + 1].lower()
+        if "dev" in parts:
+            idx = parts.index("dev")
+            if len(parts) > idx + 1:
+                interface = parts[idx + 1]
+
+        if mac:
+            return IpNeighbor(ip=ip, mac=mac, interface=interface, state=state)
+        return None
+
+    async def _get_neighbors_proc_arp(self, neighbors: list[IpNeighbor]) -> None:
+        """Fetch neighbors from /proc/net/arp via SSH."""
+        with contextlib.suppress(Exception):
+            content = await self._exec("cat /proc/net/arp 2>/dev/null")
+            lines = content.strip().split("\n")
+            if len(lines) > 1:
+                for line in lines[1:]:
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        neighbors.append(
+                            IpNeighbor(
+                                ip=parts[0],
+                                mac=parts[3].lower(),
+                                interface=parts[5],
+                                state="REACHABLE",
+                            ),
+                        )
 
     async def get_adblock_status(self) -> AdBlockStatus:
         """Get adblock status via SSH."""
@@ -1522,13 +1483,10 @@ class SshClient(OpenWrtClient):
 
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status via SSH."""
-
+        from .base import SqmStatus
         sqm_instances: list[SqmStatus] = []
         try:
-            output = await self._exec("uci show sqm 2>/dev/null")
-            if not output:
-                return sqm_instances
-
+            output = await self._exec("uci show sqm")
             sections: dict[str, dict[str, str]] = {}
             for line in output.splitlines():
                 if "=" not in line:
@@ -1539,10 +1497,10 @@ class SshClient(OpenWrtClient):
                     section = parts[1]
                     if section not in sections:
                         sections[section] = {}
-                    if len(parts) == 2:
-                        sections[section][".type"] = val.strip("'")
-                    elif len(parts) >= 3:
-                        sections[section][parts[2]] = val.strip("'")
+                    if len(parts) >= 3:
+                        sections[section][parts[2]] = val.strip("'").strip('"')
+                    else:
+                        sections[section][".type"] = val.strip("'").strip('"')
 
             for section_id, data in sections.items():
                 if data.get(".type") == "queue":
@@ -1603,83 +1561,73 @@ class SshClient(OpenWrtClient):
 
     async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
         """Get LLDP neighbor information via SSH."""
-        from .base import LldpNeighbor
-
         neighbors: list[LldpNeighbor] = []
+
         try:
             # Method 1: ubus (preferred)
+            await self._get_lldp_from_ubus(neighbors)
+            if neighbors:
+                return neighbors
+
+            # Method 2: lldpcli
+            await self._get_lldp_from_lldpcli(neighbors)
+
+        except Exception as err:
+            _LOGGER.debug("Failed to get LLDP neighbors via SSH: %s", err)
+        return neighbors
+
+    async def _get_lldp_from_ubus(self, neighbors: list[LldpNeighbor]) -> None:
+        """Fetch LLDP neighbors from 'lldp show' ubus call via SSH."""
+        with contextlib.suppress(Exception):
             stdout = await self._exec("ubus call lldp show 2>/dev/null")
             if stdout and stdout.strip().startswith("{"):
                 data = json.loads(stdout)
-                # Parse ubus lldp output structure
-                # {"lldp": {"interface": [{"name": "eth0", "neighbor": [{...}]}]}}
                 interfaces = data.get("lldp", {}).get("interface", [])
                 if isinstance(interfaces, list):
                     for iface in interfaces:
                         name = iface.get("name")
-                        neighs = iface.get("neighbor", [])
-                        if isinstance(neighs, list):
-                            for neigh in neighs:
-                                neighbors.append(
-                                    LldpNeighbor(
-                                        local_interface=name or "",
-                                        neighbor_name=neigh.get("name", ""),
-                                        neighbor_port=neigh.get("port", {}).get(
-                                            "id",
-                                            "",
-                                        )
-                                        if isinstance(neigh.get("port"), dict)
-                                        else "",
-                                        neighbor_chassis=neigh.get("chassis", {}).get(
-                                            "id",
-                                            "",
-                                        )
-                                        if isinstance(neigh.get("chassis"), dict)
-                                        else "",
-                                        neighbor_description=neigh.get(
-                                            "description",
-                                            "",
-                                        ),
-                                        neighbor_system_name=neigh.get("sysname", ""),
-                                    ),
-                                )
-                if neighbors:
-                    return neighbors
+                        for neigh in iface.get("neighbor", []):
+                            neighbors.append(self._parse_ubus_lldp_neigh(name or "", neigh))
 
-            # Method 2: lldpcli json
+    def _parse_ubus_lldp_neigh(self, local_iface: str, neigh: dict[str, Any]) -> LldpNeighbor:
+        """Parse a single LLDP neighbor entry from ubus output."""
+        from .base import LldpNeighbor
+        return LldpNeighbor(
+            local_interface=local_iface,
+            neighbor_name=neigh.get("name", ""),
+            neighbor_port=neigh.get("port", {}).get("id", "")
+            if isinstance(neigh.get("port"), dict) else "",
+            neighbor_chassis=neigh.get("chassis", {}).get("id", "")
+            if isinstance(neigh.get("chassis"), dict) else "",
+            neighbor_description=neigh.get("description", ""),
+            neighbor_system_name=neigh.get("sysname", ""),
+        )
+
+    async def _get_lldp_from_lldpcli(self, neighbors: list[LldpNeighbor]) -> None:
+        """Fetch LLDP neighbors using 'lldpcli show neighbors' via SSH."""
+        with contextlib.suppress(Exception):
             stdout = await self._exec("lldpcli show neighbors -f json 2>/dev/null")
             if stdout and stdout.strip().startswith("{"):
                 data = json.loads(stdout)
-                # lldpcli structure: {"lldp": {"interface": {"eth0": {"neighbor": {...}}}}}
                 interfaces = data.get("lldp", {}).get("interface", {})
                 if isinstance(interfaces, dict):
                     for iface_name, iface_data in interfaces.items():
                         neighs = iface_data.get("neighbor", [])
                         if isinstance(neighs, dict):
                             neighs = [neighs]
-                        if isinstance(neighs, list):
-                            for neigh in neighs:
-                                neighbors.append(
-                                    LldpNeighbor(
-                                        local_interface=iface_name,
-                                        neighbor_name=neigh.get("name", ""),
-                                        neighbor_port=neigh.get("port", {})
-                                        .get("id", {})
-                                        .get("value", "")
-                                        if isinstance(neigh.get("port"), dict)
-                                        else "",
-                                        neighbor_chassis=neigh.get("chassis", {})
-                                        .get("id", {})
-                                        .get("value", "")
-                                        if isinstance(neigh.get("chassis"), dict)
-                                        else "",
-                                        neighbor_description=neigh.get(
-                                            "description",
-                                            "",
-                                        ),
-                                        neighbor_system_name=neigh.get("sysname", ""),
-                                    ),
-                                )
-        except Exception as err:
-            _LOGGER.debug("Failed to get LLDP neighbors via SSH: %s", err)
-        return neighbors
+                        for neigh in (neighs if isinstance(neighs, list) else []):
+                            neighbors.append(self._parse_lldpcli_neigh(iface_name, neigh))
+
+    def _parse_lldpcli_neigh(self, local_iface: str, neigh: dict[str, Any]) -> LldpNeighbor:
+        """Parse a single LLDP neighbor entry from lldpcli JSON output."""
+        from .base import LldpNeighbor
+        return LldpNeighbor(
+            local_interface=local_iface,
+            neighbor_name=neigh.get("name", ""),
+            neighbor_port=neigh.get("port", {}).get("id", {}).get("value", "")
+            if isinstance(neigh.get("port"), dict) else "",
+            neighbor_chassis=neigh.get("chassis", {}).get("id", {}).get("value", "")
+            if isinstance(neigh.get("chassis"), dict) else "",
+            neighbor_description=neigh.get("description", ""),
+            neighbor_system_name=neigh.get("sysname", ""),
+        )

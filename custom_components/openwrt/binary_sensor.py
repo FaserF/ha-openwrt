@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -59,80 +60,105 @@ async def async_setup_entry(
 
         for description in BINARY_SENSORS:
             entities.append(OpenWrtBinarySensorEntity(coordinator, entry, description))
+
         if perms.read_mwan and pkgs.mwan3 is not False:
-            for mwan in coordinator.data.mwan_status:
-                entities.append(
-                    OpenWrtBinarySensorEntity(
-                        coordinator,
-                        entry,
-                        OpenWrtBinarySensorDescription(
-                            key=f"mwan_{mwan.interface_name}_online",
-                            name=f"MWAN {mwan.interface_name} Online",
-                            translation_key="mwan_online",
-                            translation_placeholders={"interface": mwan.interface_name},
-                            device_class=BinarySensorDeviceClass.CONNECTIVITY,
-                            entity_category=EntityCategory.DIAGNOSTIC,
-                            entity_registry_enabled_default=False,
-                            is_on_fn=lambda data, n=mwan.interface_name: any(
-                                m.status == "online"
-                                for m in data.mwan_status
-                                if m.interface_name == n
-                            ),
-                        ),
-                    ),
-                )
+            _async_setup_mwan_binary_sensors(coordinator, entry, entities)
 
         if perms.read_network:
-            for iface in coordinator.data.network_interfaces:
-                if iface.name in ("wan", "wan6"):
-                    entities.append(
-                        OpenWrtBinarySensorEntity(
-                            coordinator,
-                            entry,
-                            OpenWrtBinarySensorDescription(
-                                key=f"interface_{iface.name}_up",
-                                name=f"{iface.name.upper()} Connected",
-                                translation_key="interface_up",
-                                translation_placeholders={
-                                    "interface": iface.name.upper(),
-                                },
-                                device_class=BinarySensorDeviceClass.CONNECTIVITY,
-                                is_on_fn=lambda data, n=iface.name: any(
-                                    i.up for i in data.network_interfaces if i.name == n
-                                ),
-                            ),
-                        ),
-                    )
+            _async_setup_interface_binary_sensors(coordinator, entry, entities)
 
-        # VPN tunnel binary sensors
         if perms.read_vpn:
-            for vpn in coordinator.data.vpn_interfaces:
-                if not vpn.name:
-                    continue
-                if vpn.type == "wireguard" and pkgs.wireguard is False:
-                    continue
-                if vpn.type == "openvpn" and pkgs.openvpn is False:
-                    continue
-                entities.append(
-                    OpenWrtBinarySensorEntity(
-                        coordinator,
-                        entry,
-                        OpenWrtBinarySensorDescription(
-                            key=f"vpn_{vpn.name}_up",
-                            name=f"VPN {vpn.name} Connected",
-                            translation_key="vpn_up",
-                            translation_placeholders={"interface": vpn.name},
-                            device_class=BinarySensorDeviceClass.CONNECTIVITY,
-                            entity_category=EntityCategory.DIAGNOSTIC,
-                            entity_registry_enabled_default=False,
-                            is_on_fn=lambda data, n=vpn.name: any(
-                                v.up for v in data.vpn_interfaces if v.name == n
-                            ),
-                        ),
-                    ),
-                )
+            _async_setup_vpn_binary_sensors(coordinator, entry, entities, pkgs)
 
     async_add_entities(entities)
+
+def _async_setup_mwan_binary_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    entities: list[OpenWrtBinarySensorEntity],
+) -> None:
+    """Set up MWAN3 binary sensors."""
+    for mwan in coordinator.data.mwan_status:
+        entities.append(
+            OpenWrtBinarySensorEntity(
+                coordinator,
+                entry,
+                OpenWrtBinarySensorDescription(
+                    key=f"mwan_{mwan.interface_name}_online",
+                    name=f"MWAN {mwan.interface_name} Online",
+                    translation_key="mwan_online",
+                    translation_placeholders={"interface": mwan.interface_name},
+                    device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                    entity_category=EntityCategory.DIAGNOSTIC,
+                    entity_registry_enabled_default=False,
+                    is_on_fn=lambda data, n=mwan.interface_name: any(
+                        m.status == "online"
+                        for m in data.mwan_status
+                        if m.interface_name == n
+                    ),
+                ),
+            ),
+        )
+
+def _async_setup_interface_binary_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    entities: list[OpenWrtBinarySensorEntity],
+) -> None:
+    """Set up network interface binary sensors."""
+    for iface in coordinator.data.network_interfaces:
+        if iface.name in ("wan", "wan6"):
+            entities.append(
+                OpenWrtBinarySensorEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtBinarySensorDescription(
+                        key=f"interface_{iface.name}_up",
+                        name=f"{iface.name.upper()} Connected",
+                        translation_key="interface_up",
+                        translation_placeholders={
+                            "interface": iface.name.upper(),
+                        },
+                        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                        is_on_fn=lambda data, n=iface.name: any(
+                            i.up for i in data.network_interfaces if i.name == n
+                        ),
+                    ),
+                ),
+            )
+
+def _async_setup_vpn_binary_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    entities: list[OpenWrtBinarySensorEntity],
+    pkgs: Any,
+) -> None:
+    """Set up VPN binary sensors."""
+    for vpn in coordinator.data.vpn_interfaces:
+        if not vpn.name:
+            continue
+        if vpn.type == "wireguard" and pkgs.wireguard is False:
+            continue
+        if vpn.type == "openvpn" and pkgs.openvpn is False:
+            continue
+        entities.append(
+            OpenWrtBinarySensorEntity(
+                coordinator,
+                entry,
+                OpenWrtBinarySensorDescription(
+                    key=f"vpn_{vpn.name}_up",
+                    name=f"VPN {vpn.name} Connected",
+                    translation_key="vpn_up",
+                    translation_placeholders={"interface": vpn.name},
+                    device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                    entity_category=EntityCategory.DIAGNOSTIC,
+                    entity_registry_enabled_default=False,
+                    is_on_fn=lambda data, n=vpn.name: any(
+                        v.up for v in data.vpn_interfaces if v.name == n
+                    ),
+                ),
+            ),
+        )
 
 
 class OpenWrtBinarySensorEntity(

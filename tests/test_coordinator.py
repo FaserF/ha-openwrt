@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.openwrt.api.base import OpenWrtData, SystemResources
@@ -15,6 +14,8 @@ from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
 async def test_coordinator_stale_data_on_timeout() -> None:
     """Test that coordinator returns stale data when update fails with timeout."""
     hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
     config_entry = MagicMock()
     config_entry.options = {}
     config_entry.data = {
@@ -27,7 +28,9 @@ async def test_coordinator_stale_data_on_timeout() -> None:
     mock_client = AsyncMock()
     mock_client.connected = True
 
-    coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(return_value={})
+        coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
 
     # Set initial data
     initial_data = OpenWrtData(
@@ -61,6 +64,8 @@ async def test_coordinator_stale_data_on_timeout() -> None:
 async def test_coordinator_update_failed_on_new_install() -> None:
     """Test that coordinator raises UpdateFailed if no stale data is available."""
     hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
     config_entry = MagicMock()
     config_entry.options = {}
     config_entry.data = {
@@ -73,7 +78,9 @@ async def test_coordinator_update_failed_on_new_install() -> None:
     mock_client = AsyncMock()
     mock_client.connected = True
 
-    coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(return_value={})
+        coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
     coordinator.data = None
 
     async def get_all_data_err(*args, **kwargs):

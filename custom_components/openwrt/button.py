@@ -13,7 +13,7 @@ from homeassistant.components.button import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -76,166 +76,27 @@ async def async_setup_entry(
     ]
     client: OpenWrtClient = hass.data[DOMAIN][entry.entry_id][DATA_CLIENT]
 
-    entities: list[ButtonEntity] = []
-
     tracked_keys: set[str] = set()
 
-    @callback
     def _async_add_new_entities() -> None:
         """Add new entities when devices are discovered."""
         if coordinator.data is None:
             return
 
-        perms = coordinator.data.permissions
-        pkgs = coordinator.data.packages
         new_entities: list[ButtonEntity] = []
 
-        # 1. Static buttons (Reboot, WPS, Backup)
-        for description in BUTTONS:
-            if description.key in tracked_keys:
-                continue
-            if description.key == "reboot" and not perms.write_system:
-                continue
-            if (
-                description.key in ("wps_start", "wps_cancel")
-                and not perms.write_wireless
-            ):
-                continue
-            if description.key == "create_backup" and not perms.write_system:
-                continue
-
-            tracked_keys.add(description.key)
-            new_entities.append(
-                OpenWrtButtonEntity(coordinator, entry, description, client),
-            )
+        # 1. Static buttons
+        _add_static_buttons(coordinator, entry, client, tracked_keys, new_entities)
 
         # 2. Service buttons
-        if perms.read_services:
-            for service in coordinator.data.services:
-                if not service.name:
-                    continue
-                for action in ("restart", "stop"):
-                    key = f"{action}_{service.name}"
-                    if key in tracked_keys:
-                        continue
-
-                    tracked_keys.add(key)
-                    new_entities.append(
-                        OpenWrtButtonEntity(
-                            coordinator,
-                            entry,
-                            OpenWrtButtonDescription(
-                                key=key,
-                                name=f"{action.capitalize()} {service.name}",
-                                translation_key=f"service_{action}",
-                                translation_placeholders={"service": service.name},
-                                entity_category=EntityCategory.CONFIG,
-                                press_fn=lambda c, n=service.name, a=action: c.manage_service(
-                                    n, a
-                                ),
-                            ),
-                            client,
-                        ),
-                    )
+        if coordinator.data.permissions.read_services:
+            _add_service_buttons(coordinator, entry, client, tracked_keys, new_entities)
 
         # 3. Interface buttons
-        for iface in coordinator.data.network_interfaces:
-            if iface.name in ("wan", "wan6"):
-                key = f"reconnect_{iface.name}"
-                if key in tracked_keys:
-                    continue
-
-                tracked_keys.add(key)
-                new_entities.append(
-                    OpenWrtButtonEntity(
-                        coordinator,
-                        entry,
-                        OpenWrtButtonDescription(
-                            key=key,
-                            name=iface.name.upper(),
-                            translation_key="interface_reconnect",
-                            translation_placeholders={"interface": iface.name.upper()},
-                            entity_category=EntityCategory.CONFIG,
-                            press_fn=lambda c, n=iface.name: c.manage_interface(
-                                n, "reconnect"
-                            ),
-                        ),
-                        client,
-                    ),
-                )
+        _add_interface_buttons(coordinator, entry, client, tracked_keys, new_entities)
 
         # 4. Device-specific buttons (WoL, Kick)
-        # Collect all unique devices
-        unique_devices: dict[str, dict[str, Any]] = {}
-        for device in coordinator.data.connected_devices:
-            if not device.mac:
-                continue
-            mac_lower = device.mac.lower()
-            is_wireless = device.is_wireless
-            if not is_wireless and device.interface:
-                iface_lower = device.interface.lower()
-                if any(k in iface_lower for k in ("wlan", "ap", "radio")):
-                    is_wireless = True
-            unique_devices[mac_lower] = {
-                "mac": device.mac,
-                "hostname": device.hostname,
-                "is_wireless": is_wireless,
-                "interface": device.interface,
-                "active": True,
-            }
-
-        for lease in coordinator.data.dhcp_leases:
-            if not lease.mac:
-                continue
-            mac_lower = lease.mac.lower()
-            if mac_lower not in unique_devices:
-                unique_devices[mac_lower] = {
-                    "mac": lease.mac,
-                    "hostname": lease.hostname,
-                    "is_wireless": False,
-                    "interface": None,
-                    "active": False,
-                }
-            elif (
-                not unique_devices[mac_lower]["hostname"]
-                or unique_devices[mac_lower]["hostname"] == "*"
-            ):
-                unique_devices[mac_lower]["hostname"] = lease.hostname
-
-        router_hostname = (
-            coordinator.data.device_info.hostname if coordinator.data.device_info else ""
-        )
-
-        for mac_lower, dev_info in unique_devices.items():
-            mac = dev_info["mac"]
-            hostname = dev_info["hostname"]
-            is_wireless = dev_info["is_wireless"]
-            interface = dev_info["interface"]
-            is_active = dev_info["active"]
-            dev_name = hostname if hostname and hostname != "*" and hostname != router_hostname else mac
-
-            # WoL Button
-            wol_key = f"wol_{mac_lower}"
-            if wol_key not in tracked_keys and pkgs.etherwake is not False and not is_wireless:
-                tracked_keys.add(wol_key)
-                new_entities.append(
-                    OpenWrtWakeOnLanButton(coordinator, entry, client, mac, dev_name, interface)
-                )
-
-            # Kick Button
-            kick_key = f"kick_{mac_lower}_{interface}"
-            if (
-                kick_key not in tracked_keys
-                and is_active
-                and perms.read_wireless
-                and is_wireless
-                and interface
-                and pkgs.iwinfo is not False
-            ):
-                tracked_keys.add(kick_key)
-                new_entities.append(
-                    OpenWrtKickButton(coordinator, entry, client, mac, interface, dev_name)
-                )
+        _add_device_buttons(coordinator, entry, client, tracked_keys, new_entities)
 
         if new_entities:
             async_add_entities(new_entities)
@@ -243,6 +104,193 @@ async def async_setup_entry(
     # Register listener and run initial discovery
     entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
     _async_add_new_entities()
+
+
+def _add_static_buttons(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    tracked_keys: set[str],
+    new_entities: list[ButtonEntity],
+) -> None:
+    """Add static buttons based on permissions."""
+    perms = coordinator.data.permissions
+    for description in BUTTONS:
+        if description.key in tracked_keys:
+            continue
+        if description.key == "reboot" and not perms.write_system:
+            continue
+        if description.key in ("wps_start", "wps_cancel") and not perms.write_wireless:
+            continue
+        if description.key == "create_backup" and not perms.write_system:
+            continue
+
+        tracked_keys.add(description.key)
+        new_entities.append(OpenWrtButtonEntity(coordinator, entry, description, client))
+
+
+def _add_service_buttons(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    tracked_keys: set[str],
+    new_entities: list[ButtonEntity],
+) -> None:
+    """Add buttons for managing services."""
+    for service in coordinator.data.services:
+        if not service.name:
+            continue
+        for action in ("restart", "stop"):
+            key = f"{action}_{service.name}"
+            if key in tracked_keys:
+                continue
+
+            tracked_keys.add(key)
+            new_entities.append(
+                OpenWrtButtonEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtButtonDescription(
+                        key=key,
+                        name=f"{action.capitalize()} {service.name}",
+                        translation_key=f"service_{action}",
+                        translation_placeholders={"service": service.name},
+                        entity_category=EntityCategory.CONFIG,
+                        press_fn=lambda c, n=service.name, a=action: c.manage_service(
+                            n, a
+                        ),
+                    ),
+                    client,
+                )
+            )
+
+
+def _add_interface_buttons(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    tracked_keys: set[str],
+    new_entities: list[ButtonEntity],
+) -> None:
+    """Add buttons for managing network interfaces."""
+    for iface in coordinator.data.network_interfaces:
+        if iface.name in ("wan", "wan6"):
+            key = f"reconnect_{iface.name}"
+            if key in tracked_keys:
+                continue
+
+            tracked_keys.add(key)
+            new_entities.append(
+                OpenWrtButtonEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtButtonDescription(
+                        key=key,
+                        name=iface.name.upper(),
+                        translation_key="interface_reconnect",
+                        translation_placeholders={"interface": iface.name.upper()},
+                        entity_category=EntityCategory.CONFIG,
+                        press_fn=lambda c, n=iface.name: c.manage_interface(
+                            n, "reconnect"
+                        ),
+                    ),
+                    client,
+                )
+            )
+
+
+def _add_device_buttons(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    tracked_keys: set[str],
+    new_entities: list[ButtonEntity],
+) -> None:
+    """Add buttons for individual devices (WoL, Kick)."""
+    unique_devices = _get_unique_devices(coordinator)
+    perms = coordinator.data.permissions
+    pkgs = coordinator.data.packages
+    router_hostname = (
+        coordinator.data.device_info.hostname if coordinator.data.device_info else ""
+    )
+
+    for mac_lower, info in unique_devices.items():
+        mac = info["mac"]
+        hostname = info["hostname"]
+        dev_name = (
+            hostname
+            if hostname and hostname != "*" and hostname != router_hostname
+            else mac
+        )
+
+        # WoL Button
+        wol_key = f"wol_{mac_lower}"
+        if (
+            wol_key not in tracked_keys
+            and pkgs.etherwake is not False
+            and not info["is_wireless"]
+        ):
+            tracked_keys.add(wol_key)
+            new_entities.append(
+                OpenWrtWakeOnLanButton(
+                    coordinator, entry, client, mac, dev_name, info["interface"]
+                )
+            )
+
+        # Kick Button
+        kick_key = f"kick_{mac_lower}_{info['interface']}"
+        if (
+            kick_key not in tracked_keys
+            and info["active"]
+            and perms.read_wireless
+            and info["is_wireless"]
+            and info["interface"]
+            and pkgs.iwinfo is not False
+        ):
+            tracked_keys.add(kick_key)
+            new_entities.append(
+                OpenWrtKickButton(
+                    coordinator, entry, client, mac, info["interface"], dev_name
+                )
+            )
+
+
+def _get_unique_devices(coordinator: OpenWrtDataCoordinator) -> dict[str, dict[str, Any]]:
+    """Aggregate unique devices from connected devices and DHCP leases."""
+    unique: dict[str, dict[str, Any]] = {}
+
+    for device in coordinator.data.connected_devices:
+        if not device.mac:
+            continue
+        mac_lower = device.mac.lower()
+        is_wireless = device.is_wireless
+        if not is_wireless and device.interface:
+            iface_lower = device.interface.lower()
+            if any(k in iface_lower for k in ("wlan", "ap", "radio")):
+                is_wireless = True
+        unique[mac_lower] = {
+            "mac": device.mac,
+            "hostname": device.hostname,
+            "is_wireless": is_wireless,
+            "interface": device.interface,
+            "active": True,
+        }
+
+    for lease in coordinator.data.dhcp_leases:
+        if not lease.mac:
+            continue
+        mac_lower = lease.mac.lower()
+        if mac_lower not in unique:
+            unique[mac_lower] = {
+                "mac": lease.mac,
+                "hostname": lease.hostname,
+                "is_wireless": False,
+                "interface": None,
+                "active": False,
+            }
+        elif not unique[mac_lower]["hostname"] or unique[mac_lower]["hostname"] == "*":
+            unique[mac_lower]["hostname"] = lease.hostname
+    return unique
 
 
 class OpenWrtButtonEntity(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity):

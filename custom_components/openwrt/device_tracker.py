@@ -158,23 +158,23 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     @property
     def source_type(self) -> SourceType:
         """Return the source type."""
-        if self.coordinator.data:
-            for device in self.coordinator.data.connected_devices:
-                if device.mac and device.mac.lower() == self._mac and device.is_wireless:
-                    return SourceType.ROUTER
         return SourceType.ROUTER
 
     @property
     def is_connected(self) -> bool:
         """Return true if the device is connected."""
-        if self.coordinator.data is None:
-            return self._check_consider_home(False)
-
-        connected = any(
-            d.mac and d.mac.lower() == self._mac and d.connected
-            for d in self.coordinator.data.connected_devices
-        )
+        device = self._get_device_data()
+        connected = device.connected if device else False
         return self._check_consider_home(connected)
+
+    def _get_device_data(self) -> Any | None:
+        """Get data for this device from coordinator."""
+        if not self.coordinator.data:
+            return None
+        return next(
+            (d for d in self.coordinator.data.connected_devices if d.mac and d.mac.lower() == self._mac),
+            None
+        )
 
     def _check_consider_home(self, connected: bool) -> bool:
         """Apply consider_home logic: keep device home for a grace period."""
@@ -194,20 +194,14 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     @property
     def hostname(self) -> str | None:
         """Return the hostname."""
-        if self.coordinator.data:
-            for device in self.coordinator.data.connected_devices:
-                if device.mac and device.mac.lower() == self._mac:
-                    return device.hostname or None
-        return None
+        device = self._get_device_data()
+        return device.hostname if device else None
 
     @property
     def ip_address(self) -> str | None:
         """Return the IP address."""
-        if self.coordinator.data:
-            for device in self.coordinator.data.connected_devices:
-                if device.mac and device.mac.lower() == self._mac:
-                    return device.ip or None
-        return None
+        device = self._get_device_data()
+        return device.ip if device else None
 
     @property
     def name(self) -> str:
@@ -227,46 +221,39 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        if self.coordinator.data is None:
+        device = self._get_device_data()
+        if not device:
             return {}
 
-        for device in self.coordinator.data.connected_devices:
-            if device.mac and device.mac.lower() == self._mac:
-                attrs: dict[str, Any] = {
-                    "mac": device.mac,
-                    "is_wireless": device.is_wireless,
-                    "connection_type": device.connection_type,
-                }
+        attrs = {
+            "mac": device.mac,
+            "is_wireless": device.is_wireless,
+            "connection_type": device.connection_type,
+        }
 
-                # Add historical seen data from coordinator
-                if device.mac.lower() in self.coordinator._device_history:
-                    history = self.coordinator._device_history[device.mac.lower()]
-                    attrs["initially_seen"] = datetime.fromtimestamp(
-                        history["initially_seen"],
-                    ).isoformat()
-                    attrs["last_seen"] = datetime.fromtimestamp(
-                        history["last_seen"],
-                    ).isoformat()
+        # Add historical seen data
+        if device.mac.lower() in self.coordinator._device_history:
+            history = self.coordinator._device_history[device.mac.lower()]
+            attrs.update({
+                "initially_seen": datetime.fromtimestamp(history["initially_seen"]).isoformat(),
+                "last_seen": datetime.fromtimestamp(history["last_seen"]).isoformat(),
+            })
 
-                if device.interface:
-                    attrs["interface"] = device.interface
-                if device.is_wireless:
-                    if device.signal:
-                        attrs["signal_strength"] = device.signal
-                    if device.rx_rate:
-                        attrs["rx_rate"] = device.rx_rate
-                    if device.tx_rate:
-                        attrs["tx_rate"] = device.tx_rate
-                if device.rx_bytes:
-                    attrs["rx_bytes"] = device.rx_bytes
-                if device.tx_bytes:
-                    attrs["tx_bytes"] = device.tx_bytes
-                if device.uptime:
-                    attrs["uptime"] = device.uptime
-                if device.neighbor_state:
-                    attrs["neighbor_state"] = device.neighbor_state
-                if device.connection_info:
-                    attrs["connection_info"] = device.connection_info
-                return attrs
+        # Add optional metrics
+        optional_metrics = {
+            "interface": device.interface,
+            "rx_bytes": device.rx_bytes,
+            "tx_bytes": device.tx_bytes,
+            "uptime": device.uptime,
+            "neighbor_state": device.neighbor_state,
+            "connection_info": device.connection_info,
+        }
+        if device.is_wireless:
+            optional_metrics.update({
+                "signal_strength": device.signal,
+                "rx_rate": device.rx_rate,
+                "tx_rate": device.tx_rate,
+            })
 
-        return {}
+        attrs.update({k: v for k, v in optional_metrics.items() if v})
+        return attrs

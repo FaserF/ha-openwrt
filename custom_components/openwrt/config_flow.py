@@ -12,6 +12,7 @@ and re-authentication.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import secrets
 import socket
@@ -260,27 +261,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_select_device()
 
         # Perform scanning
-        potential_hosts: set[str] = {"192.168.1.1", "192.168.0.1", "10.0.0.1"}
-
-        # Try to get dynamic gateways from Home Assistant
-        try:
-            # We try to get gateway IPs from network config
-            # This is more robust than guessing
-            from homeassistant.components import network
-
-            adapters = await network.async_get_adapters(self.hass)
-            for adapter in adapters:
-                for ipv4 in adapter.get("ipv4", []):
-                    # Guess gateway by .1 and .254 in same subnet (simplified)
-                    local_ip = ipv4.get("address")
-                    if local_ip:
-                        parts = local_ip.split(".")
-                        if len(parts) == 4:
-                            potential_hosts.add(".".join([*parts[:-1], "1"]))
-                            potential_hosts.add(".".join([*parts[:-1], "254"]))
-        except Exception:
-            pass
-
+        potential_hosts = await self._async_get_potential_hosts()
         tasks = [self._async_probe_router(host) for host in potential_hosts]
         results = await asyncio.gather(*tasks)
 
@@ -292,17 +273,30 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         for router_info in results:
             if router_info:
                 host = router_info["host"]
-                # Skip already configured routers
-                if host in existing_hosts:
-                    continue
-                # Avoid duplicates
-                if not any(r["host"] == host for r in self._discovered_routers):
+                # Skip already configured routers or duplicates
+                if host not in existing_hosts and not any(r["host"] == host for r in self._discovered_routers):
                     self._discovered_routers.append(router_info)
 
         if not self._discovered_routers:
             return await self.async_step_manual_entry()
 
         return await self.async_step_discovery(user_input={})
+
+    async def _async_get_potential_hosts(self) -> set[str]:
+        """Gather potential router IPs from defaults and HA network adapters."""
+        potential_hosts: set[str] = {"192.168.1.1", "192.168.0.1", "10.0.0.1"}
+
+        with contextlib.suppress(Exception):
+            from homeassistant.components import network
+            adapters = await network.async_get_adapters(self.hass)
+            for adapter in adapters:
+                for ipv4 in adapter.get("ipv4", []):
+                    local_ip = ipv4.get("address")
+                    if local_ip and (parts := local_ip.split(".")) and len(parts) == 4:
+                        potential_hosts.add(".".join([*parts[:-1], "1"]))
+                        potential_hosts.add(".".join([*parts[:-1], "254"]))
+
+        return potential_hosts
 
     async def async_step_manual_entry(
         self,
@@ -448,10 +442,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             return None
 
         # 2. Port accessibility check
-        if not await self._async_check_reachable(host, CONNECTION_TYPE_UBUS):
-            # If not ubus, might be only SSH
-            if not await self._async_check_reachable(host, CONNECTION_TYPE_SSH):
-                return None
+        if not await self._async_check_reachable(
+            host, CONNECTION_TYPE_UBUS
+        ) and not await self._async_check_reachable(host, CONNECTION_TYPE_SSH):
+            return None
 
         # 3. Deep probe for LuCI/metadata and capabilities
         capabilities = []
@@ -853,7 +847,6 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_PASSWORD): str,
             },
         )
-
         return self.async_show_form(
             step_id="reauth_confirm",
             data_schema=schema,
@@ -862,72 +855,60 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _test_connection(self, data: dict[str, Any]) -> str | None:
         """Test connection to the device. Returns error key or None on success."""
-
         client = create_client(data)
-
         try:
             async with asyncio.timeout(30):
-                await client.connect()
-                self._homeassistant_user_exists = False
-                if data.get(CONF_USERNAME) == "root":
-                    try:
-                        self._homeassistant_user_exists = await client.user_exists(
-                            "homeassistant",
-                        )
-                    except Exception:  # noqa: BLE001
-                        pass
-                device_info = await client.get_device_info()
-                self._device_info = {
-                    "hostname": device_info.hostname,
-                    "model": device_info.model,
-                    "firmware_version": device_info.firmware_version,
-                    "mac_address": device_info.mac_address,
-                }
-                try:
-                    self._permissions = await client.check_permissions()
-                except Exception as err:
-                    _LOGGER.warning("Could not check permissions: %s", err)
-                    self._permissions = None
-                try:
-                    self._packages = await client.check_packages()
-                except Exception as err:
-                    _LOGGER.warning("Could not check packages: %s", err)
-                    self._packages = None
-                await client.disconnect()
+                await self._perform_connection_test(client, data)
             return None
-        except (UbusAuthError, LuciRpcAuthError, SshAuthError, SshKeyError) as err:
-            _LOGGER.warning("Authentication failed during connection test: %s", err)
-            return "invalid_auth"
-        except (
-            UbusTimeoutError,
-            LuciRpcTimeoutError,
-            SshTimeoutError,
-            TimeoutError,
-        ) as err:
-            _LOGGER.warning("Timeout during connection test: %s", err)
-            return "timeout"
-        except (UbusConnectionError, LuciRpcConnectionError, SshConnectionError) as err:
-            _LOGGER.warning("Connection failed during connection test: %s", err)
-            return "cannot_connect"
-        except (UbusSslError, LuciRpcSslError) as err:
-            _LOGGER.warning("SSL error during connection test: %s", err)
-            return "ssl_error"
-        except (UbusPackageMissingError, LuciRpcPackageMissingError) as err:
-            _LOGGER.warning("Package missing during connection test: %s", err)
-            return "package_missing"
-        except UbusPermissionError as err:
-            _LOGGER.warning("Permission error during connection test: %s", err)
-            return "permission_error"
-        except (UbusError, LuciRpcError, SshError) as err:
-            _LOGGER.warning("API error during connection test: %s", err)
-            return "cannot_connect"
         except Exception as err:
-            _LOGGER.exception(
-                "Unexpected error during connection test for %s: %s",
-                data.get(CONF_USERNAME),
-                err,
-            )
-            return "unknown"
+            return self._handle_test_error(err, data.get(CONF_USERNAME))
+
+    async def _perform_connection_test(self, client: Any, data: dict[str, Any]) -> None:
+        """Perform the actual connection and info gathering."""
+        await client.connect()
+        self._homeassistant_user_exists = False
+        if data.get(CONF_USERNAME) == "root":
+            with contextlib.suppress(Exception):
+                self._homeassistant_user_exists = await client.user_exists("homeassistant")
+
+        info = await client.get_device_info()
+        self._device_info = {
+            "hostname": info.hostname,
+            "model": info.model,
+            "firmware_version": info.firmware_version,
+            "mac_address": info.mac_address,
+        }
+
+        with contextlib.suppress(Exception):
+            self._permissions = await client.check_permissions()
+        with contextlib.suppress(Exception):
+            self._packages = await client.check_packages()
+
+        await client.disconnect()
+
+    def _handle_test_error(self, err: Exception, username: str | None) -> str:
+        """Map connection exceptions to translation keys."""
+        if isinstance(err, (UbusAuthError, LuciRpcAuthError, SshAuthError, SshKeyError)):
+            _LOGGER.warning("Authentication failed: %s", err)
+            return "invalid_auth"
+        if isinstance(err, (UbusTimeoutError, LuciRpcTimeoutError, SshTimeoutError, TimeoutError)):
+            _LOGGER.warning("Timeout during test: %s", err)
+            return "timeout"
+        if isinstance(err, (UbusConnectionError, LuciRpcConnectionError, SshConnectionError, UbusError, LuciRpcError, SshError)):
+            _LOGGER.warning("Connection/API error: %s", err)
+            return "cannot_connect"
+        if isinstance(err, (UbusSslError, LuciRpcSslError)):
+            _LOGGER.warning("SSL error: %s", err)
+            return "ssl_error"
+        if isinstance(err, (UbusPackageMissingError, LuciRpcPackageMissingError)):
+            _LOGGER.warning("Package missing: %s", err)
+            return "package_missing"
+        if isinstance(err, UbusPermissionError):
+            _LOGGER.warning("Permission error: %s", err)
+            return "permission_error"
+
+        _LOGGER.exception("Unexpected error during connection test for %s: %s", username, err)
+        return "unknown"
 
     async def _async_probe_openwrt(
         self,
@@ -937,141 +918,84 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         """Probe a host to see if it responds like OpenWrt (LuCI/UBus)."""
         _LOGGER.debug("Probing %s (%s) for OpenWrt endpoints", host, hostname)
 
-        # 0. Quick exclusion check
         if self._is_excluded(host, hostname):
             return []
-
-        # Exclusion list for keyword searching in bodies
-        exclusions = [
-            "valetudo",
-            "manual control",
-            "dreame",
-            "roborock",
-            "vacuum",
-            "cleaner",
-            "mop",
-        ]
 
         found_methods = []
         session = async_get_clientsession(self.hass)
 
-        # 1. Try LuCI
-        luci_url = f"http://{host}/cgi-bin/luci/"
-        try:
-            async with asyncio.timeout(2):
-                async with session.get(luci_url, allow_redirects=True) as response:
-                    server = response.headers.get("Server", "").lower()
-                    if "valetudo" in server or "valetudo" in response.headers:
-                        return []
+        # 1. Try LuCI (Main endpoint and static assets)
+        if await self._probe_luci(host, session):
+            found_methods.append(CONNECTION_TYPE_LUCI_RPC)
 
-                    response_text = await response.text()
-                    if any(s in response_text.lower() for s in exclusions):
-                        _LOGGER.debug(
-                            "Excluded %s as it appears to be a vacuum/valetudo device",
-                            host,
-                        )
-                        return []
-
-                    if (
-                        any(
-                            s in response_text.lower()
-                            for s in [
-                                "luci - openwrt",
-                                "<title>luci",
-                                "ubus rpc",
-                                "cgi-bin/luci",
-                            ]
-                        )
-                        or "uhttpd" in response.headers.get("Server", "").lower()
-                    ):
-                        _LOGGER.info("Found OpenWrt via LuCI probe at %s", host)
-                        found_methods.append(CONNECTION_TYPE_LUCI_RPC)
-        except (
-            TimeoutError,
-            aiohttp.ClientError,
-        ):
-            pass
-
-        # 2. Try LuCI static asset (more specific to OpenWrt)
-        if CONNECTION_TYPE_LUCI_RPC not in found_methods:
-            asset_url = f"http://{host}/luci-static/resources/luci.js"
-            try:
-                async with asyncio.timeout(2):
-                    async with session.get(asset_url) as response:
-                        if response.status == 200:
-                            _LOGGER.info(
-                                "Found OpenWrt via LuCI asset probe at %s",
-                                host,
-                            )
-                            found_methods.append(CONNECTION_TYPE_LUCI_RPC)
-            except (
-                TimeoutError,
-                aiohttp.ClientError,
-            ):
-                pass
-
-        # Check exclusions again before UBus if we didn't find LuCI yet
-        # (This handles devices where only UBus is exposed but it's a known non-router)
-
-        # 3. Try UBus endpoint (default path)
-        ubus_url = f"http://{host}/ubus"
-        try:
-            async with asyncio.timeout(2):
-                # A direct POST to ubus with empty data should return 405 or a JSON error
-                # but it proves the endpoint exists. A router's ubus usually returns
-                # a specific JSON structure or at least application/json content type.
-                async with session.post(ubus_url, json={}) as response:
-                    content_type = response.headers.get("Content-Type", "").lower()
-                    server = response.headers.get("Server", "").lower()
-
-                    if "valetudo" in server or "valetudo" in response.headers:
-                        _LOGGER.info("Excluded %s: Valetudo detected via headers", host)
-                        return []
-
-                    if response.status in (200, 405):
-                        # Router check: UBus usually responds with application/json
-                        if "json" not in content_type and response.status == 405:
-                            _LOGGER.debug(
-                                "Excluded %s: UBus probe returned 405 but not JSON",
-                                host,
-                            )
-                            return list(set(found_methods))
-
-                        if response.status == 200:
-                            text = await response.text()
-                            if any(s in text.lower() for s in exclusions):
-                                _LOGGER.debug(
-                                    "Excluded %s: non-router keywords found in UBus response",
-                                    host,
-                                )
-                                return list(set(found_methods))
-
-                            # A 200 OK from /ubus without any JSON structure is suspicious for a router
-                            try:
-                                data = await response.json()
-                                if not isinstance(data, dict):
-                                    return list(set(found_methods))
-                            except Exception:
-                                # If it's 200 and not JSON, it's probably not ubus
-                                return list(set(found_methods))
-
-                        _LOGGER.info("Found OpenWrt via UBus probe at %s", host)
-                        found_methods.append(CONNECTION_TYPE_UBUS)
-                    else:
-                        try:
-                            # If it's a JSON error, check for exclusion in the error message if any
-                            data = await response.json()
-                            if isinstance(data, dict) and "jsonrpc" in data:
-                                found_methods.append(CONNECTION_TYPE_UBUS)
-                        except Exception:
-                            pass
-        except (
-            TimeoutError,
-            aiohttp.ClientError,
-        ):
-            pass
+        # 2. Try UBus
+        if await self._probe_ubus(host, session):
+            found_methods.append(CONNECTION_TYPE_UBUS)
 
         return list(set(found_methods))
+
+    async def _probe_luci(self, host: str, session: aiohttp.ClientSession) -> bool:
+        """Check for LuCI presence."""
+        # Check main CGI endpoint
+        luci_url = f"http://{host}/cgi-bin/luci/"
+        with contextlib.suppress(Exception):
+            async with asyncio.timeout(2):
+                async with session.get(luci_url, allow_redirects=True) as resp:
+                    server = resp.headers.get("Server", "").lower()
+                    if "valetudo" in server or "valetudo" in resp.headers:
+                        return False
+
+                    text = await resp.text()
+                    # Common non-router exclusions in text
+                    if any(s in text.lower() for s in ["valetudo", "dreame", "roborock", "vacuum"]):
+                        return False
+
+                    patterns = ["luci - openwrt", "<title>luci", "ubus rpc", "cgi-bin/luci"]
+                    if any(p in text.lower() for p in patterns) or "uhttpd" in server:
+                        return True
+
+        # Check static asset fallback
+        asset_url = f"http://{host}/luci-static/resources/luci.js"
+        with contextlib.suppress(Exception):
+            async with asyncio.timeout(2):
+                async with session.get(asset_url) as resp:
+                    if resp.status == 200:
+                        return True
+
+        return False
+
+    async def _probe_ubus(self, host: str, session: aiohttp.ClientSession) -> bool:
+        """Check for UBus presence."""
+        ubus_url = f"http://{host}/ubus"
+        with contextlib.suppress(Exception):
+            async with asyncio.timeout(2):
+                async with session.post(ubus_url, json={}) as resp:
+                    content_type = resp.headers.get("Content-Type", "").lower()
+                    server = resp.headers.get("Server", "").lower()
+
+                    if "valetudo" in server or "valetudo" in resp.headers:
+                        return False
+
+                    if resp.status in (200, 405):
+                        if "json" not in content_type and resp.status == 405:
+                            return False
+
+                        if resp.status == 200:
+                            text = (await resp.text()).lower()
+                            if any(s in text for s in ["valetudo", "vacuum", "dreame"]):
+                                return False
+                            try:
+                                if not isinstance(await resp.json(), dict):
+                                    return False
+                            except Exception:
+                                return False
+                        return True
+
+                    # Try specific JSON-RPC check
+                    with contextlib.suppress(Exception):
+                        if isinstance(await resp.json(), dict) and "jsonrpc" in await resp.json():
+                            return True
+        return False
 
     async def _async_discover_router(self) -> str | None:
         """Try to discover an OpenWrt router on common gateway IPs."""
