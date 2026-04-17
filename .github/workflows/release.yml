@@ -1,187 +1,66 @@
-name: Release
-
+﻿name: Release
 on:
   workflow_dispatch:
     inputs:
-      bump_type:
-        description: 'Version bump type'
+      release_type:
+        description: 'Release Type'
         required: true
-        default: 'patch'
         type: choice
-        options:
-          - patch
-          - minor
-          - major
-      release_status:
-        description: 'Release status'
-        required: true
-        default: 'stable'
-        type: choice
-        options:
-          - stable
-          - beta
-
+        options: [stable, beta, nightly]
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: read
+    permissions: {contents: write, packages: write}
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
+        with: {fetch-depth: 0}
       - name: Set up Python
         uses: actions/setup-python@v6
-        with:
-          python-version: '3.14'
-
-      - name: Update Version
-        id: versioning
+        with: {python-version: '3.14'}
+      - name: Calculate Version
+        id: version
         run: |
-          python .github/scripts/bump_version.py ${{ github.event.inputs.bump_type }} ${{ github.event.inputs.release_status }}
-          NEW_VERSION=$(cat VERSION.txt)
-          rm VERSION.txt
-          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          NEW_VERSION=$(python .github/scripts/version_manager.py bump --type ${{ inputs.release_type }})
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-      - name: 📝 Determine Base Tag for Changelog
-        id: base_tag
-        run: |
-          RELEASE_STATUS="${{ github.event.inputs.release_status }}"
-          echo "ℹ️ Release status: $RELEASE_STATUS"
-
-          if [[ "$RELEASE_STATUS" == "stable" ]]; then
-            # Releasing STABLE: Compare against the last tag that matches v*.*.* (excluding betas)
-            STABLE_TAGS=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" "[0-9]*.[0-9]*.[0-9]*" | grep -vE "beta" | sed 's/^v//' | sort -urV || true)
-            echo "ℹ️ Found stable tags: $STABLE_TAGS"
-            
-            CURRENT_VER="${{ env.NEW_VERSION }}"
-            FOUND_TAG=""
-            for t in $STABLE_TAGS; do
-              if [[ "$t" == "$CURRENT_VER" ]]; then
-                continue
-              fi
-              FOUND_TAG="$t"
-              if git rev-parse "v$t" >/dev/null 2>&1; then FOUND_TAG="v$t"; fi
-              break
-            done
-            echo "base_tag=$FOUND_TAG" >> $GITHUB_OUTPUT
-            echo "✅ FINAL BASE TAG: $FOUND_TAG"
-          else
-            # Releasing BETA: Compare against the absolute last tag
-            ALL_TAGS=$(git tag -l "[v0-9]*" | sed 's/^v//' | sort -rV || true)
-            CURRENT_VER="${{ env.NEW_VERSION }}"
-            FOUND_TAG=""
-            for t in $ALL_TAGS; do
-              if [[ "$t" == "$CURRENT_VER" ]]; then
-                continue
-              fi
-              FOUND_TAG="$t"
-              if git rev-parse "v$t" >/dev/null 2>&1; then FOUND_TAG="v$t"; fi
-              break
-            done
-            echo "base_tag=$FOUND_TAG" >> $GITHUB_OUTPUT
-            echo "✅ FINAL BASE TAG: $FOUND_TAG"
-          fi
-
-      - name: 📝 Build Changelog
-        id: build_changelog
-        shell: python
-        env:
-          FROM_TAG: ${{ steps.base_tag.outputs.base_tag }}
-          REPO_URL: https://github.com/${{ github.repository }}
-        run: |
-          import os, subprocess, re
-          from_tag = os.environ.get("FROM_TAG")
-          repo_url = os.environ.get("REPO_URL")
-          
-          if from_tag:
-              cmd = ["git", "log", f"{from_tag}..HEAD", "--pretty=format:%H|%h|%s", "--", "."]
-          else:
-              cmd = ["git", "log", "--pretty=format:%H|%h|%s", "--", "."]
-              
-          try:
-              commits = subprocess.check_output(cmd, text=True).strip().split("\n")
-          except Exception as e:
-              print(f"Error getting commits: {e}")
-              commits = []
-          
-          cats = {
-              "✨ Features": [],
-              "🐛 Bug Fixes": [],
-              "📦 Dependencies": [],
-              "🔧 Maintenance & CI": [],
-              "📝 Documentation": [],
-              "🧪 Tests": [],
-              "🚀 Other": []
-          }
-          
-          for line in commits:
-              if not line or "|" not in line: continue
-              fh, sh, sub = line.split("|", 2)
-              sl = sub.lower()
-              
-              if any(x in sl for x in ["chore: release", "chore: bump", "merge ", "[skip ci]"]):
-                  continue
-              
-              sub = re.sub(r"\(#(\d+)\)", rf"([#\1]({repo_url}/pull/\1))", sub)
-              entry = f"- {sub} ([{sh}]({repo_url}/commit/{fh}))"
-              
-              if re.match(r"^(feat|add|new)", sl): cats["✨ Features"].append(entry)
-              elif re.match(r"^(fix|bug|patch|fixed|fixes)", sl): cats["🐛 Bug Fixes"].append(entry)
-              elif re.match(r"^(deps|dep|update|bump|renovate|⬆️)", sl): cats["📦 Dependencies"].append(entry)
-              elif re.match(r"^(chore|ci|workflow|config|ruff)", sl): cats["🔧 Maintenance & CI"].append(entry)
-              elif re.match(r"^(docs|documentation)", sl): cats["📝 Documentation"].append(entry)
-              elif re.match(r"^(test|pytest)", sl): cats["🧪 Tests"].append(entry)
-              else: cats["🚀 Other"].append(entry)
-          
-          changelog = "## Changelog\n\n"
-          has_content = False
-          
-          for title in ["✨ Features", "🐛 Bug Fixes", "📦 Dependencies", "🔧 Maintenance & CI", "📝 Documentation", "🧪 Tests", "🚀 Other"]:
-              items = cats[title]
-              if items:
-                  changelog += f"### {title}\n"
-                  for item in items:
-                      changelog += f"{item}\n"
-                  changelog += "\n"
-                  has_content = True
-          
-          if not has_content:
-              changelog += "No significant changes in this release."
-          
-          with open("CHANGELOG_BODY.md", "w", encoding="utf-8") as f:
-              f.write(changelog)
-
       - name: Create Release Tag
+        if: inputs.release_type != 'nightly'
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add pyproject.toml custom_components/openwrt/manifest.json
-          # Only commit if there are changes
-          if ! git diff --staged --quiet; then
-            git commit -m "chore: bump version to ${{ env.NEW_VERSION }} [skip ci]"
-          fi
-          git pull --rebase origin main
-          git tag v${{ env.NEW_VERSION }}
-          git push origin main --tags
-
-      - name: 📦 Zip Component
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git commit -am "chore(release): bump version to ${{ steps.version.outputs.version }}"
+          git tag ${{ steps.version.outputs.version }}
+          git push origin ${{ steps.version.outputs.version }}
+          git push origin main
+      - name: Find Previous Tag
+        id: pre_tag
         run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "tag=$PREV_TAG" >> $GITHUB_OUTPUT
+      - name: Generate Changelog
+        if: inputs.release_type != 'nightly'
+        run: |
+          python .github/scripts/changelog_builder.py --from-tag "${{ steps.pre_tag.outputs.tag }}" --repo-url "https://github.com/${{ github.repository }}" --output "CHANGELOG_BODY.md"
+      - name: Zip Component
+        id: zip
+        if: inputs.release_type != 'nightly'
+        run: |
+          DOMAIN=$(basename $(ls -d custom_components/*/ | grep -v "__pycache__" | head -n 1))
+          echo "Found domain: $DOMAIN"
+          echo "DOMAIN=$DOMAIN" >> $GITHUB_ENV
           cd custom_components
-          zip -r ../openwrt.zip openwrt
+          zip -r ../$DOMAIN.zip $DOMAIN
           cd ..
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - name: Create Release Notes
+        uses: softprops/action-gh-release@v3
+        if: inputs.release_type != 'nightly'
         with:
-          tag_name: v${{ env.NEW_VERSION }}
-          name: Release v${{ env.NEW_VERSION }}
+          tag_name: ${{ steps.version.outputs.version }}
           body_path: CHANGELOG_BODY.md
-          draft: false
-          prerelease: ${{ github.event.inputs.release_status == 'beta' }}
-          files: openwrt.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ inputs.release_type == 'beta' }}
+          files: ${{ env.DOMAIN }}.zip
+      - name: Post-Release Dev Bump
+        if: inputs.release_type != 'nightly'
+        run: |
+          NEW_DEV=$(python .github/scripts/version_manager.py bump --type dev)
+          git commit -am "chore(dev): bump to $NEW_DEV"
+          git push origin main
