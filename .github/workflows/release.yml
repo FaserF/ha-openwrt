@@ -168,6 +168,12 @@ jobs:
           git tag v${{ env.NEW_VERSION }}
           git push origin main --tags
 
+      - name: 📦 Zip Component
+        run: |
+          cd custom_components
+          zip -r ../openwrt.zip openwrt
+          cd ..
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -176,5 +182,6 @@ jobs:
           body_path: CHANGELOG_BODY.md
           draft: false
           prerelease: ${{ github.event.inputs.release_status == 'beta' }}
+          files: openwrt.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
