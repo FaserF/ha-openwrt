@@ -47,8 +47,8 @@ jobs:
 
       - name: Validate JSON/YAML
         run: |
-          python -c "import json, glob; [json.load(open(f)) for f in glob.glob('**/*.json', recursive=True)]"
-          python -c "import yaml, glob; [yaml.safe_load(open(f)) for f in glob.glob('**/*.yaml', recursive=True) + glob.glob('**/*.yml', recursive=True)]"
+          python -c "import json, glob; [json.load(open(f, encoding='utf-8-sig')) for f in glob.glob('**/*.json', recursive=True)]"
+          python -c "import yaml, glob; [yaml.safe_load(open(f, encoding='utf-8-sig')) for f in glob.glob('**/*.yaml', recursive=True) + glob.glob('**/*.yml', recursive=True)]"
 
       - name: Check Integration Structure
         run: |
