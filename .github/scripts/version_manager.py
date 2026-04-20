@@ -39,12 +39,12 @@ def get_current_version(manifest_path):
                 )
         if v_tags:
             return sorted(v_tags, key=lambda x: x["key"], reverse=True)[0]["tag"]
-    except subprocess.CalledProcessError, IndexError, ValueError:
+    except (subprocess.CalledProcessError, IndexError, ValueError):
         pass
     if manifest_path and os.path.exists(manifest_path):
         with open(manifest_path) as f:
-            return json.load(f).get("version", "2026.1.0")
-    return "2026.1.0"
+            return json.load(f).get("version", "1.0.0")
+    return "1.0.0"
 
 
 def write_version(v, manifest_path):
@@ -60,39 +60,30 @@ def write_version(v, manifest_path):
 
 
 def calculate_version(rtype, curr):
-    now = datetime.datetime.now()
-    year, month = now.year, now.month
     match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:(b)(\d+)|(-dev)(\d+))?$", curr)
-    if match:
-        cy, cm, cp, b_p, b_n, d_p, d_n = match.groups()
-        cy, cm, cp = int(cy), int(cm), int(cp)
-        stype, snum = (
-            ("b", int(b_n)) if b_p else (("-dev", int(d_n)) if d_p else (None, 0))
-        )
-    else:
-        cy, cm, cp, stype, snum = 0, 0, 0, None, 0
-    new_cyc = year != cy or month != cm
-    p = 0 if new_cyc else cp
+    if not match:
+        # Fallback for old CalVer or invalid versions
+        return "1.5.0"
+
+    major, minor, patch, b_p, b_n, d_p, d_n = match.groups()
+    major, minor, patch = int(major), int(minor), int(patch)
+    stype, snum = ("b", int(b_n)) if b_p else (("-dev", int(d_n)) if d_p else (None, 0))
+
     if rtype == "stable":
         if stype:
-            return f"{year}.{month}.{p}"
-        return f"{year}.{month}.0" if new_cyc else f"{year}.{month}.{p + 1}"
+            return f"{major}.{minor}.{patch}"
+        return f"{major}.{minor}.{patch + 1}"
+
     if rtype == "beta":
-        if new_cyc:
-            return f"{year}.{month}.0b0"
-        return (
-            f"{year}.{month}.{p}b{snum + 1}"
-            if stype == "b"
-            else f"{year}.{month}.{p + 1}b0"
-        )
+        if stype == "b":
+            return f"{major}.{minor}.{patch}b{snum + 1}"
+        return f"{major}.{minor}.{patch + 1}b0"
+
     if rtype in ["dev", "nightly"]:
-        if new_cyc:
-            return f"{year}.{month}.0-dev0"
-        return (
-            f"{year}.{month}.{p}-dev{snum + 1}"
-            if stype == "-dev"
-            else f"{year}.{month}.{p + 1}-dev0"
-        )
+        if stype == "-dev":
+            return f"{major}.{minor}.{patch}-dev{snum + 1}"
+        return f"{major}.{minor}.{patch + 1}-dev0"
+
     raise ValueError(f"Unknown type: {rtype}")
 
 
