@@ -15,7 +15,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DATA_COORDINATOR, DOMAIN
+from .const import (
+    CONF_TRACK_DEVICES,
+    DATA_COORDINATOR,
+    DEFAULT_TRACK_DEVICES,
+    DOMAIN,
+)
 from .coordinator import OpenWrtDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,7 +36,12 @@ async def async_setup_entry(
         DATA_COORDINATOR
     ]
 
-    if coordinator.data:
+    track_devices = entry.options.get(
+        CONF_TRACK_DEVICES,
+        entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
+    )
+
+    if coordinator.data and track_devices:
         perms = coordinator.data.permissions
         if perms.read_network or perms.read_wireless:
             async_add_entities([OpenWrtNewDeviceEvent(coordinator, entry)])

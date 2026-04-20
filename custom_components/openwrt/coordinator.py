@@ -50,8 +50,6 @@ from .const import (
     CONF_PASSWORD,
     CONF_PORT,
     CONF_SSH_KEY,
-    CONF_TRACK_DEVICES,
-    CONF_TRACK_WIRED,
     CONF_UBUS_PATH,
     CONF_UPDATE_INTERVAL,
     CONF_USE_SSL,
@@ -63,8 +61,6 @@ from .const import (
     DEFAULT_PORT_SSH,
     DEFAULT_PORT_UBUS,
     DEFAULT_PORT_UBUS_SSL,
-    DEFAULT_TRACK_DEVICES,
-    DEFAULT_TRACK_WIRED,
     DEFAULT_UBUS_PATH,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
@@ -315,26 +311,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         current_time = int(time.time())
         history_updated = False
 
-        track_devices = self.config_entry.options.get(
-            CONF_TRACK_DEVICES,
-            self.config_entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
-        )
-        track_wired = self.config_entry.options.get(
-            CONF_TRACK_WIRED,
-            self.config_entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
-        )
-
         filtered_devices = []
         for device in data.connected_devices:
-            # 1. Respect global tracking options
-            if not track_devices:
-                continue
-
-            if not track_wired and not device.is_wireless:
-                continue
-
             mac = device.mac.lower()
-            # 2. Filter out router's own interfaces
+            # 1. Filter out router's own interfaces (always)
             if mac in own_macs:
                 continue
 
