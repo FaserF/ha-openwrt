@@ -22,7 +22,7 @@ def get_current_version(manifest_path):
         v_tags = []
         for tag in tags:
             tag = tag.strip()
-            match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:(b)(\d+)|(-dev)(\d+))?$", tag)
+            match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)(?:(b)(\d+)|(-dev)(\d+))?$", tag)
             if match:
                 y, m, p, bp, bn, dp, dn = match.groups()
                 v_tags.append(
@@ -48,8 +48,6 @@ def get_current_version(manifest_path):
 
 
 def write_version(v, manifest_path):
-    with open("VERSION", "w") as f:
-        f.write(v)
     if manifest_path and os.path.exists(manifest_path):
         with open(manifest_path) as f:
             data = json.load(f)
@@ -57,10 +55,19 @@ def write_version(v, manifest_path):
         with open(manifest_path, "w") as f:
             json.dump(data, f, indent=2)
             f.write("\n")
+    # Update pyproject.toml if it exists
+    if os.path.exists("pyproject.toml"):
+        with open("pyproject.toml") as f:
+            content = f.read()
+        content = re.sub(
+            r'^version\s*=\s*".*?"', f'version = "{v}"', content, flags=re.MULTILINE
+        )
+        with open("pyproject.toml", "w") as f:
+            f.write(content)
 
 
 def calculate_version(rtype, curr):
-    match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:(b)(\d+)|(-dev)(\d+))?$", curr)
+    match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)(?:(b)(\d+)|(-dev)(\d+))?$", curr)
     if not match:
         # Fallback for old CalVer or invalid versions
         return "1.5.0"
