@@ -830,7 +830,9 @@ class SshClient(OpenWrtClient):
                 if len(parts) < 2:
                     continue
                 obj_name, data_str = parts
-                iface_name = obj_name.split(".", 1)[1]
+                iface_name = (
+                    obj_name.split(".", 1)[1] if "." in obj_name else obj_name
+                )
                 try:
                     data = json.loads(data_str)
                     if data and isinstance(data, dict) and "clients" in data:

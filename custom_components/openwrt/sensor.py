@@ -33,7 +33,14 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtData, StorageUsage
-from .const import DATA_COORDINATOR, DOMAIN
+from .const import (
+    CONF_TRACK_DEVICES,
+    CONF_TRACK_WIRED,
+    DATA_COORDINATOR,
+    DEFAULT_TRACK_DEVICES,
+    DEFAULT_TRACK_WIRED,
+    DOMAIN,
+)
 from .coordinator import OpenWrtDataCoordinator
 
 
@@ -805,12 +812,27 @@ async def async_setup_entry(
         if coordinator.data.packages.iwinfo is False:
             return
 
+        track_devices = entry.options.get(
+            CONF_TRACK_DEVICES,
+            entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
+        )
+        if not track_devices:
+            return
+
+        track_wired = entry.options.get(
+            CONF_TRACK_WIRED,
+            entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
+        )
+
         new_entities: list[OpenWrtDeviceSensor] = []
         for device in coordinator.data.connected_devices:
             if not device.mac:
                 continue
             mac = device.mac.lower()
             if mac in tracked_macs:
+                continue
+
+            if not track_wired and not device.is_wireless:
                 continue
 
             tracked_macs.add(mac)

@@ -1384,7 +1384,7 @@ class LuciRpcClient(OpenWrtClient):
                 ):
                     continue
 
-        # 4. Final refinement from IP neighbors (for states)
+        # 5. Final refinement from IP neighbors (for states)
         try:
             active_states = ("REACHABLE", "DELAY", "PROBE", "PERMANENT")
             neighbors = await self.get_ip_neighbors()
