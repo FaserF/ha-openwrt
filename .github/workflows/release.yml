@@ -34,8 +34,8 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git commit -am "chore(release): bump version to ${{ steps.version.outputs.version }}"
-          git tag ${{ steps.version.outputs.version }}
-          git push origin ${{ steps.version.outputs.version }}
+          git tag v${{ steps.version.outputs.version }}
+          git push origin v${{ steps.version.outputs.version }}
           git push origin main
       - name: Find Previous Tag
         id: pre_tag
@@ -60,7 +60,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         if: inputs.release_type != 'nightly'
         with:
-          tag_name: ${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
           body_path: CHANGELOG_BODY.md
           prerelease: ${{ inputs.release_type == 'beta' }}
