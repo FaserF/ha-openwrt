@@ -389,9 +389,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     self.config_entry.unique_id or self.config_entry.data[CONF_HOST],
                 ),
             },
-            connections={(dr.CONNECTION_NETWORK_MAC, device_info.mac_address.lower())}
-            if device_info.mac_address
-            else None,
+            connections=(
+                {(dr.CONNECTION_NETWORK_MAC, device_info.mac_address.lower())}
+                if device_info.mac_address
+                else None
+            ),
             manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
             model=device_info.model or device_info.board_name,
             name=device_info.model or device_info.hostname or self.config_entry.title,

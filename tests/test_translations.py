@@ -51,15 +51,15 @@ def test_translation_files_parity():
 
         # Check for keys in strings.json but missing in translation
         missing_in_translation = strings_keys - translation_keys
-        assert not missing_in_translation, (
-            f"Keys in strings.json missing in {lang}.json: {sorted(missing_in_translation)}"
-        )
+        assert (
+            not missing_in_translation
+        ), f"Keys in strings.json missing in {lang}.json: {sorted(missing_in_translation)}"
 
         # Check for extra keys in translation not in strings.json
         extra_in_translation = translation_keys - strings_keys
-        assert not extra_in_translation, (
-            f"Extra keys in {lang}.json not in strings.json: {sorted(extra_in_translation)}"
-        )
+        assert (
+            not extra_in_translation
+        ), f"Extra keys in {lang}.json not in strings.json: {sorted(extra_in_translation)}"
 
 
 def test_translation_values_not_empty():
@@ -87,9 +87,9 @@ def test_translation_values_not_empty():
             return invalid
 
         invalid_keys = _check_values(data)
-        assert not invalid_keys, (
-            f"Invalid translation values in {file_path.name}: {sorted(invalid_keys)}"
-        )
+        assert (
+            not invalid_keys
+        ), f"Invalid translation values in {file_path.name}: {sorted(invalid_keys)}"
 
 
 def test_config_keys_in_strings():
@@ -151,9 +151,9 @@ def test_config_keys_in_strings():
             if value not in all_data_keys:
                 missing_keys.append(f"{var} ({value})")
 
-    assert not missing_keys, (
-        f"Likely configuration keys found in code but missing from 'data' sections in strings.json: {sorted(missing_keys)}"
-    )
+    assert (
+        not missing_keys
+    ), f"Likely configuration keys found in code but missing from 'data' sections in strings.json: {sorted(missing_keys)}"
 
 
 def test_steps_and_errors_translated():
@@ -177,9 +177,9 @@ def test_steps_and_errors_translated():
     )
 
     missing_steps = found_steps - translated_steps
-    assert not missing_steps, (
-        f"Steps used in code but missing in strings.json: {sorted(missing_steps)}"
-    )
+    assert (
+        not missing_steps
+    ), f"Steps used in code but missing in strings.json: {sorted(missing_steps)}"
 
     # 2. Check errors={"base": "...", ...} or errors={"field": "..."}
     errors_sec = re.findall(r"errors\s*=\s*\{([^}]+)\}", content)
@@ -197,9 +197,9 @@ def test_steps_and_errors_translated():
         e for e in missing_errors if not e.startswith("{") and e not in ["base"]
     }
 
-    assert not missing_errors, (
-        f"Error keys used in code but missing in strings.json: {sorted(missing_errors)}"
-    )
+    assert (
+        not missing_errors
+    ), f"Error keys used in code but missing in strings.json: {sorted(missing_errors)}"
 
     # 3. Check async_abort(reason="...")
     found_abort_reasons = set(
@@ -209,6 +209,6 @@ def test_steps_and_errors_translated():
         options_data.get("abort", {}).keys(),
     )
     missing_aborts = found_abort_reasons - translated_aborts
-    assert not missing_aborts, (
-        f"Abort reasons used in code but missing in strings.json: {sorted(missing_aborts)}"
-    )
+    assert (
+        not missing_aborts
+    ), f"Abort reasons used in code but missing in strings.json: {sorted(missing_aborts)}"

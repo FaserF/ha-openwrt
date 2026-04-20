@@ -1049,10 +1049,10 @@ def _create_device_sensors(
             "Signal Strength",
             "device_signal",
             "dBm",
-            lambda d, m=mac: next(
+            lambda d, m=mac: next(  # type: ignore
                 (x.signal for x in d.connected_devices if x.mac == m), None
             ),
-            lambda d, m=mac: any(
+            lambda d, m=mac: any(  # type: ignore
                 x.mac == m and x.is_wireless for x in d.connected_devices
             ),
         ),
@@ -1061,11 +1061,11 @@ def _create_device_sensors(
             "RX Rate",
             "device_rx_rate",
             "Mbps",
-            lambda d, m=mac: next(
+            lambda d, m=mac: next(  # type: ignore
                 (round(x.rx_rate / 1000, 1) for x in d.connected_devices if x.mac == m),
                 None,
             ),
-            lambda d, m=mac: any(
+            lambda d, m=mac: any(  # type: ignore
                 x.mac == m and x.rx_rate > 0 for x in d.connected_devices
             ),
         ),
@@ -1074,11 +1074,11 @@ def _create_device_sensors(
             "TX Rate",
             "device_tx_rate",
             "Mbps",
-            lambda d, m=mac: next(
+            lambda d, m=mac: next(  # type: ignore
                 (round(x.tx_rate / 1000, 1) for x in d.connected_devices if x.mac == m),
                 None,
             ),
-            lambda d, m=mac: any(
+            lambda d, m=mac: any(  # type: ignore
                 x.mac == m and x.tx_rate > 0 for x in d.connected_devices
             ),
         ),
@@ -1087,10 +1087,10 @@ def _create_device_sensors(
             "Noise Level",
             "device_noise",
             "dBm",
-            lambda d, m=mac: next(
+            lambda d, m=mac: next(  # type: ignore
                 (x.noise for x in d.connected_devices if x.mac == m), None
             ),
-            lambda d, m=mac: any(
+            lambda d, m=mac: any(  # type: ignore
                 x.mac == m and x.is_wireless for x in d.connected_devices
             ),
         ),
@@ -1099,7 +1099,7 @@ def _create_device_sensors(
             "Connection Type",
             "device_connection_type",
             None,
-            lambda d, m=mac: next(
+            lambda d, m=mac: next(  # type: ignore
                 (x.connection_type for x in d.connected_devices if x.mac == m), None
             ),
             None,
@@ -1184,7 +1184,7 @@ def _create_wifi_base_sensors(
                 translation_key="wifi_clients",
                 name=f"{label} Clients",
                 state_class=SensorStateClass.MEASUREMENT,
-                value_fn=lambda data, n=iface_name: sum(
+                value_fn=lambda data, n=iface_name: sum(  # type: ignore
                     1
                     for d in data.connected_devices
                     if d.is_wireless and d.connected and d.interface == n
@@ -1216,7 +1216,7 @@ def _create_wifi_base_sensors(
                     native_unit_of_measurement="dBm" if key == "txpower" else None,
                     entity_category=cat,
                     entity_registry_enabled_default=enabled,
-                    value_fn=lambda data, n=iface_name, k=key: next(
+                    value_fn=lambda data, n=iface_name, k=key: next(  # type: ignore
                         (
                             getattr(w, k)
                             for w in data.wireless_interfaces
@@ -1256,14 +1256,14 @@ def _create_wifi_station_sensors(
                 device_class=SensorDeviceClass.SIGNAL_STRENGTH,
                 state_class=SensorStateClass.MEASUREMENT,
                 entity_category=EntityCategory.DIAGNOSTIC,
-                value_fn=lambda data, n=iface_name: next(
+                value_fn=lambda data, n=iface_name: next(  # type: ignore
                     (w.signal for w in data.wireless_interfaces if w.name == n),
                     None,
                 ),
-                available_fn=lambda data, n=iface_name: any(
+                available_fn=lambda data, n=iface_name: any(  # type: ignore
                     w.name == n and w.signal != 0 for w in data.wireless_interfaces
                 ),
-                attrs_fn=lambda data, n=iface_name: next(
+                attrs_fn=lambda data, n=iface_name: next(  # type: ignore
                     (
                         {
                             "noise": w.noise,
@@ -1304,15 +1304,19 @@ def _create_wifi_station_sensors(
                     translation_key=tkey,
                     name=f"{label} {name}",
                     native_unit_of_measurement=unit,
-                    device_class=SensorDeviceClass.DATA_RATE
-                    if key == "bitrate"
-                    else SensorDeviceClass.SIGNAL_STRENGTH
-                    if key == "noise"
-                    else None,
+                    device_class=(
+                        SensorDeviceClass.DATA_RATE
+                        if key == "bitrate"
+                        else (
+                            SensorDeviceClass.SIGNAL_STRENGTH
+                            if key == "noise"
+                            else None
+                        )
+                    ),
                     state_class=sclass,
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
-                    value_fn=lambda data, n=iface_name, k=key: next(
+                    value_fn=lambda data, n=iface_name, k=key: next(  # type: ignore
                         (
                             getattr(w, k)
                             for w in data.wireless_interfaces
@@ -1348,7 +1352,7 @@ def _create_sqm_sensors(
                 name=f"SQM {name} Interface",
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
-                value_fn=lambda data, sid=section_id: next(
+                value_fn=lambda data, sid=section_id: next(  # type: ignore
                     (s.interface for s in data.sqm if s.section_id == sid),
                     None,
                 ),
@@ -1367,7 +1371,7 @@ def _create_sqm_sensors(
                 name=f"SQM {name} Qdisc",
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
-                value_fn=lambda data, sid=section_id: next(
+                value_fn=lambda data, sid=section_id: next(  # type: ignore
                     (s.qdisc for s in data.sqm if s.section_id == sid),
                     None,
                 ),
@@ -1386,7 +1390,7 @@ def _create_sqm_sensors(
                 name=f"SQM {name} Script",
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
-                value_fn=lambda data, sid=section_id: next(
+                value_fn=lambda data, sid=section_id: next(  # type: ignore
                     (s.script for s in data.sqm if s.section_id == sid),
                     None,
                 ),
@@ -1442,7 +1446,7 @@ def _create_net_traffic_sensors(
                     state_class=SensorStateClass.TOTAL_INCREASING,
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
-                    value_fn=lambda data, n=iface_name, d=direction: next(
+                    value_fn=lambda data, n=iface_name, d=direction: next(  # type: ignore
                         (
                             _bytes_to_mb(getattr(i, f"{d}_bytes"))
                             for i in data.network_interfaces
@@ -1450,7 +1454,7 @@ def _create_net_traffic_sensors(
                         ),
                         0,
                     ),
-                    attrs_fn=lambda data, n=iface_name, d=direction: next(
+                    attrs_fn=lambda data, n=iface_name, d=direction: next(  # type: ignore
                         (
                             {
                                 "errors": getattr(i, f"{d}_errors"),
@@ -1490,16 +1494,16 @@ def _create_net_address_sensors(
                 translation_key="net_ipv4",
                 translation_placeholders={"interface": iface_name},
                 entity_category=EntityCategory.DIAGNOSTIC,
-                value_fn=lambda data, n=iface_name: next(
+                value_fn=lambda data, n=iface_name: next(  # type: ignore
                     (i.ipv4_address for i in data.network_interfaces if i.name == n),
                     None,
                 ),
-                attrs_fn=lambda data, n=iface_name: next(
+                attrs_fn=lambda data, n=iface_name: next(  # type: ignore
                     (
                         {
-                            "dns_servers": ", ".join(i.dns_servers)
-                            if i.dns_servers
-                            else "none"
+                            "dns_servers": (
+                                ", ".join(i.dns_servers) if i.dns_servers else "none"
+                            )
                         }
                         for i in data.network_interfaces
                         if i.name == n
@@ -1521,11 +1525,11 @@ def _create_net_address_sensors(
                 translation_placeholders={"interface": iface_name},
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
-                value_fn=lambda data, n=iface_name: next(
+                value_fn=lambda data, n=iface_name: next(  # type: ignore
                     (i.ipv6_address for i in data.network_interfaces if i.name == n),
                     None,
                 ),
-                available_fn=lambda data, n=iface_name: any(
+                available_fn=lambda data, n=iface_name: any(  # type: ignore
                     i.name == n and i.ipv6_address for i in data.network_interfaces
                 ),
             ),
@@ -1552,11 +1556,11 @@ def _create_net_status_sensors(
                 translation_placeholders={"interface": iface_name},
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
-                value_fn=lambda data, n=iface_name: next(
+                value_fn=lambda data, n=iface_name: next(  # type: ignore
                     (i.speed for i in data.network_interfaces if i.name == n),
                     None,
                 ),
-                attrs_fn=lambda data, n=iface_name: next(
+                attrs_fn=lambda data, n=iface_name: next(  # type: ignore
                     (
                         {"duplex": i.duplex}
                         for i in data.network_interfaces
@@ -1564,7 +1568,7 @@ def _create_net_status_sensors(
                     ),
                     {},
                 ),
-                available_fn=lambda data, n=iface_name: any(
+                available_fn=lambda data, n=iface_name: any(  # type: ignore
                     i.name == n and i.speed for i in data.network_interfaces
                 ),
             ),
@@ -1585,7 +1589,7 @@ def _create_net_status_sensors(
                 state_class=SensorStateClass.TOTAL_INCREASING,
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
-                value_fn=lambda data, n=iface_name: next(
+                value_fn=lambda data, n=iface_name: next(  # type: ignore
                     (
                         round(i.uptime / 60, 1)
                         for i in data.network_interfaces
@@ -1593,7 +1597,7 @@ def _create_net_status_sensors(
                     ),
                     None,
                 ),
-                available_fn=lambda data, n=iface_name: any(
+                available_fn=lambda data, n=iface_name: any(  # type: ignore
                     i.name == n and i.uptime > 0 for i in data.network_interfaces
                 ),
             ),
@@ -1621,7 +1625,7 @@ def _create_net_rate_sensors(
                     native_unit_of_measurement="Mbps",
                     state_class=SensorStateClass.MEASUREMENT,
                     entity_registry_enabled_default=False,
-                    value_fn=lambda data, n=iface_name, d=direction: next(
+                    value_fn=lambda data, n=iface_name, d=direction: next(  # type: ignore
                         (
                             getattr(i, f"{d}_rate")
                             for i in data.network_interfaces
@@ -1658,7 +1662,7 @@ def _create_vpn_sensors(
                 state_class=SensorStateClass.TOTAL_INCREASING,
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
-                value_fn=lambda data, n=iface_name: next(
+                value_fn=lambda data, n=iface_name: next(  # type: ignore
                     (
                         _bytes_to_mb(v.rx_bytes)
                         for v in data.vpn_interfaces
@@ -1684,7 +1688,7 @@ def _create_vpn_sensors(
                 state_class=SensorStateClass.TOTAL_INCREASING,
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
-                value_fn=lambda data, n=iface_name: next(
+                value_fn=lambda data, n=iface_name: next(  # type: ignore
                     (
                         _bytes_to_mb(v.tx_bytes)
                         for v in data.vpn_interfaces
@@ -1707,11 +1711,11 @@ def _create_vpn_sensors(
                     translation_key="vpn_peers",
                     state_class=SensorStateClass.MEASUREMENT,
                     entity_registry_enabled_default=False,
-                    value_fn=lambda data, n=iface_name: next(
+                    value_fn=lambda data, n=iface_name: next(  # type: ignore
                         (v.peers for v in data.vpn_interfaces if v.name == n),
                         0,
                     ),
-                    attrs_fn=lambda data, n=iface_name: next(
+                    attrs_fn=lambda data, n=iface_name: next(  # type: ignore
                         (
                             {"latest_handshake": v.latest_handshake, "type": v.type}
                             for v in data.vpn_interfaces
@@ -1743,7 +1747,7 @@ def _create_mwan_sensors(
                 name=f"MWAN {iface_name} Online Ratio",
                 native_unit_of_measurement=PERCENTAGE,
                 state_class=SensorStateClass.MEASUREMENT,
-                value_fn=lambda data, n=iface_name: next(
+                value_fn=lambda data, n=iface_name: next(  # type: ignore
                     (
                         m.online_ratio * 100
                         for m in data.mwan_status
@@ -1771,7 +1775,7 @@ def _create_lldp_sensors(
                 name=f"LLDP Neighbor on {local_interface}",
                 translation_key="lldp_neighbor",
                 entity_category=EntityCategory.DIAGNOSTIC,
-                value_fn=lambda data, i=local_interface: next(
+                value_fn=lambda data, i=local_interface: next(  # type: ignore
                     (
                         n.neighbor_name or n.neighbor_system_name or n.neighbor_chassis
                         for n in data.lldp_neighbors
@@ -1779,7 +1783,7 @@ def _create_lldp_sensors(
                     ),
                     None,
                 ),
-                attrs_fn=lambda data, i=local_interface: next(
+                attrs_fn=lambda data, i=local_interface: next(  # type: ignore
                     (
                         {
                             "local_interface": n.local_interface,

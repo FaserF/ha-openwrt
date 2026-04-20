@@ -92,7 +92,7 @@ def _async_setup_mwan_binary_sensors(
                     device_class=BinarySensorDeviceClass.CONNECTIVITY,
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
-                    is_on_fn=lambda data, n=mwan.interface_name: any(
+                    is_on_fn=lambda data, n=mwan.interface_name: any(  # type: ignore
                         m.status == "online"
                         for m in data.mwan_status
                         if m.interface_name == n
@@ -122,7 +122,7 @@ def _async_setup_interface_binary_sensors(
                             "interface": iface.name.upper(),
                         },
                         device_class=BinarySensorDeviceClass.CONNECTIVITY,
-                        is_on_fn=lambda data, n=iface.name: any(
+                        is_on_fn=lambda data, n=iface.name: any(  # type: ignore
                             i.up for i in data.network_interfaces if i.name == n
                         ),
                     ),
@@ -156,7 +156,7 @@ def _async_setup_vpn_binary_sensors(
                     device_class=BinarySensorDeviceClass.CONNECTIVITY,
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
-                    is_on_fn=lambda data, n=vpn.name: any(
+                    is_on_fn=lambda data, n=vpn.name: any(  # type: ignore
                         v.up for v in data.vpn_interfaces if v.name == n
                     ),
                 ),

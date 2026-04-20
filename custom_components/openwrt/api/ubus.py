@@ -2194,15 +2194,19 @@ class UbusClient(OpenWrtClient):
                                 LldpNeighbor(
                                     local_interface=name or "",
                                     neighbor_name=neigh.get("name", ""),
-                                    neighbor_port=neigh.get("port", {}).get("id", "")
-                                    if isinstance(neigh.get("port"), dict)
-                                    else "",
-                                    neighbor_chassis=neigh.get("chassis", {}).get(
-                                        "id",
-                                        "",
-                                    )
-                                    if isinstance(neigh.get("chassis"), dict)
-                                    else "",
+                                    neighbor_port=(
+                                        neigh.get("port", {}).get("id", "")
+                                        if isinstance(neigh.get("port"), dict)
+                                        else ""
+                                    ),
+                                    neighbor_chassis=(
+                                        neigh.get("chassis", {}).get(
+                                            "id",
+                                            "",
+                                        )
+                                        if isinstance(neigh.get("chassis"), dict)
+                                        else ""
+                                    ),
                                     neighbor_description=neigh.get("description", ""),
                                     neighbor_system_name=neigh.get("sysname", ""),
                                 ),

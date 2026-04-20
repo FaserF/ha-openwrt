@@ -131,9 +131,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
                 config_entry_id=entry.entry_id,
                 identifiers={(DOMAIN, f"{entry.unique_id}_ap_{wifi.name}")},
                 name=f"AP {wifi.ssid or wifi.name}",
-                manufacturer=device_info.release_distribution or ATTR_MANUFACTURER
-                if device_info
-                else ATTR_MANUFACTURER,
+                manufacturer=(
+                    device_info.release_distribution or ATTR_MANUFACTURER
+                    if device_info
+                    else ATTR_MANUFACTURER
+                ),
                 model="Access Point",
                 via_device=(DOMAIN, cast(str, entry.unique_id)),
             )
