@@ -152,12 +152,12 @@ class MockDataUpdateCoordinator:
 
 
 sys.modules["homeassistant.helpers.update_coordinator"] = MagicMock()
-sys.modules["homeassistant.helpers.update_coordinator"].CoordinatorEntity = (
-    MockCoordinatorEntity
-)
-sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = (
-    MockDataUpdateCoordinator
-)
+sys.modules[
+    "homeassistant.helpers.update_coordinator"
+].CoordinatorEntity = MockCoordinatorEntity
+sys.modules[
+    "homeassistant.helpers.update_coordinator"
+].DataUpdateCoordinator = MockDataUpdateCoordinator
 
 
 class MockConfigFlow:
@@ -273,9 +273,9 @@ sys.modules["homeassistant.components.sensor"].SensorStateClass = MockEnum(
 sys.modules["homeassistant.components.sensor"].SensorDeviceClass = MockEnum(
     "SensorDeviceClass",
 )
-sys.modules["homeassistant.components.binary_sensor"].BinarySensorDeviceClass = (
-    MockEnum("BinarySensorDeviceClass")
-)
+sys.modules[
+    "homeassistant.components.binary_sensor"
+].BinarySensorDeviceClass = MockEnum("BinarySensorDeviceClass")
 sys.modules["homeassistant.components.update"].UpdateDeviceClass = MockEnum(
     "UpdateDeviceClass",
 )

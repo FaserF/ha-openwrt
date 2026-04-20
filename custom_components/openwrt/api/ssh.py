@@ -816,7 +816,9 @@ class SshClient(OpenWrtClient):
                         dev.connection_type = (
                             "5GHz"
                             if "5g" in iface.lower()
-                            else "2.4GHz" if "2g" in iface.lower() else "wireless"
+                            else "2.4GHz"
+                            if "2g" in iface.lower()
+                            else "wireless"
                         )
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("iwinfo wireless discovery failed: %s", err)
