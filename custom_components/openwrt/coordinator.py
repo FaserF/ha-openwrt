@@ -382,11 +382,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     break
 
         _LOGGER.debug(
-            "Updating device registry for %s: model=%s, mac=%s, via=%s",
+            "Updating device registry for %s: model=%s",
             self.config_entry.unique_id or self.config_entry.data[CONF_HOST],
             device_info.model,
-            device_info.mac_address,
-            via_device,
         )
 
         device_registry.async_get_or_create(

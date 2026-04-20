@@ -229,7 +229,12 @@ class SshClient(OpenWrtClient):
             import paramiko  # type: ignore
 
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.load_system_host_keys()
+            
+            if self.verify_ssl:
+                client.set_missing_host_key_policy(paramiko.RejectPolicy())
+            else:
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             connect_kwargs: dict[str, Any] = {
                 "hostname": self.host,

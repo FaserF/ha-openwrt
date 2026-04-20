@@ -218,7 +218,7 @@ class LuciRpcClient(OpenWrtClient):
         try:
             return await self._rpc_call("sys", "exec", [command]) or ""
         except LuciRpcError as err:
-            _LOGGER.debug("Command failed via LuCI RPC sys.exec: %s (%s)", command, err)
+            _LOGGER.debug("Command failed via LuCI RPC sys.exec: %s", err)
             return ""
 
     async def user_exists(self, username: str) -> bool:

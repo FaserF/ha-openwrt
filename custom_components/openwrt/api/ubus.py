@@ -1875,13 +1875,12 @@ class UbusClient(OpenWrtClient):
             return res.get("stdout", "")
         except UbusPermissionError as err:
             _LOGGER.debug(
-                "Permission denied for command via ubus file.exec: %s (%s)",
-                command,
+                "Permission denied for command via ubus file.exec: %s",
                 err,
             )
             return ""
         except UbusError as err:
-            _LOGGER.debug("Command failed via ubus file.exec: %s (%s)", command, err)
+            _LOGGER.debug("Command failed via ubus file.exec: %s", err)
             return ""
 
     async def user_exists(self, username: str) -> bool:
