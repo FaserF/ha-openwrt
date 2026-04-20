@@ -8,8 +8,12 @@ from typing import Any, cast
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+)
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -64,6 +68,40 @@ async def async_setup_entry(
         _add_package_switches(coordinator, entry, client, entities, pkgs)
 
     async_add_entities(entities)
+
+    @callback
+    def _async_cleanup_entities() -> None:
+        """Clean up orphaned or incorrect entities."""
+        ent_reg = er.async_get(hass)
+        entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+
+        track_devices = entry.options.get(
+            CONF_TRACK_DEVICES,
+            entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
+        )
+        track_wired = entry.options.get(
+            CONF_TRACK_WIRED,
+            entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
+        )
+
+        for ent in entries:
+            if ent.domain != "switch":
+                continue
+
+            unique_id = ent.unique_id
+            # Cleanup access control switches if settings changed
+            if "_access_control_" in unique_id:
+                if not track_devices:
+                    ent_reg.async_remove(ent.entity_id)
+                    continue
+
+                mac = unique_id.split("_access_control_")[-1].lower()
+                if not track_wired and mac in coordinator._device_history:
+                    if not coordinator._device_history[mac].get("is_wireless"):
+                        ent_reg.async_remove(ent.entity_id)
+                        continue
+
+    hass.add_job(_async_cleanup_entities)
 
 
 def _add_wireless_switches(

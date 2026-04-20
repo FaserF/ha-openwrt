@@ -330,10 +330,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 self._device_history[mac] = {
                     "initially_seen": current_time,
                     "last_seen": current_time,
+                    "is_wireless": device.is_wireless,
                 }
                 history_updated = True
             else:
-                self._device_history[mac]["last_seen"] = current_time
+                hist = self._device_history[mac]
+                hist["last_seen"] = current_time
+                # Persistence: if it was EVER wireless, it stays wireless in history
+                # to avoid fake-wired entries from DHCP leases when offline.
+                if device.is_wireless and not hist.get("is_wireless"):
+                    hist["is_wireless"] = True
                 history_updated = True
 
         data.connected_devices = filtered_devices

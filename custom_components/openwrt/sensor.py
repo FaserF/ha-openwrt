@@ -26,7 +26,10 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+)
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -249,6 +252,7 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         self._value_fn = value_fn
         self._available_fn = available_fn
         self._attr_unique_id = f"{entry.entry_id}_{self._mac}_{description.key}"
+        self._attr_name = description.name
         self._entry = entry
         self._initial_name = device_name or mac
 
@@ -292,10 +296,6 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
             return self._available_fn(self.coordinator.data)
         return True
 
-    @property
-    def name(self) -> str | None:
-        """Return the name of the entity."""
-        return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -844,6 +844,51 @@ async def async_setup_entry(
     _async_add_device_sensors()
     entry.async_on_unload(coordinator.async_add_listener(_async_add_device_sensors))
 
+    @callback
+    def _async_cleanup_entities() -> None:
+        """Clean up orphaned or old-format entities."""
+        ent_reg = er.async_get(hass)
+        entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+
+        track_devices = entry.options.get(
+            CONF_TRACK_DEVICES,
+            entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
+        )
+        track_wired = entry.options.get(
+            CONF_TRACK_WIRED,
+            entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
+        )
+
+        for ent in entries:
+            if ent.domain != "sensor":
+                continue
+
+            unique_id = ent.unique_id
+            
+            # 1. Cleanup by settings
+            if "_device_" in unique_id:
+                if not track_devices:
+                    ent_reg.async_remove(ent.entity_id)
+                    continue
+
+                # Identify MAC from unique_id
+                # New format: entry_id_mac_device_key
+                parts = unique_id.split("_")
+                if len(parts) >= 4:
+                    mac = parts[1]
+                    # Pattern check for old format: entry_id_mac_device_mac_key
+                    if f"_device_{mac}_" in unique_id:
+                        ent_reg.async_remove(ent.entity_id)
+                        continue
+
+                    # Wired cleanup
+                    if not track_wired and mac in coordinator._device_history:
+                        if not coordinator._device_history[mac].get("is_wireless"):
+                            ent_reg.async_remove(ent.entity_id)
+                            continue
+
+    hass.add_job(_async_cleanup_entities)
+
 
 def _async_setup_system_sensors(
     coordinator: OpenWrtDataCoordinator,
@@ -1134,7 +1179,7 @@ def _create_device_sensors(
             entry,
             mac,
             SensorEntityDescription(
-                key=f"device_{mac}_{key}",
+                key=f"device_{key}",
                 name=name,
                 translation_key=tkey,
                 native_unit_of_measurement=unit,

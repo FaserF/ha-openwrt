@@ -13,9 +13,9 @@ from homeassistant.components.button import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -111,6 +111,28 @@ async def async_setup_entry(
 
     # Register listener and run initial discovery
     entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
+    _async_add_new_entities()
+
+    @callback
+    def _async_cleanup_entities() -> None:
+        """Clean up orphaned or incorrect entities."""
+        ent_reg = er.async_get(hass)
+        entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+
+        for ent in entries:
+            if ent.domain != "button":
+                continue
+
+            unique_id = ent.unique_id
+            # Cleanup incorrectly created WoL buttons for wireless devices
+            if "_wol_" in unique_id:
+                mac = unique_id.split("_wol_")[-1].lower()
+                if mac in coordinator._device_history:
+                    if coordinator._device_history[mac].get("is_wireless"):
+                        ent_reg.async_remove(ent.entity_id)
+                        continue
+
+    hass.add_job(_async_cleanup_entities)
     _async_add_new_entities()
 
 
@@ -307,10 +329,17 @@ def _get_unique_devices(
             continue
         mac_lower = lease.mac.lower()
         if mac_lower not in unique:
+            # Check history to see if it's a known wireless device
+            hist_wireless = False
+            if mac_lower in coordinator._device_history:
+                hist_wireless = coordinator._device_history[mac_lower].get(
+                    "is_wireless", False
+                )
+
             unique[mac_lower] = {
                 "mac": lease.mac,
                 "hostname": lease.hostname,
-                "is_wireless": False,
+                "is_wireless": hist_wireless,
                 "interface": None,
                 "active": False,
             }

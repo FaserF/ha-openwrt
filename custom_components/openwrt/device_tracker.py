@@ -19,6 +19,7 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
     device_registry as dr,
+    entity_registry as er,
 )
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -45,11 +46,50 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up device tracker from config entry."""
-    track_devices = entry.options.get(
+    coordinator: OpenWrtDataCoordinator = hass.data[DOMAIN][entry.entry_id][
+        DATA_COORDINATOR
+    ]
+
+    @callback
+    def _async_cleanup_entities() -> None:
+        """Clean up device trackers that should no longer be tracked."""
+        ent_reg = er.async_get(hass)
+        entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+
+        track_devices = entry.options.get(
+            CONF_TRACK_DEVICES,
+            entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
+        )
+        track_wired = entry.options.get(
+            CONF_TRACK_WIRED,
+            entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
+        )
+
+        for ent in entries:
+            if ent.domain != "device_tracker":
+                continue
+
+            # Remove ALL device trackers if disabled
+            if not track_devices:
+                ent_reg.async_remove(ent.entity_id)
+                continue
+
+            # Remove wired trackers if wired tracking is disabled
+            # We identify them by their unique_id which ends with mac
+            unique_id = ent.unique_id
+            mac = unique_id.split("_")[-1].lower()
+            
+            # Check history to see if it's wired
+            if not track_wired and mac in coordinator._device_history:
+                if not coordinator._device_history[mac].get("is_wireless"):
+                    ent_reg.async_remove(ent.entity_id)
+
+    hass.add_job(_async_cleanup_entities)
+
+    if not entry.options.get(
         CONF_TRACK_DEVICES,
         entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
-    )
-    if not track_devices:
+    ):
         return
 
     coordinator: OpenWrtDataCoordinator = hass.data[DOMAIN][entry.entry_id][

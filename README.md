@@ -172,13 +172,24 @@ Some features require additional OpenWrt packages to be installed on your router
 | **wireguard-tools** | WireGuard VPN Sensors |
 | **openvpn** | OpenVPN Sensors |
 
-## 🛠️ Options Flow
+### 🛠️ Options Flow
 
-After configuration, click **Configure** on the integration page to adjust:
+After configuration, click **Configure** on the integration page to adjust performance and tracking behavior.
+
+#### 📡 Device Tracking Settings Explained
+You can control how the integration handles network clients (PCs, phones, IoT devices). These settings help you balance detail vs. dashboard clutter.
+
+| Option | Effect when **ON** | Effect when **OFF** |
+|:--- |:--- |:--- |
+| **Track network clients** | Creates individual `device_tracker` entities, signal sensors, and control switches (WoL, Internet Access) for every device. | **No individual device entities** are created. Recommended for large networks to prevent Home Assistant database bloat. |
+| **Include wired devices** | Tracks every device in the ARP/Neighbor table, including wired PCs and servers. | **Only WiFi clients** are tracked. Ideal if you only care about mobile presence detection. |
+
+> [!TIP]
+> **Summary Sensors stay active!** Even if you disable "Track network clients", the **Connected Clients** and **Wireless Clients** sensors will always show the correct total count of active devices on your network.
+
+#### Other Options
 - **Update Interval**: How frequently to poll data (default 30s). Adjust based on your router's performance.
-- **Device Tracking**: Enable/disable device tracking.
-- **Track Wired Devices**: If enabled, Home Assistant will also track devices found in the ARP/Neighbor table, even if they aren't on WiFi.
-- **Consider Home**: Set the grace period (in seconds) for device presence detection (prevents devices from switching to "Away" during brief sleep cycles).
+- **Consider Home**: Set the grace period (in seconds) for device presence detection (prevents devices from switching to "Away" during brief sleep cycles). Default is 180s.
 - **DHCP Software**: 
   - `Auto-detect`: Best for most users.
   - `dnsmasq`: Uses `/tmp/dhcp.leases`.

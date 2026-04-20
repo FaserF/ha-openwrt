@@ -1741,8 +1741,10 @@ class LuciRpcClient(OpenWrtClient):
                     section = parts[1]
                     if section not in sections:
                         sections[section] = {}
-                    if len(parts) >= 3:
-                        sections[section][parts[2]] = val.strip("'")
+                    if len(parts) == 2:
+                        sections[section][".type"] = val.strip("'\"").strip()
+                    elif len(parts) >= 3:
+                        sections[section][parts[2]] = val.strip("'\"").strip()
 
             for section_id, data in sections.items():
                 if data.get(".type") == "rule":
@@ -1786,8 +1788,10 @@ class LuciRpcClient(OpenWrtClient):
                     section = parts[1]
                     if section not in sections:
                         sections[section] = {}
-                    if len(parts) >= 3:
-                        sections[section][parts[2]] = val.strip("'")
+                    if len(parts) == 2:
+                        sections[section][".type"] = val.strip("'\"").strip()
+                    elif len(parts) >= 3:
+                        sections[section][parts[2]] = val.strip("'\"").strip()
 
             for section_id, data in sections.items():
                 if data.get(".type") == "redirect":
