@@ -34,7 +34,7 @@ from homeassistant.helpers import (
 )
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import StateType
+from homeassistant.helpers.typing import UNDEFINED, StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtData, StorageUsage
@@ -254,7 +254,9 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         self._value_fn = value_fn
         self._available_fn = available_fn
         self._attr_unique_id = f"{entry.entry_id}_{self._mac}_{description.key}"
-        self._attr_name = description.name
+        self._attr_name = (
+            cast(str, description.name) if description.name is not UNDEFINED else None
+        )
         self._entry = entry
         self._initial_name = device_name or mac
 
@@ -278,7 +280,8 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
 
         return DeviceInfo(
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
-            name=self.name or self._initial_name,
+            name=(self.name if self.name is not UNDEFINED else None)
+            or self._initial_name,
             via_device=via_device,
         )
 
