@@ -158,7 +158,7 @@ def _add_service_buttons(
                         translation_key=f"service_{action}",
                         translation_placeholders={"service": service.name},
                         entity_category=EntityCategory.CONFIG,
-                        press_fn=lambda c, n=service.name, a=action: c.manage_service(  # type: ignore
+                        press_fn=lambda c, n=service.name, a=action: c.manage_service(
                             n, a
                         ),
                     ),
@@ -192,7 +192,7 @@ def _add_interface_buttons(
                         translation_key="interface_reconnect",
                         translation_placeholders={"interface": iface.name.upper()},
                         entity_category=EntityCategory.CONFIG,
-                        press_fn=lambda c, n=iface.name: c.manage_interface(  # type: ignore
+                        press_fn=lambda c, n=iface.name: c.manage_interface(
                             n, "reconnect"
                         ),
                     ),

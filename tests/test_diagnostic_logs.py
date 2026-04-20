@@ -22,7 +22,7 @@ async def test_ubus_get_system_logs():
 
         assert len(logs) == 4
         assert logs[2] == "ERROR: something failed"
-        mock_exec.assert_called_once_with("logread -n 10")
+        mock_exec.assert_any_call("logread -n 10")
 
 
 @pytest.mark.asyncio
@@ -38,7 +38,7 @@ async def test_ssh_get_system_logs():
 
         assert len(logs) == 2
         assert "ssh log line 1" in logs
-        mock_exec.assert_called_once_with("logread -n 5")
+        mock_exec.assert_any_call("logread -n 5")
 
 
 @pytest.mark.asyncio
@@ -54,4 +54,4 @@ async def test_luci_rpc_get_system_logs():
         logs = await client.get_system_logs(count=20)
 
         assert len(logs) == 2
-        mock_rpc.assert_called_once_with("sys", "exec", ["logread -n 20"])
+        mock_rpc.assert_any_call("sys", "exec", ["logread -n 20"])

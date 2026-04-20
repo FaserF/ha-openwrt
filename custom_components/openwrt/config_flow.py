@@ -189,7 +189,7 @@ def _generate_package_table(
     )
 
 
-class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore
+class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OpenWrt."""
 
     VERSION = 2

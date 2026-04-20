@@ -2043,7 +2043,8 @@ class LuciRpcClient(OpenWrtClient):
     async def get_system_logs(self, count: int = 10) -> list[str]:
         """Get recent system log entries via LuCI RPC."""
         try:
-            output = await self._rpc_call("sys", "exec", [f"logread -n {count}"])
+            cmd = await self._get_logread_command(count)
+            output = await self._rpc_call("sys", "exec", [cmd])
             if output:
                 return [line.strip() for line in output.splitlines() if line.strip()]
         except Exception as err:

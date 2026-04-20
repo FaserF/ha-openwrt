@@ -1503,7 +1503,8 @@ class UbusClient(OpenWrtClient):
         """Get recent system log entries via logread."""
         try:
             # Try via execute_command (file.exec)
-            output = await self.execute_command(f"logread -n {count}")
+            cmd = await self._get_logread_command(count)
+            output = await self.execute_command(cmd)
             if output:
                 return [line.strip() for line in output.splitlines() if line.strip()]
         except Exception as err:

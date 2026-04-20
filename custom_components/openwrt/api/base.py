@@ -643,6 +643,29 @@ class OpenWrtClient(abc.ABC):
         self._cached_device_info: DeviceInfo | None = None
         self._cached_slow_data: dict[str, Any] = {}
         self._last_cpu_stats: tuple[int, int] | None = None
+        self._logread_flag: str | None = None
+
+    async def _get_logread_command(self, count: int) -> str:
+        """Resolve the correct logread command (detecting -n vs -l)."""
+        if self._logread_flag is None:
+            # Default to -n as it's the most common
+            self._logread_flag = "-n"
+            try:
+                # Test which flag is supported by running help
+                help_out = await self.execute_command("logread --help 2>&1")
+                if help_out and "-l <count>" in help_out:
+                    self._logread_flag = "-l"
+                    _LOGGER.debug(
+                        "Detected logread -l support (modern OpenWrt/BusyBox)"
+                    )
+                else:
+                    _LOGGER.debug("Using logread -n default")
+            except Exception as err:
+                _LOGGER.debug(
+                    "Could not verify logread flag support, defaulting to -n: %s", err
+                )
+
+        return f"logread {self._logread_flag} {count}"
 
     @property
     def connected(self) -> bool:

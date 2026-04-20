@@ -811,7 +811,9 @@ class SshClient(OpenWrtClient):
                         dev.connection_type = (
                             "5GHz"
                             if "5g" in iface.lower()
-                            else "2.4GHz" if "2g" in iface.lower() else "wireless"
+                            else "2.4GHz"
+                            if "2g" in iface.lower()
+                            else "wireless"
                         )
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("iwinfo wireless discovery failed: %s", err)
@@ -830,9 +832,7 @@ class SshClient(OpenWrtClient):
                 if len(parts) < 2:
                     continue
                 obj_name, data_str = parts
-                iface_name = (
-                    obj_name.split(".", 1)[1] if "." in obj_name else obj_name
-                )
+                iface_name = obj_name.split(".", 1)[1] if "." in obj_name else obj_name
                 try:
                     data = json.loads(data_str)
                     if data and isinstance(data, dict) and "clients" in data:
@@ -862,7 +862,8 @@ class SshClient(OpenWrtClient):
     async def get_system_logs(self, count: int = 10) -> list[str]:
         """Get recent system log entries via SSH."""
         try:
-            output = await self._exec(f"logread -n {count}")
+            cmd = await self._get_logread_command(count)
+            output = await self._exec(cmd)
             if output:
                 return [line.strip() for line in output.splitlines() if line.strip()]
         except Exception as err:

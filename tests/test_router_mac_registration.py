@@ -49,7 +49,9 @@ async def test_router_device_registration_with_mac(hass):
 
     mock_client.get_all_data = AsyncMock(return_value=data)
 
-    with (patch("custom_components.openwrt.coordinator.dr.async_get") as mock_dr_get,):
+    with (
+        patch("custom_components.openwrt.coordinator.dr.async_get") as mock_dr_get,
+    ):
         mock_registry = MagicMock()
         mock_dr_get.return_value = mock_registry
 
