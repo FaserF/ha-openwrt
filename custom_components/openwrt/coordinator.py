@@ -171,6 +171,18 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     async def _async_setup(self) -> None:
         """Set up the coordinator (connect to device)."""
+        # Load history from storage
+        try:
+            stored_history = await self._store.async_load()
+            if stored_history:
+                self._device_history.update(stored_history)
+                _LOGGER.debug(
+                    "Loaded %s devices from persistent history",
+                    len(self._device_history),
+                )
+        except Exception as err:
+            _LOGGER.warning("Could not load persistent history: %s", err)
+
         try:
             await self.client.connect()
         except Exception as err:
@@ -202,6 +214,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         # 6. Update device registry
         await self._async_update_device_registry(data)
+
+        # 7. Persist history if it changed
+        try:
+            await self._store.async_save(self._device_history)
+        except Exception as err:
+            _LOGGER.warning("Could not save persistent history: %s", err)
 
         return data
 

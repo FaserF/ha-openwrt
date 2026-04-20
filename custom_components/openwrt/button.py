@@ -15,7 +15,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -386,6 +387,7 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
     """Representation of an OpenWrt Wake on LAN button."""
 
     _attr_has_entity_name = True
+    _attr_name = "Wake on LAN"
     _attr_translation_key = "wake_on_lan"
 
     def __init__(
@@ -481,7 +483,7 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
         self._client = client
         self._mac = mac.lower()
         self._interface = interface
-        self._attr_name = f"Disconnect {hostname}"
+        self._attr_name = "Disconnect"
         self._attr_unique_id = f"{entry.entry_id}_{self._mac}_kick_{interface}"
         self._entry = entry
         self._initial_name = hostname

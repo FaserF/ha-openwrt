@@ -109,6 +109,10 @@
       "provision_failed": {
         "title": "Provisioning Failed",
         "description": "The automatic user provisioning failed with the following error:\n\n`{error}`\n\nYou can still proceed with the current credentials, but we recommend checking your router settings."
+      },
+      "ubus_restricted": {
+        "title": "Restricted Ubus Detected",
+        "description": "The connection to **{host}** ({model}) via **ubus** was successful, but the router is not returning any information about wireless interfaces or system services.\n\nThis is a common behavior on some firmwares (like Xiaomi AX3600), where the Ubus-HTTP interface is heavily restricted by the manufacturer.\n\n**Recommendation:** We strongly recommend going back and selecting **LuCI RPC** or **SSH** as the connection method instead. Otherwise, you will only see basic system sensors and no wireless clients or service controls."
       }
     },
     "error": {

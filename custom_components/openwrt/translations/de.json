@@ -109,6 +109,10 @@
       "provision_failed": {
         "title": "Bereitstellung fehlgeschlagen",
         "description": "Die automatische Benutzer-Bereitstellung ist mit dem folgenden Fehler fehlgeschlagen:\n\n`{error}`\n\nDu kannst mit den aktuellen Anmeldedaten fortfahren, wir empfehlen jedoch, deine Router-Einstellungen zu überprüfen."
+      },
+      "ubus_restricted": {
+        "title": "Eingeschränktes Ubus erkannt",
+        "description": "Die Verbindung zu **{host}** ({model}) via **ubus** war erfolgreich, aber der Router liefert keinerlei Informationen über WLAN-Schnittstellen oder System-Dienste zurück.\n\nDies ist ein bekanntes Verhalten bei einigen Firmwares (z. B. Xiaomi AX3600), bei denen die Ubus-HTTP-Schnittstelle vom Hersteller stark eingeschränkt wurde.\n\n**Empfehlung:** Wir empfehlen dringend, zurückzugehen und stattdessen **LuCI RPC** oder **SSH** als Verbindungsmethode zu wählen. Andernfalls wirst du nur Basis-Systemsensoren sehen und keine WLAN-Clients oder Dienstleistungen steuern können."
       }
     },
     "error": {

@@ -206,6 +206,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self._generated_password: str | None = None
         self._discovered_host: str | None = None
         self._discovered_routers: list[dict[str, str]] = []
+        self._ubus_restricted: bool = False
 
     @staticmethod
     @callback
@@ -889,6 +890,20 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         with contextlib.suppress(Exception):
             self._packages = await client.check_packages()
 
+        # Specific check for restricted Ubus (like Xiaomi firmwares)
+        if data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_UBUS:
+            try:
+                radios = await client.get_wireless_interfaces()
+                services = await client.get_services()
+                if not radios and not services:
+                    self._ubus_restricted = True
+                    _LOGGER.info(
+                        "Detected restricted Ubus on %s (0 radios, 0 services found)",
+                        data.get(CONF_HOST),
+                    )
+            except Exception:
+                self._ubus_restricted = True
+
         await client.disconnect()
 
     def _handle_test_error(self, err: Exception, username: str | None) -> str:
@@ -1316,6 +1331,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_packages()
             return await self._create_entry()
 
+        if self._ubus_restricted:
+            return await self.async_step_ubus_restricted()
+
         table = _generate_permission_table(self._permissions)
 
         step_id = "permissions"
@@ -1337,6 +1355,25 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Show permissions summary (ubus variant)."""
         return await self.async_step_permissions(user_input)
+
+    async def async_step_ubus_restricted(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Inform the user about restricted Ubus access."""
+        if user_input is not None:
+            if getattr(self, "_packages", None) is not None:
+                return await self.async_step_packages()
+            return await self._create_entry()
+
+        return self.async_show_form(
+            step_id="ubus_restricted",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "host": self._data.get(CONF_HOST, ""),
+                "model": self._device_info.get("model", "Router"),
+            },
+        )
 
     async def async_step_packages(
         self,
@@ -1444,6 +1481,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
         self._options: dict[str, Any] = {}
         self._permissions: Any = None
         self._packages: Any = None
+        self._ubus_restricted: bool = False
 
     async def async_step_init(
         self,
@@ -1523,6 +1561,20 @@ class OpenWrtOptionsFlow(OptionsFlow):
                     self._packages = await client.check_packages()
                 except Exception:
                     self._packages = None
+
+                # Specific check for restricted Ubus (like Xiaomi firmwares)
+                if (
+                    self._config_entry.data.get(CONF_CONNECTION_TYPE)
+                    == CONNECTION_TYPE_UBUS
+                ):
+                    try:
+                        radios = await client.get_wireless_interfaces()
+                        services = await client.get_services()
+                        if not radios and not services:
+                            self._ubus_restricted = True
+                    except Exception:
+                        self._ubus_restricted = True
+
                 await client.disconnect()
         except Exception:
             self._permissions = None
@@ -1532,6 +1584,9 @@ class OpenWrtOptionsFlow(OptionsFlow):
             if self._packages is not None:
                 return await self.async_step_packages()
             return self.async_create_entry(title="", data=self._options)
+
+        if self._ubus_restricted:
+            return await self.async_step_ubus_restricted()
 
         table = _generate_permission_table(self._permissions)
 
@@ -1554,6 +1609,28 @@ class OpenWrtOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Show permissions summary (ubus variant)."""
         return await self.async_step_permissions(user_input)
+
+    async def async_step_ubus_restricted(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Inform the user about restricted Ubus access."""
+        if user_input is not None:
+            if self._packages is not None:
+                return await self.async_step_packages()
+            return self.async_create_entry(title="", data=self._options)
+
+        # Try to get model from direct client or use existing device registry if available
+        model = self._config_entry.data.get(CONF_HOST, "Router")
+
+        return self.async_show_form(
+            step_id="ubus_restricted",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "host": self._config_entry.data.get(CONF_HOST, ""),
+                "model": model,
+            },
+        )
 
     async def async_step_packages(
         self,

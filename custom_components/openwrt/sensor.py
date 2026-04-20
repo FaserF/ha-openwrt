@@ -28,6 +28,8 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
     device_registry as dr,
+)
+from homeassistant.helpers import (
     entity_registry as er,
 )
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -295,7 +297,6 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         if self._available_fn and self.coordinator.data:
             return self._available_fn(self.coordinator.data)
         return True
-
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -864,7 +865,7 @@ async def async_setup_entry(
                 continue
 
             unique_id = ent.unique_id
-            
+
             # 1. Cleanup by settings
             if "_device_" in unique_id:
                 if not track_devices:

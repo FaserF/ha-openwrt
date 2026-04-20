@@ -8,8 +8,48 @@ permissions:
   issues: write
 
 jobs:
-  auto-comment:
+  auto-label:
+    name: Label Issue
     runs-on: ubuntu-latest
+    steps:
+      - name: Label Issues
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || "").toLowerCase();
+            const labels = [];
+            
+            if (title.includes("bug") || body.includes("bug") || body.includes("fehler")) {
+              labels.push("bug");
+            }
+            if (title.includes("feature") || title.includes("request") || body.includes("wunsch")) {
+              labels.push("enhancement");
+            }
+            if (title.includes("documentation") || title.includes("docs") || body.includes("doku")) {
+              labels.push("documentation");
+            }
+            if (title.includes("ubus") || body.includes("ubus")) {
+              labels.push("ubus");
+            }
+            if (title.includes("ssh") || body.includes("ssh")) {
+              labels.push("ssh");
+            }
+            
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labels
+              });
+            }
+
+  auto-comment:
+    name: Comment & Close
+    runs-on: ubuntu-latest
+    needs: auto-label
     steps:
       - name: Comment on new issue
         uses: actions/github-script@v9

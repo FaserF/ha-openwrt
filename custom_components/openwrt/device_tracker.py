@@ -19,6 +19,8 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
     device_registry as dr,
+)
+from homeassistant.helpers import (
     entity_registry as er,
 )
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -78,7 +80,7 @@ async def async_setup_entry(
             # We identify them by their unique_id which ends with mac
             unique_id = ent.unique_id
             mac = unique_id.split("_")[-1].lower()
-            
+
             # Check history to see if it's wired
             if not track_wired and mac in coordinator._device_history:
                 if not coordinator._device_history[mac].get("is_wireless"):
@@ -92,9 +94,6 @@ async def async_setup_entry(
     ):
         return
 
-    coordinator: OpenWrtDataCoordinator = hass.data[DOMAIN][entry.entry_id][
-        DATA_COORDINATOR
-    ]
     track_wired = entry.options.get(
         CONF_TRACK_WIRED,
         entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),

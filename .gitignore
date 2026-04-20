@@ -180,3 +180,4 @@ ruff_errors.json
 *.txt
 *output*.json
 test_live.py
+/scratch

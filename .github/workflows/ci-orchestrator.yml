@@ -37,21 +37,42 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.14.4'
+          cache: "pip"
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements_test.txt ]; then pip install -r requirements_test.txt; fi
-          pip install ruff black
+          pip install ruff black mypy pyyaml pytest pytest-asyncio pytest-cov homeassistant paramiko aiohttp
 
-      - name: Lint Python
+      - name: Validate JSON/YAML
         run: |
-          black --check .
+          python -c "import json, glob; [json.load(open(f)) for f in glob.glob('**/*.json', recursive=True)]"
+          python -c "import yaml, glob; [yaml.safe_load(open(f)) for f in glob.glob('**/*.yaml', recursive=True) + glob.glob('**/*.yml', recursive=True)]"
+
+      - name: Check Integration Structure
+        run: |
+          test -d custom_components/openwrt
+          test -f custom_components/openwrt/manifest.json
+          test -f hacs.json
+
+      - name: Lint with Ruff
+        run: |
           ruff check .
+          ruff format --check .
+
+      - name: Run Mypy
+        run: mypy custom_components/openwrt
 
       - name: Run Tests
         run: |
-          pytest
+          pytest --cov=custom_components.openwrt --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v6
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
 
 
 

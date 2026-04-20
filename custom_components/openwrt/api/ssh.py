@@ -230,7 +230,7 @@ class SshClient(OpenWrtClient):
 
             client = paramiko.SSHClient()
             client.load_system_host_keys()
-            
+
             if self.verify_ssl:
                 client.set_missing_host_key_policy(paramiko.RejectPolicy())
             else:
@@ -816,9 +816,7 @@ class SshClient(OpenWrtClient):
                         dev.connection_type = (
                             "5GHz"
                             if "5g" in iface.lower()
-                            else "2.4GHz"
-                            if "2g" in iface.lower()
-                            else "wireless"
+                            else "2.4GHz" if "2g" in iface.lower() else "wireless"
                         )
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("iwinfo wireless discovery failed: %s", err)
@@ -1110,12 +1108,16 @@ class SshClient(OpenWrtClient):
                     continue
                 key, val = line.split("=", 1)
                 parts = key.split(".")
-                if len(parts) >= 2:
+                if len(parts) == 2:
                     section = parts[1]
                     if section not in sections:
                         sections[section] = {}
-                    if len(parts) >= 3:
-                        sections[section][parts[2]] = val.strip("'")
+                    sections[section][".type"] = val.strip("'")
+                elif len(parts) >= 3:
+                    section = parts[1]
+                    if section not in sections:
+                        sections[section] = {}
+                    sections[section][parts[2]] = val.strip("'")
 
             for section_id, data in sections.items():
                 if data.get(".type") == "rule":
@@ -1156,12 +1158,16 @@ class SshClient(OpenWrtClient):
                     continue
                 key, val = line.split("=", 1)
                 parts = key.split(".")
-                if len(parts) >= 2:
+                if len(parts) == 2:
                     section = parts[1]
                     if section not in sections:
                         sections[section] = {}
-                    if len(parts) >= 3:
-                        sections[section][parts[2]] = val.strip("'")
+                    sections[section][".type"] = val.strip("'")
+                elif len(parts) >= 3:
+                    section = parts[1]
+                    if section not in sections:
+                        sections[section] = {}
+                    sections[section][parts[2]] = val.strip("'")
 
             for section_id, data in sections.items():
                 if data.get(".type") == "redirect":

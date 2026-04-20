@@ -11,7 +11,6 @@ from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import (
-    device_registry as dr,
     entity_registry as er,
 )
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -623,11 +622,28 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         self._client = client
         self._section_id = section_id
         self._attr_unique_id = f"{entry.entry_id}_firewall_{section_id}"
-        self._attr_name = name
+        self._attr_name = f"Port Forward: {name}"
         self._attr_translation_key = "firewall_port_forward"
+        if name.lower().startswith("allow"):
+            self._attr_entity_registry_enabled_default = False
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        if self.coordinator.data is None:
+            return {}
+        for redirect in self.coordinator.data.firewall_redirects:
+            if redirect.section_id == self._section_id:
+                return {
+                    "external_port": redirect.external_port,
+                    "target_ip": redirect.target_ip,
+                    "target_port": redirect.target_port,
+                    "protocol": redirect.protocol,
+                }
+        return {}
 
     @property
     def is_on(self) -> bool | None:
@@ -682,7 +698,7 @@ class OpenWrtAccessControlSwitch(
         self._client = client
         self._mac = mac.lower()
         self._attr_unique_id = f"{entry.entry_id}_access_{self._mac.replace(':', '_')}"
-        self._attr_name = name
+        self._attr_name = "Internet Access"
         self._attr_translation_key = "device_access"
         self._attr_device_info = DeviceInfo(
             connections={("mac", self._mac)},
@@ -753,8 +769,10 @@ class OpenWrtFirewallRuleSwitch(
         self._client = client
         self._section_id = section_id
         self._attr_unique_id = f"{entry.entry_id}_firewall_rule_{section_id}"
-        self._attr_name = name
+        self._attr_name = f"Firewall Rule: {name}"
         self._attr_translation_key = "firewall_rule"
+        if name.lower().startswith("allow"):
+            self._attr_entity_registry_enabled_default = False
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
