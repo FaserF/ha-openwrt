@@ -28,7 +28,7 @@ jobs:
       issues: write
     steps:
       - name: Keyword Labeler
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const title = context.payload.issue.title.toLowerCase();
