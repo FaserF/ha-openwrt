@@ -249,9 +249,11 @@ class UbusClient(OpenWrtClient):
             await self.connect()
 
         token = self._session_id
+        # The ubus JSON-RPC 'list' method requires [token, "*"] to return all
+        # objects. Using only [token] returns an empty dict on most firmwares.
         payload = self._build_request(
             "list",
-            [token],
+            [token, "*"],
             request_id=UBUS_ID_CALL,
         )
 
@@ -267,11 +269,12 @@ class UbusClient(OpenWrtClient):
             _LOGGER.debug("Failed to list ubus objects: %s", err)
             return []
 
-        if "result" not in data or not isinstance(data["result"], dict):
+        result = data.get("result")
+        if not isinstance(result, dict):
             return []
 
         # Result is a dict where keys are object names
-        return list(data["result"].keys())
+        return list(result.keys())
 
     async def connect(self) -> bool:
         """Authenticate with the ubus RPC endpoint."""
@@ -1165,11 +1168,9 @@ class UbusClient(OpenWrtClient):
                 packages.ban_ip = detect_status(12)
             except Exception as err:
                 _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)
-                # Step 1: Check by ubus objects
-                ubus_objects = await self._call("ubus", "list")
-                objects = (
-                    list(ubus_objects.keys()) if isinstance(ubus_objects, dict) else []
-                )
+                # Step 1: Re-use _list_objects() which uses the correct JSON-RPC
+                # 'list' method (not a ubus object call).
+                objects = await self._list_objects()
                 self._check_packages_from_ubus(packages, objects)
 
                 # Step 2: Check by UCI config exists
@@ -1562,14 +1563,37 @@ class UbusClient(OpenWrtClient):
                     return False
 
     async def get_installed_packages(self) -> list[str]:
-        """Get a list of installed packages via apk or opkg."""
+        """Get a list of installed packages via apk or opkg.
+
+        On OpenWrt 25.x+ with APK: 'apk info' lists one package per line
+        (no version suffix in the default output).  On older opkg-based
+        firmware the first field (before the first space) is the package name.
+        """
         try:
-            # Try apk first (modern OpenWrt), fallback to opkg
-            cmd = "apk info 2>/dev/null || opkg list-installed | cut -d' ' -f1"
+            # Try apk first (OpenWrt 25+); fall back to opkg.
+            # apk info -q suppresses progress/warnings. We strip any trailing
+            # version suffix that some apk builds append (e.g. "pkg-1.0-r0").
+            cmd = (
+                "if command -v apk >/dev/null 2>&1; then "
+                "  apk info -q 2>/dev/null; "
+                "else "
+                "  opkg list-installed 2>/dev/null | cut -d' ' -f1; "
+                "fi"
+            )
             output = await self.execute_command(cmd)
-            return [line.strip() for line in output.splitlines() if line.strip()]
+            if not output:
+                return []
+            packages: list[str] = []
+            for line in output.splitlines():
+                name = line.strip()
+                if name:
+                    packages.append(name)
+            return packages
         except UbusError:
-            _LOGGER.debug("Failed to list installed packages via Ubus")
+            _LOGGER.debug("Failed to list installed packages via ubus file.exec")
+            return []
+        except Exception as err:
+            _LOGGER.debug("Unexpected error listing installed packages: %s", err)
             return []
 
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
@@ -1882,11 +1906,21 @@ class UbusClient(OpenWrtClient):
         username: str,
         password: str,
     ) -> tuple[bool, str | None]:
-        """Create a dedicated system user and configure RPC permissions via ubus."""
+        """Create a dedicated system user and configure RPC permissions via ubus.
+
+        This requires 'file.exec' RPC permission on the current session, which
+        means provisioning can only be performed as root (or a user that already
+        has exec rights).  If the current user lacks those rights the method
+        returns a clear error message instead of silently failing.
+        """
         # Use the harmonized provisioning script from base
         script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
         try:
             output = await self.execute_command(script)
+
+            if output is None:
+                output = ""
+
             if output:
                 _LOGGER.debug("Provisioning output for %s: %s", username, output)
 
@@ -1898,10 +1932,37 @@ class UbusClient(OpenWrtClient):
                 _LOGGER.error("Provisioning failed: %s", fail_msg)
                 return False, fail_msg
 
+            # Empty output almost always means file.exec was denied (permission error)
+            # or the ubus object is not available.
+            if not output:
+                _LOGGER.warning(
+                    "Provisioning for %s returned empty output. "
+                    "This typically means the current user ('%s') lacks "
+                    "'file.exec' RPC permission. "
+                    "Provisioning must be run as 'root' or a user with exec rights.",
+                    username,
+                    self.username,
+                )
+                return (
+                    False,
+                    (
+                        f"Provisioning failed: empty response from ubus file.exec. "
+                        f"Ensure '{self.username}' has file.exec permission, "
+                        "or run provisioning as 'root'."
+                    ),
+                )
+
             return (
                 False,
                 "Provisioning script returned failure without specific error. Check router logs (logread).",
             )
+        except UbusPermissionError as err:
+            msg = (
+                f"Provisioning failed: '{self.username}' lacks 'file.exec' RPC permission. "
+                "Switch to 'root' or grant exec rights to this user in the rpcd ACL."
+            )
+            _LOGGER.error("%s (%s)", msg, err)
+            return False, msg
         except Exception as err:
             _LOGGER.exception("Failed to provision user %s via ubus: %s", username, err)
             return False, str(err)

@@ -246,6 +246,10 @@ class LuciRpcClient(OpenWrtClient):
         script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
         try:
             output = await self.execute_command(script)
+
+            if output is None:
+                output = ""
+
             if output:
                 _LOGGER.debug(
                     "Provisioning output for %s via LuCI RPC: %s",
@@ -261,10 +265,36 @@ class LuciRpcClient(OpenWrtClient):
                 _LOGGER.error("Provisioning failed via LuCI RPC: %s", fail_msg)
                 return False, fail_msg
 
+            # Empty output usually means permission denied (sys.exec)
+            if not output:
+                _LOGGER.warning(
+                    "Provisioning for %s returned empty output. "
+                    "This typically means the current user ('%s') lacks "
+                    "'sys.exec' RPC permission. "
+                    "Provisioning must be run as 'root'.",
+                    username,
+                    self.username,
+                )
+                return (
+                    False,
+                    (
+                        f"Provisioning failed: empty response from LuCI sys.exec. "
+                        f"Ensure '{self.username}' has sys.exec permission, "
+                        "or run provisioning as 'root'."
+                    ),
+                )
+
             return (
                 False,
                 "Provisioning script returned failure without specific error via LuCI RPC. Check router logs (logread).",
             )
+        except LuciRpcError as err:
+            msg = (
+                f"Provisioning failed: '{self.username}' lacks 'sys.exec' RPC permission. "
+                "Switch to 'root' or grant exec rights to this user."
+            )
+            _LOGGER.error("%s (%s)", msg, err)
+            return False, msg
         except Exception as err:
             _LOGGER.exception(
                 "Failed to provision user %s via LuCI RPC: %s", username, err
@@ -1666,14 +1696,34 @@ class LuciRpcClient(OpenWrtClient):
         return False
 
     async def get_installed_packages(self) -> list[str]:
-        """Get a list of installed packages via apk or opkg."""
+        """Get a list of installed packages via apk or opkg.
+
+        On OpenWrt 25.x+ with APK: 'apk info' lists one package per line
+        (no version suffix in the default output).  On older opkg-based
+        firmware the first field (before the first space) is the package name.
+        """
         try:
-            # Try apk first (modern OpenWrt), fallback to opkg
-            cmd = "apk info 2>/dev/null || opkg list-installed | cut -d' ' -f1"
+            cmd = (
+                "if command -v apk >/dev/null 2>&1; then "
+                "  apk info -q 2>/dev/null; "
+                "else "
+                "  opkg list-installed 2>/dev/null | cut -d' ' -f1; "
+                "fi"
+            )
             output = await self.execute_command(cmd)
-            return [line.strip() for line in output.splitlines() if line.strip()]
+            if not output:
+                return []
+            packages: list[str] = []
+            for line in output.splitlines():
+                name = line.strip()
+                if name:
+                    packages.append(name)
+            return packages
         except LuciRpcError:
             _LOGGER.debug("Failed to list installed packages via LuCI RPC")
+            return []
+        except Exception as err:
+            _LOGGER.debug("Unexpected error listing installed packages: %s", err)
             return []
 
     async def get_firewall_rules(self) -> list[FirewallRule]:

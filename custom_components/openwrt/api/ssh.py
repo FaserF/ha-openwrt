@@ -149,6 +149,10 @@ class SshClient(OpenWrtClient):
         script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
         try:
             output = await self._exec(script)
+
+            if output is None:
+                output = ""
+
             if output:
                 _LOGGER.debug(
                     "Provisioning output for %s via SSH: %s",
@@ -164,6 +168,22 @@ class SshClient(OpenWrtClient):
                 _LOGGER.error("Provisioning failed via SSH: %s", fail_msg)
                 return False, fail_msg
 
+            # Empty output usually means permission denied
+            if not output:
+                _LOGGER.warning(
+                    "Provisioning for %s returned empty output. "
+                    "Ensure '%s' has appropriate execution rights.",
+                    username,
+                    self.username,
+                )
+                return (
+                    False,
+                    (
+                        f"Provisioning failed: empty response from SSH. "
+                        f"Ensure '{self.username}' has execution permission."
+                    ),
+                )
+
             return (
                 False,
                 "Provisioning script returned failure without specific error via SSH. Check router logs (logread).",
@@ -173,12 +193,29 @@ class SshClient(OpenWrtClient):
             return False, str(err)
 
     async def get_installed_packages(self) -> list[str]:
-        """Get a list of installed packages via apk or opkg."""
+        """Get a list of installed packages via apk or opkg.
+
+        On OpenWrt 25.x+ with APK: 'apk info' lists one package per line
+        (no version suffix in the default output).  On older opkg-based
+        firmware the first field (before the first space) is the package name.
+        """
         try:
-            # Try apk first (modern OpenWrt), fallback to opkg
-            cmd = "apk info 2>/dev/null || opkg list-installed | cut -d' ' -f1"
+            cmd = (
+                "if command -v apk >/dev/null 2>&1; then "
+                "  apk info -q 2>/dev/null; "
+                "else "
+                "  opkg list-installed 2>/dev/null | cut -d' ' -f1; "
+                "fi"
+            )
             output = await self._exec(cmd)
-            return [line.strip() for line in output.splitlines() if line.strip()]
+            if not output:
+                return []
+            packages: list[str] = []
+            for line in output.splitlines():
+                name = line.strip()
+                if name:
+                    packages.append(name)
+            return packages
         except Exception:
             return []
 
