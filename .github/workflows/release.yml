@@ -1,4 +1,4 @@
-﻿name: Release
+name: Release
 on:
   workflow_dispatch:
     inputs:
@@ -7,6 +7,12 @@ on:
         required: true
         type: choice
         options: [stable, beta, nightly]
+      bump_level:
+        description: 'Bump Level (for stable/beta)'
+        required: true
+        type: choice
+        default: patch
+        options: [major, minor, patch]
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -20,7 +26,7 @@ jobs:
       - name: Calculate Version
         id: version
         run: |
-          NEW_VERSION=$(python .github/scripts/version_manager.py bump --type ${{ inputs.release_type }})
+          NEW_VERSION=$(python .github/scripts/version_manager.py bump --type ${{ inputs.release_type }} --level ${{ inputs.bump_level }})
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
       - name: Create Release Tag
         if: inputs.release_type != 'nightly'
@@ -55,6 +61,7 @@ jobs:
         if: inputs.release_type != 'nightly'
         with:
           tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
           body_path: CHANGELOG_BODY.md
           prerelease: ${{ inputs.release_type == 'beta' }}
           files: ${{ env.DOMAIN }}.zip

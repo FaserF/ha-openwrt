@@ -66,7 +66,7 @@ def write_version(v, manifest_path):
             f.write(content)
 
 
-def calculate_version(rtype, curr):
+def calculate_version(rtype, level, curr):
     match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)(?:(b)(\d+)|(-dev)(\d+))?$", curr)
     if not match:
         # Fallback for old CalVer or invalid versions
@@ -77,18 +77,33 @@ def calculate_version(rtype, curr):
     stype, snum = ("b", int(b_n)) if b_p else (("-dev", int(d_n)) if d_p else (None, 0))
 
     if rtype == "stable":
-        if stype:
+        if stype:  # Current is a pre-release (beta/dev), make it stable
             return f"{major}.{minor}.{patch}"
+        # Current is stable, bump according to level
+        if level == "major":
+            return f"{major + 1}.0.0"
+        if level == "minor":
+            return f"{major}.{minor + 1}.0"
         return f"{major}.{minor}.{patch + 1}"
 
     if rtype == "beta":
         if stype == "b":
             return f"{major}.{minor}.{patch}b{snum + 1}"
+        # Bump core to target level and start beta
+        if level == "major":
+            return f"{major + 1}.0.0b0"
+        if level == "minor":
+            return f"{major}.{minor + 1}.0b0"
         return f"{major}.{minor}.{patch + 1}b0"
 
     if rtype in ["dev", "nightly"]:
         if stype == "-dev":
             return f"{major}.{minor}.{patch}-dev{snum + 1}"
+        # Bump core and start dev
+        if level == "major":
+            return f"{major + 1}.0.0-dev0"
+        if level == "minor":
+            return f"{major}.{minor + 1}.0-dev0"
         return f"{major}.{minor}.{patch + 1}-dev0"
 
     raise ValueError(f"Unknown type: {rtype}")
@@ -98,12 +113,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["get", "bump"])
     parser.add_argument("--type", choices=["stable", "beta", "nightly", "dev"])
+    parser.add_argument("--level", choices=["major", "minor", "patch"], default="patch")
     parser.add_argument("--manifest", default=None)
     args = parser.parse_args()
     m_path = args.manifest or find_manifest()
     if args.action == "get":
         print(get_current_version(m_path))
     elif args.action == "bump":
-        v = calculate_version(args.type, get_current_version(m_path))
+        v = calculate_version(args.type, args.level, get_current_version(m_path))
         write_version(v, m_path)
         print(v)
