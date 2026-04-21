@@ -67,9 +67,16 @@ fi
 
 # Set password using the most robust method
 logger -t ha-openwrt "Updating password for $USER"
-if ! ( (echo "$PASS"; sleep 1; echo "$PASS") | passwd "$USER" >/dev/null 2>&1 || printf "%s:%s\\n" "$USER" "$PASS" | chpasswd >/dev/null 2>&1 ); then
-    echo "LOG: FAIL: password change failed"
-    exit 1
+if command -v chpasswd >/dev/null 2>&1; then
+    if ! printf "%s:%s\\n" "$USER" "$PASS" | chpasswd >/dev/null 2>&1; then
+        echo "LOG: FAIL: chpasswd failed"
+        exit 1
+    fi
+else
+    if ! (echo "$PASS"; sleep 1; echo "$PASS") | passwd "$USER" >/dev/null 2>&1; then
+        echo "LOG: FAIL: passwd failed"
+        exit 1
+    fi
 fi
 
 # Create ACL file
@@ -81,7 +88,7 @@ if ! cat <<EOF > "$ACL_FILE"
         "description": "Home Assistant Integration",
         "read": {{
             "ubus": {{
-                "system": ["info", "board"],
+                "system": ["info", "board", "logread", "upgrade"],
                 "network": ["*"],
                 "network.interface": ["dump", "status"],
                 "network.device": ["status"],
@@ -91,32 +98,30 @@ if ! cat <<EOF > "$ACL_FILE"
                 "service": ["list"],
                 "uci": ["get", "state"],
                 "session": ["list"],
-                "hostapd.*": ["get_clients"]
+                "hostapd.*": ["get_clients"],
+                "attendedsysupgrade": ["*"]
             }},
             "uci": ["*"],
             "file": {{
-                "/etc/config/sqm": ["read", "stat"],
-                "/etc/config/mwan3": ["read", "stat"],
-                "/etc/config/network": ["read", "stat"],
-                "/etc/config/wireless": ["read", "stat"],
-                "/etc/config/firewall": ["read", "stat"],
-                "/etc/config/dhcp": ["read", "stat"],
-                "/etc/config/system": ["read", "stat"],
-                "/etc/config/luci": ["read", "stat"],
-                "/etc/config/rpcd": ["read", "stat"],
+                "/etc/config/*": ["read", "stat"],
                 "/etc/passwd": ["read"],
                 "/etc/group": ["read"],
                 "/etc/shadow": ["read"],
                 "/etc/shells": ["read"],
-                "/etc/init.d/sqm": ["read", "stat"],
-                "/etc/init.d/mwan3": ["read", "stat"],
                 "/usr/bin/iwinfo": ["read", "stat"],
                 "/usr/bin/etherwake": ["read", "stat"],
                 "/usr/bin/wg": ["read", "stat"],
                 "/usr/sbin/openvpn": ["read", "stat"],
                 "/usr/bin/id": ["read", "stat", "exec"],
                 "/bin/sh": ["read", "stat", "exec"],
-                "/bin/ls": ["read", "stat", "exec"]
+                "/bin/ash": ["read", "stat", "exec"],
+                "/bin/ls": ["read", "stat", "exec"],
+                "/sbin/apk": ["read", "stat", "exec"],
+                "/bin/opkg": ["read", "stat", "exec"],
+                "/proc/stat": ["read"],
+                "/proc/net/arp": ["read"],
+                "/proc/net/dev": ["read"],
+                "/tmp/dhcp.leases": ["read"]
             }}
         }},
         "write": {{
@@ -133,8 +138,10 @@ if ! cat <<EOF > "$ACL_FILE"
             "uci": ["*"],
             "file": {{
                 "/bin/sh": ["exec"],
+                "/bin/ash": ["exec"],
                 "/usr/bin/id": ["exec"],
-                "/bin/ls": ["exec"]
+                "/sbin/apk": ["exec"],
+                "/bin/opkg": ["exec"]
             }}
         }}
     }}
@@ -653,7 +660,8 @@ class OpenWrtClient(abc.ABC):
             try:
                 # Test which flag is supported by running help
                 help_out = await self.execute_command("logread --help 2>&1")
-                if help_out and "-l <count>" in help_out:
+                # Look for -l with optional space/tab and <count>
+                if help_out and re.search(r"-l\s+<count>", help_out):
                     self._logread_flag = "-l"
                     _LOGGER.debug(
                         "Detected logread -l support (modern OpenWrt/BusyBox)"
