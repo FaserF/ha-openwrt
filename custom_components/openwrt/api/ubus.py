@@ -809,6 +809,9 @@ class UbusClient(OpenWrtClient):
         # 3. Process wireless associations (iwinfo)
         if wireless_data:
             await self._process_iwinfo_assoc(devices, wireless_data)
+        else:
+            # Fallback: scan all interfaces for iwinfo if network.wireless is missing
+            await self._process_iwinfo_fallback(devices)
 
         # 4. Process IP neighbor (ARP/NDP) findings
         await self._merge_neighbor_data(devices)
@@ -816,8 +819,9 @@ class UbusClient(OpenWrtClient):
         # 5. Process wireless client details (hostapd)
         if wireless_data:
             await self._process_hostapd_clients(devices, wireless_data)
-        else:
-            await self._process_hostapd_fallback(devices)
+        
+        # Always run fallback to ensure we catch any manually added or mesh interfaces
+        await self._process_hostapd_fallback(devices)
 
         # Final cleanup/standardization
         for dev in devices.values():
@@ -878,7 +882,13 @@ class UbusClient(OpenWrtClient):
         """Update devices with ARP/neighbor information."""
         with contextlib.suppress(Exception):
             neighbors = await self.get_ip_neighbors()
-            active_states = ("REACHABLE", "DELAY", "PROBE", "PERMANENT")
+            # STALE is intentionally included: Linux kernels age ARP entries to
+            # STALE very quickly (30-60 s).  A STALE entry means the device WAS
+            # reachable and likely still is – it will transition back to REACHABLE
+            # on the next unicast exchange.  Excluding STALE would cause wired
+            # clients to disappear from the count even while actively using the
+            # network.
+            active_states = ("REACHABLE", "STALE", "DELAY", "PROBE", "PERMANENT")
             for neigh in neighbors:
                 mac = neigh.mac.lower()
                 if not mac:
@@ -887,7 +897,8 @@ class UbusClient(OpenWrtClient):
                     dev = devices[mac]
                     dev.neighbor_state = dev.neighbor_state or neigh.state
                     dev.interface = dev.interface or neigh.interface
-                    # If it's a new or seen-via-DHCP device, maybe mark connected
+                    # Mark wired devices as connected when the kernel's ARP table
+                    # shows a recent (/active) entry.
                     if not dev.is_wireless and neigh.state.upper() in active_states:
                         dev.connected = True
                 else:
@@ -918,21 +929,56 @@ class UbusClient(OpenWrtClient):
                         devices, hostapd_data.get("clients", {}), ifname
                     )
 
+    async def _process_iwinfo_fallback(
+        self, devices: dict[str, ConnectedDevice]
+    ) -> None:
+        """Discover wireless interfaces from ubus object list and poll iwinfo."""
+        with contextlib.suppress(Exception):
+            objects = await self._list_objects()
+            # On some devices, interfaces are named wlan0, wlan1, etc.
+            # or have hostapd.wlan0 objects.
+            candidates = set()
+            for obj in objects:
+                if obj.startswith("hostapd."):
+                    candidates.add(obj.split(".", 1)[1])
+                elif obj in ("iwinfo", "network.wireless"):
+                    continue
+            
+            # Additional common names if nothing found
+            if not candidates:
+                candidates = {"wlan0", "wlan1", "wlan0-1", "wlan1-1"}
+                
+            for ifname in candidates:
+                with contextlib.suppress(UbusError):
+                    assoc = await self._call("iwinfo", "assoclist", {"device": ifname})
+                    if not assoc:
+                        continue
+                    for client in assoc.get("results", []):
+                        mac = client.get("mac", "").lower()
+                        dev = devices.setdefault(
+                            mac, ConnectedDevice(mac=mac, connected=True)
+                        )
+                        dev.connected = True
+                        dev.is_wireless = True
+                        dev.interface = ifname
+                        self._set_wireless_connection_type(dev, ifname)
+                        dev.signal = client.get("signal", 0)
+                        dev.noise = client.get("noise", 0)
+
     async def _process_hostapd_fallback(
         self, devices: dict[str, ConnectedDevice]
     ) -> None:
         """Fallback: Discover and poll hostapd objects directly."""
         with contextlib.suppress(Exception):
-            ubus_objects = await self._call("ubus", "list")
-            if isinstance(ubus_objects, dict):
-                for obj_name in ubus_objects:
-                    if obj_name.startswith("hostapd."):
-                        ifname = obj_name.split(".", 1)[1]
-                        with contextlib.suppress(UbusError):
-                            hostapd_data = await self._call(obj_name, "get_clients")
-                            self._merge_hostapd_clients(
-                                devices, hostapd_data.get("clients", {}), ifname
-                            )
+            ubus_objects = await self._list_objects()
+            for obj_name in ubus_objects:
+                if obj_name.startswith("hostapd."):
+                    ifname = obj_name.split(".", 1)[1]
+                    with contextlib.suppress(UbusError):
+                        hostapd_data = await self._call(obj_name, "get_clients")
+                        self._merge_hostapd_clients(
+                            devices, hostapd_data.get("clients", {}), ifname
+                        )
 
     def _merge_hostapd_clients(
         self, devices: dict[str, ConnectedDevice], clients: dict[str, Any], ifname: str
@@ -1152,10 +1198,12 @@ class UbusClient(OpenWrtClient):
                     packages.mwan3 = detect_status(1)
                 if packages.iwinfo is not True:
                     packages.iwinfo = detect_status(2)
-                packages.etherwake = detect_status(3)
-                packages.wireguard = detect_status(4)
-                packages.openvpn = detect_status(5)
-                packages.luci_mod_rpc = detect_status(6) or detect_status(7)
+                if packages.etherwake is not True:
+                    packages.etherwake = detect_status(3)
+                if packages.wireguard is not True:
+                    packages.wireguard = detect_status(4)
+                if packages.openvpn is not True:
+                    packages.openvpn = detect_status(5)
                 if packages.luci_mod_rpc is not True:
                     packages.luci_mod_rpc = (
                         "luci-rpc" in objects or detect_status(6) or detect_status(7)
@@ -1164,8 +1212,10 @@ class UbusClient(OpenWrtClient):
                     packages.asu = detect_status(8) or detect_status(9)
                 if packages.adblock is not True:
                     packages.adblock = detect_status(10)
-                packages.simple_adblock = detect_status(11)
-                packages.ban_ip = detect_status(12)
+                if packages.simple_adblock is not True:
+                    packages.simple_adblock = detect_status(11)
+                if packages.ban_ip is not True:
+                    packages.ban_ip = detect_status(12)
             except Exception as err:
                 _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)
                 # Step 1: Re-use _list_objects() which uses the correct JSON-RPC
@@ -1207,6 +1257,7 @@ class UbusClient(OpenWrtClient):
             ("sqm", "sqm_scripts"),
             ("mwan3", "mwan3"),
             ("openvpn", "openvpn"),
+            ("attendedsysupgrade", "asu"),
         ]
         for config, attr in configs:
             if getattr(packages, attr) is not True:
@@ -1230,9 +1281,17 @@ class UbusClient(OpenWrtClient):
 
     async def _check_packages_from_files(self, packages: OpenWrtPackages) -> None:
         """Identify packages by probing specific filesystem paths."""
-        check_list = [
+        # For each attribute we try multiple candidate paths (first match wins).
+        # luci-app-attendedsysupgrade changed file locations across LuCI versions:
+        #   - Legacy: controller lua file
+        #   - Modern LuCI (menu.d): JSON menu descriptor
+        #   - Always present: UCI config file created at install time
+        check_list: list[tuple[str, str]] = [
             ("/usr/bin/etherwake", "etherwake"),
             ("/usr/bin/wg", "wireguard"),
+            # ASU: try all known install paths
+            ("/etc/config/attendedsysupgrade", "asu"),
+            ("/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json", "asu"),
             ("/usr/lib/lua/luci/controller/attendedsysupgrade.lua", "asu"),
             ("/etc/init.d/adblock", "adblock"),
             ("/etc/init.d/simple-adblock", "simple_adblock"),
@@ -1574,11 +1633,15 @@ class UbusClient(OpenWrtClient):
             # Try apk first (OpenWrt 25+); fall back to opkg.
             # apk info -q suppresses progress/warnings. We strip any trailing
             # version suffix that some apk builds append (e.g. "pkg-1.0-r0").
+            # Try apk (OpenWrt 25+) or opkg. Use absolute paths as fallback.
             cmd = (
-                "if command -v apk >/dev/null 2>&1; then "
-                "  apk info -q 2>/dev/null; "
+                "if command -v apk >/dev/null 2>&1; then APK=apk; "
+                "elif [ -x /sbin/apk ]; then APK=/sbin/apk; fi; "
+                "if [ -n \"$APK\" ]; then $APK info -q 2>/dev/null; "
                 "else "
-                "  opkg list-installed 2>/dev/null | cut -d' ' -f1; "
+                "  if command -v opkg >/dev/null 2>&1; then OPKG=opkg; "
+                "  elif [ -x /bin/opkg ]; then OPKG=/bin/opkg; fi; "
+                "  if [ -n \"$OPKG\" ]; then $OPKG list-installed 2>/dev/null | cut -d' ' -f1; fi; "
                 "fi"
             )
             output = await self.execute_command(cmd)
@@ -1860,19 +1923,18 @@ class UbusClient(OpenWrtClient):
             except Exception:
                 return False
 
-    async def execute_command(self, command: str) -> str:
-        """Execute a command via ubus file.exec."""
         try:
-            # Split command and params if needed, but ubus file.exec expects base command and params list
-            # For simplicity, we wrap in shell
+            # Wrap in /bin/sh -c to handle operators like && or >
             res = await self._call(
                 "file",
                 "exec",
-                {"command": "sh", "params": ["-c", command]},
+                {"command": "/bin/sh", "params": ["-c", command]},
             )
             if not res or not isinstance(res, dict):
                 return ""
-            return res.get("stdout", "")
+            
+            # stdout/stderr are usually strings if present
+            return str(res.get("stdout") or "").strip()
         except UbusPermissionError as err:
             _LOGGER.debug(
                 "Permission denied for command via ubus file.exec: %s",
@@ -1932,25 +1994,46 @@ class UbusClient(OpenWrtClient):
                 _LOGGER.error("Provisioning failed: %s", fail_msg)
                 return False, fail_msg
 
-            # Empty output almost always means file.exec was denied (permission error)
-            # or the ubus object is not available.
+            # Empty output: the inline sh -c approach may exceed the ubus JSON-RPC
+            # command-line buffer limit for long scripts. Retry by writing the
+            # script to /tmp first and then executing the file directly.
             if not output:
-                _LOGGER.warning(
-                    "Provisioning for %s returned empty output. "
-                    "This typically means the current user ('%s') lacks "
-                    "'file.exec' RPC permission. "
-                    "Provisioning must be run as 'root' or a user with exec rights.",
+                _LOGGER.debug(
+                    "Provisioning for %s returned empty output via inline exec. "
+                    "Retrying with file.write + file.exec approach.",
                     username,
-                    self.username,
                 )
-                return (
-                    False,
-                    (
+                output = await self._provision_via_tmp_file(script, username)
+
+            if "Provisioning SUCCESS" in output:
+                return True, None
+
+            if "LOG: FAIL:" in output:
+                fail_msg = output.split("LOG: FAIL:")[1].splitlines()[0].strip()
+                _LOGGER.error("Provisioning failed: %s", fail_msg)
+                return False, fail_msg
+
+            if not output:
+                # Still empty after both approaches
+                if self.username == "root":
+                    hint = (
+                        "Provisioning returned empty output even as root. "
+                        "This may indicate a ubus buffer limit or a hanging passwd call. "
+                        "Check router syslog ('logread | grep ha-openwrt') for details."
+                    )
+                else:
+                    hint = (
                         f"Provisioning failed: empty response from ubus file.exec. "
                         f"Ensure '{self.username}' has file.exec permission, "
                         "or run provisioning as 'root'."
-                    ),
+                    )
+                _LOGGER.warning(
+                    "Provisioning for %s returned empty output (connected as %s). %s",
+                    username,
+                    self.username,
+                    hint,
                 )
+                return False, hint
 
             return (
                 False,
@@ -1966,6 +2049,39 @@ class UbusClient(OpenWrtClient):
         except Exception as err:
             _LOGGER.exception("Failed to provision user %s via ubus: %s", username, err)
             return False, str(err)
+
+    async def _provision_via_tmp_file(self, script: str, username: str) -> str:
+        """Write provisioning script to /tmp and execute it.
+
+        Used as a fallback when passing the script inline via 'sh -c <script>'
+        fails (e.g. ubus JSON-RPC response buffer limit or command-line length).
+        """
+        tmp_path = "/tmp/ha_provision.sh"
+        try:
+            # 1. Write script to a temp file via ubus file.write
+            await self._call(
+                "file",
+                "write",
+                {"path": tmp_path, "data": script},
+            )
+            _LOGGER.debug("Wrote provisioning script to %s for user %s", tmp_path, username)
+
+            # 2. Execute the script file directly
+            res = await self._call(
+                "file",
+                "exec",
+                {"command": "/bin/sh", "params": [tmp_path]},
+            )
+            output = res.get("stdout", "") if isinstance(res, dict) else ""
+
+            # 3. Clean up (best-effort)
+            with contextlib.suppress(Exception):
+                await self._call("file", "exec", {"command": "rm", "params": ["-f", tmp_path]})
+
+            return output or ""
+        except Exception as err:
+            _LOGGER.debug("file.write/exec provisioning fallback failed: %s", err)
+            return ""
 
     async def manage_interface(self, name: str, action: str) -> bool:
         """Manage a network interface (up/down/reconnect) via ubus."""
