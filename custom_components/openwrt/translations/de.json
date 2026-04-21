@@ -125,7 +125,7 @@
       "ssl_error": "SSL-Verifizierung fehlgeschlagen. Deaktiviere 'SSL-Zertifikat prüfen' bei selbstsignierten Zertifikaten.",
       "package_missing": "Erforderliches OpenWrt Paket fehlt. Für ubus: 'uhttpd-mod-ubus'. Für LuCI: 'luci-mod-rpc'. Installation via SSH: 'opkg update && opkg install <paket>'.",
       "permission_error": "Unzureichende RPC-Rechte. Prüfe die Benutzer-ACLs in /etc/config/rpcd. Hinweis: 'Eingeschränkte Benutzer' in LuCI haben oft nur Zugriff auf die LuCI-Oberfläche, aber nicht auf die für diese Methode benötigten rohen Ubus-Objekte.",
-      "provision_failed": "Automatische Erstellung des dedizierten Benutzers fehlgeschlagen. Bitte prüfe, ob dein Router die Benutzerverwaltung unterstützt, oder versuche, ihn manuell zu erstellen.",
+      "provision_failed": "Automatische Erstellung des dedizierten Benutzers fehlgeschlagen. Bitte prüfe, ob dein Router die Benutzerverwaltung unterstützt, oder versuche, ihn manuell zu erstellen.\n\nFehler: {error}",
       "no_devices_found": "Es wurden keine OpenWrt-Router automatisch in deinem Netzwerk gefunden. Du kannst versuchen, die Details manuell einzugeben.",
       "unknown": "Ein unerwarteter Fehler ist aufgetreten."
     },

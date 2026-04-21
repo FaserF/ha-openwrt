@@ -1170,23 +1170,25 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._generated_password,
                 )
 
-                # Fallback to SSH for root if ubus provisioning fails with permission error
+                # Fallback to SSH for root if ubus provisioning fails
+                # (e.g. Xiaomi/OEM routers block file.exec via ubus)
                 if (
                     not success
                     and self._data.get(CONF_USERNAME) == "root"
                     and self._data.get(CONF_CONNECTION_TYPE) != CONNECTION_TYPE_SSH
                 ):
                     _LOGGER.info(
-                        "Provisioning via %s failed for root, trying SSH fallback",
+                        "Provisioning via %s failed for root, trying SSH fallback on port 22",
                         self._data.get(CONF_CONNECTION_TYPE),
                     )
                     from .api.ssh import SshClient
 
+                    # Always use port 22 for SSH fallback, independent of the ubus port
                     ssh_client = SshClient(
                         host=self._data[CONF_HOST],
                         username="root",
-                        password=self._data[CONF_PASSWORD],
-                        port=self._data.get(CONF_PORT, 22),
+                        password=self._data.get(CONF_PASSWORD, ""),
+                        port=DEFAULT_PORT_SSH,
                     )
                     try:
                         if await ssh_client.connect():
@@ -1196,13 +1198,32 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                             )
                             if success:
                                 self._provision_error = None
+                                _LOGGER.info(
+                                    "SSH fallback provisioning succeeded for %s",
+                                    self._data.get(CONF_HOST),
+                                )
                             else:
                                 self._provision_error = (
-                                    f"SSH fallback also failed: {ssh_error}"
+                                    f"ubus file.exec is blocked on this router (common on Xiaomi/OEM firmwares). "
+                                    f"SSH fallback also failed: {ssh_error}. "
+                                    "Please reconfigure using SSH as the connection type."
                                 )
                             await ssh_client.disconnect()
+                        else:
+                            self._provision_error = (
+                                "ubus file.exec is blocked on this router (common on Xiaomi/OEM firmwares) "
+                                "and SSH on port 22 is not reachable either. "
+                                "Please enable SSH on the router (System → Administration → SSH Access) "
+                                "and reconfigure using SSH as the connection type."
+                            )
                     except Exception as err:
                         _LOGGER.debug("SSH fallback failed: %s", err)
+                        self._provision_error = (
+                            f"ubus file.exec is blocked on this router (common on Xiaomi/OEM firmwares). "
+                            f"SSH fallback error: {err}. "
+                            "Please enable SSH (System → Administration → SSH Access) "
+                            "and reconfigure using SSH as the connection type."
+                        )
 
                 await client.disconnect()
         except TimeoutError:

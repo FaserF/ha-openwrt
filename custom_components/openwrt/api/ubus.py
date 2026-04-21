@@ -2050,8 +2050,8 @@ class UbusClient(OpenWrtClient):
                 if self.username == "root":
                     hint = (
                         "Provisioning returned empty output even as root. "
-                        "This may indicate a ubus buffer limit or a hanging passwd call. "
-                        "Check router syslog ('logread | grep ha-openwrt') for details."
+                        "This is common on Xiaomi and other OEM firmwares that block 'file.exec' via ubus. "
+                        "Check router syslog ('logread | grep ha-openwrt') for details or try connecting via SSH."
                     )
                 else:
                     hint = (
