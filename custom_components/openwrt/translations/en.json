@@ -79,7 +79,7 @@
       },
       "permissions_ubus": {
         "title": "Permissions Summary",
-        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions) can be very restrictive, often blocking 'DHCP Leases' or 'System Temperature'. If features are missing or sensors show 0, try switching to **LuCI RPC** in the integration settings.\n\nYou can proceed if this is expected."
+        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions or non-root users) can be very restrictive. They often block 'DHCP Leases' or 'System Temperature' even if the user has basic access.\n\nIf features are missing or sensors show 0, it usually means your user lacks ACL permissions for specific raw ubus objects. Try switching to **LuCI RPC** in the integration settings, which is often more compatible with restricted users.\n\nYou can proceed if this is expected."
       },
       "packages": {
         "title": "Packages Summary",
@@ -112,7 +112,7 @@
       },
       "ubus_restricted": {
         "title": "Restricted Ubus Detected",
-        "description": "The connection to **{host}** ({model}) via **ubus** was successful, but the router is not returning any information about wireless interfaces or system services.\n\nThis is a common behavior on some firmwares (like Xiaomi AX3600), where the Ubus-HTTP interface is heavily restricted by the manufacturer.\n\n**Recommendation:** We strongly recommend going back and selecting **LuCI RPC** or **SSH** as the connection method instead. Otherwise, you will only see basic system sensors and no wireless clients or service controls."
+        "description": "The connection to **{host}** ({model}) via **ubus** was successful, but the router is not returning information about wireless interfaces or system services.\n\nTo identify available features, the integration performed these checks:\n1. `network.wireless status` -> Access Denied or No data\n2. `rc list` (Services) -> Access Denied or No data\n\n**Potential Causes:**\n- **Manufacturer Lock:** Firmwares (like Xiaomi AX3600) often restrict the Ubus-HTTP interface.\n- **ACL Restrictions:** Your user lacks permissions for these specific objects in `/etc/config/rpcd`.\n- **Restricted User Feature:** Using LuCI's 'limited user' often only grants access to `luci` object RPCs, but not the raw Ubus objects needed here.\n\n**Recommendation:** We strongly recommend going back and selecting **LuCI RPC** or **SSH** as the connection method. Otherwise, you will only see basic system sensors and no wireless clients or service controls."
       }
     },
     "error": {
@@ -121,7 +121,7 @@
       "timeout": "Connection timed out. Check if the router is reachable and the port is correct.",
       "ssl_error": "SSL verification failed. If using self-signed certs, disable 'Verify SSL Certificate'.",
       "package_missing": "Required OpenWrt package is missing. For ubus: 'uhttpd-mod-ubus'. For LuCI: 'luci-mod-rpc'. Install via SSH: 'opkg update && opkg install package'.",
-      "permission_error": "Insufficient RPC permissions. Check your user ACLs in /etc/config/rpcd or LuCI permissions.",
+      "permission_error": "Insufficient RPC permissions. Check your user ACLs in /etc/config/rpcd. Note: 'Restricted users' in LuCI often only have access to web-interface RPCs, but not the raw ubus objects required for this connection method.",
       "provision_failed": "Failed to automatically create the dedicated user. Ensure you are connected as root and have enough free space on the router for 'rpcd' ACL files.",
       "no_devices_found": "No OpenWrt routers were automatically discovered on your network. You can try to enter the details manually.",
       "unknown": "An unexpected error occurred."
@@ -156,7 +156,7 @@
       },
       "permissions_ubus": {
         "title": "Permissions Summary",
-        "description": "Based on your config for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions) can be very restrictive, often blocking 'DHCP Leases' or 'System Temperature'. If features are missing or sensors show 0, try switching to **LuCI RPC** in the integration settings.\n\nYou can proceed."
+        "description": "Based on your config for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions or non-root users) can be very restrictive. They often block 'DHCP Leases' or 'System Temperature' even if the user has basic access.\n\nIf features are missing or sensors show 0, it usually means your user lacks ACL permissions for specific raw ubus objects. Try switching to **LuCI RPC** in the integration settings, which is often more compatible with restricted users.\n\nYou can proceed."
       },
       "packages": {
         "title": "Packages Summary",

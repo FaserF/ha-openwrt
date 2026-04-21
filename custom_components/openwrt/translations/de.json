@@ -79,7 +79,7 @@
       },
       "permissions_ubus": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Anmeldedaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen) sehr restriktiv sein und blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur'. Falls Funktionen fehlen oder Sensoren 0 anzeigen, versuche auf **LuCI RPC** in den Integrations-Einstellungen umzuschalten.\n\nDu kannst fortfahren, wenn dies erwartet wird."
+        "description": "Basierend auf den Anmeldedaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen oder Nicht-Root-Benutzer) sehr restriktiv sein. Sie blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur', selbst wenn der Benutzer Basis-Zugriff hat.\n\nFalls Funktionen fehlen oder Sensoren 0 anzeigen, fehlen deinem Benutzer meist ACL-Berechtigungen für spezifische Ubus-Objekte. Versuche in den Integrations-Einstellungen auf **LuCI RPC** umzuschalten, was oft besser mit eingeschränkten Benutzern funktioniert.\n\nDu kannst fortfahren, wenn dies erwartet wird."
       },
       "packages": {
         "title": "Paketübersicht",
@@ -112,7 +112,7 @@
       },
       "ubus_restricted": {
         "title": "Eingeschränktes Ubus erkannt",
-        "description": "Die Verbindung zu **{host}** ({model}) via **ubus** war erfolgreich, aber der Router liefert keinerlei Informationen über WLAN-Schnittstellen oder System-Dienste zurück.\n\nDies ist ein bekanntes Verhalten bei einigen Firmwares (z. B. Xiaomi AX3600), bei denen die Ubus-HTTP-Schnittstelle vom Hersteller stark eingeschränkt wurde.\n\n**Empfehlung:** Wir empfehlen dringend, zurückzugehen und stattdessen **LuCI RPC** oder **SSH** als Verbindungsmethode zu wählen. Andernfalls wirst du nur Basis-Systemsensoren sehen und keine WLAN-Clients oder Dienstleistungen steuern können."
+        "description": "Die Verbindung zu **{host}** ({model}) via **ubus** war erfolgreich, aber der Router liefert keine Informationen über WLAN-Schnittstellen oder System-Dienste zurück.\n\nUm die verfügbaren Funktionen zu identifizieren, wurden folgende Prüfungen durchgeführt:\n1. `network.wireless status` -> Zugriff verweigert oder keine Daten\n2. `rc list` (Dienste) -> Zugriff verweigert oder keine Daten\n\n**Mögliche Ursachen:**\n- **Hersteller-Sperre:** Firmwares (wie Xiaomi AX3600) schränken die Ubus-HTTP-Schnittstelle oft stark ein.\n- **ACL-Einschränkungen:** Deinem Benutzer fehlen Berechtigungen für diese spezifischen Objekte in `/etc/config/rpcd`.\n- **Eingeschränkter Benutzer:** Die 'Restricted User' Funktion in LuCI gewährt oft nur Zugriff auf das `luci` Objekt, aber nicht auf die für diese Methode benötigten rohen Ubus-Objekte.\n\n**Empfehlung:** Wir empfehlen dringend, zurückzugehen und stattdessen **LuCI RPC** oder **SSH** als Verbindungsmethode zu wählen. Andernfalls sind viele Sensoren und Steuerungen nicht verfügbar."
       }
     },
     "error": {
@@ -121,7 +121,7 @@
       "timeout": "Zeitüberschreitung der Verbindung. Prüfe die Erreichbarkeit und den Port.",
       "ssl_error": "SSL-Verifizierung fehlgeschlagen. Deaktiviere 'SSL-Zertifikat prüfen' bei selbstsignierten Zertifikaten.",
       "package_missing": "Erforderliches OpenWrt Paket fehlt. Für ubus: 'uhttpd-mod-ubus'. Für LuCI: 'luci-mod-rpc'. Installation via SSH: 'opkg update && opkg install <paket>'.",
-      "permission_error": "Unzureichende RPC-Rechte. Prüfe die Benutzer-ACLs in /etc/config/rpcd oder LuCI Rechte.",
+      "permission_error": "Unzureichende RPC-Rechte. Prüfe die Benutzer-ACLs in /etc/config/rpcd. Hinweis: 'Eingeschränkte Benutzer' in LuCI haben oft nur Zugriff auf die LuCI-Oberfläche, aber nicht auf die für diese Methode benötigten rohen Ubus-Objekte.",
       "provision_failed": "Automatische Erstellung des dedizierten Benutzers fehlgeschlagen. Bitte prüfe, ob dein Router die Benutzerverwaltung unterstützt, oder versuche, ihn manuell zu erstellen.",
       "no_devices_found": "Es wurden keine OpenWrt-Router automatisch in deinem Netzwerk gefunden. Du kannst versuchen, die Details manuell einzugeben.",
       "unknown": "Ein unerwarteter Fehler ist aufgetreten."
@@ -156,7 +156,7 @@
       },
       "permissions_ubus": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf deiner Konfiguration für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen) sehr restriktiv sein und blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur'. Falls Funktionen fehlen oder Sensoren 0 anzeigen, versuche auf **LuCI RPC** in den Integrations-Einstellungen umzuschalten.\n\nDu kannst fortfahren."
+        "description": "Basierend auf deiner Konfiguration für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen oder Nicht-Root-Benutzer) sehr restriktiv sein. Sie blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur', selbst wenn der Benutzer Basis-Zugriff hat.\n\nFalls Funktionen fehlen oder Sensoren 0 anzeigen, fehlen deinem Benutzer meist ACL-Berechtigungen für spezifische Ubus-Objekte. Versuche in den Integrations-Einstellungen auf **LuCI RPC** umzuschalten, was oft besser mit eingeschränkten Benutzern funktioniert.\n\nDu kannst fortfahren."
       },
       "packages": {
         "title": "Paketübersicht",
