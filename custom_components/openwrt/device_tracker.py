@@ -28,6 +28,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    ATTR_MANUFACTURER,
     CONF_CONSIDER_HOME,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
@@ -38,6 +39,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
+from .helpers.mac_vendor import get_mac_vendor_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -188,9 +190,20 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                     )
                     break
 
+        # Standard values for tracked devices
+        manufacturer = ATTR_MANUFACTURER
+        model = "Tracked device"
+
+        # Try to identify manufacturer/model by MAC OUI
+        if vendor_info := get_mac_vendor_info(self._mac):
+            manufacturer, model = vendor_info
+
         return DeviceInfo(
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
+            identifiers={(DOMAIN, self._mac)},
             name=self.name or self._initial_name,
+            manufacturer=manufacturer,
+            model=model,
             via_device=via_device,
         )
 

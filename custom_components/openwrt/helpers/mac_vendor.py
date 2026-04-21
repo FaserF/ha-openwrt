@@ -1,0 +1,226 @@
+"""MAC vendor mapping for OpenWrt tracked devices."""
+from __future__ import annotations
+# Common IoT and device MAC OUI prefixes and their associated manufacturer/model info
+# Format: "XX:XX:XX": (Manufacturer, Model)
+MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
+    # --- SMARTPHONES & TABLETS ---
+    # Apple (iPhone, iPad, Watch)
+    "00:03:93": ("Apple", "Apple Device"), "00:05:02": ("Apple", "Apple Device"),
+    "00:0A:95": ("Apple", "Apple Device"), "00:0D:93": ("Apple", "Apple Device"),
+    "00:10:FA": ("Apple", "Apple Device"), "00:11:24": ("Apple", "Apple Device"),
+    "00:14:51": ("Apple", "Apple Device"), "00:16:CB": ("Apple", "Apple Device"),
+    "00:17:F2": ("Apple", "Apple Device"), "00:19:E3": ("Apple", "Apple Device"),
+    "00:1B:63": ("Apple", "Apple Device"), "00:1C:B3": ("Apple", "Apple Device"),
+    "00:1D:4F": ("Apple", "Apple Device"), "00:1E:52": ("Apple", "Apple Device"),
+    "00:1E:C2": ("Apple", "Apple Device"), "00:21:E9": ("Apple", "Apple Device"),
+    "00:22:41": ("Apple", "Apple Device"), "00:23:12": ("Apple", "Apple Device"),
+    "00:23:6C": ("Apple", "Apple Device"), "00:24:36": ("Apple", "Apple Device"),
+    "00:25:00": ("Apple", "Apple Device"), "00:25:BC": ("Apple", "Apple Device"),
+    "00:26:08": ("Apple", "Apple Device"), "00:26:BB": ("Apple", "Apple Device"),
+    "04:48:9A": ("Apple", "Apple Device"), "04:4B:ED": ("Apple", "Apple Device"),
+    "08:00:07": ("Apple", "Apple Device"), "08:66:98": ("Apple", "Apple Device"),
+    "0C:15:39": ("Apple", "Apple Device"), "0C:4D:E9": ("Apple", "Apple Device"),
+    "10:1C:0C": ("Apple", "Apple Device"), "10:40:F3": ("Apple", "Apple Device"),
+    "14:10:9F": ("Apple", "Apple Device"), "18:20:32": ("Apple", "Apple Device"),
+    "1C:1A:C0": ("Apple", "Apple Device"), "20:76:8F": ("Apple", "Apple Device"),
+    "24:1B:7A": ("Apple", "Apple Device"), "28:37:37": ("Apple", "Apple Device"),
+    "2C:1F:23": ("Apple", "Apple Device"), "30:04:E6": ("Apple", "Apple Device"),
+    "34:08:BC": ("Apple", "Apple Device"), "38:0F:4A": ("Apple", "Apple Device"),
+    "3C:07:54": ("Apple", "Apple Device"), "40:30:04": ("Apple", "Apple Device"),
+    "44:00:10": ("Apple", "Apple Device"), "48:43:7C": ("Apple", "Apple Device"),
+    "4C:32:75": ("Apple", "Apple Device"), "50:32:37": ("Apple", "Apple Device"),
+    "54:26:96": ("Apple", "Apple Device"), "58:1C:BD": ("Apple", "Apple Device"),
+    "5C:09:47": ("Apple", "Apple Device"), "60:03:08": ("Apple", "Apple Device"),
+    "64:20:0C": ("Apple", "Apple Device"), "68:09:27": ("Apple", "Apple Device"),
+    "6C:40:08": ("Apple", "Apple Device"), "70:11:24": ("Apple", "Apple Device"),
+    "74:1B:B2": ("Apple", "Apple Device"), "78:31:C1": ("Apple", "Apple Device"),
+    "7C:01:05": ("Apple", "Apple Device"), "80:00:6E": ("Apple", "Apple Device"),
+    "84:29:99": ("Apple", "Apple Device"), "88:19:08": ("Apple", "Apple Device"),
+    "8C:29:37": ("Apple", "Apple Device"), "90:27:E4": ("Apple", "Apple Device"),
+    "94:01:C2": ("Apple", "Apple Device"), "98:00:C6": ("Apple", "Apple Device"),
+    "9C:04:EB": ("Apple", "Apple Device"), "A0:18:28": ("Apple", "Apple Device"),
+    "A4:31:35": ("Apple", "Apple Device"), "A8:20:66": ("Apple", "Apple Device"),
+    "AC:1F:74": ("Apple", "Apple Device"), "B0:19:C6": ("Apple", "Apple Device"),
+    "B4:18:D1": ("Apple", "Apple Device"), "B8:09:8A": ("Apple", "Apple Device"),
+    "BC:3B:AF": ("Apple", "Apple Device"), "C0:1A:DA": ("Apple", "Apple Device"),
+    "C4:2C:03": ("Apple", "Apple Device"), "C8:1E:E7": ("Apple", "Apple Device"),
+    "CC:08:E0": ("Apple", "Apple Device"), "D0:03:4B": ("Apple", "Apple Device"),
+    "D4:61:9D": ("Apple", "Apple Device"), "D8:00:4D": ("Apple", "Apple Device"),
+    "DC:08:0F": ("Apple", "Apple Device"), "E0:33:8E": ("Apple", "Apple Device"),
+    "E4:25:E7": ("Apple", "Apple Device"), "E8:04:0B": ("Apple", "Apple Device"),
+    "EC:35:86": ("Apple", "Apple Device"), "F0:18:98": ("Apple", "Apple Device"),
+    "F4:0F:24": ("Apple", "Apple Device"), "F8:1E:DF": ("Apple", "Apple Device"),
+    "FC:1D:43": ("Apple", "Apple Device"),
+
+    # Samsung (Galaxy Phones/Tablets)
+    "00:00:F0": ("Samsung", "Samsung Device"), "00:07:AB": ("Samsung", "Samsung Device"),
+    "00:15:B9": ("Samsung", "Samsung Device"), "00:17:C9": ("Samsung", "Samsung Device"),
+    "00:1E:7D": ("Samsung", "Samsung Device"), "00:23:D6": ("Samsung", "Samsung Device"),
+    "00:25:67": ("Samsung", "Samsung Device"), "00:26:37": ("Samsung", "Samsung Device"),
+    "08:D4:6A": ("Samsung", "Samsung Device"), "10:30:47": ("Samsung", "Samsung Device"),
+    "1C:5A:3E": ("Samsung", "Samsung Device"), "28:98:7B": ("Samsung", "Samsung Device"),
+    "30:85:A9": ("Samsung", "Samsung Device"), "3C:A3:08": ("Samsung", "Samsung Device"),
+    "40:F3:08": ("Samsung", "Samsung Device"), "48:5A:3F": ("Samsung", "Samsung Device"),
+    "50:85:69": ("Samsung", "Samsung Device"), "5C:E0:93": ("Samsung", "Samsung Device"),
+    "60:AF:6D": ("Samsung", "Samsung Device"), "68:EB:AE": ("Samsung", "Samsung Device"),
+    "78:BD:BC": ("Samsung", "Samsung Device"), "80:94:0A": ("Samsung", "Samsung Device"),
+    "8C:71:F8": ("Samsung", "Samsung Device"), "98:52:B1": ("Samsung", "Samsung Device"),
+    "A0:91:69": ("Samsung", "Samsung Device"), "AC:36:13": ("Samsung", "Samsung Device"),
+    "B8:5A:73": ("Samsung", "Samsung Device"), "CC:3A:61": ("Samsung", "Samsung Device"),
+    "D4:E8:B2": ("Samsung", "Samsung Device"), "E4:70:B8": ("Samsung", "Samsung Device"),
+    "F0:E7:7E": ("Samsung", "Samsung Device"), "FC:A1:3E": ("Samsung", "Samsung Device"),
+
+    # Google (Pixel)
+    "00:1A:11": ("Google", "Google Device"), "3C:5A:B4": ("Google", "Google Device"),
+    "44:59:E3": ("Google", "Google Device"), "50:1A:C5": ("Google", "Google Device"),
+    "6C:AD:F8": ("Google", "Google Device"), "70:2C:1F": ("Google", "Google Device"),
+    "84:D8:1B": ("Google", "Google Device"), "94:EB:CD": ("Google", "Google Device"),
+    "A4:77:33": ("Google", "Google Device"), "BC:F5:AC": ("Google", "Google Device"),
+    "D8:24:BD": ("Google", "Google Device"), "E4:F0:42": ("Google", "Google Device"),
+    "F8:0F:F9": ("Google", "Google Device"), "F8:8F:CA": ("Google", "Google Device"),
+
+    # Xiaomi Smartphone
+    "00:9E:C8": ("Xiaomi", "Xiaomi Device"), "00:C3:0A": ("Xiaomi", "Xiaomi Device"),
+    "18:59:36": ("Xiaomi", "Xiaomi Device"), "28:6C:07": ("Xiaomi", "Xiaomi Device"),
+    "34:80:B3": ("Xiaomi", "Xiaomi Device"), "64:90:C1": ("Xiaomi", "Xiaomi Device"),
+    "7C:1E:52": ("Xiaomi", "Xiaomi Device"), "8C:BE:BE": ("Xiaomi", "Xiaomi Device"),
+    "98:22:EF": ("Xiaomi", "Xiaomi Device"), "AC:F7:F3": ("Xiaomi", "Xiaomi Device"),
+    "C0:0A:94": ("Xiaomi", "Xiaomi Device"), "D4:97:0B": ("Xiaomi", "Xiaomi Device"),
+    "E4:46:DA": ("Xiaomi", "Xiaomi Device"), "F4:8A:51": ("Xiaomi", "Xiaomi Device"),
+
+    # --- COMPUTER & LAPTOPS ---
+    # Apple Mac
+    "F0:18:98": ("Apple", "Mac"), "AC:1F:74": ("Apple", "Mac"),
+    "6C:40:08": ("Apple", "Mac"), "28:CF:E9": ("Apple", "MacBook"),
+    "34:E2:FD": ("Apple", "MacBook"),
+
+    # Dell
+    "00:08:74": ("Dell", "Dell Computer"), "00:0F:1F": ("Dell", "Dell Computer"),
+    "00:14:22": ("Dell", "Dell Computer"), "18:03:73": ("Dell", "Dell Computer"),
+    "24:B6:FD": ("Dell", "Dell Computer"), "34:17:EB": ("Dell", "Dell Computer"),
+    "44:DD:05": ("Dell", "Dell Computer"), "F8:BC:12": ("Dell", "Dell Computer"),
+
+    # HP
+    "00:0B:CD": ("HP", "HP Computer"), "00:0E:7F": ("HP", "HP Computer"),
+    "10:60:4B": ("HP", "HP Computer"), "24:BE:05": ("HP", "HP Computer"),
+    "30:8D:99": ("HP", "HP Computer"), "4C:72:B9": ("HP", "HP Computer"),
+    "78:E7:D1": ("HP", "HP Computer"), "B0:5A:DA": ("HP", "HP Computer"),
+
+    # Lenovo
+    "00:12:FE": ("Lenovo", "Lenovo Computer"), "08:11:96": ("Lenovo", "Lenovo Computer"),
+    "14:36:C6": ("Lenovo", "Lenovo Computer"), "34:13:E8": ("Lenovo", "Lenovo Computer"),
+    "48:51:B7": ("Lenovo", "Lenovo Computer"), "A4:4E:31": ("Lenovo", "Lenovo Computer"),
+    "EC:D0:9F": ("Lenovo", "Lenovo Computer"),
+
+    # Fujitsu
+    "00:00:0E": ("Fujitsu", "Fujitsu Computer"), "00:0B:5D": ("Fujitsu", "Fujitsu Computer"),
+    "00:17:42": ("Fujitsu", "Fujitsu Computer"), "00:19:99": ("Fujitsu", "Fujitsu Computer"),
+    "70:54:D5": ("Fujitsu", "Fujitsu Device"),
+
+    # --- SMART HOME ---
+    # AVM FRITZ!
+    "00:04:0E": ("AVM", "FRITZ! Device"), "34:31:C4": ("AVM", "FRITZ! Device"),
+    "C0:25:E9": ("AVM", "FRITZ! Device"), "DC:15:C8": ("AVM", "FRITZ! Device"),
+    "E0:28:6D": ("AVM", "FRITZ! Device"),
+
+    # Sonos
+    "00:04:3C": ("Sonos", "Sonos Speaker"), "00:0E:58": ("Sonos", "Sonos Speaker"),
+    "94:9F:3E": ("Sonos", "Sonos Speaker"), "B8:E9:37": ("Sonos", "Sonos Speaker"),
+
+    # Philips Hue
+    "00:17:88": ("Signify", "Philips Hue Bridge"),
+
+    # Shelly (Allterco)
+    "40:F5:20": ("Shelly", "Shelly IoT device"), "84:F3:EB": ("Shelly", "Shelly IoT device"),
+    "C8:2B:96": ("Shelly", "Shelly IoT device"), "CC:50:E3": ("Shelly", "Shelly IoT device"),
+
+    # Bosch
+    "00:01:31": ("Bosch", "Bosch Device"), "3C:D0:74": ("Bosch", "Bosch Smart Home"),
+
+    # Miele
+    "00:1D:63": ("Miele", "Miele Appliance"),
+
+    # Siemens / BSH
+    "00:01:E3": ("Siemens", "Siemens Device"), "00:08:2F": ("Siemens", "Siemens Device"),
+    "D8:E5:6D": ("BSH", "Home Connect Device"),
+
+    # Netatmo
+    "70:EE:50": ("Netatmo", "Netatmo Device"),
+
+    # Dyson
+    "C8:FF:77": ("Dyson", "Dyson Device"), "E4:F0:42": ("Dyson", "Dyson Device"),
+
+    # Tuya (White Label)
+    "00:0E:8F": ("Tuya", "Tuya IoT device"), "18:DE:50": ("Tuya", "Tuya IoT device"),
+    "24:62:AB": ("Tuya", "Tuya IoT device"), "50:8A:06": ("Tuya", "Tuya IoT device"),
+    "60:01:94": ("Tuya", "Tuya IoT device"), "EC:FA:BC": ("Tuya", "Tuya IoT device"),
+
+    # --- TV & ENTERTAINMENT ---
+    # Samsung TV
+    "00:00:F0": ("Samsung", "Samsung Smart TV"), "CC:07:E4": ("Samsung", "Samsung Smart TV"),
+    "BC:B1:F3": ("Samsung", "Samsung Smart TV"),
+
+    # LG TV
+    "00:05:C9": ("LG", "LG Smart TV"), "00:E0:91": ("LG", "LG Smart TV"),
+    "38:8C:50": ("LG", "LG Smart TV"), "3C:66:94": ("LG", "LG Smart TV"),
+    "40:B0:FA": ("LG", "LG Smart TV"), "58:A2:B5": ("LG", "LG Smart TV"),
+    "80:E0:1D": ("LG", "LG Smart TV"), "B4:F0:7F": ("LG", "LG Smart TV"),
+
+    # Sony TV
+    "00:01:4A": ("Sony", "Sony Smart TV"), "00:04:1F": ("Sony", "Sony Smart TV"),
+    "1C:43:8D": ("Sony", "Sony Smart TV"), "70:66:55": ("Sony", "Sony Smart TV"),
+    "AC:9B:0A": ("Sony", "Sony Smart TV"), "BC:FE:D9": ("Sony", "Sony Smart TV"),
+    "FC:0F:E6": ("Sony", "Sony Smart TV"),
+
+    # TCL TV
+    "00:0F:70": ("TCL", "TCL Smart TV"), "08:4E:1C": ("TCL", "TCL Smart TV"),
+    "2C:22:33": ("TCL", "TCL Smart TV"), "48:8A:20": ("TCL", "TCL Smart TV"),
+    "EC:60:62": ("TCL", "TCL Smart TV"), "F8:1E:DF": ("TCL", "TCL Smart TV"),
+    "F8:24:41": ("TCL", "TCL Smart TV"),
+
+    # --- INFRASTRUKTUR ---
+    # Raspberry Pi
+    "28:CD:C1": ("Raspberry Pi", "Raspberry Pi"), "B8:27:EB": ("Raspberry Pi", "Raspberry Pi"),
+    "D8:3A:DD": ("Raspberry Pi", "Raspberry Pi 4"), "DC:A6:32": ("Raspberry Pi", "Raspberry Pi 4"),
+    "E4:5F:01": ("Raspberry Pi", "Raspberry Pi 4"),
+
+    # Espressif (Tasmota / ESPHome)
+    "24:0A:C4": ("Espressif", "ESP device"), "30:AE:A4": ("Espressif", "ESP device"),
+    "AC:D0:74": ("Espressif", "ESP device"), "B4:E6:2D": ("Espressif", "ESP device"),
+
+    # --- OTHER ---
+    # Amazon (Echo, FireTV)
+    "00:BB:3A": ("Amazon", "Echo/FireTV Device"), "0C:47:C9": ("Amazon", "Echo Device"),
+    "34:D2:70": ("Amazon", "Echo Device"), "44:65:0D": ("Amazon", "Echo Device"),
+    "74:75:48": ("Amazon", "Echo Device"), "AC:63:BE": ("Amazon", "Echo Device"),
+    "F0:D2:F1": ("Amazon", "Echo Device"),
+
+    # Multimedia (Denon, Marantz, Bose, Yamaha)
+    "00:05:CD": ("Denon", "AV-Receiver"), "00:06:78": ("Marantz", "AV-Receiver"),
+    "00:0C:8A": ("Bose", "Bose Speaker"), "00:A0:DE": ("Yamaha", "Yamaha Audio"),
+    "AC:F0:DE": ("Yamaha", "Yamaha Audio"),
+
+    # Console
+    "00:04:1F": ("Sony", "PlayStation"), "28:0D:FC": ("Sony", "PlayStation"),
+    "00:03:FF": ("Microsoft", "Xbox"), "00:22:AA": ("Nintendo", "Nintendo Device"),
+    "00:09:BF": ("Nintendo", "Nintendo Device"), "E4:10:7B": ("Nintendo", "Nintendo Switch"),
+
+    # Powerline / Network
+    "00:0B:3B": ("Devolo", "dLAN Device"), "00:1C:1E": ("Devolo", "dLAN Device"),
+    "00:22:75": ("Devolo", "dLAN Device"),
+
+    # Phone
+    "00:21:04": ("Gigaset", "Gigaset Phone"),
+
+    # Peripheral (Logitech, Microsoft)
+    "00:04:20": ("Logitech", "Logitech Device"), "00:1D:D8": ("Microsoft", "Surface/Device"),
+}
+
+def get_mac_vendor_info(mac: str) -> tuple[str, str] | None:
+    """Get manufacturer and model from MAC address."""
+    if not mac:
+        return None
+    # Normalization: upper case and colon separator for the first 8 chars (OUI)
+    clean_mac = mac.replace("-", ":").upper()
+    prefix = clean_mac[:8]
+    return MAC_VENDOR_MAP.get(prefix)
