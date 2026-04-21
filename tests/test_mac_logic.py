@@ -60,6 +60,14 @@ class MockClient(OpenWrtClient):
     async def get_dhcp_leases(self) -> list[DhcpLease]:
         return []
 
+    async def get_local_macs(self) -> set[str]:
+        """Get local MACs."""
+        return set()
+
+    async def get_local_ips(self) -> set[str]:
+        """Get local IPs."""
+        return set()
+
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
         return []
 
