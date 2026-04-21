@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import glob
 import json
 import os
@@ -39,7 +38,7 @@ def get_current_version(manifest_path):
                 )
         if v_tags:
             return sorted(v_tags, key=lambda x: x["key"], reverse=True)[0]["tag"]
-    except (subprocess.CalledProcessError, IndexError, ValueError):
+    except subprocess.CalledProcessError, IndexError, ValueError:
         pass
     if manifest_path and os.path.exists(manifest_path):
         with open(manifest_path) as f:

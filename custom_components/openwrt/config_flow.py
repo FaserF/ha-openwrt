@@ -859,12 +859,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _test_connection(self, data: dict[str, Any]) -> str | None:
         """Test connection to the device. Returns error key or None on success."""
-        client = create_client(data)
+        _LOGGER.debug(
+            "Starting connection test with data: %s",
+            {k: (v if k != CONF_PASSWORD else "********") for k, v in data.items()},
+        )
         try:
+            client = create_client(data)
+            _LOGGER.debug("Client created: %s", client)
             async with asyncio.timeout(30):
                 await self._perform_connection_test(client, data)
             return None
         except Exception as err:
+            _LOGGER.exception("Connection test failed: %s", err)
             return self._handle_test_error(err, data.get(CONF_USERNAME))
 
     async def _perform_connection_test(self, client: Any, data: dict[str, Any]) -> None:

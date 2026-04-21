@@ -279,6 +279,7 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
                     break
 
         return DeviceInfo(
+            identifiers={(DOMAIN, self._mac)},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
             name=(self.name if self.name is not UNDEFINED else None)
             or self._initial_name,
@@ -1164,16 +1165,6 @@ def _create_device_sensors(
             lambda d, m=mac: any(
                 x.mac == m and x.is_wireless for x in d.connected_devices
             ),
-        ),
-        (
-            "connection_type",
-            "Connection Type",
-            "device_connection_type",
-            None,
-            lambda d, m=mac: next(
-                (x.connection_type for x in d.connected_devices if x.mac == m), None
-            ),
-            None,
         ),
     ]
 

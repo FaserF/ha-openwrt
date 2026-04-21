@@ -1565,6 +1565,66 @@ class LuciRpcClient(OpenWrtClient):
 
         return leds
 
+    async def get_local_macs(self) -> set[str]:
+        """Get all MAC addresses belonging to the router's physical and virtual interfaces."""
+        macs = set()
+        try:
+            status_str = await self._rpc_call(
+                "sys",
+                "exec",
+                ["ubus call network.device status 2>/dev/null"],
+            )
+            if status_str and status_str.strip().startswith("{"):
+                status = json.loads(status_str)
+                if status and isinstance(status, dict):
+                    for dev_info in status.values():
+                        if isinstance(dev_info, dict) and (
+                            mac := dev_info.get("macaddr")
+                        ):
+                            macs.add(mac.lower())
+        except Exception:  # noqa: BLE001
+            pass
+        return macs
+
+    async def get_local_ips(self) -> set[str]:
+        """Get all IP addresses belonging to the router."""
+        ips = set()
+        try:
+            dump_str = await self._rpc_call(
+                "sys",
+                "exec",
+                ["ubus call network.interface dump 2>/dev/null"],
+            )
+            if dump_str and dump_str.strip().startswith("{"):
+                dump = json.loads(dump_str)
+                if (
+                    dump
+                    and isinstance(dump, dict)
+                    and (ifaces := dump.get("interface"))
+                ):
+                    for iface in ifaces:
+                        if not isinstance(iface, dict):
+                            continue
+                        # IPv4
+                        for addr in iface.get("ipv4-address", []):
+                            if (
+                                isinstance(addr, dict)
+                                and (address := addr.get("address"))
+                                and address not in ips
+                            ):
+                                ips.add(address)
+                        # IPv6
+                        for addr in iface.get("ipv6-address", []):
+                            if (
+                                isinstance(addr, dict)
+                                and (address := addr.get("address"))
+                                and address not in ips
+                            ):
+                                ips.add(address)
+        except Exception:  # noqa: BLE001
+            pass
+        return ips
+
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
         """Get IP neighbor (ARP/NDP) table via sys.exec."""
         neighbors: list[IpNeighbor] = []

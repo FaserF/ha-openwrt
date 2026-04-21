@@ -3,7 +3,10 @@
     "step": {
       "user": {
         "title": "OpenWrt Setup Wizard",
-        "description": "Select the connection method for your OpenWrt router. [Learn more]({docs_url})."
+        "description": "Select the connection method for your OpenWrt router. [Learn more]({docs_url}).",
+        "data": {
+          "flow_type": "Setup Mode"
+        }
       },
       "discovery": {
         "title": "Searching for OpenWrt",

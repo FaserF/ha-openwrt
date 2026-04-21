@@ -585,6 +585,8 @@ class OpenWrtData:
     """Aggregated data from an OpenWrt device."""
 
     device_info: DeviceInfo = field(default_factory=DeviceInfo)
+    local_macs: set[str] = field(default_factory=set)
+    local_ips: set[str] = field(default_factory=set)
     system_resources: SystemResources = field(default_factory=SystemResources)
     wireless_interfaces: list[WirelessInterface] = field(default_factory=list)
     network_interfaces: list[NetworkInterface] = field(default_factory=list)
@@ -816,6 +818,16 @@ class OpenWrtClient(abc.ABC):
     async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
         """Get LLDP neighbor information."""
         return []
+
+    @abc.abstractmethod
+    async def get_local_macs(self) -> set[str]:
+        """Get all MAC addresses belonging to the router's physical and virtual interfaces."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def get_local_ips(self) -> set[str]:
+        """Get all IP addresses belonging to the router."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def get_network_interfaces(self) -> list[NetworkInterface]:
@@ -1274,25 +1286,39 @@ class OpenWrtClient(abc.ABC):
                 self.get_system_resources(),
                 self.get_network_interfaces(),
                 self.get_connected_devices(),
+                self.get_local_macs(),
+                self.get_local_ips(),
             )
             (
                 data.device_info,
                 data.system_resources,
                 data.network_interfaces,
                 data.connected_devices,
+                data.local_macs,
+                data.local_ips,
             ) = core_results
             self._cached_device_info = data.device_info
+            self._cached_local_macs = data.local_macs
+            self._cached_local_ips = data.local_ips
         else:
             # Fast poll: reuse cached device_info, fetch dynamic core data
             core_results_fast = await asyncio.gather(
                 self.get_system_resources(),
                 self.get_network_interfaces(),
                 self.get_connected_devices(),
+                self.get_local_macs(),
+                self.get_local_ips(),
             )
-            data.system_resources, data.network_interfaces, data.connected_devices = (
-                core_results_fast
-            )
+            (
+                data.system_resources,
+                data.network_interfaces,
+                data.connected_devices,
+                data.local_macs,
+                data.local_ips,
+            ) = core_results_fast
             data.device_info = getattr(self, "_cached_device_info", data.device_info)
+            # We don't cache MACs/IPs yet as they are dynamic in some setups (VPNs etc)
+            # but we can reuse cached if call fails or return empty set
 
         # Ensure router MAC address is populated from interfaces if missing
         if data.device_info and not data.device_info.mac_address:

@@ -819,7 +819,7 @@ class UbusClient(OpenWrtClient):
         # 5. Process wireless client details (hostapd)
         if wireless_data:
             await self._process_hostapd_clients(devices, wireless_data)
-        
+
         # Always run fallback to ensure we catch any manually added or mesh interfaces
         await self._process_hostapd_fallback(devices)
 
@@ -943,11 +943,11 @@ class UbusClient(OpenWrtClient):
                     candidates.add(obj.split(".", 1)[1])
                 elif obj in ("iwinfo", "network.wireless"):
                     continue
-            
+
             # Additional common names if nothing found
             if not candidates:
                 candidates = {"wlan0", "wlan1", "wlan0-1", "wlan1-1"}
-                
+
             for ifname in candidates:
                 with contextlib.suppress(UbusError):
                     assoc = await self._call("iwinfo", "assoclist", {"device": ifname})
@@ -1338,6 +1338,36 @@ class UbusClient(OpenWrtClient):
             if getattr(packages, field.name) is None:
                 setattr(packages, field.name, False)
 
+    async def get_local_macs(self) -> set[str]:
+        """Get all MAC addresses belonging to the router's physical and virtual interfaces."""
+        macs = set()
+        with contextlib.suppress(Exception):
+            status = await self._call("network.device", "status")
+            if status and isinstance(status, dict):
+                for dev_info in status.values():
+                    if isinstance(dev_info, dict) and (mac := dev_info.get("macaddr")):
+                        macs.add(mac.lower())
+        return macs
+
+    async def get_local_ips(self) -> set[str]:
+        """Get all IP addresses belonging to the router."""
+        ips = set()
+        with contextlib.suppress(Exception):
+            dump = await self._call("network.interface", "dump")
+            if dump and isinstance(dump, dict) and (ifaces := dump.get("interface")):
+                for iface in ifaces:
+                    if not isinstance(iface, dict):
+                        continue
+                    # IPv4
+                    for addr in iface.get("ipv4-address", []):
+                        if isinstance(addr, dict) and (address := addr.get("address")):
+                            ips.add(address)
+                    # IPv6
+                    for addr in iface.get("ipv6-address", []):
+                        if isinstance(addr, dict) and (address := addr.get("address")):
+                            ips.add(address)
+        return ips
+
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
         """Get IP neighbor (ARP/NDP) table."""
         neighbors: list[IpNeighbor] = []
@@ -1637,7 +1667,7 @@ class UbusClient(OpenWrtClient):
             cmd = (
                 "if command -v apk >/dev/null 2>&1; then APK=apk; "
                 "elif [ -x /sbin/apk ]; then APK=/sbin/apk; fi; "
-                "if [ -n \"$APK\" ]; then $APK info -q 2>/dev/null; "
+                'if [ -n "$APK" ]; then $APK info -q 2>/dev/null; '
                 "else "
                 "  if command -v opkg >/dev/null 2>&1; then OPKG=opkg; "
                 "  elif [ -x /bin/opkg ]; then OPKG=/bin/opkg; fi; "
@@ -1923,6 +1953,8 @@ class UbusClient(OpenWrtClient):
             except Exception:
                 return False
 
+    async def execute_command(self, command: str) -> str:
+        """Execute a shell command on the device via ubus."""
         try:
             # Wrap in /bin/sh -c to handle operators like && or >
             res = await self._call(
@@ -1932,7 +1964,7 @@ class UbusClient(OpenWrtClient):
             )
             if not res or not isinstance(res, dict):
                 return ""
-            
+
             # stdout/stderr are usually strings if present
             return str(res.get("stdout") or "").strip()
         except UbusPermissionError as err:
@@ -2064,7 +2096,9 @@ class UbusClient(OpenWrtClient):
                 "write",
                 {"path": tmp_path, "data": script},
             )
-            _LOGGER.debug("Wrote provisioning script to %s for user %s", tmp_path, username)
+            _LOGGER.debug(
+                "Wrote provisioning script to %s for user %s", tmp_path, username
+            )
 
             # 2. Execute the script file directly
             res = await self._call(
@@ -2076,7 +2110,9 @@ class UbusClient(OpenWrtClient):
 
             # 3. Clean up (best-effort)
             with contextlib.suppress(Exception):
-                await self._call("file", "exec", {"command": "rm", "params": ["-f", tmp_path]})
+                await self._call(
+                    "file", "exec", {"command": "rm", "params": ["-f", tmp_path]}
+                )
 
             return output or ""
         except Exception as err:

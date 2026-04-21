@@ -88,6 +88,12 @@ def create_client(config: dict[str, Any]) -> OpenWrtClient:
     verify_ssl = config.get(CONF_VERIFY_SSL, False)
     dhcp_software = config.get(CONF_DHCP_SOFTWARE, "auto")
 
+    _LOGGER.debug("Creating client for %s (type: %s)", host, connection_type)
+    _LOGGER.debug(
+        "Config data: %s",
+        {k: (v if k != CONF_PASSWORD else "********") for k, v in config.items()},
+    )
+
     if connection_type == CONNECTION_TYPE_SSH:
         port = config.get(CONF_PORT, DEFAULT_PORT_SSH)
         return SshClient(
@@ -326,6 +332,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 self._device_history = stored_data
 
         own_macs = self._get_own_macs(data)
+        own_ips = data.local_ips
         current_time = int(time.time())
         history_updated = False
 
@@ -336,11 +343,27 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if mac in own_macs:
                 continue
 
+            # 2. Filter out router's own IP addresses
+            if device.ip and device.ip in own_ips:
+                continue
+
             # 3. Filter out internal interface names masquerading as hostnames
             if device.hostname:
                 hostname = device.hostname.lower()
-                if re.match(r"^(wlan|eth|lan|wan|br-|radio|phy)[0-9]+", hostname):
+                # Enhanced regex to catch more interface-like names (wlan0, eth0.1, br-lan, etc.)
+                if re.match(
+                    r"^(wlan|eth|lan|wan|br-|radio|phy|veth|lo|bond|team)[0-9]*([.-].*)?$",
+                    hostname,
+                ):
                     continue
+
+            # 4. Filter if hostname is identical to the interface name (likely self-reported neighbor)
+            if (
+                device.interface
+                and device.hostname
+                and device.interface.lower() == device.hostname.lower()
+            ):
+                continue
 
             filtered_devices.append(device)
 
@@ -362,12 +385,30 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         data.connected_devices = filtered_devices
 
+        # 5. Filter DHCP leases to prevent entities for internal interfaces (veth, wlanX, etc.)
+        filtered_leases = []
+        for lease in data.dhcp_leases:
+            mac = lease.mac.lower()
+            if mac in own_macs:
+                continue
+            if lease.ip and lease.ip in own_ips:
+                continue
+            if lease.hostname:
+                hostname = lease.hostname.lower()
+                if re.match(
+                    r"^(wlan|eth|lan|wan|br-|radio|phy|veth|lo|bond|team)[0-9]*([.-].*)?$",
+                    hostname,
+                ):
+                    continue
+            filtered_leases.append(lease)
+        data.dhcp_leases = filtered_leases
+
         if history_updated:
             await self._store.async_save(self._device_history)
 
     def _get_own_macs(self, data: OpenWrtData) -> set[str]:
         """Collect all MAC addresses belonging to the router itself."""
-        own_macs = set()
+        own_macs = {m.lower() for m in data.local_macs if m}
         if data.device_info.mac_address:
             own_macs.add(data.device_info.mac_address.lower())
         for iface in data.network_interfaces:

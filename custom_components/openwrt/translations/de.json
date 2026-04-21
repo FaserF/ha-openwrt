@@ -3,7 +3,10 @@
     "step": {
       "user": {
         "title": "Verbindung zum OpenWrt Router",
-        "description": "Wähle die Verbindungsmethode für deinen OpenWrt Router. [Mehr erfahren]({docs_url})."
+        "description": "Wähle die Verbindungsmethode für deinen OpenWrt Router. [Mehr erfahren]({docs_url}).",
+        "data": {
+          "flow_type": "Einrichtungsmodus"
+        }
       },
       "discovery": {
         "title": "Suche nach OpenWrt",

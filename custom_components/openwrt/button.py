@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, cast
@@ -32,6 +34,8 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -116,20 +120,60 @@ async def async_setup_entry(
 
     @callback
     def _async_cleanup_entities() -> None:
-        """Clean up orphaned or incorrect entities."""
         ent_reg = er.async_get(hass)
         entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+        own_macs = (
+            coordinator._get_own_macs(coordinator.data) if coordinator.data else set()
+        )
+        interface_regex = (
+            r"^(wlan|eth|lan|wan|br-|radio|phy|veth|lo|bond|team)[0-9]*([.-].*)?$"
+        )
 
         for ent in entries:
             if ent.domain != "button":
                 continue
 
             unique_id = ent.unique_id
-            # Cleanup incorrectly created WoL buttons for wireless devices
-            if "_wol_" in unique_id:
-                mac = unique_id.split("_wol_")[-1].lower()
-                if mac in coordinator._device_history:
+            # Cleanup WoL/Kick buttons
+            if "_wol" in unique_id or "_kick" in unique_id:
+                # Format: {entry_id}_{mac}_wol or {entry_id}_{mac}_kick_{iface}
+                parts = unique_id.split("_")
+                mac = ""
+                if "_wol" in unique_id:
+                    mac = unique_id.split("_")[-2].lower()
+                elif "_kick" in unique_id:
+                    # Logic might be complex due to underscores in entry_id,
+                    # but usually it's [entry_id, mac, 'kick', interface]
+                    for i, part in enumerate(parts):
+                        if part == "kick" and i > 0:
+                            mac = parts[i - 1].lower()
+                            break
+
+                if mac:
+                    # Remove if it belongs to the router itself
+                    if mac in own_macs:
+                        _LOGGER.debug(
+                            "Removing button entity for router's own interface: %s",
+                            ent.entity_id,
+                        )
+                        ent_reg.async_remove(ent.entity_id)
+                        continue
+
+                    # Remove if the "MAC" looks like an interface name (migration/old bug)
+                    if re.match(interface_regex, mac):
+                        _LOGGER.debug(
+                            "Removing legacy button entity with interface name: %s",
+                            ent.entity_id,
+                        )
+                        ent_reg.async_remove(ent.entity_id)
+                        continue
+
+                # Existing cleanup: WoL buttons for wireless devices
+                if "_wol" in unique_id and mac in coordinator._device_history:
                     if coordinator._device_history[mac].get("is_wireless"):
+                        _LOGGER.debug(
+                            "Removing WoL button for wireless device: %s", ent.entity_id
+                        )
                         ent_reg.async_remove(ent.entity_id)
                         continue
 

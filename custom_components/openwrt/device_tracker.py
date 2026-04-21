@@ -7,6 +7,7 @@ ARP tables, and wireless association lists.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -87,6 +88,20 @@ async def async_setup_entry(
             if not track_wired and mac in coordinator._device_history:
                 if not coordinator._device_history[mac].get("is_wireless"):
                     ent_reg.async_remove(ent.entity_id)
+                    continue
+
+            # Remove if it belongs to the router itself or looks like an interface
+            own_macs = (
+                coordinator._get_own_macs(coordinator.data)
+                if coordinator.data
+                else set()
+            )
+            interface_regex = (
+                r"^(wlan|eth|lan|wan|br-|radio|phy|veth|lo|bond|team)[0-9]*([.-].*)?$"
+            )
+            if mac in own_macs or re.match(interface_regex, mac):
+                ent_reg.async_remove(ent.entity_id)
+                continue
 
     hass.add_job(_async_cleanup_entities)
 

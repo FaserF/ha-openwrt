@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 from typing import Any
 
 from .base import (
@@ -226,7 +227,7 @@ class SshClient(OpenWrtClient):
         def _connect() -> None:
             import io
 
-            import paramiko  # type: ignore
+            import paramiko  # type: ignore[import-untyped]
 
             client = paramiko.SSHClient()
             client.load_system_host_keys()
@@ -1391,6 +1392,39 @@ class SshClient(OpenWrtClient):
                             hostname=parts[3] if parts[3] != "*" else "",
                         ),
                     )
+
+    async def get_local_macs(self) -> set[str]:
+        """Get all MAC addresses belonging to the router's physical and virtual interfaces."""
+        macs = set()
+        try:
+            # Use 'ip link show' which is very reliable
+            stdout = await self._exec("ip link show 2>/dev/null")
+            if stdout:
+                # Find lines like 'link/ether 00:11:22:33:44:55 ...'
+                matches = re.finditer(r"link/ether\s+([0-9a-fA-F:]{17})", stdout)
+                for match in matches:
+                    macs.add(match.group(1).lower())
+        except Exception:  # noqa: BLE001
+            pass
+        return macs
+
+    async def get_local_ips(self) -> set[str]:
+        """Get all IP addresses belonging to the router."""
+        ips = set()
+        try:
+            # Use 'ip addr show'
+            stdout = await self._exec("ip addr show 2>/dev/null")
+            if stdout:
+                # Find IPv4 and IPv6 addresses
+                ipv4_matches = re.finditer(r"inet\s+([0-9.]+)/", stdout)
+                for match in ipv4_matches:
+                    ips.add(match.group(1))
+                ipv6_matches = re.finditer(r"inet6\s+([0-9a-fA-F:]+)/", stdout)
+                for match in ipv6_matches:
+                    ips.add(match.group(1))
+        except Exception:  # noqa: BLE001
+            pass
+        return ips
 
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
         """Get IP neighbor (ARP/NDP) table via SSH."""
