@@ -1445,7 +1445,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     "diagnostics_footer_intro",
                     "If you need help, copy this report and share it on the",
                 ),
-                "footer_link_text": t("diagnostics_footer_link_text", "GitHub issues page"),
+                "footer_link_text": t(
+                    "diagnostics_footer_link_text", "GitHub issues page"
+                ),
                 "issues_url": "https://github.com/FaserF/ha-openwrt/issues",
             },
         )
