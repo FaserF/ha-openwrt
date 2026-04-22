@@ -253,11 +253,11 @@ def _generate_diagnostic_report(
 ) -> str:
     """Generate markdown for diagnostic report."""
 
-    def t(key: str, default: str) -> str:
+    def t(key: str, default: str, **kwargs: Any) -> str:
         full_key = f"component.openwrt.entity.sensor.config_flow_ui.state.{key}"
         if translations and full_key in translations:
-            return translations[full_key]
-        return default
+            return translations[full_key].format(**kwargs)
+        return default.format(**kwargs)
 
     report = [
         f"### {t('diagnostics_header', 'Connection Diagnostic Report')}",
@@ -290,7 +290,7 @@ def _generate_diagnostic_report(
         report.append("")
 
     report.append(
-        f"\n**{t('diagnostics_footer_title', 'How to use this report')}:** {t('diagnostics_footer_text', 'If you need help, copy this report and share it on the [GitHub issues page](https://github.com/FaserF/ha-openwrt/issues).')}"
+        f"\n**{t('diagnostics_footer_title', 'How to use this report')}:** {t('diagnostics_footer_text', 'If you need help, copy this report and share it on the [GitHub issues page]({issues_url}).', issues_url='https://github.com/FaserF/ha-openwrt/issues')}"
     )
     return "\n".join(report)
 

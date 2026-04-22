@@ -233,7 +233,7 @@
           "diagnostics_label_details": "Details",
           "diagnostics_label_remedy": "Abhilfe",
           "diagnostics_footer_title": "Verwendung dieses Berichts",
-          "diagnostics_footer_text": "Wenn du Hilfe benötigst, kopiere diesen Bericht und teile ihn auf der [GitHub-Issue-Seite](https://github.com/FaserF/ha-openwrt/issues)."
+          "diagnostics_footer_text": "Wenn du Hilfe benötigst, kopiere diesen Bericht und teile ihn auf der [GitHub-Issue-Seite]({issues_url})."
         }
       },
       "memory_usage": {
