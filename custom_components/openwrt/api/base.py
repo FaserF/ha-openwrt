@@ -8,7 +8,6 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -913,10 +912,71 @@ class OpenWrtClient(abc.ABC):
         """Get DHCP lease information."""
         raise NotImplementedError
 
-    @abc.abstractmethod
     async def get_ip_neighbors(self) -> list[IpNeighbor]:
         """Get IP neighbor (ARP/NDP) table."""
-        raise NotImplementedError
+        neighbors: list[IpNeighbor] = []
+
+        # 1. Try ip neigh show
+        await self._get_neighbors_ip_neigh(neighbors)
+
+        # 2. Fallback to /proc/net/arp
+        if not neighbors:
+            await self._get_neighbors_proc_arp(neighbors)
+
+        return neighbors
+
+    async def _get_neighbors_ip_neigh(self, neighbors: list[IpNeighbor]) -> None:
+        """Fetch neighbors using 'ip neigh show'."""
+        try:
+            content = await self.execute_command("ip neigh show 2>/dev/null")
+            if content:
+                for line in content.strip().split("\n"):
+                    neigh = self._parse_ip_neigh_line(line)
+                    if neigh:
+                        neighbors.append(neigh)
+        except Exception:
+            pass
+
+    def _parse_ip_neigh_line(self, line: str) -> IpNeighbor | None:
+        """Parse a single line from 'ip neigh show'."""
+        parts = line.split()
+        if len(parts) < 4:
+            return None
+
+        ip, mac, interface, state = parts[0], "", "", parts[-1]
+        if "lladdr" in parts:
+            idx = parts.index("lladdr")
+            if len(parts) > idx + 1:
+                mac = parts[idx + 1].lower()
+        if "dev" in parts:
+            idx = parts.index("dev")
+            if len(parts) > idx + 1:
+                interface = parts[idx + 1]
+
+        if mac:
+            return IpNeighbor(ip=ip, mac=mac, interface=interface, state=state)
+        return None
+
+    async def _get_neighbors_proc_arp(self, neighbors: list[IpNeighbor]) -> None:
+        """Fetch neighbors from /proc/net/arp."""
+        try:
+            content = await self.execute_command("cat /proc/net/arp 2>/dev/null")
+            if content:
+                lines = content.strip().split("\n")
+                if len(lines) > 1:
+                    for line in lines[1:]:
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            neighbors.append(
+                                IpNeighbor(
+                                    ip=parts[0],
+                                    mac=parts[3].lower(),
+                                    interface=parts[5] if len(parts) > 5 else "",
+                                    state="REACHABLE",
+                                ),
+                            )
+        except Exception:
+            pass
 
     @abc.abstractmethod
     async def reboot(self) -> bool:
@@ -1345,7 +1405,7 @@ class OpenWrtClient(abc.ABC):
 
         data = OpenWrtData()
         self._poll_count = getattr(self, "_poll_count", 0) + 1
-        
+
         current_time = time.time()
         last_full_poll = getattr(self, "_last_full_poll", 0)
         is_full_poll = (current_time - last_full_poll) >= SLOW_DATA_TTL

@@ -25,7 +25,6 @@ from .base import (
     DiagnosticResult,
     FirewallRedirect,
     FirewallRule,
-    IpNeighbor,
     LldpNeighbor,
     NetworkInterface,
     OpenWrtClient,
@@ -1418,66 +1417,6 @@ class SshClient(OpenWrtClient):
             pass
         return ips
 
-    async def get_ip_neighbors(self) -> list[IpNeighbor]:
-        """Get IP neighbor (ARP/NDP) table via SSH."""
-        neighbors: list[IpNeighbor] = []
-
-        # 1. Try ip neigh show
-        await self._get_neighbors_ip_neigh(neighbors)
-
-        # 2. Fallback to /proc/net/arp
-        if not neighbors:
-            await self._get_neighbors_proc_arp(neighbors)
-
-        return neighbors
-
-    async def _get_neighbors_ip_neigh(self, neighbors: list[IpNeighbor]) -> None:
-        """Fetch neighbors using 'ip neigh show' via SSH."""
-        with contextlib.suppress(Exception):
-            content = await self._exec("ip neigh show 2>/dev/null")
-            for line in content.strip().split("\n"):
-                neigh = self._parse_ip_neigh_line(line)
-                if neigh:
-                    neighbors.append(neigh)
-
-    def _parse_ip_neigh_line(self, line: str) -> IpNeighbor | None:
-        """Parse a single line from 'ip neigh show'."""
-        parts = line.split()
-        if len(parts) < 4:
-            return None
-
-        ip, mac, interface, state = parts[0], "", "", parts[-1]
-        if "lladdr" in parts:
-            idx = parts.index("lladdr")
-            if len(parts) > idx + 1:
-                mac = parts[idx + 1].lower()
-        if "dev" in parts:
-            idx = parts.index("dev")
-            if len(parts) > idx + 1:
-                interface = parts[idx + 1]
-
-        if mac:
-            return IpNeighbor(ip=ip, mac=mac, interface=interface, state=state)
-        return None
-
-    async def _get_neighbors_proc_arp(self, neighbors: list[IpNeighbor]) -> None:
-        """Fetch neighbors from /proc/net/arp via SSH."""
-        with contextlib.suppress(Exception):
-            content = await self._exec("cat /proc/net/arp 2>/dev/null")
-            lines = content.strip().split("\n")
-            if len(lines) > 1:
-                for line in lines[1:]:
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        neighbors.append(
-                            IpNeighbor(
-                                ip=parts[0],
-                                mac=parts[3].lower(),
-                                interface=parts[5],
-                                state="REACHABLE",
-                            ),
-                        )
-
     async def get_adblock_status(self) -> AdBlockStatus:
         """Get adblock status via SSH."""
         from .base import AdBlockStatus
@@ -1644,7 +1583,6 @@ class SshClient(OpenWrtClient):
         except Exception as err:
             _LOGGER.exception("Failed to set SQM config via SSH: %s", err)
             return False
-
 
     async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
         """Get LLDP neighbor information via SSH."""

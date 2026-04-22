@@ -1581,6 +1581,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             import inspect as _inspect
 
             if _inspect.iscoroutine(in_progress):
+                in_progress.close()
                 in_progress = []
         except Exception:  # noqa: BLE001
             in_progress = []

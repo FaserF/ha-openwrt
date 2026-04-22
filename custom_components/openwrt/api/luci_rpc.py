@@ -28,7 +28,6 @@ from .base import (
     DiagnosticResult,
     FirewallRedirect,
     FirewallRule,
-    IpNeighbor,
     LldpNeighbor,
     NetworkInterface,
     OpenWrtClient,
@@ -482,7 +481,6 @@ class LuciRpcClient(OpenWrtClient):
                 pass
 
         return info
-
 
     async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
         """Get LLDP neighbor information via LuCI RPC."""
@@ -1578,42 +1576,6 @@ class LuciRpcClient(OpenWrtClient):
         except Exception:  # noqa: BLE001
             pass
         return ips
-
-    async def get_ip_neighbors(self) -> list[IpNeighbor]:
-        """Get IP neighbor (ARP/NDP) table via sys.exec."""
-        neighbors: list[IpNeighbor] = []
-        try:
-            output = await self._rpc_call("sys", "exec", ["ip neigh show"])
-            if output:
-                for line in output.strip().splitlines():
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        ip = parts[0]
-                        mac = ""
-                        interface = ""
-                        state = parts[-1]
-
-                        if "dev" in parts:
-                            idx = parts.index("dev")
-                            if idx + 1 < len(parts):
-                                interface = parts[idx + 1]
-                        if "lladdr" in parts:
-                            idx = parts.index("lladdr")
-                            if idx + 1 < len(parts):
-                                mac = parts[idx + 1].lower()
-
-                        if mac:
-                            neighbors.append(
-                                IpNeighbor(
-                                    ip=ip,
-                                    mac=mac,
-                                    interface=interface,
-                                    state=state,
-                                ),
-                            )
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Failed to get IP neighbors via LuCI RPC: %s", err)
-        return neighbors
 
     async def reboot(self) -> bool:
         """Reboot the device via LuCI RPC."""
