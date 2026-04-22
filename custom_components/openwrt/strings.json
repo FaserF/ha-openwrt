@@ -141,51 +141,6 @@
       "not_openwrt": "Discovered device does not appear to be an OpenWrt router."
     }
   },
-  "config_flow_ui": {
-    "permissions": {
-      "header_subsystem": "Subsystem",
-      "header_read": "Read",
-      "header_write": "Write",
-      "header_missing": "Missing Features",
-      "sensors": "Sensors",
-      "sub_system": "System",
-      "sub_network": "Network",
-      "sub_interface": "Interface",
-      "sub_wireless": "Wireless",
-      "sub_firewall": "Firewall",
-      "sub_devices": "Devices",
-      "sub_device": "Device",
-      "sub_vpn": "VPN",
-      "sub_sqm": "SQM",
-      "sub_services": "Services",
-      "sub_service": "Service",
-      "sub_leds": "LEDs",
-      "sub_mwan3": "MWAN3",
-      "feature_reboot": "Reboot",
-      "feature_upgrade": "Upgrade",
-      "feature_backup": "Backup",
-      "feature_up_down_reconnect": "Up/Down/Reconnect",
-      "feature_toggle_wifi": "Toggle WiFi",
-      "feature_wps_control": "WPS Control",
-      "feature_toggling_rules_redirects": "Toggling Rules/Redirects",
-      "feature_access_control": "Access Control",
-      "feature_wake_on_lan": "Wake on LAN",
-      "feature_kick_client": "Kick Client",
-      "feature_toggle_sqm": "Toggle SQM",
-      "feature_change_limits": "Change limits",
-      "feature_start_stop_restart": "Start/Stop/Restart",
-      "feature_control_leds": "Control LEDs"
-    },
-    "diagnostics": {
-      "header": "Connection Diagnostic Report",
-      "intro": "The following checks were performed to identify the issue:",
-      "label_result": "Result",
-      "label_details": "Details",
-      "label_remedy": "Remedy",
-      "footer_title": "How to use this report",
-      "footer_text": "If you need help, copy this report and share it on the [GitHub issues page](https://github.com/FaserF/ha-openwrt/issues)."
-    }
-  },
   "options": {
     "step": {
       "init": {
@@ -238,6 +193,49 @@
   },
   "entity": {
     "sensor": {
+      "config_flow_ui": {
+        "state": {
+          "permissions_header_subsystem": "Subsystem",
+          "permissions_header_read": "Read",
+          "permissions_header_write": "Write",
+          "permissions_header_missing": "Missing Features",
+          "permissions_sensors": "Sensors",
+          "permissions_sub_system": "System",
+          "permissions_sub_network": "Network",
+          "permissions_sub_interface": "Interface",
+          "permissions_sub_wireless": "Wireless",
+          "permissions_sub_firewall": "Firewall",
+          "permissions_sub_devices": "Devices",
+          "permissions_sub_device": "Device",
+          "permissions_sub_vpn": "VPN",
+          "permissions_sub_sqm": "SQM",
+          "permissions_sub_services": "Services",
+          "permissions_sub_service": "Service",
+          "permissions_sub_leds": "LEDs",
+          "permissions_sub_mwan3": "MWAN3",
+          "permissions_feature_reboot": "Reboot",
+          "permissions_feature_upgrade": "Upgrade",
+          "permissions_feature_backup": "Backup",
+          "permissions_feature_up_down_reconnect": "Up/Down/Reconnect",
+          "permissions_feature_toggle_wifi": "Toggle WiFi",
+          "permissions_feature_wps_control": "WPS Control",
+          "permissions_feature_toggling_rules_redirects": "Toggling Rules/Redirects",
+          "permissions_feature_access_control": "Access Control",
+          "permissions_feature_wake_on_lan": "Wake on LAN",
+          "permissions_feature_kick_client": "Kick Client",
+          "permissions_feature_toggle_sqm": "Toggle SQM",
+          "permissions_feature_change_limits": "Change limits",
+          "permissions_feature_start_stop_restart": "Start/Stop/Restart",
+          "permissions_feature_control_leds": "Control LEDs",
+          "diagnostics_header": "Connection Diagnostic Report",
+          "diagnostics_intro": "The following checks were performed to identify the issue:",
+          "diagnostics_label_result": "Result",
+          "diagnostics_label_details": "Details",
+          "diagnostics_label_remedy": "Remedy",
+          "diagnostics_footer_title": "How to use this report",
+          "diagnostics_footer_text": "If you need help, copy this report and share it on the [GitHub issues page](https://github.com/FaserF/ha-openwrt/issues)."
+        }
+      },
       "memory_usage": {
         "name": "Memory Usage"
       },

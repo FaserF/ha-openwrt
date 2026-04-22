@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Verbindung zum OpenWrt Router",
-        "description": "Wähle die Verbindungsmethode für deinen OpenWrt Router. [Mehr erfahren]({docs_url}).",
+        "title": "OpenWrt Einrichtungsassistent",
+        "description": "Wähle die Verbindungsmethode für deinen OpenWrt-Router aus. [Mehr erfahren]({docs_url}).",
         "data": {
           "flow_type": "Einrichtungsmodus"
         }
@@ -12,19 +12,19 @@
         "title": "Suche nach OpenWrt",
         "description": "Dein Netzwerk wird nach OpenWrt-Routern gescannt... {discovery_info}",
         "data": {
-          "next": "Suche fortsetzen"
+          "next": "Mit der Suche fortfahren"
         }
       },
       "select_device": {
         "title": "Wähle deinen Router",
-        "description": "Es wurden mehrere OpenWrt-Geräte gefunden. Bitte wähle dasjenige aus, das du konfigurieren möchtest:\n\n{public_info}",
+        "description": "Es wurden mehrere OpenWrt-Geräte gefunden. Bitte wähle das Gerät aus, das du konfigurieren möchtest:\n\n{public_info}",
         "data": {
-          "device": "Gefundenes Gerät (Methode/Funktionen)"
+          "device": "Gerät auswählen (oder Details manuell eingeben)"
         }
       },
       "manual_entry": {
         "title": "Manuelle Konfiguration",
-        "description": "Es wurden keine Router automatisch erkannt, oder du hast dich für die manuelle Eingabe entschieden. Bitte gib die IP-Adresse und die Verbindungsmethode an.",
+        "description": "Es wurden keine Router automatisch erkannt oder du hast dich für die manuelle Eingabe entschieden. Bitte gib die IP-Adresse und die Verbindungsmethode an.",
         "data": {
           "host": "Host (IP-Adresse oder Hostname)",
           "connection_type": "Verbindungstyp"
@@ -32,175 +32,130 @@
       },
       "credentials": {
         "title": "Authentifizierung",
-        "description": "Gib die Zugangsdaten für **{host}** via **{connection_type}** ein.\n\nHinweis: Wenn der Port leer gelassen wird, wird standardmäßig 80 (HTTP), 443 (HTTPS) oder 22 (SSH) verwendet, abhängig von deinen Einstellungen.\n\n{auto_detected_info}",
+        "description": "Gib die Zugangsdaten für **{host}** über **{connection_type}** ein.\n\nHinweis: Wenn der Port leer gelassen wird, wird standardmäßig 80 (HTTP), 443 (HTTPS) oder 22 (SSH) verwendet, je nach deinen Einstellungen.\n\n{auto_detected_info}",
         "data": {
           "username": "Benutzername",
           "password": "Passwort",
           "use_ssl": "SSL/HTTPS verwenden",
-          "verify_ssl": "SSL-Zertifikat überprüfen",
+          "verify_ssl": "SSL-Zertifikat prüfen",
           "port": "Port",
-          "ubus_path": "Ubus Pfad (z.B. /ubus)",
+          "ubus_path": "Ubus-Pfad (z. B. /ubus)",
           "dhcp_software": "DHCP-Software",
-          "track_devices": "Netzwerk-Clients tracken (Device Tracker)"
+          "track_devices": "Netzwerk-Clients verfolgen (Device Tracker)"
         }
       },
       "ssh": {
-        "title": "SSH Authentifizierung",
-        "description": "Gib die SSH-Zugangsdaten für {host} ein.\n\nHinweis: Wenn der Port leer gelassen wird, wird standardmäßig 22 verwendet. SSH wird **nicht empfohlen** für volle Sensor-Unterstützung (wie z.B. CPU-Auslastung bei einigen Modellen). Verwende nach Möglichkeit LuCI RPC oder ubus.\n\n[Sicherheitsempfehlungen]({security_link})",
+        "title": "SSH-Authentifizierung",
+        "description": "Gib die SSH-Zugangsdaten für {host} ein.\n\nHinweis: Wenn der Port leer gelassen wird, wird standardmäßig 22 verwendet. SSH wird für die volle Sensorunterstützung (wie CPU-Auslastung bei einigen Modellen) **nicht empfohlen**. Verwende nach Möglichkeit LuCI RPC oder ubus.\n\n[Sicherheitsempfehlungen]({security_link})",
         "data": {
           "username": "Benutzername",
           "password": "Passwort",
-          "ssh_key": "Privater SSH Schlüssel (Optional, lässt das Passwort leer, falls verwendet)",
+          "ssh_key": "Privater SSH-Schlüssel (Optional, lässt das Passwort leer, falls verwendet)",
           "port": "Port",
           "dhcp_software": "DHCP-Software",
-          "track_devices": "Netzwerk-Clients tracken (Device Tracker)"
+          "track_devices": "Netzwerk-Clients verfolgen (Device Tracker)"
         }
       },
       "reauth_confirm": {
         "title": "Neu authentifizieren",
-        "description": "Die Zugangsdaten für den OpenWrt Router sind nicht mehr gültig. Bitte gib das neue Passwort ein.",
+        "description": "Die Zugangsdaten für den OpenWrt-Router sind nicht mehr gültig. Bitte gib das neue Passwort ein.",
         "data": {
           "username": "Benutzername",
           "password": "Passwort"
         }
       },
       "confirm_discovery": {
-        "title": "OpenWrt Router gefunden",
+        "title": "OpenWrt-Router entdeckt",
         "description": "Möchtest du {name} ({host}) einrichten? Die Verbindung wird über **{method}** hergestellt.\n\nVerfügbare Funktionen: {capabilities}",
         "data": {
           "username": "Benutzername",
           "password": "Passwort",
-          "use_ssl": "SSL (HTTPS) nutzen",
+          "use_ssl": "SSL (HTTPS) verwenden",
           "port": "Port (Optional)",
           "dhcp_software": "DHCP-Software",
-          "track_devices": "Netzwerk-Clients tracken (Device Tracker)"
+          "track_devices": "Netzwerk-Clients verfolgen (Device Tracker)"
         }
       },
       "permissions": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies erwartet wird."
+        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist."
       },
       "permissions_ubus": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Anmeldedaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen oder Nicht-Root-Benutzer) sehr restriktiv sein. Sie blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur', selbst wenn der Benutzer Basis-Zugriff hat.\n\nFalls Funktionen fehlen oder Sensoren 0 anzeigen, fehlen deinem Benutzer meist ACL-Berechtigungen für spezifische Ubus-Objekte. Versuche in den Integrations-Einstellungen auf **LuCI RPC** umzuschalten, was oft besser mit eingeschränkten Benutzern funktioniert.\n\nDu kannst fortfahren, wenn dies erwartet wird."
+        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen auf einigen Routern (insbesondere bei neueren Versionen oder Nicht-Root-Benutzern) können sehr restriktiv sein. Sie blockieren oft 'DHCP Leases' oder 'Systemtemperatur', selbst wenn der Benutzer grundlegenden Zugriff hat.\n\nWenn Funktionen fehlen oder Sensoren 0 anzeigen, bedeutet dies normalerweise, dass deinem Benutzer ACL-Berechtigungen für bestimmte rohe Ubus-Objekte fehlen. Versuche in den Integrationseinstellungen auf **LuCI RPC** umzuschalten, was oft besser mit eingeschränkten Benutzern kompatibel ist.\n\nDu kannst fortfahren, wenn dies wie erwartet ist."
       },
       "packages": {
         "title": "Paketübersicht",
-        "description": "Die folgenden optionalen Pakete wurden auf deinem Router erkannt. Einige Funktionen können eingeschränkt sein, wenn Pakete fehlen:\n\n{packages_table}\n\nDu kannst fortfahren, wenn dies erwartet wird."
+        "description": "Die folgenden optionalen Pakete wurden auf deinem Router erkannt. Einige Funktionen können eingeschränkt sein, wenn Pakete fehlen:\n\n{packages_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist."
       },
       "provision_user": {
-        "title": "Sichere Benutzer-Bereitstellung",
-        "description": "Du verbindest dich momentan als **root**. Für eine bessere Sicherheit wird dringend empfohlen, einen dedizierten Benutzer mit minimalen Rechten für Home Assistant zu erstellen.\n\n{user_exists_info}\n\n[Sicherheitsempfehlungen]({security_link})",
+        "title": "Sichere Benutzerbereitstellung",
+        "description": "Du bist derzeit als **root** verbunden. Für eine bessere Sicherheit wird dringend empfohlen, einen dedizierten Benutzer mit minimalen Rechten für Home Assistant zu erstellen.\n\n{user_exists_info}\n\n[Sicherheitsempfehlungen]({security_link})",
         "data": {
           "mode": "Wie möchtest du fortfahren?"
         }
       },
       "reuse_user": {
-        "title": "Zugangsdaten für bestehenden Benutzer",
-        "description": "Bitte gib das Passwort für den bereits existierenden Benutzer **homeassistant** auf deinem Router ein.\n\nWenn du das Passwort nicht mehr weißt, kannst du im vorherigen Schritt 'Benutzer zurücksetzen' wählen.",
+        "title": "Zugangsdaten für vorhandenen Benutzer",
+        "description": "Bitte gib das Passwort für den vorhandenen Benutzer **homeassistant** auf deinem Router ein.",
         "data": {
           "password": "Passwort"
         }
       },
       "display_new_user": {
         "title": "Benutzer erfolgreich erstellt",
-        "description": "Ein neuer Benutzer wurde auf deinem OpenWrt-Router erstellt:\n\n**Benutzername:** {username}\n**Passwort:** {password}\n\n**WICHTIG:** Bitte dokumentiere/notiere dir dieses Passwort, da es bei einer Integration Neueinrichtung erneut benötigt wird. Wenn du diesen Benutzer verwenden möchtest, wird Home Assistant jetzt zu diesen Anmeldedaten wechseln.",
+        "description": "Ein neuer Benutzer wurde auf deinem OpenWrt-Router erstellt:\n\n**Benutzername:** {username}\n**Passwort:** {password}\n\n**WICHTIG:** Bitte notiere dir dieses Passwort, da du es erneut benötigst, wenn du die Integration von Grund auf neu einrichtest. Wenn du dich entscheidest, diesen Benutzer zu verwenden, wird Home Assistant jetzt auf diese Zugangsdaten umschalten.",
         "data": {
           "use_new_user": "Jetzt zum neuen Benutzer wechseln"
         }
       },
       "provision_failed": {
         "title": "Bereitstellung fehlgeschlagen",
-        "description": "Die automatische Benutzererstellung ist fehlgeschlagen.\n\n**Analyse:**\n{tip}\n\n**Rohe Fehlerausgabe:**\n```\n{error}\n```\n\n**Was ist jetzt zu tun?**\n- **Berechtigungen prüfen:** Stelle sicher, dass dein aktueller Benutzer `file.exec`-Rechte hat.\n- **Speicher prüfen:** Stelle sicher, dass dein Router genügend freien Speicher in `/usr/share/rpcd/` hat.\n- **SSH versuchen:** SSH ist oft robuster für die Ersteinrichtung, wenn ubus ist eingeschränkt ist.\n\nDu kannst trotzdem mit den aktuellen Zugangsdaten fortfahren, indem du diesen Schritt überspringst."
+        "description": "Die automatische Benutzerbereitstellung ist fehlgeschlagen.\n\n**Analyse:**\n{tip}\n\n**Rohe Fehlerausgabe:**\n```\n{error}\n```\n\n**Was ist jetzt zu tun?**\n- **Berechtigungen prüfen:** Stelle sicher, dass dein aktueller Benutzer `file.exec`-Rechte hat.\n- **Speicherplatz prüfen:** Stelle sicher, dass dein Router genügend freien Speicherplatz in `/usr/share/rpcd/` hat.\n- **SSH versuchen:** SSH ist oft robuster für die Ersteinrichtung, wenn ubus eingeschränkt ist.\n\nDu kannst trotzdem mit den aktuellen Zugangsdaten fortfahren, indem du diesen Schritt überspringst."
       },
       "diagnostics": {
         "title": "Verbindungsdiagnose",
-        "description": "Ein Verbindungstest wurde durchgeführt und mehrere Probleme identifiziert. Bitte überprüfe den untenstehenden Bericht, um das Problem zu beheben:\n\n{report}\n\nDu kannst es nach Änderungen an deiner Router-Konfiguration erneut versuchen."
+        "description": "Ein Verbindungstest wurde durchgeführt und hat mehrere Probleme identifiziert. Bitte lies den folgenden Bericht, um das Problem zu beheben:\n\n{report}\n\nDu kannst es nach Änderungen an deiner Router-Konfiguration erneut versuchen."
       },
       "ubus_restricted": {
         "title": "Eingeschränktes Ubus erkannt",
-        "description": "Die Verbindung zu **{host}** ({model}) via **ubus** war erfolgreich, aber der Router liefert keine Informationen über WLAN-Schnittstellen oder System-Dienste zurück.\n\nUm die verfügbaren Funktionen zu identifizieren, wurden folgende Prüfungen durchgeführt:\n1. `network.wireless status` -> Zugriff verweigert oder keine Daten\n2. `rc list` (Dienste) -> Zugriff verweigert oder keine Daten\n\n**Mögliche Ursachen:**\n- **Hersteller-Sperre:** Firmwares (wie Xiaomi AX3600) schränken die Ubus-HTTP-Schnittstelle oft stark ein.\n- **ACL-Einschränkungen:** Deinem Benutzer fehlen Berechtigungen für diese spezifischen Objekte in `/etc/config/rpcd`.\n- **Eingeschränkter Benutzer:** Die 'Restricted User' Funktion in LuCI gewährt oft nur Zugriff auf das `luci` Objekt, aber nicht auf die für diese Methode benötigten rohen Ubus-Objekte.\n\n**Empfehlung:** Wir empfehlen dringend, zurückzugehen und stattdessen **LuCI RPC** oder **SSH** als Verbindungsmethode zu wählen. Andernfalls sind viele Sensoren und Steuerungen nicht verfügbar."
+        "description": "Die Verbindung zu **{host}** ({model}) über **ubus** war erfolgreich, aber der Router gibt keine Informationen über WLAN-Schnittstellen oder Systemdienste zurück.\n\nUm die verfügbaren Funktionen zu identifizieren, hat die Integration diese Prüfungen durchgeführt:\n1. `network.wireless status` -> Zugriff verweigert oder keine Daten\n2. `rc list` (Dienste) -> Zugriff verweigert oder keine Daten\n\n**Mögliche Ursachen:**\n- **Herstellersperre:** Firmwares (wie Xiaomi AX3600) schränken die Ubus-HTTP-Schnittstelle oft ein.\n- **ACL-Einschränkungen:** Deinem Benutzer fehlen die Berechtigungen für diese spezifischen Objekte in `/etc/config/rpcd`.\n- **Eingeschränkte Benutzerfunktion:** Die Verwendung des 'eingeschränkten Benutzers' von LuCI gewährt oft nur Zugriff auf `luci`-Objekt-RPCs, aber nicht auf die für diese Verbindungsmethode erforderlichen rohen Ubus-Objekte.\n\n**Empfehlung:** Wir empfehlen dringend, zurückzugehen und **LuCI RPC** oder **SSH** als Verbindungsmethode auszuwählen. Andernfalls siehst du nur grundlegende Systemsensoren und keine WLAN-Clients oder Dienststeuerungen."
       }
     },
     "error": {
-      "cannot_connect": "Verbindung zum Router fehlgeschlagen. Prüfe IP/Host und ob der Dienst (ubus/LuCI/SSH) läuft.",
+      "cannot_connect": "Verbindung zum Router fehlgeschlagen. Überprüfe den Host und stelle sicher, dass der ausgewählte Dienst (ubus/LuCI/SSH) läuft.",
       "invalid_auth": "Ungültige Zugangsdaten (Benutzername, Passwort oder SSH-Schlüssel). Stelle sicher, dass der Dienst (ubus/LuCI) aktiviert ist und dein Benutzer über ausreichende ACL-Berechtigungen verfügt.",
-      "timeout": "Zeitüberschreitung der Verbindung. Prüfe die Erreichbarkeit und den Port.",
-      "ssl_error": "SSL-Verifizierung fehlgeschlagen. Deaktiviere 'SSL-Zertifikat prüfen' bei selbstsignierten Zertifikaten.",
-      "package_missing": "Erforderliches OpenWrt Paket fehlt. Für ubus: 'uhttpd-mod-ubus'. Für LuCI: 'luci-mod-rpc'. Installation via SSH: 'opkg update && opkg install PACKAGE' (oder 'apk add PACKAGE' bei neueren Versionen).",
-      "permission_error": "Unzureichende RPC-Rechte. Prüfe die Benutzer-ACLs in /etc/config/rpcd. Hinweis: 'Eingeschränkte Benutzer' in LuCI haben oft nur Zugriff auf die LuCI-Oberfläche, aber nicht auf die für diese Methode benötigten rohen Ubus-Objekte.",
-      "provision_failed": "Automatische Erstellung des dedizierten Benutzers fehlgeschlagen. Bitte prüfe, ob dein Router die Benutzerverwaltung unterstützt, oder versuche, ihn manuell zu erstellen.\n\nFehler: {error}",
+      "timeout": "Zeitüberschreitung der Verbindung. Überprüfe, ob der Router erreichbar und der Port korrekt ist.",
+      "ssl_error": "SSL-Prüfung fehlgeschlagen. Deaktiviere 'SSL-Zertifikat prüfen', wenn du selbstsignierte Zertifikate verwendest.",
+      "package_missing": "Erforderliches OpenWrt-Paket fehlt. Für ubus: 'uhttpd-mod-ubus'. Für LuCI: 'luci-mod-rpc'. Installation über SSH: 'opkg update && opkg install PAKETNAME' (oder 'apk add PAKETNAME' bei neueren Versionen).",
+      "permission_error": "Unzureichende RPC-Berechtigungen. Überprüfe deine Benutzer-ACLs in /etc/config/rpcd. Hinweis: 'Eingeschränkte Benutzer' in LuCI haben oft nur Zugriff auf Webinterface-RPCs, aber nicht auf die für diese Verbindungsmethode erforderlichen rohen Ubus-Objekte.",
+      "provision_failed": "Der dedizierte Benutzer konnte nicht automatisch erstellt werden. Stelle sicher, dass du als root verbunden bist und genügend freien Speicherplatz auf dem Router für 'rpcd'-ACL-Dateien hast.\n\nFehler: {error}",
       "no_devices_found": "Es wurden keine OpenWrt-Router automatisch in deinem Netzwerk gefunden. Du kannst versuchen, die Details manuell einzugeben.",
       "unknown": "Ein unerwarteter Fehler ist aufgetreten."
     },
     "abort": {
       "already_configured": "Dieser Router ist bereits konfiguriert.",
-      "already_in_progress": "Die Einrichtung dieses Routers wird bereits in einem anderen Fenster oder durch die automatische Suche durchgeführt.",
-      "reauth_successful": "Die erneute Authentifizierung war erfolgreich.",
-      "no_host": "Das gefundene Gerät hat keine gültige Host-Adresse.",
-      "not_openwrt": "Das gefundene Gerät scheint kein OpenWrt-Router zu sein."
-    }
-  },
-  "config_flow_ui": {
-    "permissions": {
-      "header_subsystem": "Subsystem",
-      "header_read": "Lesen",
-      "header_write": "Schreiben",
-      "header_missing": "Fehlende Funktionen",
-      "sensors": "Sensoren",
-      "sub_system": "System",
-      "sub_network": "Netzwerk",
-      "sub_interface": "Schnittstelle",
-      "sub_wireless": "WLAN",
-      "sub_firewall": "Firewall",
-      "sub_devices": "Geräte",
-      "sub_device": "Gerät",
-      "sub_vpn": "VPN",
-      "sub_sqm": "SQM",
-      "sub_services": "Dienste",
-      "sub_service": "Dienst",
-      "sub_leds": "LEDs",
-      "sub_mwan3": "MWAN3",
-      "feature_reboot": "Neustart",
-      "feature_upgrade": "Upgrade",
-      "feature_backup": "Backup",
-      "feature_up_down_reconnect": "Aktivieren/Deaktivieren/Verbinden",
-      "feature_toggle_wifi": "WLAN umschalten",
-      "feature_wps_control": "WPS-Steuerung",
-      "feature_toggling_rules_redirects": "Regeln/Weiterleitungen umschalten",
-      "feature_access_control": "Zugriffskontrolle",
-      "feature_wake_on_lan": "Wake on LAN",
-      "feature_kick_client": "Client trennen",
-      "feature_toggle_sqm": "SQM umschalten",
-      "feature_change_limits": "Limits ändern",
-      "feature_start_stop_restart": "Starten/Stoppen/Neustarten",
-      "feature_control_leds": "LEDs steuern"
-    },
-    "diagnostics": {
-      "header": "Verbindungsdiagnose-Bericht",
-      "intro": "Die folgenden Prüfungen wurden durchgeführt, um das Problem zu identifizieren:",
-      "label_result": "Ergebnis",
-      "label_details": "Details",
-      "label_remedy": "Abhilfe",
-      "footer_title": "Verwendung dieses Berichts",
-      "footer_text": "Wenn du Hilfe brauchst, kopiere diesen Bericht und teile ihn auf der [GitHub-Issue-Seite](https://github.com/FaserF/ha-openwrt/issues)."
+      "already_in_progress": "Konfigurationsablauf für diesen Router bereits in Arbeit.",
+      "reauth_successful": "Neu-Authentifizierung war erfolgreich.",
+      "no_host": "Das entdeckte Gerät hat keine gültige Host-Adresse.",
+      "not_openwrt": "Das entdeckte Gerät scheint kein OpenWrt-Router zu sein."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "OpenWrt Optionen",
-        "description": "OpenWrt Integrationsoptionen konfigurieren.",
         "data": {
-          "update_interval": "Aktualisierungsintervall (Sekunden)",
-          "track_devices": "Verbundene Geräte tracken (Device Tracker)",
-          "track_wired": "Kabelgebundene Geräte in Tracking einschließen",
-          "consider_home": "Sekunden bevor ein Gerät auf 'abwesend' gesetzt wird",
+          "update_interval": "Update-Intervall (Sekunden)",
+          "track_devices": "Netzwerkgeräte verfolgen",
+          "track_wired": "Kabelgebundene Geräte in die Verfolgung einbeziehen",
+          "consider_home": "Verzögerung für 'Betrachtet als Zuhause' (Sekunden)",
           "dhcp_software": "DHCP-Software",
-          "auto_backup": "Automatisches Backup vor Firmware Update",
-          "custom_firmware_repo": "Eigenes GitHub Firmware Repo (URL oder owner/repo)",
+          "auto_backup": "Automatisches Backup vor Firmware-Update",
+          "custom_firmware_repo": "Benutzerdefiniertes Firmware GitHub-Repo (Besitzer/Repo)",
           "asu_url": "Attended Sysupgrade Server URL"
-        }
+        },
+        "description": "Konfiguriere die Optionen der OpenWrt-Integration."
       }
     }
   },
@@ -215,9 +170,9 @@
     },
     "provision_mode": {
       "options": {
-        "create": "Neuen 'homeassistant' Benutzer erstellen",
-        "reset": "Bestehenden Benutzer zurücksetzen (neues Passwort & Berechtigungen)",
-        "reuse": "Bestehenden 'homeassistant' Benutzer verwenden",
+        "create": "Neuen Benutzer 'homeassistant' erstellen",
+        "reset": "Vorhandenen Benutzer zurücksetzen (neues Passwort & Berechtigungen)",
+        "reuse": "Vorhandenen Benutzer 'homeassistant' verwenden",
         "skip": "Weiterhin root verwenden (nicht empfohlen)"
       }
     },
@@ -238,35 +193,78 @@
   },
   "entity": {
     "sensor": {
+      "config_flow_ui": {
+        "state": {
+          "permissions_header_subsystem": "Subsystem",
+          "permissions_header_read": "Lesen",
+          "permissions_header_write": "Schreiben",
+          "permissions_header_missing": "Fehlende Funktionen",
+          "permissions_sensors": "Sensoren",
+          "permissions_sub_system": "System",
+          "permissions_sub_network": "Netzwerk",
+          "permissions_sub_interface": "Schnittstelle",
+          "permissions_sub_wireless": "WLAN",
+          "permissions_sub_firewall": "Firewall",
+          "permissions_sub_devices": "Geräte",
+          "permissions_sub_device": "Gerät",
+          "permissions_sub_vpn": "VPN",
+          "permissions_sub_sqm": "SQM",
+          "permissions_sub_services": "Dienste",
+          "permissions_sub_service": "Dienst",
+          "permissions_sub_leds": "LEDs",
+          "permissions_sub_mwan3": "MWAN3",
+          "permissions_feature_reboot": "Neustart",
+          "permissions_feature_upgrade": "Upgrade",
+          "permissions_feature_backup": "Backup",
+          "permissions_feature_up_down_reconnect": "Hoch/Runter/Neu verbinden",
+          "permissions_feature_toggle_wifi": "WLAN umschalten",
+          "permissions_feature_wps_control": "WPS-Steuerung",
+          "permissions_feature_toggling_rules_redirects": "Regeln/Weiterleitungen umschalten",
+          "permissions_feature_access_control": "Zugriffskontrolle",
+          "permissions_feature_wake_on_lan": "Wake on LAN",
+          "permissions_feature_kick_client": "Client kicken",
+          "permissions_feature_toggle_sqm": "SQM umschalten",
+          "permissions_feature_change_limits": "Limits ändern",
+          "permissions_feature_start_stop_restart": "Start/Stop/Neustart",
+          "permissions_feature_control_leds": "LEDs steuern",
+          "diagnostics_header": "Verbindungsdiagnosebericht",
+          "diagnostics_intro": "Die folgenden Prüfungen wurden durchgeführt, um das Problem zu identifizieren:",
+          "diagnostics_label_result": "Ergebnis",
+          "diagnostics_label_details": "Details",
+          "diagnostics_label_remedy": "Abhilfe",
+          "diagnostics_footer_title": "Verwendung dieses Berichts",
+          "diagnostics_footer_text": "Wenn du Hilfe benötigst, kopiere diesen Bericht und teile ihn auf der [GitHub-Issue-Seite](https://github.com/FaserF/ha-openwrt/issues)."
+        }
+      },
       "memory_usage": {
-        "name": "Arbeitsspeicher Auslastung"
+        "name": "Arbeitsspeicherauslastung"
       },
       "cpu_usage": {
-        "name": "CPU Auslastung"
+        "name": "CPU-Auslastung"
       },
       "memory_used": {
-        "name": "Arbeitsspeicher genutzt"
+        "name": "Genutzter Arbeitsspeicher"
       },
       "swap_usage": {
-        "name": "Swap Auslastung"
+        "name": "Swap-Auslastung"
       },
       "load_1min": {
-        "name": "Auslastung (1m)"
+        "name": "Last (1 Min.)"
       },
       "load_5min": {
-        "name": "Auslastung (5m)"
+        "name": "Last (5 Min.)"
       },
       "load_15min": {
-        "name": "Auslastung (15m)"
+        "name": "Last (15 Min.)"
       },
       "uptime": {
-        "name": "Betriebszeit"
+        "name": "Laufzeit"
       },
       "temperature": {
         "name": "Temperatur"
       },
       "storage_usage": {
-        "name": "Speicherbelegung"
+        "name": "Speicherauslastung"
       },
       "public_ip": {
         "name": "Öffentliche IP"
@@ -281,64 +279,64 @@
         "name": "Dateisystem frei"
       },
       "mount_storage_total": {
-        "name": "{mount} Gesamtspeicher"
+        "name": "{mount} Speicher gesamt"
       },
       "mount_storage_used": {
-        "name": "{mount} Belegter Speicher"
+        "name": "{mount} Speicher genutzt"
       },
       "mount_storage_free": {
-        "name": "{mount} Freier Speicher"
+        "name": "{mount} Speicher frei"
       },
       "mount_storage_usage": {
-        "name": "{mount} Speicherbelegung"
+        "name": "{mount} Speicherauslastung"
       },
       "system_logs": {
-        "name": "System-Logs"
+        "name": "Systemprotokolle"
       },
       "adblock_status": {
         "name": "AdBlock-Status"
       },
       "adblock_blocked": {
-        "name": "AdBlock Blockierte Domains"
+        "name": "AdBlock blockierte Domains"
       },
       "simple_adblock_blocked": {
-        "name": "Simple AdBlock Blockierte Domains"
+        "name": "Simple AdBlock blockierte Domains"
       },
       "banip_banned": {
-        "name": "Ban-IP Gesperrte IPs"
+        "name": "Ban-IP gebannte IPs"
       },
       "connected_clients": {
         "name": "Verbundene Clients"
       },
       "wireless_clients": {
-        "name": "WLAN Clients"
+        "name": "WLAN-Clients"
       },
       "wifi_clients": {
         "name": "Clients"
       },
       "wifi_signal": {
-        "name": "WLAN Signalstärke"
+        "name": "Signal"
       },
       "wifi_channel": {
         "name": "Kanal"
       },
       "net_rx": {
-        "name": "{interface} Download (RX)"
+        "name": "{interface} Empfangen (RX)"
       },
       "net_tx": {
-        "name": "{interface} Upload (TX)"
+        "name": "{interface} Gesendet (TX)"
       },
       "net_ipv4": {
-        "name": "{interface} IPv4 Adresse"
+        "name": "{interface} IPv4-Adresse"
       },
       "mwan_ratio": {
-        "name": "{interface} Online Quote"
+        "name": "{interface} Online-Verhältnis"
       },
       "wifi_txpower": {
         "name": "Sendeleistung"
       },
       "wifi_htmode": {
-        "name": "HT Modus"
+        "name": "HT-Modus"
       },
       "wifi_hwmode": {
         "name": "Hardware-Modus"
@@ -353,16 +351,16 @@
         "name": "Rauschpegel"
       },
       "net_rx_errors": {
-        "name": "Empfangsfehler"
+        "name": "RX-Fehler"
       },
       "net_tx_errors": {
-        "name": "Sendefehler"
+        "name": "TX-Fehler"
       },
       "net_rx_dropped": {
-        "name": "Empf. verworfen"
+        "name": "RX verworfen"
       },
       "net_tx_dropped": {
-        "name": "Ges. verworfen"
+        "name": "TX verworfen"
       },
       "net_collisions": {
         "name": "Kollisionen"
@@ -374,46 +372,46 @@
         "name": "Signalstärke"
       },
       "device_rx_rate": {
-        "name": "RX Rate"
+        "name": "RX-Rate"
       },
       "device_tx_rate": {
-        "name": "TX Rate"
+        "name": "TX-Rate"
       },
       "device_noise": {
         "name": "Rauschpegel"
       },
       "net_rx_rate": {
-        "name": "{interface} RX Rate"
+        "name": "{interface} RX-Rate"
       },
       "net_tx_rate": {
-        "name": "{interface} TX Rate"
+        "name": "{interface} TX-Rate"
       },
       "device_connection_type": {
         "name": "Verbindungstyp"
       },
       "qmodem_manufacturer": {
-        "name": "Modem Hersteller"
+        "name": "Modem-Hersteller"
       },
       "qmodem_revision": {
-        "name": "Modem Revision"
+        "name": "Modem-Revision"
       },
       "qmodem_temperature": {
-        "name": "Modem Temperatur"
+        "name": "Modem-Temperatur"
       },
       "qmodem_voltage": {
-        "name": "Modem Spannung"
+        "name": "Modem-Spannung"
       },
       "qmodem_connect_status": {
-        "name": "Modem Verbindungsstatus"
+        "name": "Modem-Verbindungsstatus"
       },
       "qmodem_sim_status": {
-        "name": "SIM Status"
+        "name": "SIM-Status"
       },
       "qmodem_isp": {
         "name": "Internetanbieter"
       },
       "qmodem_sim_slot": {
-        "name": "SIM Steckplatz"
+        "name": "SIM-Slot"
       },
       "qmodem_lte_rsrp": {
         "name": "LTE RSRP"
@@ -437,37 +435,37 @@
         "name": "5G NR SINR"
       },
       "dhcp_lease_count": {
-        "name": "DHCP Leases"
+        "name": "DHCP-Leases"
       },
       "wan_latency": {
-        "name": "WAN Latenz"
+        "name": "WAN-Latenz"
       },
       "vpn_rx": {
-        "name": "{interface} VPN RX"
+        "name": "{interface} Empfangen (RX)"
       },
       "vpn_tx": {
-        "name": "{interface} VPN TX"
+        "name": "{interface} Gesendet (TX)"
       },
       "vpn_peers": {
-        "name": "VPN Peers"
+        "name": "VPN-Peers"
       },
       "net_ipv6": {
-        "name": "{interface} IPv6 Adresse"
+        "name": "{interface} IPv6-Adresse"
       },
       "net_speed": {
-        "name": "{interface} Link-Geschwindigkeit"
+        "name": "{interface} Verbindungsgeschwindigkeit"
       },
       "net_uptime": {
-        "name": "{interface} Betriebszeit"
+        "name": "{interface} Laufzeit"
       },
       "sqm_interface": {
-        "name": "SQM Schnittstelle"
+        "name": "SQM-Schnittstelle"
       },
       "sqm_qdisc": {
-        "name": "SQM Qdisc"
+        "name": "SQM-Qdisc"
       },
       "sqm_script": {
-        "name": "SQM Skript"
+        "name": "SQM-Skript"
       },
       "lldp_neighbor": {
         "name": "LLDP-Nachbar"
@@ -477,14 +475,14 @@
       },
       "package_feature": {
         "state": {
-          "sqm_scripts": "SQM QoS Einstellungen",
-          "mwan3": "MWAN3 Sensoren",
+          "sqm_scripts": "SQM-QoS-Einstellungen",
+          "mwan3": "MWAN3-Sensoren",
           "iwinfo": "WLAN-Client-Details",
           "etherwake": "Wake on LAN",
-          "wireguard": "WireGuard Unterstützung",
-          "openvpn": "OpenVPN Sensoren",
-          "luci_mod_rpc": "LuCI RPC Unterstützung",
-          "asu": "Firmware Upgrade (ASU)",
+          "wireguard": "WireGuard-Unterstützung",
+          "openvpn": "OpenVPN-Sensoren",
+          "luci_mod_rpc": "LuCI-RPC-Unterstützung",
+          "asu": "Firmware-Upgrade (ASU)",
           "adblock": "AdBlock",
           "simple_adblock": "Simple AdBlock",
           "ban_ip": "Ban-IP"
@@ -496,18 +494,18 @@
         "name": "Verbunden"
       },
       "mwan_online": {
-        "name": "MWAN {interface} online"
+        "name": "MWAN {interface} Online"
       },
       "interface_up": {
-        "name": "{interface} verbunden"
+        "name": "{interface} Verbunden"
       },
       "vpn_up": {
-        "name": "VPN {interface} verbunden"
+        "name": "VPN {interface} Verbunden"
       }
     },
     "button": {
       "reboot": {
-        "name": "Router neustarten"
+        "name": "Router neu starten"
       },
       "interface_reconnect": {
         "name": "{interface} neu verbinden"
@@ -516,7 +514,7 @@
         "name": "Portweiterleitung"
       },
       "device_access": {
-        "name": "Internetzugriff"
+        "name": "Internetzugang"
       },
       "wps_start": {
         "name": "WPS starten"
@@ -530,11 +528,11 @@
       "service_stop": {
         "name": "{service} stoppen"
       },
-      "wake_on_lan": {
-        "name": "Wake-on-LAN"
-      },
       "kick_device": {
-        "name": "Gerät trennen"
+        "name": "Gerät kicken"
+      },
+      "wake_on_lan": {
+        "name": "Wake on LAN"
       },
       "create_backup": {
         "name": "Backup erstellen"
@@ -545,7 +543,7 @@
         "name": "WPS"
       },
       "wireless_radio": {
-        "name": "Funknetz"
+        "name": "Funk"
       },
       "service_toggle": {
         "name": "Dienst"
@@ -557,7 +555,7 @@
         "name": "Firewall-Regel"
       },
       "sqm_enabled": {
-        "name": "SQM Aktiviert"
+        "name": "SQM aktiviert"
       },
       "adblock": {
         "name": "AdBlock"
@@ -574,7 +572,7 @@
         "name": "Firmware"
       },
       "custom_firmware_update": {
-        "name": "Custom Firmware"
+        "name": "Benutzerdefinierte Firmware"
       }
     },
     "light": {
@@ -601,71 +599,71 @@
         "name": "Sendeleistung"
       },
       "sqm_download": {
-        "name": "SQM Download Limit"
+        "name": "SQM-Download-Limit"
       },
       "sqm_upload": {
-        "name": "SQM Upload Limit"
+        "name": "SQM-Upload-Limit"
       }
     }
   },
   "issues": {
     "auth_failed": {
       "title": "Authentifizierung für {host} fehlgeschlagen",
-      "description": "Die OpenWrt Integration konnte sich nicht mit {host} authentifizieren. Die Zugangsdaten könnten sich geändert haben.\n\nBitte aktualisiere die Zugangsdaten, um die Verbindung wiederherzustellen."
+      "description": "Die OpenWrt-Integration konnte sich nicht bei {host} authentifizieren. Die Zugangsdaten wurden möglicherweise geändert.\n\nBitte aktualisiere die Zugangsdaten, um die Verbindung wiederherzustellen."
     },
     "wan_down": {
-      "title": "Lokales Netzwerk / WAN auf {host} unterbrochen",
-      "description": "Der OpenWrt Router {host} meldet, dass das Haupt-WAN-Interface derzeit ausgeschaltet oder nicht verbunden ist. Die Internetverbindung könnte beeinträchtigt sein."
+      "title": "WAN-Verbindung auf {host} unterbrochen",
+      "description": "Der OpenWrt-Router {host} meldet, dass die Haupt-WAN-Schnittstelle derzeit unterbrochen ist. Die Internetverbindung könnte beeinträchtigt sein."
     },
     "connection_lost": {
       "title": "Verbindung zu {host} verloren",
-      "description": "Home Assistant kann den OpenWrt Router unter {host} nicht mehr erreichen. Bitte überprüfe, ob das Gerät eingeschaltet und im Netzwerk erreichbar ist."
+      "description": "Home Assistant kann den OpenWrt-Router unter {host} nicht erreichen. Bitte prüfe, ob das Gerät eingeschaltet und über das Netzwerk erreichbar ist."
     },
     "missing_packages": {
-      "title": "Fehlende empfohlene Pakete auf {host}",
-      "description": "Um alle Funktionen der OpenWrt Integration optimal zu nutzen, fehlen einige Pakete auf {host}.\n\nBitte installiere die folgenden Pakete via LuCI oder SSH: `{packages}`."
+      "title": "Empfohlene Pakete auf {host} fehlen",
+      "description": "Um alle Funktionen der OpenWrt-Integration nutzen zu können, fehlen einige Pakete auf {host}.\n\nBitte installiere die folgenden Pakete über LuCI oder SSH: `{packages}`."
     },
     "firmware_outdated": {
-      "title": "OpenWrt Firmware ist veraltet auf {host}",
-      "description": "Der OpenWrt Router {host} verwendet Version {current_version}, aber Version {latest_version} ist verfügbar.\n\nEs wird dringend empfohlen, die Firmware des Routers aus Sicherheitsgründen aktuell zu halten. Die neueste Version kann [hier]({release_url}) heruntergeladen werden."
+      "title": "OpenWrt-Firmware auf {host} ist veraltet",
+      "description": "Der OpenWrt-Router {host} verwendet Version {current_version}, aber Version {latest_version} ist verfügbar.\n\nEs wird dringend empfohlen, die Firmware deines Routers aus Sicherheitsgründen auf dem neuesten Stand zu halten. Du kannst die neueste Version [hier]({release_url}) herunterladen."
     }
   },
   "services": {
     "reboot": {
-      "name": "Router neustarten",
-      "description": "Startet den OpenWrt Router neu.",
+      "name": "Router neu starten",
+      "description": "Startet den OpenWrt-Router neu.",
       "fields": {
         "entry_id": {
           "name": "Gerät",
-          "description": "Der OpenWrt Router, der neu gestartet werden soll."
+          "description": "Der neu zu startende OpenWrt-Router."
         }
       }
     },
     "execute_command": {
       "name": "Befehl ausführen",
-      "description": "Führt einen Shell-Befehl auf dem OpenWrt Router aus.",
+      "description": "Führt einen Shell-Befehl auf dem OpenWrt-Router aus.",
       "fields": {
         "entry_id": {
           "name": "Gerät",
-          "description": "Der OpenWrt Router."
+          "description": "Der OpenWrt-Router."
         },
         "command": {
           "name": "Befehl",
-          "description": "Der auszuführende Befehl (z.B. cat /proc/cpuinfo)."
+          "description": "Der auszuführende Befehl (z. B. cat /proc/cpuinfo)."
         }
       }
     },
     "manage_service": {
       "name": "Dienst verwalten",
-      "description": "Verwaltet einen init.d Dienst auf dem OpenWrt Router.",
+      "description": "Verwalte einen init.d-Dienst auf dem OpenWrt-Router.",
       "fields": {
         "entry_id": {
           "name": "Gerät",
-          "description": "Der OpenWrt Router."
+          "description": "Der OpenWrt-Router."
         },
         "service_name": {
           "name": "Dienstname",
-          "description": "Der Name des Dienstes (z.B. dnsmasq)."
+          "description": "Der Name des Dienstes (z. B. dnsmasq)."
         },
         "action": {
           "name": "Aktion",
@@ -674,78 +672,78 @@
       }
     },
     "wake_on_lan": {
-      "name": "Wake-on-LAN",
-      "description": "Sende ein Wake-on-LAN Magic Packet an ein Gerät über den OpenWrt Router.",
+      "name": "Wake on LAN",
+      "description": "Sende ein Wake on LAN Magic Packet an ein Gerät über den OpenWrt-Router.",
       "fields": {
         "target": {
           "name": "Ziel-Router",
-          "description": "Der OpenWrt Router, von dem das Paket gesendet werden soll."
+          "description": "Der OpenWrt-Router, von dem das Paket gesendet werden soll."
         },
         "mac": {
           "name": "MAC-Adresse",
-          "description": "Die MAC-Adresse des Geräts, das aufgeweckt werden soll."
+          "description": "Die MAC-Adresse des aufzuweckenden Geräts."
         },
         "interface": {
           "name": "Schnittstelle",
-          "description": "Optionale Schnittstelle, über die das Paket gesendet werden soll (z.B. br-lan)."
+          "description": "Optionale Schnittstelle, über die das Paket gesendet werden soll (z. B. br-lan)."
         }
       }
     },
     "uci_get": {
-      "name": "Hole UCI-Wert",
-      "description": "Liest einen UCI-Konfigurationswert und gibt ihn als Service-Antwort zurück.",
+      "name": "UCI-Wert abrufen",
+      "description": "Ruft einen UCI-Konfigurationswert ab und gibt ihn als Dienstantwort zurück.",
       "fields": {
         "entry_id": {
           "name": "Gerät",
-          "description": "Der OpenWrt Router."
+          "description": "Die Konfigurationseintrags-ID des OpenWrt-Routers."
         },
         "config": {
           "name": "Konfiguration",
-          "description": "Der UCI-Konfigurationsname (z. B. firewall, wireless)."
+          "description": "Der Name der UCI-Konfiguration (z. B. firewall, wireless)."
         },
         "section": {
           "name": "Abschnitt",
-          "description": "Der UCI-Abschnittsname."
+          "description": "Der Name des UCI-Abschnitts."
         },
         "option": {
           "name": "Option",
-          "description": "Der UCI-Optionsname."
+          "description": "Der Name der UCI-Option."
         }
       }
     },
     "uci_set": {
-      "name": "Setze UCI-Wert",
-      "description": "Legt einen UCI-Konfigurationswert fest und speichert die Änderungen.",
+      "name": "UCI-Wert setzen",
+      "description": "Setzt einen UCI-Konfigurationswert und übernimmt die Änderungen.",
       "fields": {
         "entry_id": {
           "name": "Gerät",
-          "description": "Der OpenWrt Router."
+          "description": "Die Konfigurationseintrags-ID des OpenWrt-Routers."
         },
         "config": {
           "name": "Konfiguration",
-          "description": "Der UCI-Konfigurationsname."
+          "description": "Der Name der UCI-Konfiguration."
         },
         "section": {
           "name": "Abschnitt",
-          "description": "Der UCI-Abschnittsname."
+          "description": "Der Name des UCI-Abschnitts."
         },
         "option": {
           "name": "Option",
-          "description": "Der UCI-Optionsname."
+          "description": "Der Name der UCI-Option."
         },
         "value": {
           "name": "Wert",
-          "description": "Der festzulegende Wert."
+          "description": "Der zu setzende Wert."
         }
       }
     },
     "create_backup": {
       "name": "Backup erstellen",
-      "description": "Erstellt ein Konfigurations-Backup auf dem OpenWrt Router.",
+      "description": "Erstellt ein Konfigurations-Backup auf dem OpenWrt-Router.",
       "fields": {
         "entry_id": {
           "name": "Gerät",
-          "description": "Der OpenWrt Router."
+          "description": "Die Konfigurationseintrags-ID des OpenWrt-Routers."
         }
       }
     }

@@ -109,11 +109,9 @@ def _generate_permission_table(
     """Generate markdown table for permissions."""
 
     def t(key: str, default: str) -> str:
-        if (
-            translations
-            and f"component.openwrt.config_flow_ui.permissions.{key}" in translations
-        ):
-            return translations[f"component.openwrt.config_flow_ui.permissions.{key}"]
+        full_key = f"component.openwrt.entity.sensor.config_flow_ui.state.{key}"
+        if translations and full_key in translations:
+            return translations[full_key]
         return default
 
     def to_icon(val: bool) -> str:
@@ -122,36 +120,69 @@ def _generate_permission_table(
     def get_missing(read: bool, write: bool, name: str, features: list[str]) -> str:
         missing = []
         if not read:
-            missing.append(f"{name} {t('sensors', 'Sensors')}")
+            missing.append(f"{name} {t('permissions_sensors', 'Sensors')}")
         if not write:
             # Try to translate each feature if possible
             translated_features = []
             for f in features:
-                # Simple mapping for common features
-                feat_key = f.lower().replace("/", "_").replace(" ", "_")
-                translated_features.append(t(f"feature_{feat_key}", f))
-            missing.extend(translated_features)
+                feat_key = f"permissions_feature_{f}"
+                translated_features.append(t(feat_key, f.replace("_", " ").title()))
+
+            if translated_features:
+                missing.append(f"{name} ({', '.join(translated_features)})")
         return ", ".join(missing) if missing else "-"
 
-    header_sub = t("header_subsystem", "Subsystem")
-    header_read = t("header_read", "Read")
-    header_write = t("header_write", "Write")
-    header_missing = t("header_missing", "Missing Features")
-
-    return (
-        f"| {header_sub} | {header_read} | {header_write} | {header_missing} |\n"
-        "|-----------|------|-------|------------------|\n"
-        f"| **{t('sub_system', 'System')}** | {to_icon(perms.read_system)} | {to_icon(perms.write_system)} | {get_missing(perms.read_system, perms.write_system, t('sub_system', 'System'), ['Reboot', 'Upgrade', 'Backup'])} |\n"
-        f"| **{t('sub_network', 'Network')}** | {to_icon(perms.read_network)} | {to_icon(perms.write_network)} | {get_missing(perms.read_network, perms.write_network, t('sub_interface', 'Interface'), ['Up/Down/Reconnect'])} |\n"
-        f"| **{t('sub_wireless', 'Wireless')}** | {to_icon(perms.read_wireless)} | {to_icon(perms.write_wireless)} | {get_missing(perms.read_wireless, perms.write_wireless, 'WiFi', ['Toggle WiFi', 'WPS Control'])} |\n"
-        f"| **{t('sub_firewall', 'Firewall')}** | {to_icon(perms.read_firewall)} | {to_icon(perms.write_firewall)} | {get_missing(perms.read_firewall, perms.write_firewall, t('sub_firewall', 'Firewall'), ['Toggling Rules/Redirects', 'Access Control'])} |\n"
-        f"| **{t('sub_devices', 'Devices')}** | {to_icon(perms.read_devices)} | {to_icon(perms.write_devices)} | {get_missing(perms.read_devices, perms.write_devices, t('sub_device', 'Device'), ['Wake on LAN', 'Kick Client'])} |\n"
-        f"| **{t('sub_vpn', 'VPN')}** | {to_icon(perms.read_vpn)} | - | {'-' if perms.read_vpn else f'WireGuard/OpenVPN {t("sensors", "Sensors")}'} |\n"
-        f"| **{t('sub_sqm', 'SQM')}** | {to_icon(perms.read_sqm)} | {to_icon(perms.write_sqm)} | {get_missing(perms.read_sqm, perms.write_sqm, 'SQM', ['Toggle SQM', 'Change limits'])} |\n"
-        f"| **{t('sub_services', 'Services')}**| {to_icon(perms.read_services)} | {to_icon(perms.write_services)} | {get_missing(perms.read_services, perms.write_services, t('sub_service', 'Service'), ['Start/Stop/Restart'])} |\n"
-        f"| **{t('sub_leds', 'LEDs')}** | {to_icon(perms.read_led)} | {to_icon(perms.write_led)} | {get_missing(perms.read_led, perms.write_led, 'LED', ['Control LEDs'])} |\n"
-        f"| **{t('sub_mwan3', 'MWAN3')}** | {to_icon(perms.read_mwan)} | - | {'-' if perms.read_mwan else f'Multi-WAN {t("sensors", "Sensors")}'} |"
+    header = (
+        f"| {t('permissions_header_subsystem', 'Subsystem')} | "
+        f"{t('permissions_header_read', 'Read')} | "
+        f"{t('permissions_header_write', 'Write')} | "
+        f"{t('permissions_header_missing', 'Missing Features')} |\n"
     )
+    header += "| --- | --- | --- | --- |\n"
+
+    rows = []
+    # System
+    rows.append(
+        f"| {t('permissions_sub_system', 'System')} | {to_icon(perms.read_system)} | {to_icon(perms.write_system)} | {get_missing(perms.read_system, perms.write_system, t('permissions_sub_system', 'System'), ['reboot', 'upgrade', 'backup'])} |"
+    )
+    # Network
+    rows.append(
+        f"| {t('permissions_sub_network', 'Network')} | {to_icon(perms.read_network)} | {to_icon(perms.write_network)} | {get_missing(perms.read_network, perms.write_network, t('permissions_sub_network', 'Network'), ['up_down_reconnect'])} |"
+    )
+    # Wireless
+    rows.append(
+        f"| {t('permissions_sub_wireless', 'Wireless')} | {to_icon(perms.read_wireless)} | {to_icon(perms.write_wireless)} | {get_missing(perms.read_wireless, perms.write_wireless, t('permissions_sub_wireless', 'Wireless'), ['toggle_wifi', 'wps_control'])} |"
+    )
+    # Firewall
+    rows.append(
+        f"| {t('permissions_sub_firewall', 'Firewall')} | {to_icon(perms.read_firewall)} | {to_icon(perms.write_firewall)} | {get_missing(perms.read_firewall, perms.write_firewall, t('permissions_sub_firewall', 'Firewall'), ['toggling_rules_redirects'])} |"
+    )
+    # Devices (Device Tracker)
+    rows.append(
+        f"| {t('permissions_sub_devices', 'Devices')} | {to_icon(perms.read_devices)} | {to_icon(perms.write_devices)} | {get_missing(perms.read_devices, perms.write_devices, t('permissions_sub_device', 'Device'), ['access_control', 'wake_on_lan', 'kick_client'])} |"
+    )
+    # VPN
+    rows.append(
+        f"| {t('permissions_sub_vpn', 'VPN')} | {to_icon(perms.read_vpn)} | - | -"
+    )
+    # SQM
+    rows.append(
+        f"| {t('permissions_sub_sqm', 'SQM')} | {to_icon(perms.read_sqm)} | {to_icon(perms.write_sqm)} | {get_missing(perms.read_sqm, perms.write_sqm, t('permissions_sub_sqm', 'SQM'), ['toggle_sqm', 'change_limits'])} |"
+    )
+    # Services
+    rows.append(
+        f"| {t('permissions_sub_services', 'Services')} | {to_icon(perms.read_services)} | {to_icon(perms.write_services)} | {get_missing(perms.read_services, perms.write_services, t('permissions_sub_service', 'Service'), ['start_stop_restart'])} |"
+    )
+    # LEDs
+    rows.append(
+        f"| {t('permissions_sub_leds', 'LEDs')} | {to_icon(perms.read_led)} | {to_icon(perms.write_led)} | {get_missing(perms.read_led, perms.write_led, t('permissions_sub_leds', 'LEDs'), ['control_leds'])} |"
+    )
+    # MWAN3
+    rows.append(
+        f"| {t('permissions_sub_mwan3', 'MWAN3')} | {to_icon(perms.read_mwan)} | - | -"
+    )
+
+    return header + "\n".join(rows)
 
 
 def _generate_package_table(
@@ -223,16 +254,14 @@ def _generate_diagnostic_report(
     """Generate markdown for diagnostic report."""
 
     def t(key: str, default: str) -> str:
-        if (
-            translations
-            and f"component.openwrt.config_flow_ui.diagnostics.{key}" in translations
-        ):
-            return translations[f"component.openwrt.config_flow_ui.diagnostics.{key}"]
+        full_key = f"component.openwrt.entity.sensor.config_flow_ui.state.{key}"
+        if translations and full_key in translations:
+            return translations[full_key]
         return default
 
     report = [
-        f"### {t('header', 'Connection Diagnostic Report')}",
-        t("intro", "The following checks were performed to identify the issue:"),
+        f"### {t('diagnostics_header', 'Connection Diagnostic Report')}",
+        t("diagnostics_intro", "The following checks were performed to identify the issue:"),
         "",
     ]
     for res in results:
@@ -246,15 +275,15 @@ def _generate_diagnostic_report(
             else "ℹ️"
         )
         report.append(f"#### {icon} {res.name}")
-        report.append(f"**{t('label_result', 'Result')}:** {res.message}")
+        report.append(f"**{t('diagnostics_label_result', 'Result')}:** {res.message}")
         if res.details:
-            report.append(f"**{t('label_details', 'Details')}:** `{res.details}`")
+            report.append(f"**{t('diagnostics_label_details', 'Details')}:** `{res.details}`")
         if res.remedy:
-            report.append(f"**💡 {t('label_remedy', 'Remedy')}:** {res.remedy}")
+            report.append(f"**💡 {t('diagnostics_label_remedy', 'Remedy')}:** {res.remedy}")
         report.append("")
 
     report.append(
-        f"\n**{t('footer_title', 'How to use this report')}:** {t('footer_text', 'If you need help, copy this report and share it on the [GitHub issues page](https://github.com/FaserF/ha-openwrt/issues).')}"
+        f"\n**{t('diagnostics_footer_title', 'How to use this report')}:** {t('diagnostics_footer_text', 'If you need help, copy this report and share it on the [GitHub issues page](https://github.com/FaserF/ha-openwrt/issues).')}"
     )
     return "\n".join(report)
 
