@@ -220,7 +220,9 @@ class LuciRpcClient(OpenWrtClient):
             # We escape single quotes correctly for the shell.
             escaped_cmd = command.replace("'", "'\\''")
             return (
-                await self._rpc_call("sys", "exec", [f"/bin/sh -c '{escaped_cmd}'"])
+                await self._rpc_call(
+                    "sys", "exec", [f"/bin/sh -c '{escaped_cmd}' 2>&1"]
+                )
                 or ""
             )
         except LuciRpcError as err:

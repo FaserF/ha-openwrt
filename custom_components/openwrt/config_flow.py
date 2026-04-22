@@ -1153,6 +1153,26 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    def _analyze_provision_error(self, error_text: str) -> str:
+        """Analyze the provisioning error and return a user-friendly tip."""
+        if "ANALYSIS: PASSWD_WRITE_FAILED" in error_text:
+            return "The router's /etc/passwd file is read-only or the disk is full. This is common on some specialized firmwares or if the Overlay partition is not mounted."
+        if (
+            "ANALYSIS: CHPASSWD_FAILED" in error_text
+            or "ANALYSIS: PASSWD_BINARY_FAILED" in error_text
+        ):
+            return "The password update failed. This can happen if the router uses a specialized authentication backend or if the password contains unsupported characters."
+        if "ANALYSIS: ACL_WRITE_FAILED" in error_text:
+            return "Could not create the ACL file at /usr/share/rpcd/acl.d/. This usually means the partition is read-only (standard for SquashFS builds without an Overlay)."
+        if "ANALYSIS: UCI_COMMIT_FAILED" in error_text:
+            return "Failed to save configuration changes via UCI. Check if another process is locking the UCI database."
+        if not error_text or error_text.strip() == "":
+            return "The router returned an empty response. This often means the 'file.exec' command was blocked by the router's security policy (common on Xiaomi/OEM firmwares)."
+        if "permission denied" in error_text.lower():
+            return "Permission denied. Ensure you are connecting as 'root' or that your current user has 'file.exec' permissions."
+
+        return "An unexpected error occurred during execution. See the logs below for details."
+
     async def async_step_do_provision(self) -> ConfigFlowResult:
         """Perform the actual provisioning."""
         self._generated_password = secrets.token_hex(16)
@@ -1263,11 +1283,14 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             await asyncio.sleep(5)
             return await self.async_step_display_new_user()
 
+        tip = self._analyze_provision_error(self._provision_error or "")
+
         return self.async_show_form(
             step_id="provision_failed",
             errors={"base": "provision_failed"},
             description_placeholders={
                 "error": self._provision_error or "Unknown error",
+                "tip": tip,
             },
         )
 

@@ -14,6 +14,9 @@ from typing import Any
 _LOGGER = logging.getLogger(__name__)
 
 PROVISION_SCRIPT_TEMPLATE = """
+# Dedicated Home Assistant User Provisioning Script
+# This script creates a system user, sets a password, and configures RPC/LuCI ACLs.
+
 USER=$(cat <<'EOF'
 {username}
 EOF
@@ -22,36 +25,50 @@ PASS=$(cat <<'EOF'
 {password}
 EOF
 )
-ACL_FILE="/usr/share/rpcd/acl.d/homeassistant.json"
 
-# Log to router syslog
-logger -t ha-openwrt "Starting provisioning for user: $USER"
+# Use absolute paths for core utilities to ensure they are found
+LOGGER="/usr/bin/logger"
+[ -x "$LOGGER" ] || LOGGER="logger"
+UCI="/sbin/uci"
+[ -x "$UCI" ] || UCI="uci"
+
+# Log start
+$LOGGER -t ha-openwrt "Starting provisioning for user: $USER"
+
+# Create a safe section name (alphanumeric only)
+SECTION=$(echo "$USER" | tr -cd '[:alnum:]' | tr '[:upper:]' '[:lower:]')
+[ -n "$SECTION" ] || SECTION="homeassistant"
 
 # Ensure /bin/ash is in /etc/shells (required for some LuCI setups)
-if ! grep -q "^/bin/ash" /etc/shells; then
+if ! grep -q "^/bin/ash" /etc/shells 2>/dev/null; then
     echo "/bin/ash" >> /etc/shells
 fi
 
 # Create user if it doesn't exist
 if ! id "$USER" >/dev/null 2>&1; then
-    logger -t ha-openwrt "Creating system user $USER with ash shell"
+    $LOGGER -t ha-openwrt "Creating system user $USER"
     if command -v adduser >/dev/null 2>&1; then
-        adduser -D -s /bin/ash "$USER" >/dev/null 2>&1 || echo "LOG: FAIL: adduser"
+        adduser -D -s /bin/ash "$USER" >/dev/null 2>&1 || echo "LOG: FAIL: adduser failed"
     elif command -v useradd >/dev/null 2>&1; then
-        useradd -m -s /bin/ash "$USER" >/dev/null 2>&1 || echo "LOG: FAIL: useradd"
+        useradd -m -s /bin/ash "$USER" >/dev/null 2>&1 || echo "LOG: FAIL: useradd failed"
     else
+        # Manual fallback for minimal systems
         mkdir -p "/home/$USER"
-        echo "$USER:x:1001:1001:HomeAssistant:/home/$USER:/bin/ash" >> /etc/passwd
+        if ! echo "$USER:x:1001:1001:HomeAssistant:/home/$USER:/bin/ash" >> /etc/passwd; then
+            echo "ANALYSIS: PASSWD_WRITE_FAILED"
+            echo "LOG: FAIL: could not write to /etc/passwd"
+            exit 1
+        fi
         echo "$USER:x:1001:" >> /etc/group
     fi
 else
     # Update existing user to have valid shell
-    logger -t ha-openwrt "Updating existing user $USER to use /bin/ash"
+    $LOGGER -t ha-openwrt "Updating existing user $USER to use /bin/ash"
     if command -v usermod >/dev/null 2>&1; then
         usermod -s /bin/ash "$USER" >/dev/null 2>&1 || true
     else
-        uid=$(id -u "$USER")
-        gid=$(id -g "$USER")
+        uid=$(id -u "$USER" 2>/dev/null)
+        gid=$(id -g "$USER" 2>/dev/null)
         sed -i "s|^$USER:.*|$USER:x:$uid:$gid:HomeAssistant:/home/$USER:/bin/ash|" /etc/passwd 2>/dev/null || true
     fi
     mkdir -p "/home/$USER"
@@ -66,21 +83,25 @@ if [ -f /etc/shadow ]; then
 fi
 
 # Set password using the most robust method
-logger -t ha-openwrt "Updating password for $USER"
+$LOGGER -t ha-openwrt "Updating password for $USER"
 if command -v chpasswd >/dev/null 2>&1; then
     if ! printf "%s:%s\\n" "$USER" "$PASS" | chpasswd >/dev/null 2>&1; then
+        echo "ANALYSIS: CHPASSWD_FAILED"
         echo "LOG: FAIL: chpasswd failed"
         exit 1
     fi
 else
+    # Fallback to passwd with piped input
     if ! (echo "$PASS"; sleep 1; echo "$PASS") | passwd "$USER" >/dev/null 2>&1; then
+        echo "ANALYSIS: PASSWD_BINARY_FAILED"
         echo "LOG: FAIL: passwd failed"
         exit 1
     fi
 fi
 
 # Create ACL file
-logger -t ha-openwrt "Creating ACL file $ACL_FILE"
+ACL_FILE="/usr/share/rpcd/acl.d/homeassistant.json"
+$LOGGER -t ha-openwrt "Creating ACL file $ACL_FILE"
 mkdir -p "$(dirname "$ACL_FILE")"
 if ! cat <<EOF > "$ACL_FILE"
 {{
@@ -148,6 +169,7 @@ if ! cat <<EOF > "$ACL_FILE"
 }}
 EOF
 then
+    echo "ANALYSIS: ACL_WRITE_FAILED"
     echo "LOG: FAIL: could not create ACL file $ACL_FILE"
     exit 1
 fi
@@ -155,47 +177,46 @@ fi
 chmod 644 "$ACL_FILE"
 
 # Thorough cleanup of existing RPC/LuCI sections for this user
-logger -t ha-openwrt "Cleaning up existing UCI RPC/LuCI sections for $USER"
-for s in $(uci show rpcd 2>/dev/null | grep "=login" | cut -d. -f2 | cut -d= -f1); do
-    [ "$(uci get rpcd.$s.username 2>/dev/null)" = "$USER" ] && uci delete rpcd.$s
+$LOGGER -t ha-openwrt "Cleaning up existing UCI RPC/LuCI sections for $USER"
+for s in $($UCI show rpcd 2>/dev/null | grep "=login" | cut -d. -f2 | cut -d= -f1); do
+    [ "$($UCI get rpcd.$s.username 2>/dev/null)" = "$USER" ] && $UCI delete rpcd.$s
 done
-for s in $(uci show luci 2>/dev/null | grep "=user" | cut -d. -f2 | cut -d= -f1); do
-    [ "$(uci get luci.$s.username 2>/dev/null)" = "$USER" ] && uci delete luci.$s
+for s in $($UCI show luci 2>/dev/null | grep "=user" | cut -d. -f2 | cut -d= -f1); do
+    [ "$($UCI get luci.$s.username 2>/dev/null)" = "$USER" ] && $UCI delete luci.$s
 done
 
 # Configure UCI authorization.
-logger -t ha-openwrt "Configuring UCI authorization for $USER"
-uci set luci.homeassistant=user
-uci set luci.homeassistant.username="$USER"
-uci set luci.homeassistant.password='*'
-uci add_list luci.homeassistant.write="homeassistant"
-uci add_list luci.homeassistant.read="homeassistant"
+$LOGGER -t ha-openwrt "Configuring UCI authorization for $USER (section: $SECTION)"
+$UCI set luci.$SECTION=user
+$UCI set luci.$SECTION.username="$USER"
+$UCI set luci.$SECTION.password='*'
+$UCI add_list luci.$SECTION.write="homeassistant"
+$UCI add_list luci.$SECTION.read="homeassistant"
 
-uci set rpcd.homeassistant=login
-uci set rpcd.homeassistant.username="$USER"
-uci set rpcd.homeassistant.password="\\$p\\$$USER"
-uci add_list rpcd.homeassistant.read="homeassistant"
-uci add_list rpcd.homeassistant.write="homeassistant"
+$UCI set rpcd.$SECTION=login
+$UCI set rpcd.$SECTION.username="$USER"
+$UCI set rpcd.$SECTION.password="\\$p\\$$USER"
+$UCI add_list rpcd.$SECTION.read="homeassistant"
+$UCI add_list rpcd.$SECTION.write="homeassistant"
 
-if ! (uci commit luci && uci commit rpcd); then
+if ! ($UCI commit luci && $UCI commit rpcd); then
+    echo "ANALYSIS: UCI_COMMIT_FAILED"
     echo "LOG: FAIL: uci commit failed"
     exit 1
 fi
 
+$LOGGER -t ha-openwrt "Provisioning SUCCESS for $USER"
+echo "ANALYSIS: SUCCESS"
 echo "LOG: Provisioning SUCCESS"
-logger -t ha-openwrt "Provisioning completed successfully for $USER. Scheduling service restarts."
 
-# Background restart sequence
+# Asynchronously restart services to apply changes without breaking the current session
 (
     sleep 3
+    $LOGGER -t ha-openwrt "Restarting rpcd to apply ACL changes"
     /etc/init.d/rpcd restart
-    sleep 3
-    if ! pgrep rpcd >/dev/null; then
-        logger -t ha-openwrt "rpcd failed to restart, trying again..."
-        /etc/init.d/rpcd start
-    fi
+    sleep 2
+    $LOGGER -t ha-openwrt "Restarting uhttpd to apply LuCI changes"
     /etc/init.d/uhttpd restart
-    logger -t ha-openwrt "Services restarted for ha-openwrt provisioning"
 ) >/dev/null 2>&1 &
 """
 

@@ -1960,13 +1960,26 @@ class UbusClient(OpenWrtClient):
             res = await self._call(
                 "file",
                 "exec",
-                {"command": "/bin/sh", "params": ["-c", command]},
+                {"command": "/bin/sh", "params": ["-c", command.strip()]},
             )
             if not res or not isinstance(res, dict):
                 return ""
 
-            # stdout/stderr are usually strings if present
-            return str(res.get("stdout") or "").strip()
+            stdout = str(res.get("stdout") or "").strip()
+            stderr = str(res.get("stderr") or "").strip()
+            code = res.get("code", 0)
+
+            if code != 0:
+                _LOGGER.debug(
+                    "Command failed (code %d). stdout: %s, stderr: %s",
+                    code,
+                    stdout,
+                    stderr,
+                )
+                # If stdout is empty but stderr has content, return stderr to help with debugging
+                return stdout or stderr
+
+            return stdout
         except UbusPermissionError as err:
             _LOGGER.debug(
                 "Permission denied for command via ubus file.exec: %s",

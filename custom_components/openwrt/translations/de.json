@@ -111,7 +111,7 @@
       },
       "provision_failed": {
         "title": "Bereitstellung fehlgeschlagen",
-        "description": "Die automatische Benutzer-Bereitstellung ist mit dem folgenden Fehler fehlgeschlagen:\n\n`{error}`\n\nDu kannst mit den aktuellen Anmeldedaten fortfahren, wir empfehlen jedoch, deine Router-Einstellungen zu überprüfen."
+        "description": "Die automatische Benutzer-Bereitstellung ist fehlgeschlagen.\n\n**Analyse:**\n{tip}\n\n**Roh-Fehlerausgabe:**\n```\n{error}\n```\n\n**Was du jetzt tun kannst:**\n- **Berechtigungen prüfen:** Stelle sicher, dass dein aktueller Benutzer `file.exec` Rechte hat.\n- **Speicherplatz prüfen:** Prüfe, ob dein Router genug freien Speicher in `/usr/share/rpcd/` hat.\n- **SSH versuchen:** SSH ist oft robuster für die Ersteinrichtung, falls ubus eingeschränkt ist.\n\nDu kannst dennoch mit den aktuellen Zugangsdaten fortfahren, indem du diesen Schritt überspringst."
       },
       "ubus_restricted": {
         "title": "Eingeschränktes Ubus erkannt",

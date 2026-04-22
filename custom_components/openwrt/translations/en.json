@@ -111,7 +111,7 @@
       },
       "provision_failed": {
         "title": "Provisioning Failed",
-        "description": "The automatic user provisioning failed with the following error:\n\n`{error}`\n\nYou can still proceed with the current credentials, but we recommend checking your router settings."
+        "description": "The automatic user provisioning failed.\n\n**Analysis:**\n{tip}\n\n**Raw Error Output:**\n```\n{error}\n```\n\n**What to do now?**\n- **Check Permissions:** Ensure your current user has `file.exec` rights.\n- **Check Space:** Ensure your router has enough free space in `/usr/share/rpcd/`.\n- **Try SSH:** SSH is often more robust for initial setup if ubus is restricted.\n\nYou can still proceed with the current credentials by skipping this step."
       },
       "ubus_restricted": {
         "title": "Restricted Ubus Detected",
