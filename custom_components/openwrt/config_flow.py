@@ -113,9 +113,7 @@ def _generate_permission_table(
             translations
             and f"component.openwrt.config_flow_ui.permissions.{key}" in translations
         ):
-            return translations[
-                f"component.openwrt.config_flow_ui.permissions.{key}"
-            ]
+            return translations[f"component.openwrt.config_flow_ui.permissions.{key}"]
         return default
 
     def to_icon(val: bool) -> str:
