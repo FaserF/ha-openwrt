@@ -261,7 +261,10 @@ def _generate_diagnostic_report(
 
     report = [
         f"### {t('diagnostics_header', 'Connection Diagnostic Report')}",
-        t("diagnostics_intro", "The following checks were performed to identify the issue:"),
+        t(
+            "diagnostics_intro",
+            "The following checks were performed to identify the issue:",
+        ),
         "",
     ]
     for res in results:
@@ -277,9 +280,13 @@ def _generate_diagnostic_report(
         report.append(f"#### {icon} {res.name}")
         report.append(f"**{t('diagnostics_label_result', 'Result')}:** {res.message}")
         if res.details:
-            report.append(f"**{t('diagnostics_label_details', 'Details')}:** `{res.details}`")
+            report.append(
+                f"**{t('diagnostics_label_details', 'Details')}:** `{res.details}`"
+            )
         if res.remedy:
-            report.append(f"**💡 {t('diagnostics_label_remedy', 'Remedy')}:** {res.remedy}")
+            report.append(
+                f"**💡 {t('diagnostics_label_remedy', 'Remedy')}:** {res.remedy}"
+            )
         report.append("")
 
     report.append(
