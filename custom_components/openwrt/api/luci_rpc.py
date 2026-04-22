@@ -483,33 +483,6 @@ class LuciRpcClient(OpenWrtClient):
 
         return info
 
-    async def get_gateway_mac(self) -> str | None:
-        """Get the MAC address of the default gateway via LuCI RPC."""
-        try:
-            # 1. Get the default gateway IP
-            route_out = await self.execute_command("ip -4 route show | grep default")
-            if not route_out:
-                return None
-
-            # Example: default via 192.168.1.1 dev eth0 proto static
-            parts = route_out.split()
-            if "via" not in parts:
-                return None
-
-            gw_ip = parts[parts.index("via") + 1]
-
-            # 2. Get the MAC from ARP/Neighbor table
-            neigh_out = await self.execute_command(f"ip neigh show {gw_ip}")
-            if not neigh_out:
-                return None
-
-            # Example: 192.168.1.1 dev eth0 lladdr 00:11:22:33:44:55 REACHABLE
-            if "lladdr" in neigh_out:
-                mac = neigh_out.split("lladdr")[1].strip().split()[0]
-                return mac.lower()
-        except Exception:
-            pass
-        return None
 
     async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
         """Get LLDP neighbor information via LuCI RPC."""

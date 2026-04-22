@@ -1645,29 +1645,6 @@ class SshClient(OpenWrtClient):
             _LOGGER.exception("Failed to set SQM config via SSH: %s", err)
             return False
 
-    async def get_gateway_mac(self) -> str | None:
-        """Get the default gateway MAC address via SSH."""
-        try:
-            # 1. Get default gateway IP
-            route_out = await self._exec("ip route show default 2>/dev/null")
-            if not route_out:
-                return None
-
-            # Example: default via 192.168.178.1 dev eth0 proto static
-            parts = route_out.split()
-            if "via" not in parts:
-                return None
-
-            gw_ip = parts[parts.index("via") + 1]
-
-            # 2. Get MAC for that IP
-            neigh_out = await self._exec(f"ip neigh show {gw_ip} 2>/dev/null")
-            if "lladdr" in neigh_out:
-                neigh_parts = neigh_out.split()
-                return neigh_parts[neigh_parts.index("lladdr") + 1].upper()
-        except Exception as err:
-            _LOGGER.debug("Failed to get gateway MAC via SSH: %s", err)
-        return None
 
     async def get_lldp_neighbors(self) -> list[LldpNeighbor]:
         """Get LLDP neighbor information via SSH."""
