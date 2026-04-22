@@ -78,41 +78,7 @@
       },
       "permissions": {
         "title": "Permissions Summary",
-        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed if this is expected.",
-        "table": {
-          "header_subsystem": "Subsystem",
-          "header_read": "Read",
-          "header_write": "Write",
-          "header_missing": "Missing Features",
-          "sensors": "Sensors",
-          "sub_system": "System",
-          "sub_network": "Network",
-          "sub_interface": "Interface",
-          "sub_wireless": "Wireless",
-          "sub_firewall": "Firewall",
-          "sub_devices": "Devices",
-          "sub_device": "Device",
-          "sub_vpn": "VPN",
-          "sub_sqm": "SQM",
-          "sub_services": "Services",
-          "sub_service": "Service",
-          "sub_leds": "LEDs",
-          "sub_mwan3": "MWAN3",
-          "feature_reboot": "Reboot",
-          "feature_upgrade": "Upgrade",
-          "feature_backup": "Backup",
-          "feature_up_down_reconnect": "Up/Down/Reconnect",
-          "feature_toggle_wifi": "Toggle WiFi",
-          "feature_wps_control": "WPS Control",
-          "feature_toggling_rules_redirects": "Toggling Rules/Redirects",
-          "feature_access_control": "Access Control",
-          "feature_wake_on_lan": "Wake on LAN",
-          "feature_kick_client": "Kick Client",
-          "feature_toggle_sqm": "Toggle SQM",
-          "feature_change_limits": "Change limits",
-          "feature_start_stop_restart": "Start/Stop/Restart",
-          "feature_control_leds": "Control LEDs"
-        }
+        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed if this is expected."
       },
       "permissions_ubus": {
         "title": "Permissions Summary",
@@ -149,14 +115,7 @@
       },
       "diagnostics": {
         "title": "Connection Diagnostics",
-        "description": "A connection test was performed and identified several issues. Please review the report below to troubleshoot the problem:\n\n{report}\n\nYou can try again after making changes to your router configuration.",
-        "header": "Connection Diagnostic Report",
-        "intro": "The following checks were performed to identify the issue:",
-        "label_result": "Result",
-        "label_details": "Details",
-        "label_remedy": "Remedy",
-        "footer_title": "How to use this report",
-        "footer_text": "If you need help, copy this report and share it on the [GitHub issues page](https://github.com/FaserF/ha-openwrt/issues)."
+        "description": "A connection test was performed and identified several issues. Please review the report below to troubleshoot the problem:\n\n{report}\n\nYou can try again after making changes to your router configuration."
       },
       "ubus_restricted": {
         "title": "Restricted Ubus Detected",
@@ -168,7 +127,7 @@
       "invalid_auth": "Invalid authentication credentials (Username, Password or SSH Key). Ensure the service (ubus/LuCI) is enabled and your user has sufficient ACL permissions.",
       "timeout": "Connection timed out. Check if the router is reachable and the port is correct.",
       "ssl_error": "SSL verification failed. If using self-signed certs, disable 'Verify SSL Certificate'.",
-      "package_missing": "Required OpenWrt package is missing. For ubus: 'uhttpd-mod-ubus'. For LuCI: 'luci-mod-rpc'. Install via SSH: 'opkg update && opkg install <package>' (or 'apk add <package>' on newer versions).",
+      "package_missing": "Required OpenWrt package is missing. For ubus: 'uhttpd-mod-ubus'. For LuCI: 'luci-mod-rpc'. Install via SSH: 'opkg update && opkg install PACKAGE' (or 'apk add PACKAGE' on newer versions).",
       "permission_error": "Insufficient RPC permissions. Check your user ACLs in /etc/config/rpcd. Note: 'Restricted users' in LuCI often only have access to web-interface RPCs, but not the raw ubus objects required for this connection method.",
       "provision_failed": "Failed to automatically create the dedicated user. Ensure you are connected as root and have enough free space on the router for 'rpcd' ACL files.\n\nError: {error}",
       "no_devices_found": "No OpenWrt routers were automatically discovered on your network. You can try to enter the details manually.",
@@ -180,6 +139,51 @@
       "reauth_successful": "Re-authentication was successful.",
       "no_host": "Discovered device has no valid host address.",
       "not_openwrt": "Discovered device does not appear to be an OpenWrt router."
+    }
+  },
+  "config_flow_ui": {
+    "permissions": {
+      "header_subsystem": "Subsystem",
+      "header_read": "Read",
+      "header_write": "Write",
+      "header_missing": "Missing Features",
+      "sensors": "Sensors",
+      "sub_system": "System",
+      "sub_network": "Network",
+      "sub_interface": "Interface",
+      "sub_wireless": "Wireless",
+      "sub_firewall": "Firewall",
+      "sub_devices": "Devices",
+      "sub_device": "Device",
+      "sub_vpn": "VPN",
+      "sub_sqm": "SQM",
+      "sub_services": "Services",
+      "sub_service": "Service",
+      "sub_leds": "LEDs",
+      "sub_mwan3": "MWAN3",
+      "feature_reboot": "Reboot",
+      "feature_upgrade": "Upgrade",
+      "feature_backup": "Backup",
+      "feature_up_down_reconnect": "Up/Down/Reconnect",
+      "feature_toggle_wifi": "Toggle WiFi",
+      "feature_wps_control": "WPS Control",
+      "feature_toggling_rules_redirects": "Toggling Rules/Redirects",
+      "feature_access_control": "Access Control",
+      "feature_wake_on_lan": "Wake on LAN",
+      "feature_kick_client": "Kick Client",
+      "feature_toggle_sqm": "Toggle SQM",
+      "feature_change_limits": "Change limits",
+      "feature_start_stop_restart": "Start/Stop/Restart",
+      "feature_control_leds": "Control LEDs"
+    },
+    "diagnostics": {
+      "header": "Connection Diagnostic Report",
+      "intro": "The following checks were performed to identify the issue:",
+      "label_result": "Result",
+      "label_details": "Details",
+      "label_remedy": "Remedy",
+      "footer_title": "How to use this report",
+      "footer_text": "If you need help, copy this report and share it on the [GitHub issues page](https://github.com/FaserF/ha-openwrt/issues)."
     }
   },
   "options": {
@@ -197,18 +201,6 @@
           "asu_url": "Attended Sysupgrade Server URL"
         },
         "description": "Configure OpenWrt integration options."
-      },
-      "permissions": {
-        "title": "Permissions Summary",
-        "description": "Based on your config for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed."
-      },
-      "permissions_ubus": {
-        "title": "Permissions Summary",
-        "description": "Based on your config for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions or non-root users) can be very restrictive. They often block 'DHCP Leases' or 'System Temperature' even if the user has basic access.\n\nIf features are missing or sensors show 0, it usually means your user lacks ACL permissions for specific raw ubus objects. Try switching to **LuCI RPC** in the integration settings, which is often more compatible with restricted users.\n\nYou can proceed."
-      },
-      "packages": {
-        "title": "Packages Summary",
-        "description": "Based on your config, the following packages were detected:\n\n{packages_table}\n\nYou can proceed."
       }
     }
   },

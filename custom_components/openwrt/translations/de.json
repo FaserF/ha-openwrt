@@ -78,41 +78,7 @@
       },
       "permissions": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies erwartet wird.",
-        "table": {
-          "header_subsystem": "Subsystem",
-          "header_read": "Lesen",
-          "header_write": "Schreiben",
-          "header_missing": "Fehlende Funktionen",
-          "sensors": "Sensoren",
-          "sub_system": "System",
-          "sub_network": "Netzwerk",
-          "sub_interface": "Schnittstelle",
-          "sub_wireless": "WLAN",
-          "sub_firewall": "Firewall",
-          "sub_devices": "Geräte",
-          "sub_device": "Gerät",
-          "sub_vpn": "VPN",
-          "sub_sqm": "SQM",
-          "sub_services": "Dienste",
-          "sub_service": "Dienst",
-          "sub_leds": "LEDs",
-          "sub_mwan3": "MWAN3",
-          "feature_reboot": "Neustart",
-          "feature_upgrade": "Upgrade",
-          "feature_backup": "Backup",
-          "feature_up_down_reconnect": "Aktivieren/Deaktivieren/Verbinden",
-          "feature_toggle_wifi": "WLAN umschalten",
-          "feature_wps_control": "WPS-Steuerung",
-          "feature_toggling_rules_redirects": "Regeln/Weiterleitungen umschalten",
-          "feature_access_control": "Zugriffskontrolle",
-          "feature_wake_on_lan": "Wake on LAN",
-          "feature_kick_client": "Client trennen",
-          "feature_toggle_sqm": "SQM umschalten",
-          "feature_change_limits": "Limits ändern",
-          "feature_start_stop_restart": "Starten/Stoppen/Neustarten",
-          "feature_control_leds": "LEDs steuern"
-        }
+        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies erwartet wird."
       },
       "permissions_ubus": {
         "title": "Berechtigungsübersicht",
@@ -145,18 +111,11 @@
       },
       "provision_failed": {
         "title": "Bereitstellung fehlgeschlagen",
-        "description": "Die automatische Benutzererstellung ist fehlgeschlagen.\n\n**Analyse:**\n{tip}\n\n**Rohe Fehlerausgabe:**\n```\n{error}\n```\n\n**Was ist jetzt zu tun?**\n- **Berechtigungen prüfen:** Stelle sicher, dass dein aktueller Benutzer `file.exec`-Rechte hat.\n- **Speicher prüfen:** Stelle sicher, dass dein Router genügend freien Speicher in `/usr/share/rpcd/` hat.\n- **SSH versuchen:** SSH ist oft robuster für die Ersteinrichtung, wenn ubus eingeschränkt ist.\n\nDu kannst trotzdem mit den aktuellen Zugangsdaten fortfahren, indem du diesen Schritt überspringst."
+        "description": "Die automatische Benutzererstellung ist fehlgeschlagen.\n\n**Analyse:**\n{tip}\n\n**Rohe Fehlerausgabe:**\n```\n{error}\n```\n\n**Was ist jetzt zu tun?**\n- **Berechtigungen prüfen:** Stelle sicher, dass dein aktueller Benutzer `file.exec`-Rechte hat.\n- **Speicher prüfen:** Stelle sicher, dass dein Router genügend freien Speicher in `/usr/share/rpcd/` hat.\n- **SSH versuchen:** SSH ist oft robuster für die Ersteinrichtung, wenn ubus ist eingeschränkt ist.\n\nDu kannst trotzdem mit den aktuellen Zugangsdaten fortfahren, indem du diesen Schritt überspringst."
       },
       "diagnostics": {
         "title": "Verbindungsdiagnose",
-        "description": "Ein Verbindungstest wurde durchgeführt und mehrere Probleme identifiziert. Bitte überprüfe den untenstehenden Bericht, um das Problem zu beheben:\n\n{report}\n\nDu kannst es nach Änderungen an deiner Router-Konfiguration erneut versuchen.",
-        "header": "Verbindungsdiagnose-Bericht",
-        "intro": "Die folgenden Prüfungen wurden durchgeführt, um das Problem zu identifizieren:",
-        "label_result": "Ergebnis",
-        "label_details": "Details",
-        "label_remedy": "Abhilfe",
-        "footer_title": "Verwendung dieses Berichts",
-        "footer_text": "Wenn du Hilfe brauchst, kopiere diesen Bericht und teile ihn auf der [GitHub-Issue-Seite](https://github.com/FaserF/ha-openwrt/issues)."
+        "description": "Ein Verbindungstest wurde durchgeführt und mehrere Probleme identifiziert. Bitte überprüfe den untenstehenden Bericht, um das Problem zu beheben:\n\n{report}\n\nDu kannst es nach Änderungen an deiner Router-Konfiguration erneut versuchen."
       },
       "ubus_restricted": {
         "title": "Eingeschränktes Ubus erkannt",
@@ -168,7 +127,7 @@
       "invalid_auth": "Ungültige Zugangsdaten (Benutzername, Passwort oder SSH-Schlüssel). Stelle sicher, dass der Dienst (ubus/LuCI) aktiviert ist und dein Benutzer über ausreichende ACL-Berechtigungen verfügt.",
       "timeout": "Zeitüberschreitung der Verbindung. Prüfe die Erreichbarkeit und den Port.",
       "ssl_error": "SSL-Verifizierung fehlgeschlagen. Deaktiviere 'SSL-Zertifikat prüfen' bei selbstsignierten Zertifikaten.",
-      "package_missing": "Erforderliches OpenWrt Paket fehlt. Für ubus: 'uhttpd-mod-ubus'. Für LuCI: 'luci-mod-rpc'. Installation via SSH: 'opkg update && opkg install <paket>' (oder 'apk add <paket>' bei neueren Versionen).",
+      "package_missing": "Erforderliches OpenWrt Paket fehlt. Für ubus: 'uhttpd-mod-ubus'. Für LuCI: 'luci-mod-rpc'. Installation via SSH: 'opkg update && opkg install PACKAGE' (oder 'apk add PACKAGE' bei neueren Versionen).",
       "permission_error": "Unzureichende RPC-Rechte. Prüfe die Benutzer-ACLs in /etc/config/rpcd. Hinweis: 'Eingeschränkte Benutzer' in LuCI haben oft nur Zugriff auf die LuCI-Oberfläche, aber nicht auf die für diese Methode benötigten rohen Ubus-Objekte.",
       "provision_failed": "Automatische Erstellung des dedizierten Benutzers fehlgeschlagen. Bitte prüfe, ob dein Router die Benutzerverwaltung unterstützt, oder versuche, ihn manuell zu erstellen.\n\nFehler: {error}",
       "no_devices_found": "Es wurden keine OpenWrt-Router automatisch in deinem Netzwerk gefunden. Du kannst versuchen, die Details manuell einzugeben.",
@@ -180,6 +139,51 @@
       "reauth_successful": "Die erneute Authentifizierung war erfolgreich.",
       "no_host": "Das gefundene Gerät hat keine gültige Host-Adresse.",
       "not_openwrt": "Das gefundene Gerät scheint kein OpenWrt-Router zu sein."
+    }
+  },
+  "config_flow_ui": {
+    "permissions": {
+      "header_subsystem": "Subsystem",
+      "header_read": "Lesen",
+      "header_write": "Schreiben",
+      "header_missing": "Fehlende Funktionen",
+      "sensors": "Sensoren",
+      "sub_system": "System",
+      "sub_network": "Netzwerk",
+      "sub_interface": "Schnittstelle",
+      "sub_wireless": "WLAN",
+      "sub_firewall": "Firewall",
+      "sub_devices": "Geräte",
+      "sub_device": "Gerät",
+      "sub_vpn": "VPN",
+      "sub_sqm": "SQM",
+      "sub_services": "Dienste",
+      "sub_service": "Dienst",
+      "sub_leds": "LEDs",
+      "sub_mwan3": "MWAN3",
+      "feature_reboot": "Neustart",
+      "feature_upgrade": "Upgrade",
+      "feature_backup": "Backup",
+      "feature_up_down_reconnect": "Aktivieren/Deaktivieren/Verbinden",
+      "feature_toggle_wifi": "WLAN umschalten",
+      "feature_wps_control": "WPS-Steuerung",
+      "feature_toggling_rules_redirects": "Regeln/Weiterleitungen umschalten",
+      "feature_access_control": "Zugriffskontrolle",
+      "feature_wake_on_lan": "Wake on LAN",
+      "feature_kick_client": "Client trennen",
+      "feature_toggle_sqm": "SQM umschalten",
+      "feature_change_limits": "Limits ändern",
+      "feature_start_stop_restart": "Starten/Stoppen/Neustarten",
+      "feature_control_leds": "LEDs steuern"
+    },
+    "diagnostics": {
+      "header": "Verbindungsdiagnose-Bericht",
+      "intro": "Die folgenden Prüfungen wurden durchgeführt, um das Problem zu identifizieren:",
+      "label_result": "Ergebnis",
+      "label_details": "Details",
+      "label_remedy": "Abhilfe",
+      "footer_title": "Verwendung dieses Berichts",
+      "footer_text": "Wenn du Hilfe brauchst, kopiere diesen Bericht und teile ihn auf der [GitHub-Issue-Seite](https://github.com/FaserF/ha-openwrt/issues)."
     }
   },
   "options": {
@@ -197,18 +201,6 @@
           "custom_firmware_repo": "Eigenes GitHub Firmware Repo (URL oder owner/repo)",
           "asu_url": "Attended Sysupgrade Server URL"
         }
-      },
-      "permissions": {
-        "title": "Berechtigungsübersicht",
-        "description": "Basierend auf deiner Konfiguration für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren."
-      },
-      "permissions_ubus": {
-        "title": "Berechtigungsübersicht",
-        "description": "Basierend auf deiner Konfiguration für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen können auf einigen Routern (besonders neuere Versionen oder Nicht-Root-Benutzer) sehr restriktiv sein. Sie blockieren oft 'DHCP-Leases' oder die 'Systemtemperatur', selbst wenn der Benutzer Basis-Zugriff hat.\n\nFalls Funktionen fehlen oder Sensoren 0 anzeigen, fehlen deinem Benutzer meist ACL-Berechtigungen für spezifische Ubus-Objekte. Versuche in den Integrations-Einstellungen auf **LuCI RPC** umzuschalten, was oft besser mit eingeschränkten Benutzern funktioniert.\n\nDu kannst fortfahren."
-      },
-      "packages": {
-        "title": "Paketübersicht",
-        "description": "Basierend auf der Konfiguration wurden folgende Pakete erkannt:\n\n{packages_table}\n\nDu kannst fortfahren."
       }
     }
   },

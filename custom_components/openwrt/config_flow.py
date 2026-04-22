@@ -111,10 +111,10 @@ def _generate_permission_table(
     def t(key: str, default: str) -> str:
         if (
             translations
-            and f"component.openwrt.config.step.permissions.table.{key}" in translations
+            and f"component.openwrt.config_flow_ui.permissions.{key}" in translations
         ):
             return translations[
-                f"component.openwrt.config.step.permissions.table.{key}"
+                f"component.openwrt.config_flow_ui.permissions.{key}"
             ]
         return default
 
@@ -227,9 +227,9 @@ def _generate_diagnostic_report(
     def t(key: str, default: str) -> str:
         if (
             translations
-            and f"component.openwrt.config.step.diagnostics.{key}" in translations
+            and f"component.openwrt.config_flow_ui.diagnostics.{key}" in translations
         ):
-            return translations[f"component.openwrt.config.step.diagnostics.{key}"]
+            return translations[f"component.openwrt.config_flow_ui.diagnostics.{key}"]
         return default
 
     report = [
