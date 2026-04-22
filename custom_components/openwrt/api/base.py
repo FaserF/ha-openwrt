@@ -7,6 +7,8 @@ import asyncio
 import json
 import logging
 import re
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -1319,13 +1321,14 @@ class OpenWrtClient(abc.ABC):
         access_control) is only fetched every SLOW_POLL_INTERVAL polls to reduce
         router load.
         """
-        SLOW_POLL_INTERVAL = 10  # Fetch slow data every 10th poll
+        SLOW_DATA_TTL = 300  # Fetch slow data every 5 minutes (300 seconds)
 
         data = OpenWrtData()
         self._poll_count = getattr(self, "_poll_count", 0) + 1
-        is_full_poll = (
-            self._poll_count % SLOW_POLL_INTERVAL == 1 or self._poll_count == 1
-        )
+        
+        current_time = time.time()
+        last_full_poll = getattr(self, "_last_full_poll", 0)
+        is_full_poll = (current_time - last_full_poll) >= SLOW_DATA_TTL
 
         if is_full_poll:
             # Full poll: fetch device_info fresh
@@ -1502,6 +1505,7 @@ class OpenWrtClient(abc.ABC):
                 "packages": data.packages,
                 "permissions": data.permissions,
             }
+            self._last_full_poll = current_time
             _LOGGER.debug(
                 "Full poll cycle %d: refreshed slow-changing data",
                 self._poll_count,
