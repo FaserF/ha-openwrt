@@ -144,7 +144,14 @@ async def test_ubus_check_permissions(ubus_client: UbusClient):
     from custom_components.openwrt.api.ubus import UbusPermissionError
 
     # Mock ubus 'session' list and 'uci' calls
-    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+    with (
+        patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call,
+        patch.object(
+            ubus_client,
+            "execute_command",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+    ):
 
         def side_effect(obj, method, params=None):
             if obj == "session" and method == "list":
@@ -156,6 +163,7 @@ async def test_ubus_check_permissions(ubus_client: UbusClient):
             return {}
 
         mock_call.side_effect = side_effect
+        mock_exec.return_value = ""
 
         perms = await ubus_client.check_permissions()
         assert perms.read_system is True
@@ -169,13 +177,24 @@ async def test_ubus_check_permissions_root(ubus_client: UbusClient):
     ubus_client.username = "root"
     ubus_client._session_id = "test_token"
 
-    perms = await ubus_client.check_permissions()
-    # Check a few key permissions that should be True for root
-    assert perms.read_system is True
-    assert perms.write_system is True
-    assert perms.read_network is True
-    assert perms.read_wireless is True
-    assert perms.write_firewall is True
+    with (
+        patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call,
+        patch.object(
+            ubus_client,
+            "execute_command",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+    ):
+        mock_call.return_value = {"values": {"access": {"*": {"*": True}}}}
+        mock_exec.return_value = "exists"
+
+        perms = await ubus_client.check_permissions()
+        # Check a few key permissions that should be True for root
+        assert perms.read_system is True
+        assert perms.write_system is True
+        assert perms.read_network is True
+        assert perms.read_wireless is True
+        assert perms.write_firewall is True
 
 
 @pytest.mark.asyncio

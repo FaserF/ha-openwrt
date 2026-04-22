@@ -154,3 +154,26 @@ async def test_luci_provision_user(luci_client: LuciRpcClient):
         assert "$UCI set rpcd.$SECTION=login" in script
         assert '$UCI set rpcd.$SECTION.password="\\$p\\$$USER"' in script
         assert "/etc/init.d/rpcd restart" in script
+
+
+@pytest.mark.asyncio
+async def test_luci_check_permissions(luci_client: LuciRpcClient):
+    """Test checking permissions via LuCI RPC."""
+    luci_client._auth_token = "luci_test_token"
+    with (
+        patch.object(luci_client, "_rpc_call", new_callable=AsyncMock) as mock_call,
+        patch.object(
+            luci_client,
+            "execute_command",
+            new_callable=AsyncMock,
+        ) as mock_exec,
+    ):
+        # Mock responses for UCI permission probes
+        mock_call.return_value = {"values": {"something": "here"}}
+        mock_exec.return_value = "ls\noutput"
+
+        perms = await luci_client.check_permissions()
+        assert perms.read_system is True
+        assert perms.read_network is True
+        assert perms.read_firewall is True
+        assert perms.write_services is True
