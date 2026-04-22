@@ -657,19 +657,30 @@ class OpenWrtClient(abc.ABC):
     async def _get_logread_command(self, count: int) -> str:
         """Resolve the correct logread command (detecting -n vs -l)."""
         if self._logread_flag is None:
-            # Default to -n as it's the most common
+            # Default to -n as it's the legacy/standard OpenWrt behavior
             self._logread_flag = "-n"
             try:
                 # Test which flag is supported by running help
                 help_out = await self.execute_command("logread --help 2>&1")
-                # Look for -l with optional space/tab and <count>
-                if help_out and re.search(r"-l\s+<count>", help_out):
-                    self._logread_flag = "-l"
-                    _LOGGER.debug(
-                        "Detected logread -l support (modern OpenWrt/BusyBox)"
-                    )
+                if help_out:
+                    # Look for -l (modern BusyBox/OpenWrt 25+)
+                    # Use a flexible regex to handle tabs, spaces, and different placeholders
+                    if re.search(r"-l\b.*\bcount\b", help_out, re.IGNORECASE):
+                        self._logread_flag = "-l"
+                        _LOGGER.debug(
+                            "Detected logread -l support (modern OpenWrt/BusyBox)"
+                        )
+                    # Explicitly check for -n to confirm legacy
+                    elif re.search(r"-n\b.*\bcount\b", help_out, re.IGNORECASE):
+                        self._logread_flag = "-n"
+                        _LOGGER.debug("Confirmed logread -n support (standard OpenWrt)")
+                    else:
+                        _LOGGER.debug(
+                            "Unknown logread help format, falling back to %s",
+                            self._logread_flag,
+                        )
                 else:
-                    _LOGGER.debug("Using logread -n default")
+                    _LOGGER.debug("logread --help returned no output, using default -n")
             except Exception as err:
                 _LOGGER.debug(
                     "Could not verify logread flag support, defaulting to -n: %s", err

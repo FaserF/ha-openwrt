@@ -216,7 +216,13 @@ class LuciRpcClient(OpenWrtClient):
     async def execute_command(self, command: str) -> str:
         """Execute a command via LuCI RPC sys.exec."""
         try:
-            return await self._rpc_call("sys", "exec", [command]) or ""
+            # Wrap in /bin/sh -c to handle operators like && or >
+            # We escape single quotes correctly for the shell.
+            escaped_cmd = command.replace("'", "'\\''")
+            return (
+                await self._rpc_call("sys", "exec", [f"/bin/sh -c '{escaped_cmd}'"])
+                or ""
+            )
         except LuciRpcError as err:
             _LOGGER.debug("Command failed via LuCI RPC sys.exec: %s", err)
             return ""
@@ -768,7 +774,7 @@ class LuciRpcClient(OpenWrtClient):
 
         # Parallel execution via Luci RPC
         results = await asyncio.gather(
-            *[self._rpc_call("sys", "exec", [cmd]) for cmd in cmds],
+            *[self.execute_command(cmd) for cmd in cmds],
             return_exceptions=True,
         )
 
@@ -927,10 +933,8 @@ class LuciRpcClient(OpenWrtClient):
         # 8. Thermal
         try:
             for zone in range(3):
-                temp_raw = await self._rpc_call(
-                    "sys",
-                    "exec",
-                    [f"cat /sys/class/thermal/thermal_zone{zone}/temp 2>/dev/null"],
+                temp_raw = await self.execute_command(
+                    f"cat /sys/class/thermal/thermal_zone{zone}/temp 2>/dev/null"
                 )
                 if temp_raw:
                     match = re.search(r"(\d+)", temp_raw)
@@ -949,11 +953,7 @@ class LuciRpcClient(OpenWrtClient):
     async def get_external_ip(self) -> str | None:
         """Get public/external IP address."""
         try:
-            status = await self._rpc_call(
-                "sys",
-                "exec",
-                ["ubus call network.interface dump"],
-            )
+            status = await self.execute_command("ubus call network.interface dump")
             if status:
                 data = json.loads(status)
                 if data and isinstance(data, dict):
@@ -975,10 +975,8 @@ class LuciRpcClient(OpenWrtClient):
         interfaces: list[WirelessInterface] = []
 
         with contextlib.suppress(LuciRpcError):
-            await self._rpc_call(
-                "sys",
-                "exec",
-                ["iwinfo | grep -E 'ESSID|Channel|Signal|Noise|Bit Rate'"],
+            await self.execute_command(
+                "iwinfo | grep -E 'ESSID|Channel|Signal|Noise|Bit Rate'"
             )
 
         uci_to_sys, sys_to_uci = await self._get_wireless_mapping()
@@ -994,12 +992,8 @@ class LuciRpcClient(OpenWrtClient):
                             ssid = values.get("ssid", "")
                             if ssid:
                                 try:
-                                    match_out = await self._rpc_call(
-                                        "sys",
-                                        "exec",
-                                        [
-                                            f"iwinfo 2>/dev/null | grep -F '\"{ssid}\"' | awk '{{print $1}}'",
-                                        ],
+                                    match_out = await self.execute_command(
+                                        f"iwinfo 2>/dev/null | grep -F '\"{ssid}\"' | awk '{{print $1}}'"
                                     )
                                     if match_out:
                                         iface_name = match_out.strip().splitlines()[0]
@@ -1110,10 +1104,8 @@ class LuciRpcClient(OpenWrtClient):
                                             # We already handled 1-14 as 2.4GHz.
                                             pass
 
-                                assoc = await self._rpc_call(
-                                    "sys",
-                                    "exec",
-                                    [f"iwinfo {iface_name} assoclist 2>/dev/null"],
+                                assoc = await self.execute_command(
+                                    f"iwinfo {iface_name} assoclist 2>/dev/null"
                                 )
                                 if assoc and "No information" not in assoc:
                                     wifi.clients_count = len(
@@ -1126,12 +1118,8 @@ class LuciRpcClient(OpenWrtClient):
 
                                 # Fallback: hostapd ubus call
                                 if wifi.clients_count == 0:
-                                    hostapd_out = await self._rpc_call(
-                                        "sys",
-                                        "exec",
-                                        [
-                                            f"ubus call hostapd.{iface_name} get_clients 2>/dev/null",
-                                        ],
+                                    hostapd_out = await self.execute_command(
+                                        f"ubus call hostapd.{iface_name} get_clients 2>/dev/null"
                                     )
                                     if hostapd_out and hostapd_out.strip().startswith(
                                         "{",
@@ -1163,10 +1151,8 @@ class LuciRpcClient(OpenWrtClient):
         interfaces: list[NetworkInterface] = []
 
         try:
-            dump = await self._rpc_call(
-                "sys",
-                "exec",
-                ["ubus call network.interface dump 2>/dev/null"],
+            dump = await self.execute_command(
+                "ubus call network.interface dump 2>/dev/null"
             )
             if dump and dump.strip().startswith("{"):
                 data = json.loads(dump)
@@ -1227,11 +1213,7 @@ class LuciRpcClient(OpenWrtClient):
 
         # 1. DHCP Leases
         try:
-            leases_str = await self._rpc_call(
-                "sys",
-                "exec",
-                ["cat /tmp/dhcp.leases 2>/dev/null"],
-            )
+            leases_str = await self.execute_command("cat /tmp/dhcp.leases 2>/dev/null")
             if leases_str:
                 for line in leases_str.strip().split("\n"):
                     parts = line.split()
@@ -1250,7 +1232,7 @@ class LuciRpcClient(OpenWrtClient):
 
         # 2. ARP Neighbors
         try:
-            arp = await self._rpc_call("sys", "exec", ["cat /proc/net/arp 2>/dev/null"])
+            arp = await self.execute_command("cat /proc/net/arp 2>/dev/null")
             if arp:
                 lines = arp.strip().split("\n")
                 if len(lines) > 1:
@@ -1274,18 +1256,14 @@ class LuciRpcClient(OpenWrtClient):
         # 3. Wireless Clients (iwinfo station dump)
         try:
             # Get wireless interfaces first
-            iw_out = await self._rpc_call(
-                "sys",
-                "exec",
-                ["iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'"],
+            iw_out = await self.execute_command(
+                "iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'"
             )
             if iw_out:
                 ifaces = iw_out.strip().split()
                 for iface in ifaces:
-                    assoc = await self._rpc_call(
-                        "sys",
-                        "exec",
-                        [f"iwinfo {iface} assoclist 2>/dev/null"],
+                    assoc = await self.execute_command(
+                        f"iwinfo {iface} assoclist 2>/dev/null"
                     )
                     if assoc:
                         for line in assoc.strip().split("\n"):
@@ -1340,7 +1318,7 @@ class LuciRpcClient(OpenWrtClient):
 
         # 4. Fallback: Discovery of all hostapd objects
         cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
-        stdout = await self._rpc_call("sys", "exec", [cmd])
+        stdout = await self.execute_command(cmd)
         if stdout:
             for line in stdout.splitlines():
                 if not line.strip():
@@ -2108,7 +2086,7 @@ class LuciRpcClient(OpenWrtClient):
         """Get recent system log entries via LuCI RPC."""
         try:
             cmd = await self._get_logread_command(count)
-            output = await self._rpc_call("sys", "exec", [cmd])
+            output = await self.execute_command(cmd)
             if output:
                 return [line.strip() for line in output.splitlines() if line.strip()]
         except Exception as err:
