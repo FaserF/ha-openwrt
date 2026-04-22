@@ -115,7 +115,7 @@
       },
       "diagnostics": {
         "title": "Connection Diagnostics",
-        "description": "A connection test was performed and identified several issues. Please review the report below to troubleshoot the problem:\n\n{report}\n\nYou can try again after making changes to your router configuration."
+        "description": "A connection test was performed and identified several issues. Please review the report below to troubleshoot the problem:\n\n{report}\n\n#### {footer_title}\n{footer_intro} [{footer_link_text}]({issues_url}).\n\nYou can try again after making changes to your router configuration."
       },
       "ubus_restricted": {
         "title": "Restricted Ubus Detected",
@@ -233,7 +233,8 @@
           "diagnostics_label_details": "Details",
           "diagnostics_label_remedy": "Remedy",
           "diagnostics_footer_title": "How to use this report",
-          "diagnostics_footer_text": "If you need help, copy this report and share it on the [GitHub issues page]({issues_url})."
+          "diagnostics_footer_intro": "If you need help, copy this report and share it on the",
+          "diagnostics_footer_link_text": "GitHub issues page"
         }
       },
       "memory_usage": {

@@ -253,11 +253,11 @@ def _generate_diagnostic_report(
 ) -> str:
     """Generate markdown for diagnostic report."""
 
-    def t(key: str, default: str, **kwargs: Any) -> str:
+    def t(key: str, default: str) -> str:
         full_key = f"component.openwrt.entity.sensor.config_flow_ui.state.{key}"
         if translations and full_key in translations:
-            return translations[full_key].format(**kwargs)
-        return default.format(**kwargs)
+            return translations[full_key]
+        return default
 
     report = [
         f"### {t('diagnostics_header', 'Connection Diagnostic Report')}",
@@ -289,9 +289,6 @@ def _generate_diagnostic_report(
             )
         report.append("")
 
-    report.append(
-        f"\n**{t('diagnostics_footer_title', 'How to use this report')}:** {t('diagnostics_footer_text', 'If you need help, copy this report and share it on the [GitHub issues page]({issues_url}).', issues_url='https://github.com/FaserF/ha-openwrt/issues')}"
-    )
     return "\n".join(report)
 
 
@@ -1427,15 +1424,31 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             return await self.async_step_credentials()
 
+        # Get translations for footer elements
+        translations = await translation.async_get_translations(
+            self.hass, self.hass.config.language, "config", [DOMAIN]
+        )
+
+        def t(key: str, default: str) -> str:
+            full_key = f"component.openwrt.entity.sensor.config_flow_ui.state.{key}"
+            if translations and full_key in translations:
+                return translations[full_key]
+            return default
+
         return self.async_show_form(
             step_id="diagnostics",
             data_schema=vol.Schema({}),
             description_placeholders={
                 "report": self._diagnostic_report or "No diagnostic data available.",
+                "footer_title": t("diagnostics_footer_title", "How to use this report"),
+                "footer_intro": t(
+                    "diagnostics_footer_intro",
+                    "If you need help, copy this report and share it on the",
+                ),
+                "footer_link_text": t("diagnostics_footer_link_text", "GitHub issues page"),
+                "issues_url": "https://github.com/FaserF/ha-openwrt/issues",
             },
         )
-        """Handle provisioning failure (only skip available)."""
-        return await self.async_step_permissions()
 
     async def async_step_display_new_user(
         self,

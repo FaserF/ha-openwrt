@@ -115,7 +115,7 @@
       },
       "diagnostics": {
         "title": "Verbindungsdiagnose",
-        "description": "Ein Verbindungstest wurde durchgeführt und hat mehrere Probleme identifiziert. Bitte lies den folgenden Bericht, um das Problem zu beheben:\n\n{report}\n\nDu kannst es nach Änderungen an deiner Router-Konfiguration erneut versuchen."
+        "description": "Ein Verbindungstest wurde durchgeführt und hat mehrere Probleme identifiziert. Bitte lies den folgenden Bericht, um das Problem zu beheben:\n\n{report}\n\n#### {footer_title}\n{footer_intro} [{footer_link_text}]({issues_url}).\n\nDu kannst es nach Änderungen an deiner Router-Konfiguration erneut versuchen."
       },
       "ubus_restricted": {
         "title": "Eingeschränktes Ubus erkannt",
@@ -233,7 +233,8 @@
           "diagnostics_label_details": "Details",
           "diagnostics_label_remedy": "Abhilfe",
           "diagnostics_footer_title": "Verwendung dieses Berichts",
-          "diagnostics_footer_text": "Wenn du Hilfe benötigst, kopiere diesen Bericht und teile ihn auf der [GitHub-Issue-Seite]({issues_url})."
+          "diagnostics_footer_intro": "Wenn du Hilfe benötigst, kopiere diesen Bericht und teile ihn auf der",
+          "diagnostics_footer_link_text": "GitHub-Issue-Seite"
         }
       },
       "memory_usage": {
