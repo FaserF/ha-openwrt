@@ -982,16 +982,7 @@ class SshClient(OpenWrtClient):
         perms = OpenWrtPermissions()
 
         try:
-            # First check if we are root
-            id_out = await self._exec("id -u")
-            if id_out.strip() == "0":
-                # Root has all permissions
-                for attr in perms.__dict__:
-                    if not attr.startswith("_"):
-                        setattr(perms, attr, True)
-                return perms
-
-            # Test uci read access for non-root
+            # Test uci read access
             await self._exec("uci get system.@system[0] 2>/dev/null")
             perms.read_system = True
             perms.read_network = True

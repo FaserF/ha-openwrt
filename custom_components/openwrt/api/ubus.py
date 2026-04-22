@@ -1014,13 +1014,6 @@ class UbusClient(OpenWrtClient):
 
         perms = OpenWrtPermissions()
         try:
-            # Check if we are root user - root usually has full access
-            if self.username == "root":
-                for field in dataclasses.fields(perms):
-                    if not field.name.startswith("_"):
-                        setattr(perms, field.name, True)
-                return perms
-
             # 1. Try to get permissions from session list (definitive)
             if await self._check_perms_from_session(perms):
                 return perms
@@ -1052,10 +1045,11 @@ class UbusClient(OpenWrtClient):
                 return False
 
             def has_perm(obj: str, method: str) -> bool:
-                # Check modern structure
-                obj_acls = acls.get(obj, {})
-                if method in obj_acls or "*" in obj_acls:
-                    return True
+                # Check modern structure (with support for global wildcard objects)
+                for pattern in (obj, "*"):
+                    obj_acls = acls.get(pattern, {})
+                    if method in obj_acls or "*" in obj_acls:
+                        return True
 
                 # Check legacy/values structure with pattern matching
                 for pattern, methods in access.items():
