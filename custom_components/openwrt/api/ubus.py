@@ -23,6 +23,7 @@ from .base import (
     ConnectedDevice,
     DeviceInfo,
     DhcpLease,
+    DiagnosticResult,
     FirewallRedirect,
     FirewallRule,
     IpNeighbor,
@@ -1008,7 +1009,6 @@ class UbusClient(OpenWrtClient):
 
     async def check_permissions(self) -> OpenWrtPermissions:
         """Check user permissions via ubus session list and uci tests."""
-        import dataclasses
 
         from .base import OpenWrtPermissions
 
@@ -2434,3 +2434,140 @@ class UbusClient(OpenWrtClient):
         except Exception as err:
             _LOGGER.debug("Failed to get LLDP neighbors via ubus: %s", err)
         return neighbors
+
+    async def perform_diagnostics(self) -> list[DiagnosticResult]:
+        """Perform ubus-specific diagnostic checks."""
+        results: list[DiagnosticResult] = []
+
+        # 1. Check Session ACLs
+        try:
+            session_data = await self._call("session", "list")
+            acls = session_data.get("acls", {})
+            if acls:
+                results.append(
+                    DiagnosticResult(
+                        name="Session ACLs",
+                        status="PASS",
+                        message=f"Session for '{self.username}' is active with {len(acls)} ACL groups.",
+                        details=str(acls),
+                    )
+                )
+            else:
+                results.append(
+                    DiagnosticResult(
+                        name="Session ACLs",
+                        status="WARN",
+                        message="Session is active but no ACLs were returned. This may be a restricted session.",
+                    )
+                )
+        except Exception as err:
+            results.append(
+                DiagnosticResult(
+                    name="Session ACLs",
+                    status="FAIL",
+                    message="Failed to retrieve session ACLs.",
+                    details=str(err),
+                )
+            )
+
+        # 2. Check for key objects
+        required_objects = ["system", "network.interface", "uci"]
+
+        try:
+            objects = await self._list_objects()
+            found_req = [obj for obj in required_objects if obj in objects]
+
+            if len(found_req) == len(required_objects):
+                results.append(
+                    DiagnosticResult(
+                        name="Core Ubus Objects",
+                        status="PASS",
+                        message=f"All core objects found: {', '.join(found_req)}",
+                    )
+                )
+            else:
+                missing = set(required_objects) - set(found_req)
+                results.append(
+                    DiagnosticResult(
+                        name="Core Ubus Objects",
+                        status="FAIL",
+                        message=f"Missing core objects: {', '.join(missing)}",
+                        remedy="Ensure 'rpcd' is running and your user has access to these objects in /etc/config/rpcd.",
+                    )
+                )
+        except Exception as err:
+            results.append(
+                DiagnosticResult(
+                    name="Ubus Objects",
+                    status="FAIL",
+                    message="Failed to list ubus objects.",
+                    details=str(err),
+                )
+            )
+
+        # 3. Check for logread flag support (Fixes #17 analysis)
+        try:
+            cmd = await self._get_logread_command(1)
+            results.append(
+                DiagnosticResult(
+                    name="Logread Compatibility",
+                    status="PASS",
+                    message=f"Using command: {cmd}",
+                    details=f"Detected flag: {self._logread_flag}",
+                )
+            )
+        except Exception as err:
+            results.append(
+                DiagnosticResult(
+                    name="Logread Compatibility",
+                    status="FAIL",
+                    message="Failed to detect logread capabilities.",
+                    details=str(err),
+                )
+            )
+
+        # 4. Check for file.exec (Common blocker)
+        try:
+            await self.execute_command("id")
+            results.append(
+                DiagnosticResult(
+                    name="Command Execution (file.exec)",
+                    status="PASS",
+                    message="Successfully executed 'id' command.",
+                )
+            )
+        except UbusPermissionError:
+            results.append(
+                DiagnosticResult(
+                    name="Command Execution (file.exec)",
+                    status="FAIL",
+                    message="Permission denied for file.exec.",
+                    remedy="Grant 'file': ['exec'] permission to your user or connect as 'root'. Note: Some OEM firmwares block this entirely.",
+                )
+            )
+        except Exception as err:
+            results.append(
+                DiagnosticResult(
+                    name="Command Execution (file.exec)",
+                    status="FAIL",
+                    message="Failed to execute command.",
+                    details=str(err),
+                )
+            )
+
+        # 5. Get recent logs
+        try:
+            logs = await self.get_system_logs(20)
+            if logs:
+                results.append(
+                    DiagnosticResult(
+                        name="System Logs (Recent)",
+                        status="INFO",
+                        message=f"Retrieved {len(logs)} log entries.",
+                        details="\n".join(logs),
+                    )
+                )
+        except Exception:
+            pass
+
+        return results

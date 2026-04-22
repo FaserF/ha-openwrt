@@ -643,8 +643,19 @@ class OpenWrtData:
     lldp_neighbors: list[LldpNeighbor] = field(default_factory=list)
     qmodem_info: QModemInfo = field(default_factory=QModemInfo)
     sqm: list[SqmStatus] = field(default_factory=list)
-    permissions: OpenWrtPermissions = field(default_factory=OpenWrtPermissions)
     packages: OpenWrtPackages = field(default_factory=OpenWrtPackages)
+    permissions: OpenWrtPermissions = field(default_factory=OpenWrtPermissions)
+
+
+@dataclass
+class DiagnosticResult:
+    """Result of a single diagnostic check."""
+
+    name: str
+    status: str  # "PASS", "FAIL", "WARN", "INFO"
+    message: str
+    details: str | None = None
+    remedy: str | None = None
 
 
 class OpenWrtClient(abc.ABC):
@@ -1010,6 +1021,11 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def get_installed_packages(self) -> list[str]:
         """Get a list of installed packages on the device."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def perform_diagnostics(self) -> list[DiagnosticResult]:
+        """Perform a suite of diagnostic checks to identify configuration issues."""
         raise NotImplementedError
 
     async def get_vpn_status(self) -> list[VpnInterface]:

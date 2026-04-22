@@ -25,6 +25,7 @@ from .base import (
     ConnectedDevice,
     DeviceInfo,
     DhcpLease,
+    DiagnosticResult,
     FirewallRedirect,
     FirewallRule,
     IpNeighbor,
@@ -2094,3 +2095,85 @@ class LuciRpcClient(OpenWrtClient):
         except Exception as err:
             _LOGGER.debug("Failed to get system logs via LuCI RPC: %s", err)
         return []
+
+    async def perform_diagnostics(self) -> list[DiagnosticResult]:
+        """Perform LuCI RPC-specific diagnostic checks."""
+        results: list[DiagnosticResult] = []
+
+        # 1. Check Session
+        if self._auth_token:
+            results.append(
+                DiagnosticResult(
+                    name="LuCI Session",
+                    status="PASS",
+                    message="Session token is active.",
+                    details=f"Token: {self._auth_token[:8]}...",
+                )
+            )
+        else:
+            results.append(
+                DiagnosticResult(
+                    name="LuCI Session",
+                    status="FAIL",
+                    message="No active session token.",
+                )
+            )
+
+        # 2. Check for luci object
+        try:
+            # Try to call a simple luci method
+            await self._rpc_call("luci", "getRPCDeclaration")
+            results.append(
+                DiagnosticResult(
+                    name="LuCI RPC declaration",
+                    status="PASS",
+                    message="Successfully retrieved RPC declaration from 'luci' object.",
+                )
+            )
+        except Exception as err:
+            results.append(
+                DiagnosticResult(
+                    name="LuCI RPC declaration",
+                    status="FAIL",
+                    message="Failed to call 'luci' object.",
+                    details=str(err),
+                )
+            )
+
+        # 3. Check for logread flag support
+        try:
+            cmd = await self._get_logread_command(1)
+            results.append(
+                DiagnosticResult(
+                    name="Logread Compatibility",
+                    status="PASS",
+                    message=f"Using command: {cmd}",
+                    details=f"Detected flag: {self._logread_flag}",
+                )
+            )
+        except Exception as err:
+            results.append(
+                DiagnosticResult(
+                    name="Logread Compatibility",
+                    status="FAIL",
+                    message="Failed to detect logread capabilities.",
+                    details=str(err),
+                )
+            )
+
+        # 4. Get recent logs
+        try:
+            logs = await self.get_system_logs(20)
+            if logs:
+                results.append(
+                    DiagnosticResult(
+                        name="System Logs (Recent)",
+                        status="INFO",
+                        message=f"Retrieved {len(logs)} log entries.",
+                        details="\n".join(logs),
+                    )
+                )
+        except Exception:
+            pass
+
+        return results

@@ -78,7 +78,41 @@
       },
       "permissions": {
         "title": "Permissions Summary",
-        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed if this is expected."
+        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed if this is expected.",
+        "table": {
+          "header_subsystem": "Subsystem",
+          "header_read": "Read",
+          "header_write": "Write",
+          "header_missing": "Missing Features",
+          "sensors": "Sensors",
+          "sub_system": "System",
+          "sub_network": "Network",
+          "sub_interface": "Interface",
+          "sub_wireless": "Wireless",
+          "sub_firewall": "Firewall",
+          "sub_devices": "Devices",
+          "sub_device": "Device",
+          "sub_vpn": "VPN",
+          "sub_sqm": "SQM",
+          "sub_services": "Services",
+          "sub_service": "Service",
+          "sub_leds": "LEDs",
+          "sub_mwan3": "MWAN3",
+          "feature_reboot": "Reboot",
+          "feature_upgrade": "Upgrade",
+          "feature_backup": "Backup",
+          "feature_up_down_reconnect": "Up/Down/Reconnect",
+          "feature_toggle_wifi": "Toggle WiFi",
+          "feature_wps_control": "WPS Control",
+          "feature_toggling_rules_redirects": "Toggling Rules/Redirects",
+          "feature_access_control": "Access Control",
+          "feature_wake_on_lan": "Wake on LAN",
+          "feature_kick_client": "Kick Client",
+          "feature_toggle_sqm": "Toggle SQM",
+          "feature_change_limits": "Change limits",
+          "feature_start_stop_restart": "Start/Stop/Restart",
+          "feature_control_leds": "Control LEDs"
+        }
       },
       "permissions_ubus": {
         "title": "Permissions Summary",
@@ -112,6 +146,17 @@
       "provision_failed": {
         "title": "Provisioning Failed",
         "description": "The automatic user provisioning failed.\n\n**Analysis:**\n{tip}\n\n**Raw Error Output:**\n```\n{error}\n```\n\n**What to do now?**\n- **Check Permissions:** Ensure your current user has `file.exec` rights.\n- **Check Space:** Ensure your router has enough free space in `/usr/share/rpcd/`.\n- **Try SSH:** SSH is often more robust for initial setup if ubus is restricted.\n\nYou can still proceed with the current credentials by skipping this step."
+      },
+      "diagnostics": {
+        "title": "Connection Diagnostics",
+        "description": "A connection test was performed and identified several issues. Please review the report below to troubleshoot the problem:\n\n{report}\n\nYou can try again after making changes to your router configuration.",
+        "header": "Connection Diagnostic Report",
+        "intro": "The following checks were performed to identify the issue:",
+        "label_result": "Result",
+        "label_details": "Details",
+        "label_remedy": "Remedy",
+        "footer_title": "How to use this report",
+        "footer_text": "If you need help, copy this report and share it on the [GitHub issues page](https://github.com/FaserF/ha-openwrt/issues)."
       },
       "ubus_restricted": {
         "title": "Restricted Ubus Detected",

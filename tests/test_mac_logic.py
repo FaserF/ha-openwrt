@@ -160,6 +160,9 @@ class MockClient(OpenWrtClient):
     async def get_mwan_status(self) -> list[MwanStatus]:
         return []
 
+    async def perform_diagnostics(self) -> list:
+        return []
+
 
 @pytest.mark.asyncio
 async def test_get_all_data_populates_mac_address() -> None:

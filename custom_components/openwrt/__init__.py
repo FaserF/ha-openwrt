@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from typing import Any, cast
+from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -124,20 +124,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
     if coordinator.data:
         device_info = coordinator.data.device_info
         device_registry = dr.async_get(hass)
+
+        # 1. Register the main router device explicitly first
+        # This ensures it's in the registry before we point APs or trackers to it
+        router_id = entry.unique_id or entry.data[CONF_HOST]
+        device_registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={(DOMAIN, router_id)},
+            manufacturer=(
+                device_info.release_distribution or ATTR_MANUFACTURER
+                if device_info
+                else ATTR_MANUFACTURER
+            ),
+            model=device_info.model or device_info.board_name,
+            name=device_info.model or device_info.hostname or entry.title,
+            sw_version=device_info.firmware_version,
+            configuration_url=f"http://{entry.data[CONF_HOST]}",
+        )
+
+        # 2. Collect all wireless interface names that need AP device entries
+        # We check both wireless_interfaces (status) and connected_devices (actual clients)
+        # to ensure we don't miss virtual interfaces on non-standard hardware like Velop.
+        ap_interfaces: dict[str, str] = {}  # iface_name -> ssid/label
+
         for wifi in coordinator.data.wireless_interfaces:
-            if not wifi.name:
-                continue
+            if wifi.name:
+                ap_interfaces[wifi.name] = wifi.ssid or wifi.name
+
+        for device in coordinator.data.connected_devices:
+            if (
+                device.is_wireless
+                and device.interface
+                and device.interface not in ap_interfaces
+            ):
+                ap_interfaces[device.interface] = device.interface
+
+        # 3. Register each AP as a device
+        for iface_name, label in ap_interfaces.items():
             device_registry.async_get_or_create(
                 config_entry_id=entry.entry_id,
-                identifiers={(DOMAIN, f"{entry.unique_id}_ap_{wifi.name}")},
-                name=f"AP {wifi.ssid or wifi.name}",
+                identifiers={(DOMAIN, f"{router_id}_ap_{iface_name}")},
+                name=f"AP {label}",
                 manufacturer=(
                     device_info.release_distribution or ATTR_MANUFACTURER
                     if device_info
                     else ATTR_MANUFACTURER
                 ),
                 model="Access Point",
-                via_device=(DOMAIN, cast(str, entry.unique_id)),
+                via_device=(DOMAIN, router_id),
             )
 
     hass.data.setdefault(DOMAIN, {})

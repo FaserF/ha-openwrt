@@ -54,4 +54,4 @@ async def test_luci_rpc_get_system_logs():
         logs = await client.get_system_logs(count=20)
 
         assert len(logs) == 2
-        mock_rpc.assert_any_call("sys", "exec", ["logread -n 20"])
+        mock_rpc.assert_any_call("sys", "exec", ["/bin/sh -c 'logread -n 20' 2>&1"])

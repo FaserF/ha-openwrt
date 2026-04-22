@@ -103,8 +103,20 @@ CONNECTION_TYPE_MAP = {
 }
 
 
-def _generate_permission_table(perms: Any) -> str:
+def _generate_permission_table(
+    perms: Any, translations: dict[str, str] | None = None
+) -> str:
     """Generate markdown table for permissions."""
+
+    def t(key: str, default: str) -> str:
+        if (
+            translations
+            and f"component.openwrt.config.step.permissions.table.{key}" in translations
+        ):
+            return translations[
+                f"component.openwrt.config.step.permissions.table.{key}"
+            ]
+        return default
 
     def to_icon(val: bool) -> str:
         return "✅" if val else "❌"
@@ -112,24 +124,35 @@ def _generate_permission_table(perms: Any) -> str:
     def get_missing(read: bool, write: bool, name: str, features: list[str]) -> str:
         missing = []
         if not read:
-            missing.append(f"{name} Sensors")
+            missing.append(f"{name} {t('sensors', 'Sensors')}")
         if not write:
-            missing.extend(features)
+            # Try to translate each feature if possible
+            translated_features = []
+            for f in features:
+                # Simple mapping for common features
+                feat_key = f.lower().replace("/", "_").replace(" ", "_")
+                translated_features.append(t(f"feature_{feat_key}", f))
+            missing.extend(translated_features)
         return ", ".join(missing) if missing else "-"
 
+    header_sub = t("header_subsystem", "Subsystem")
+    header_read = t("header_read", "Read")
+    header_write = t("header_write", "Write")
+    header_missing = t("header_missing", "Missing Features")
+
     return (
-        "| Subsystem | Read | Write | Missing Features |\n"
+        f"| {header_sub} | {header_read} | {header_write} | {header_missing} |\n"
         "|-----------|------|-------|------------------|\n"
-        f"| **System** | {to_icon(perms.read_system)} | {to_icon(perms.write_system)} | {get_missing(perms.read_system, perms.write_system, 'System', ['Reboot', 'Upgrade', 'Backup'])} |\n"
-        f"| **Network** | {to_icon(perms.read_network)} | {to_icon(perms.write_network)} | {get_missing(perms.read_network, perms.write_network, 'Interface', ['Up/Down/Reconnect'])} |\n"
-        f"| **Wireless** | {to_icon(perms.read_wireless)} | {to_icon(perms.write_wireless)} | {get_missing(perms.read_wireless, perms.write_wireless, 'WiFi', ['Toggle WiFi', 'WPS Control'])} |\n"
-        f"| **Firewall** | {to_icon(perms.read_firewall)} | {to_icon(perms.write_firewall)} | {get_missing(perms.read_firewall, perms.write_firewall, 'Firewall', ['Toggling Rules/Redirects', 'Access Control'])} |\n"
-        f"| **Devices** | {to_icon(perms.read_devices)} | {to_icon(perms.write_devices)} | {get_missing(perms.read_devices, perms.write_devices, 'Device', ['Wake on LAN', 'Kick Client'])} |\n"
-        f"| **VPN** | {to_icon(perms.read_vpn)} | - | {'-' if perms.read_vpn else 'WireGuard/OpenVPN Sensors'} |\n"
-        f"| **SQM** | {to_icon(perms.read_sqm)} | {to_icon(perms.write_sqm)} | {get_missing(perms.read_sqm, perms.write_sqm, 'SQM', ['Toggle SQM', 'Change limits'])} |\n"
-        f"| **Services**| {to_icon(perms.read_services)} | {to_icon(perms.write_services)} | {get_missing(perms.read_services, perms.write_services, 'Service', ['Start/Stop/Restart'])} |\n"
-        f"| **LEDs** | {to_icon(perms.read_led)} | {to_icon(perms.write_led)} | {get_missing(perms.read_led, perms.write_led, 'LED', ['Control LEDs'])} |\n"
-        f"| **MWAN3** | {to_icon(perms.read_mwan)} | - | {'-' if perms.read_mwan else 'Multi-WAN Sensors'} |"
+        f"| **{t('sub_system', 'System')}** | {to_icon(perms.read_system)} | {to_icon(perms.write_system)} | {get_missing(perms.read_system, perms.write_system, t('sub_system', 'System'), ['Reboot', 'Upgrade', 'Backup'])} |\n"
+        f"| **{t('sub_network', 'Network')}** | {to_icon(perms.read_network)} | {to_icon(perms.write_network)} | {get_missing(perms.read_network, perms.write_network, t('sub_interface', 'Interface'), ['Up/Down/Reconnect'])} |\n"
+        f"| **{t('sub_wireless', 'Wireless')}** | {to_icon(perms.read_wireless)} | {to_icon(perms.write_wireless)} | {get_missing(perms.read_wireless, perms.write_wireless, 'WiFi', ['Toggle WiFi', 'WPS Control'])} |\n"
+        f"| **{t('sub_firewall', 'Firewall')}** | {to_icon(perms.read_firewall)} | {to_icon(perms.write_firewall)} | {get_missing(perms.read_firewall, perms.write_firewall, t('sub_firewall', 'Firewall'), ['Toggling Rules/Redirects', 'Access Control'])} |\n"
+        f"| **{t('sub_devices', 'Devices')}** | {to_icon(perms.read_devices)} | {to_icon(perms.write_devices)} | {get_missing(perms.read_devices, perms.write_devices, t('sub_device', 'Device'), ['Wake on LAN', 'Kick Client'])} |\n"
+        f"| **{t('sub_vpn', 'VPN')}** | {to_icon(perms.read_vpn)} | - | {'-' if perms.read_vpn else f'WireGuard/OpenVPN {t("sensors", "Sensors")}'} |\n"
+        f"| **{t('sub_sqm', 'SQM')}** | {to_icon(perms.read_sqm)} | {to_icon(perms.write_sqm)} | {get_missing(perms.read_sqm, perms.write_sqm, 'SQM', ['Toggle SQM', 'Change limits'])} |\n"
+        f"| **{t('sub_services', 'Services')}**| {to_icon(perms.read_services)} | {to_icon(perms.write_services)} | {get_missing(perms.read_services, perms.write_services, t('sub_service', 'Service'), ['Start/Stop/Restart'])} |\n"
+        f"| **{t('sub_leds', 'LEDs')}** | {to_icon(perms.read_led)} | {to_icon(perms.write_led)} | {get_missing(perms.read_led, perms.write_led, 'LED', ['Control LEDs'])} |\n"
+        f"| **{t('sub_mwan3', 'MWAN3')}** | {to_icon(perms.read_mwan)} | - | {'-' if perms.read_mwan else f'Multi-WAN {t("sensors", "Sensors")}'} |"
     )
 
 
@@ -158,8 +181,15 @@ def _generate_package_table(
 
         # Use translated name if available
         display_name = name
-        if translations and key and key in translations:
-            display_name = translations[key]
+        if (
+            translations
+            and key
+            and f"component.openwrt.entity.sensor.package_feature.state.{key}"
+            in translations
+        ):
+            display_name = translations[
+                f"component.openwrt.entity.sensor.package_feature.state.{key}"
+            ]
 
         if not required:
             return display_name
@@ -189,6 +219,48 @@ def _generate_package_table(
     )
 
 
+def _generate_diagnostic_report(
+    results: list[Any], translations: dict[str, str] | None = None
+) -> str:
+    """Generate markdown for diagnostic report."""
+
+    def t(key: str, default: str) -> str:
+        if (
+            translations
+            and f"component.openwrt.config.step.diagnostics.{key}" in translations
+        ):
+            return translations[f"component.openwrt.config.step.diagnostics.{key}"]
+        return default
+
+    report = [
+        f"### {t('header', 'Connection Diagnostic Report')}",
+        t("intro", "The following checks were performed to identify the issue:"),
+        "",
+    ]
+    for res in results:
+        icon = (
+            "✅"
+            if res.status == "PASS"
+            else "❌"
+            if res.status == "FAIL"
+            else "⚠️"
+            if res.status == "WARN"
+            else "ℹ️"
+        )
+        report.append(f"#### {icon} {res.name}")
+        report.append(f"**{t('label_result', 'Result')}:** {res.message}")
+        if res.details:
+            report.append(f"**{t('label_details', 'Details')}:** `{res.details}`")
+        if res.remedy:
+            report.append(f"**💡 {t('label_remedy', 'Remedy')}:** {res.remedy}")
+        report.append("")
+
+    report.append(
+        f"\n**{t('footer_title', 'How to use this report')}:** {t('footer_text', 'If you need help, copy this report and share it on the [GitHub issues page](https://github.com/FaserF/ha-openwrt/issues).')}"
+    )
+    return "\n".join(report)
+
+
 class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OpenWrt."""
 
@@ -207,6 +279,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_host: str | None = None
         self._discovered_routers: list[dict[str, str]] = []
         self._ubus_restricted: bool = False
+        self._diagnostic_report: str | None = None
 
     @staticmethod
     @callback
@@ -710,6 +783,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
             error = await self._test_connection(self._data)
             if error:
+                if self._diagnostic_report:
+                    return await self.async_step_diagnostics()
                 errors["base"] = error
             else:
                 await self._async_set_unique_id_and_check()
@@ -781,6 +856,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
             error = await self._test_connection(self._data)
             if error:
+                if self._diagnostic_report:
+                    return await self.async_step_diagnostics()
                 errors["base"] = error
             else:
                 await self._async_set_unique_id_and_check()
@@ -829,6 +906,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             error = await self._test_connection(self._data)
             if error:
+                if self._diagnostic_report:
+                    return await self.async_step_diagnostics()
                 errors["base"] = error
             else:
                 entry = self.hass.config_entries.async_get_entry(
@@ -871,6 +950,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             return None
         except Exception as err:
             _LOGGER.exception("Connection test failed: %s", err)
+            # Try to run diagnostics if possible
+            with contextlib.suppress(Exception):
+                if client:
+                    results = await client.perform_diagnostics()
+                    if results:
+                        # Get translations for report
+                        translations = await translation.async_get_translations(
+                            self.hass, self.hass.config.language, "config", [DOMAIN]
+                        )
+                        self._diagnostic_report = _generate_diagnostic_report(
+                            results, translations
+                        )
             return self._handle_test_error(err, data.get(CONF_USERNAME))
 
     async def _perform_connection_test(self, client: Any, data: dict[str, Any]) -> None:
@@ -1294,10 +1385,21 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_provision_failed(
+    async def async_step_diagnostics(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
+        """Show diagnostic report after failure."""
+        if user_input is not None:
+            return await self.async_step_credentials()
+
+        return self.async_show_form(
+            step_id="diagnostics",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "report": self._diagnostic_report or "No diagnostic data available.",
+            },
+        )
         """Handle provisioning failure (only skip available)."""
         return await self.async_step_permissions()
 
@@ -1384,7 +1486,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._ubus_restricted:
             return await self.async_step_ubus_restricted()
 
-        table = _generate_permission_table(self._permissions)
+        # Get translations for table
+        translations = await translation.async_get_translations(
+            self.hass, self.hass.config.language, "config", [DOMAIN]
+        )
+        table = _generate_permission_table(self._permissions, translations)
 
         step_id = "permissions"
         if self._data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_UBUS:
@@ -1638,7 +1744,11 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if self._ubus_restricted:
             return await self.async_step_ubus_restricted()
 
-        table = _generate_permission_table(self._permissions)
+        # Get translations for table
+        translations = await translation.async_get_translations(
+            self.hass, self.hass.config.language, "config", [DOMAIN]
+        )
+        table = _generate_permission_table(self._permissions, translations)
 
         step_id = "permissions"
         if self._config_entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_UBUS:

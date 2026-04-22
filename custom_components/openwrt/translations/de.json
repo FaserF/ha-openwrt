@@ -78,7 +78,41 @@
       },
       "permissions": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Anmeldedaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies erwartet wird."
+        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden folgende Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies erwartet wird.",
+        "table": {
+          "header_subsystem": "Subsystem",
+          "header_read": "Lesen",
+          "header_write": "Schreiben",
+          "header_missing": "Fehlende Funktionen",
+          "sensors": "Sensoren",
+          "sub_system": "System",
+          "sub_network": "Netzwerk",
+          "sub_interface": "Schnittstelle",
+          "sub_wireless": "WLAN",
+          "sub_firewall": "Firewall",
+          "sub_devices": "Geräte",
+          "sub_device": "Gerät",
+          "sub_vpn": "VPN",
+          "sub_sqm": "SQM",
+          "sub_services": "Dienste",
+          "sub_service": "Dienst",
+          "sub_leds": "LEDs",
+          "sub_mwan3": "MWAN3",
+          "feature_reboot": "Neustart",
+          "feature_upgrade": "Upgrade",
+          "feature_backup": "Backup",
+          "feature_up_down_reconnect": "Aktivieren/Deaktivieren/Verbinden",
+          "feature_toggle_wifi": "WLAN umschalten",
+          "feature_wps_control": "WPS-Steuerung",
+          "feature_toggling_rules_redirects": "Regeln/Weiterleitungen umschalten",
+          "feature_access_control": "Zugriffskontrolle",
+          "feature_wake_on_lan": "Wake on LAN",
+          "feature_kick_client": "Client trennen",
+          "feature_toggle_sqm": "SQM umschalten",
+          "feature_change_limits": "Limits ändern",
+          "feature_start_stop_restart": "Starten/Stoppen/Neustarten",
+          "feature_control_leds": "LEDs steuern"
+        }
       },
       "permissions_ubus": {
         "title": "Berechtigungsübersicht",
@@ -111,7 +145,18 @@
       },
       "provision_failed": {
         "title": "Bereitstellung fehlgeschlagen",
-        "description": "Die automatische Benutzer-Bereitstellung ist fehlgeschlagen.\n\n**Analyse:**\n{tip}\n\n**Roh-Fehlerausgabe:**\n```\n{error}\n```\n\n**Was du jetzt tun kannst:**\n- **Berechtigungen prüfen:** Stelle sicher, dass dein aktueller Benutzer `file.exec` Rechte hat.\n- **Speicherplatz prüfen:** Prüfe, ob dein Router genug freien Speicher in `/usr/share/rpcd/` hat.\n- **SSH versuchen:** SSH ist oft robuster für die Ersteinrichtung, falls ubus eingeschränkt ist.\n\nDu kannst dennoch mit den aktuellen Zugangsdaten fortfahren, indem du diesen Schritt überspringst."
+        "description": "Die automatische Benutzererstellung ist fehlgeschlagen.\n\n**Analyse:**\n{tip}\n\n**Rohe Fehlerausgabe:**\n```\n{error}\n```\n\n**Was ist jetzt zu tun?**\n- **Berechtigungen prüfen:** Stelle sicher, dass dein aktueller Benutzer `file.exec`-Rechte hat.\n- **Speicher prüfen:** Stelle sicher, dass dein Router genügend freien Speicher in `/usr/share/rpcd/` hat.\n- **SSH versuchen:** SSH ist oft robuster für die Ersteinrichtung, wenn ubus eingeschränkt ist.\n\nDu kannst trotzdem mit den aktuellen Zugangsdaten fortfahren, indem du diesen Schritt überspringst."
+      },
+      "diagnostics": {
+        "title": "Verbindungsdiagnose",
+        "description": "Ein Verbindungstest wurde durchgeführt und mehrere Probleme identifiziert. Bitte überprüfe den untenstehenden Bericht, um das Problem zu beheben:\n\n{report}\n\nDu kannst es nach Änderungen an deiner Router-Konfiguration erneut versuchen.",
+        "header": "Verbindungsdiagnose-Bericht",
+        "intro": "Die folgenden Prüfungen wurden durchgeführt, um das Problem zu identifizieren:",
+        "label_result": "Ergebnis",
+        "label_details": "Details",
+        "label_remedy": "Abhilfe",
+        "footer_title": "Verwendung dieses Berichts",
+        "footer_text": "Wenn du Hilfe brauchst, kopiere diesen Bericht und teile ihn auf der [GitHub-Issue-Seite](https://github.com/FaserF/ha-openwrt/issues)."
       },
       "ubus_restricted": {
         "title": "Eingeschränktes Ubus erkannt",

@@ -198,6 +198,6 @@ async def test_ubus_provision_user(ubus_client: UbusClient):
         script = mock_exec.call_args[0][0]
         assert "USER=$(cat <<'EOF'\nhomeassistant\nEOF\n)" in script
         assert "PASS=$(cat <<'EOF'\nnew-password\nEOF\n)" in script
-        assert "uci set rpcd.homeassistant=login" in script
-        assert 'uci set rpcd.homeassistant.password="\\$p\\$$USER"' in script
+        assert "$UCI set rpcd.$SECTION=login" in script
+        assert '$UCI set rpcd.$SECTION.password="\\$p\\$$USER"' in script
         assert "/etc/init.d/rpcd restart" in script

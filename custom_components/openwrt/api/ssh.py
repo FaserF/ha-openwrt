@@ -22,6 +22,7 @@ from .base import (
     ConnectedDevice,
     DeviceInfo,
     DhcpLease,
+    DiagnosticResult,
     FirewallRedirect,
     FirewallRule,
     IpNeighbor,
@@ -1684,6 +1685,99 @@ class SshClient(OpenWrtClient):
         except Exception as err:
             _LOGGER.debug("Failed to get LLDP neighbors via SSH: %s", err)
         return neighbors
+
+    async def perform_diagnostics(self) -> list[DiagnosticResult]:
+        """Perform SSH-specific diagnostic checks."""
+        results: list[DiagnosticResult] = []
+
+        # 1. Check Shell Access
+        try:
+            output = await self.execute_command("echo 'OpenWrt-SSH-Test'")
+            if "OpenWrt-SSH-Test" in output:
+                results.append(
+                    DiagnosticResult(
+                        name="Shell Access",
+                        status="PASS",
+                        message="Successfully executed simple echo command via SSH.",
+                    )
+                )
+        except Exception as err:
+            results.append(
+                DiagnosticResult(
+                    name="Shell Access",
+                    status="FAIL",
+                    message="Failed to execute shell command.",
+                    details=str(err),
+                )
+            )
+
+        # 2. Check Package Manager
+        try:
+            apk_path = await self.execute_command("command -v apk")
+            opkg_path = await self.execute_command("command -v opkg")
+
+            msg = []
+            if apk_path:
+                msg.append(f"apk found at {apk_path.strip()}")
+            if opkg_path:
+                msg.append(f"opkg found at {opkg_path.strip()}")
+
+            results.append(
+                DiagnosticResult(
+                    name="Package Manager",
+                    status="PASS" if msg else "WARN",
+                    message=", ".join(msg)
+                    if msg
+                    else "No package manager (apk/opkg) detected.",
+                )
+            )
+        except Exception as err:
+            results.append(
+                DiagnosticResult(
+                    name="Package Manager",
+                    status="WARN",
+                    message="Failed to check for package managers.",
+                    details=str(err),
+                )
+            )
+
+        # 3. Check for logread flag support
+        try:
+            cmd = await self._get_logread_command(1)
+            results.append(
+                DiagnosticResult(
+                    name="Logread Compatibility",
+                    status="PASS",
+                    message=f"Using command: {cmd}",
+                    details=f"Detected flag: {self._logread_flag}",
+                )
+            )
+        except Exception as err:
+            results.append(
+                DiagnosticResult(
+                    name="Logread Compatibility",
+                    status="FAIL",
+                    message="Failed to detect logread capabilities.",
+                    details=str(err),
+                )
+            )
+
+        # 4. Get recent logs
+        try:
+            logs = await self.get_system_logs(20)
+            if logs:
+                results.append(
+                    DiagnosticResult(
+                        name="System Logs (Recent)",
+                        status="INFO",
+                        message=f"Retrieved {len(logs)} log entries.",
+                        details="\n".join(logs),
+                    )
+                )
+        except Exception:
+            pass
+
+        return results
 
     async def _get_lldp_from_ubus(self, neighbors: list[LldpNeighbor]) -> None:
         """Fetch LLDP neighbors from 'lldp show' ubus call via SSH."""
