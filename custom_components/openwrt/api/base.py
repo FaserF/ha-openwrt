@@ -449,6 +449,30 @@ class IpNeighbor:
 
 
 @dataclass
+class WireGuardInterface:
+    """WireGuard VPN interface information."""
+
+    name: str = ""
+    public_key: str = ""
+    listen_port: int = 0
+    fwmark: int = 0
+    peers: list[WireGuardPeer] = field(default_factory=list)
+
+
+@dataclass
+class WireGuardPeer:
+    """WireGuard VPN peer information."""
+
+    public_key: str = ""
+    endpoint: str = ""
+    allowed_ips: list[str] = field(default_factory=list)
+    latest_handshake: int = 0
+    transfer_rx: int = 0
+    transfer_tx: int = 0
+    persistent_keepalive: int = 0
+
+
+@dataclass
 class WpsStatus:
     """WPS status."""
 
@@ -937,6 +961,11 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def get_local_ips(self) -> set[str]:
         """Get all IP addresses belonging to the router."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def get_wireguard_interfaces(self) -> list[WireGuardInterface]:
+        """Get WireGuard VPN interface and peer information."""
         raise NotImplementedError
 
     @abc.abstractmethod

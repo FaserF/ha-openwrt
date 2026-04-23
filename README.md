@@ -24,7 +24,7 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
 
 - **VPN Monitoring**: 
   - Tracks status (Up/Down) for WireGuard and OpenVPN tunnels.
-  - Monitors throughput (RX/TX) and WireGuard peer counts with handshake details.
+  - Monitors throughput (RX/TX) and detailed WireGuard peer statistics (handshake, transfer, allowed IPs).
 - **Network & Connectivity**: 
   - **Latency/Ping**: Monitor network latency to a target (e.g. 8.8.8.8) with packet loss tracking.
   - **DHCP Monitoring**: Track the number of active DHCP leases.

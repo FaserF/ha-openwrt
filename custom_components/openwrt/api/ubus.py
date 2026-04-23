@@ -38,6 +38,8 @@ from .base import (
     SqmStatus,
     SystemResources,
     WirelessInterface,
+    WireGuardInterface,
+    WireGuardPeer,
     WpsStatus,
 )
 
@@ -843,6 +845,75 @@ class UbusClient(OpenWrtClient):
                     "Failed to fetch detailed info for wifi interface %s", wifi.name
                 )
 
+        return interfaces
+
+    async def get_wireguard_interfaces(self) -> list[WireGuardInterface]:
+        """Get WireGuard VPN interface and peer information via ubus/CLI."""
+        interfaces: list[WireGuardInterface] = []
+        try:
+            # 1. Discover WG interfaces via network.interface dump
+            status = await self._call("network.interface", "dump")
+            if not isinstance(status, dict):
+                return interfaces
+                
+            wg_ifaces = []
+            for iface_data in status.get("interface", []):
+                if iface_data.get("proto") == "wireguard":
+                    wg_ifaces.append(iface_data.get("interface"))
+            
+            if not wg_ifaces:
+                return interfaces
+
+            # 2. Fetch peer info via wg show dump
+            # wg show all dump format:
+            # interface public_key listen_port fwmark
+            # peer_public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
+            
+            stdout = await self.execute_command("wg show all dump 2>/dev/null")
+            if not stdout:
+                return interfaces
+
+            iface_map: dict[str, WireGuardInterface] = {}
+            for line in stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) == 4:
+                    # Interface line
+                    ifname = parts[0]
+                    if ifname not in wg_ifaces:
+                        continue
+                    iface = WireGuardInterface(
+                        name=ifname,
+                        public_key=parts[1],
+                        listen_port=int(parts[2]) if parts[2].isdigit() else 0,
+                        fwmark=int(parts[3]) if parts[3].isdigit() else 0,
+                    )
+                    iface_map[ifname] = iface
+                    interfaces.append(iface)
+                elif len(parts) >= 8:
+                    # Peer line
+                    # Format: interface peer_public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
+                    # Wait, 'wg show all dump' includes the interface name as the first part for peers too?
+                    # Let's check 'wg show dump' output:
+                    # Interface: interface public_key listen_port fwmark
+                    # Peer: peer_public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
+                    # If using 'all', it's:
+                    # interface peer_public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
+                    
+                    ifname = parts[0]
+                    if ifname in iface_map:
+                        peer = WireGuardPeer(
+                            public_key=parts[1],
+                            endpoint=parts[3] if parts[3] != "(none)" else "",
+                            allowed_ips=parts[4].split(",") if parts[4] != "(none)" else [],
+                            latest_handshake=int(parts[5]) if parts[5].isdigit() else 0,
+                            transfer_rx=int(parts[6]) if parts[6].isdigit() else 0,
+                            transfer_tx=int(parts[7]) if parts[7].isdigit() else 0,
+                            persistent_keepalive=int(parts[8]) if len(parts) > 8 and parts[8].isdigit() else 0,
+                        )
+                        iface_map[ifname].peers.append(peer)
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch WireGuard interfaces: %s", err)
+            
         return interfaces
 
     async def get_network_interfaces(self) -> list[NetworkInterface]:

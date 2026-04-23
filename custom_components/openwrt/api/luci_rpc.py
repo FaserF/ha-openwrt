@@ -37,6 +37,8 @@ from .base import (
     SqmStatus,
     SystemResources,
     WirelessInterface,
+    WireGuardInterface,
+    WireGuardPeer,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1046,6 +1048,63 @@ class LuciRpcClient(OpenWrtClient):
             except Exception as err:
                 _LOGGER.debug("Failed to get iwinfo for %s: %s", iface_name, err)
 
+        return interfaces
+
+    async def get_wireguard_interfaces(self) -> list[WireGuardInterface]:
+        """Get WireGuard VPN interface and peer information via LuCI RPC."""
+        from .base import WireGuardInterface, WireGuardPeer
+        interfaces: list[WireGuardInterface] = []
+        try:
+            # 1. Discover WG interfaces via ubus call
+            status_str = await self.execute_command("ubus call network.interface dump 2>/dev/null")
+            if not status_str or not status_str.strip().startswith("{"):
+                return interfaces
+                
+            status = json.loads(status_str)
+            wg_ifaces = []
+            for iface_data in status.get("interface", []):
+                if iface_data.get("proto") == "wireguard":
+                    wg_ifaces.append(iface_data.get("interface"))
+            
+            if not wg_ifaces:
+                return interfaces
+
+            # 2. Fetch peer info via wg show all dump
+            stdout = await self.execute_command("wg show all dump 2>/dev/null")
+            if not stdout:
+                return interfaces
+
+            iface_map: dict[str, WireGuardInterface] = {}
+            for line in stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) == 4:
+                    ifname = parts[0]
+                    if ifname not in wg_ifaces:
+                        continue
+                    iface = WireGuardInterface(
+                        name=ifname,
+                        public_key=parts[1],
+                        listen_port=int(parts[2]) if parts[2].isdigit() else 0,
+                        fwmark=int(parts[3]) if parts[3].isdigit() else 0,
+                    )
+                    iface_map[ifname] = iface
+                    interfaces.append(iface)
+                elif len(parts) >= 8:
+                    ifname = parts[0]
+                    if ifname in iface_map:
+                        peer = WireGuardPeer(
+                            public_key=parts[1],
+                            endpoint=parts[3] if parts[3] != "(none)" else "",
+                            allowed_ips=parts[4].split(",") if parts[4] != "(none)" else [],
+                            latest_handshake=int(parts[5]) if parts[5].isdigit() else 0,
+                            transfer_rx=int(parts[6]) if parts[6].isdigit() else 0,
+                            transfer_tx=int(parts[7]) if parts[7].isdigit() else 0,
+                            persistent_keepalive=int(parts[8]) if len(parts) > 8 and parts[8].isdigit() else 0,
+                        )
+                        iface_map[ifname].peers.append(peer)
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch WireGuard interfaces via LuCI RPC: %s", err)
+            
         return interfaces
 
     async def get_network_interfaces(self) -> list[NetworkInterface]:
