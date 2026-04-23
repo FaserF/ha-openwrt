@@ -214,9 +214,24 @@ class SshClient(OpenWrtClient):
             packages: list[str] = []
             for line in output.splitlines():
                 name = line.strip()
-                if name:
-                    packages.append(name)
-            return packages
+                if not name:
+                    continue
+
+                # Strip version for apk (package-version-release)
+                # On OpenWrt/APK, 'apk info -q' sometimes includes the version suffix.
+                # Standard pkg names don't have digits immediately after a dash
+                # unless it's the version part.
+                if "-" in name and any(c.isdigit() for c in name):
+                    parts = name.split("-")
+                    # Package names like "sqm-scripts" are ok, but "sqm-scripts-1.0" should be "sqm-scripts"
+                    # We look for the first part that starts with a digit or the last two parts
+                    for i in range(1, len(parts)):
+                        if parts[i] and parts[i][0].isdigit():
+                            name = "-".join(parts[:i])
+                            break
+
+                packages.append(name)
+            return list(set(packages))
         except Exception:
             return []
 
@@ -578,13 +593,15 @@ class SshClient(OpenWrtClient):
         return None
 
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
-        """Get wireless interfaces."""
+        """Get wireless interfaces via ubus iwinfo."""
         interfaces: list[WirelessInterface] = []
         iface_names: set[str] = set()
 
         # 1. Primary source: network.wireless status
         try:
-            wifi_json = await self._exec("ubus call network.wireless status 2>/dev/null")
+            wifi_json = await self._exec(
+                "ubus call network.wireless status 2>/dev/null"
+            )
             if wifi_json and wifi_json.strip().startswith("{"):
                 data = json.loads(wifi_json)
                 for radio_name, radio_data in data.items():
@@ -593,7 +610,7 @@ class SshClient(OpenWrtClient):
                     for iface in radio_data.get("interfaces", []):
                         config = iface.get("config", {})
                         iface_name = iface.get("ifname", "")
-                        if not iface_name:
+                        if not iface_name or iface_name in iface_names:
                             continue
 
                         wifi = WirelessInterface(
@@ -607,108 +624,62 @@ class SshClient(OpenWrtClient):
                         )
                         interfaces.append(wifi)
                         iface_names.add(iface_name)
-        except Exception:
-            pass
+        except Exception as err:
+            _LOGGER.debug("Failed to get network.wireless status via SSH: %s", err)
 
         # 2. Supplement: iwinfo devices
         try:
-            iw_out = await self._exec("iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'")
-            if iw_out:
-                for iface_name in iw_out.strip().split():
-                    if iface_name in iface_names:
-                        continue
-                    wifi = WirelessInterface(name=iface_name, enabled=True, up=True)
-                    interfaces.append(wifi)
-                    iface_names.add(iface_name)
+            iw_devs_str = await self._exec("ubus call iwinfo devices 2>/dev/null")
+            if iw_devs_str and iw_devs_str.strip().startswith("{"):
+                iw_devs = json.loads(iw_devs_str).get("devices", [])
+                for name in iw_devs:
+                    if name not in iface_names:
+                        wifi = WirelessInterface(name=name, enabled=True, up=True)
+                        interfaces.append(wifi)
+                        iface_names.add(name)
         except Exception:
             pass
 
-        # 3. Populate metrics
+        # 3. Populate metrics via ubus iwinfo
         for wifi in interfaces:
             iface_name = wifi.name
-            if iface_name:
-                            try:
-                                iwinfo = await self._exec(
-                                    f"iwinfo {iface_name} info 2>/dev/null",
-                                )
-                                for line in iwinfo.split("\n"):
-                                    line = line.strip()
-                                    if "Channel:" in line:
-                                        with contextlib.suppress(
-                                            ValueError, IndexError
-                                        ):
-                                            wifi.channel = int(
-                                                line.split("Channel:")[1]
-                                                .strip()
-                                                .split()[0],
-                                            )
-                                    elif "Access Point:" in line:
-                                        with contextlib.suppress(IndexError):
-                                            wifi.mac_address = (
-                                                line.split("Access Point:")[1]
-                                                .strip()
-                                                .upper()
-                                            )
-                                    elif "Signal:" in line:
-                                        with contextlib.suppress(
-                                            ValueError, IndexError
-                                        ):
-                                            wifi.signal = int(
-                                                line.split("Signal:")[1]
-                                                .strip()
-                                                .split()[0],
-                                            )
-                                    elif "Frequency:" in line:
-                                        with contextlib.suppress(IndexError):
-                                            wifi.frequency = line.split("Frequency:")[
-                                                1
-                                            ].strip()
+            try:
+                # Get basic info
+                info_str = await self._exec(
+                    f'ubus call iwinfo info \'{{"device":"{iface_name}"}}\' 2>/dev/null'
+                )
+                if info_str and info_str.strip().startswith("{"):
+                    info = json.loads(info_str)
+                    if not wifi.ssid:
+                        wifi.ssid = info.get("ssid", "")
+                    wifi.mac_address = info.get("bssid", "").upper()
+                    wifi.channel = info.get("channel", 0)
+                    wifi.frequency = str(info.get("frequency", ""))
+                    wifi.signal = info.get("signal", 0)
+                    wifi.noise = info.get("noise", 0)
+                    wifi.bitrate = (
+                        (info.get("bitrate", 0) / 1000.0)
+                        if info.get("bitrate")
+                        else 0.0
+                    )
 
-                                # Fallback: Extract frequency from Channel line if still missing
-                                if not wifi.frequency and iwinfo:
-                                    for line in iwinfo.splitlines():
-                                        if (
-                                            "Channel:" in line
-                                            and "(" in line
-                                            and "GHz)" in line
-                                        ):
-                                            with contextlib.suppress(
-                                                IndexError, ValueError
-                                            ):
-                                                wifi.frequency = (
-                                                    line.split("(")[1]
-                                                    .split(")")[0]
-                                                    .strip()
-                                                )
+                    # Quality
+                    q_val = info.get("quality")
+                    q_max = info.get("quality_max", 100)
+                    if q_val is not None and q_max:
+                        wifi.quality = round((q_val / q_max) * 100, 1)
 
-                                # Fallback 2: Infer from channel number
-                                if not wifi.frequency and wifi.channel > 0:
-                                    if 1 <= wifi.channel <= 14:
-                                        wifi.frequency = "2.4 GHz"
-                                    elif 32 <= wifi.channel <= 177:
-                                        wifi.frequency = "5 GHz"
-
-                                assoclist = await self._exec(
-                                    f"iwinfo {iface_name} assoclist 2>/dev/null",
-                                )
-                                if assoclist.strip():
-                                    wifi.clients_count = len(
-                                        [
-                                            line_item
-                                            for line_item in assoclist.strip().split(
-                                                "\n",
-                                            )
-                                            if line_item.strip()
-                                            and ":" in line_item.split()[0]
-                                            if line_item.split()
-                                        ],
-                                    )
-                            except Exception:  # noqa: BLE001
-                                pass
-
-                        interfaces.append(wifi)
-        except Exception:  # noqa: BLE001
-            pass
+                    # Association list for client count
+                    assoc_str = await self._exec(
+                        f'ubus call iwinfo assoclist \'{{"device":"{iface_name}"}}\' 2>/dev/null'
+                    )
+                    if assoc_str and assoc_str.strip().startswith("{"):
+                        assoc = json.loads(assoc_str).get("results", [])
+                        wifi.clients_count = len(assoc)
+            except Exception as err:
+                _LOGGER.debug(
+                    "Failed to get iwinfo for %s via SSH: %s", iface_name, err
+                )
 
         return interfaces
 
@@ -892,6 +863,25 @@ class SshClient(OpenWrtClient):
     async def get_system_logs(self, count: int = 10) -> list[str]:
         """Get recent system log entries via SSH."""
         try:
+            # 1. Try via direct ubus call (More robust/structured)
+            try:
+                # Use double braces for f-string escaping if needed,
+                # but here we just need to ensure the JSON is valid for the shell
+                res_out = await self._exec(
+                    f"ubus call log read '{{\"lines\": {int(count or 10)}}}'"
+                )
+                if res_out:
+                    res = json.loads(res_out)
+                    if res and isinstance(res, dict) and "log" in res:
+                        return [
+                            entry.get("msg", "").strip()
+                            for entry in res.get("log", [])
+                            if entry.get("msg")
+                        ]
+            except Exception as err:
+                _LOGGER.debug("Direct SSH ubus log read failed: %s", err)
+
+            # 2. Fallback to logread command
             cmd = await self._get_logread_command(count)
             output = await self._exec(cmd)
             if output:

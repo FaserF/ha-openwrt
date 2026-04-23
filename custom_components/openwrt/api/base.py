@@ -111,10 +111,11 @@ if ! cat <<EOF > "$ACL_FILE"
         "read": {{
             "ubus": {{
                 "system": ["info", "board", "logread", "upgrade"],
+                "log": ["read"],
                 "network": ["*"],
                 "network.interface": ["dump", "status"],
                 "network.device": ["status"],
-                "iwinfo": ["info", "assoclist", "txpowerlist", "scan"],
+                "iwinfo": ["info", "assoclist", "txpowerlist", "scan", "devices"],
                 "file": ["read", "stat", "list"],
                 "firewall": ["status"],
                 "service": ["list"],
@@ -140,6 +141,7 @@ if ! cat <<EOF > "$ACL_FILE"
                 "/bin/ls": ["read", "stat", "exec"],
                 "/sbin/apk": ["read", "stat", "exec"],
                 "/bin/opkg": ["read", "stat", "exec"],
+                "/sbin/logread": ["read", "stat"],
                 "/proc/stat": ["read"],
                 "/proc/net/arp": ["read"],
                 "/proc/net/dev": ["read"],
@@ -694,7 +696,7 @@ class OpenWrtClient(abc.ABC):
             self._logread_flag = "-n"
             try:
                 # Test which flag is supported by running help
-                help_out = await self.execute_command("logread --help 2>&1")
+                help_out = await self.execute_command("/sbin/logread --help 2>&1")
                 if help_out:
                     # Look for -l (modern BusyBox/OpenWrt 25+)
                     # Use a flexible regex to handle tabs, spaces, and different placeholders
@@ -719,7 +721,8 @@ class OpenWrtClient(abc.ABC):
                     "Could not verify logread flag support, defaulting to -n: %s", err
                 )
 
-        return f"logread {self._logread_flag} {count}"
+        # Use absolute path and ensure count is an integer
+        return f"/sbin/logread {self._logread_flag} {int(count or 10)}"
 
     @property
     def connected(self) -> bool:

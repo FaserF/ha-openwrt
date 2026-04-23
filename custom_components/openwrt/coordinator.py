@@ -66,13 +66,13 @@ from .const import (
     DOMAIN,
     OPENWRT_RELEASE_API,
 )
+from .helpers import format_ap_device_id
 from .repairs import (
     async_create_auth_repair,
     async_create_connection_lost_repair,
     async_create_missing_packages_repair,
     async_delete_connection_lost_repair,
 )
-from .helpers import format_ap_device_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -216,11 +216,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self._async_process_network_rates(data, now)
         self._last_update_time = now
 
-        # 5. Device tracking and filtering
-        await self._async_filter_and_track_devices(data)
-
-        # 6. Update device registry
+        # 5. Update device registry
         await self._async_update_device_registry(data)
+
+        # 6. Device tracking and filtering
+        await self._async_filter_and_track_devices(data)
 
         # 7. Persist history if it changed
         try:
@@ -481,7 +481,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         band = "5 GHz"
                     elif wifi.frequency.startswith("6."):
                         band = "6 GHz"
-                
+
                 label = wifi.ssid or wifi.name
                 if band:
                     label = f"{label} ({band})"

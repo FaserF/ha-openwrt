@@ -18,13 +18,13 @@ async def test_logread_detection_n():
         mock_exec.return_value = "Usage: logread [-n count] [-f]"
 
         cmd = await client._get_logread_command(10)
-        assert cmd == "logread -n 10"
+        assert cmd == "/sbin/logread -n 10"
         assert client._logread_flag == "-n"
 
         # Subsequent calls should not run help again
         mock_exec.reset_mock()
         cmd2 = await client._get_logread_command(20)
-        assert cmd2 == "logread -n 20"
+        assert cmd2 == "/sbin/logread -n 20"
         mock_exec.assert_not_called()
 
 
@@ -41,8 +41,8 @@ async def test_logread_detection_l():
         )
 
         cmd = await client._get_logread_command(15)
-        assert cmd == "logread -l 15"
+        assert cmd == "/sbin/logread -l 15"
         assert client._logread_flag == "-l"
 
         # Verify the help command was called
-        mock_exec.assert_any_call("logread --help 2>&1")
+        mock_exec.assert_any_call("/sbin/logread --help 2>&1")

@@ -945,207 +945,91 @@ class LuciRpcClient(OpenWrtClient):
         return None
 
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
-        """Get wireless interfaces via iwinfo and UCI."""
+        """Get wireless interfaces via ubus iwinfo and UCI."""
         interfaces: list[WirelessInterface] = []
         iface_names: set[str] = set()
 
-        # 1. Primary source: iwinfo (actual active interfaces)
+        # 1. Primary source: network.wireless status (UCI state)
         try:
-            iw_out = await self.execute_command(
-                "iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'"
+            wireless_data = await self.execute_command(
+                "ubus call network.wireless status"
             )
-            if iw_out:
-                for name in iw_out.strip().split():
-                    wifi = WirelessInterface(name=name, enabled=True, up=True)
-                    interfaces.append(wifi)
-                    iface_names.add(name)
+            if wireless_data and wireless_data.strip().startswith("{"):
+                data = json.loads(wireless_data)
+                for radio_name, radio_data in data.items():
+                    if not isinstance(radio_data, dict):
+                        continue
+                    for iface in radio_data.get("interfaces", []):
+                        iface_name = iface.get("ifname") or iface.get("device")
+                        if not iface_name or iface_name in iface_names:
+                            continue
+
+                        iface_config = iface.get("config", {})
+                        wifi = WirelessInterface(
+                            name=iface_name,
+                            ssid=iface_config.get("ssid", ""),
+                            mode=iface_config.get("mode", ""),
+                            encryption=iface_config.get("encryption", ""),
+                            enabled=not radio_data.get("disabled", False),
+                            up=radio_data.get("up", False),
+                            radio=radio_name,
+                        )
+                        interfaces.append(wifi)
+                        iface_names.add(iface_name)
+        except Exception as err:
+            _LOGGER.debug("Failed to get network.wireless status via LuCI RPC: %s", err)
+
+        # 2. Supplement/Fallback: iwinfo devices
+        try:
+            iw_devs_str = await self.execute_command("ubus call iwinfo devices")
+            if iw_devs_str and iw_devs_str.strip().startswith("{"):
+                iw_devs = json.loads(iw_devs_str).get("devices", [])
+                for name in iw_devs:
+                    if name not in iface_names:
+                        wifi = WirelessInterface(name=name, enabled=True, up=True)
+                        interfaces.append(wifi)
+                        iface_names.add(name)
         except Exception:
             pass
 
-        uci_to_sys, sys_to_uci = await self._get_wireless_mapping()
-        self._sys_to_uci = sys_to_uci
-        self._uci_to_sys = uci_to_sys
-
-        # 2. Check UCI for additional (possibly disabled) interfaces
-        try:
-            wireless_config = await self._rpc_call("uci", "get_all", ["wireless"])
-            if isinstance(wireless_config, dict):
-                for section, values in wireless_config.items():
-                    if isinstance(values, dict) and values.get(".type") == "wifi-iface":
-                        sys_name = uci_to_sys.get(section)
-                        if sys_name and sys_name in iface_names:
-                            # Already found via iwinfo, just update info
-                            wifi = next(i for i in interfaces if i.name == sys_name)
-                            wifi.section = section
-                            wifi.ssid = values.get("ssid", "")
-                            wifi.enabled = values.get("disabled", "0") != "1"
-                            continue
-
-                        # Not found via iwinfo (maybe disabled or non-standard naming)
-                        if not sys_name:
-                            ssid = values.get("ssid", "")
-                            if ssid:
-                                try:
-                                    match_out = await self.execute_command(
-                                        f"iwinfo 2>/dev/null | grep -F '\"{ssid}\"' | awk '{{print $1}}'"
-                                    )
-                                    if match_out:
-                                        sys_name = match_out.strip().splitlines()[0]
-                                except Exception:
-                                    pass
-
-                        # Still not found or truly new
-                        final_name = sys_name or section
-                        if final_name not in iface_names:
-                            wifi = WirelessInterface(
-                                name=final_name,
-                                ifname=final_name,
-                                section=section,
-                                ssid=values.get("ssid", ""),
-                                mode=values.get("mode", ""),
-                                encryption=values.get("encryption", ""),
-                                enabled=values.get("disabled", "0") != "1",
-                            )
-                            interfaces.append(wifi)
-                            iface_names.add(final_name)
-
-        except LuciRpcError:
-            pass
-
-        # 3. Populate metrics for all found interfaces
+        # 3. Populate metrics via ubus iwinfo info
         for wifi in interfaces:
             iface_name = wifi.name
-            if iface_name:
-                try:
-                                iw_info = await self._rpc_call(
-                                    "sys",
-                                    "exec",
-                                    [f"iwinfo {iface_name} info 2>/dev/null"],
-                                )
-                                if iw_info:
-                                    for line in iw_info.splitlines():
-                                        if "Channel:" in line:
-                                            with contextlib.suppress(
-                                                ValueError, IndexError
-                                            ):
-                                                wifi.channel = int(
-                                                    line.split("Channel:")[1]
-                                                    .strip()
-                                                    .split()[0],
-                                                )
-                                        elif "Access Point:" in line:
-                                            with contextlib.suppress(IndexError):
-                                                wifi.mac_address = (
-                                                    line.split("Access Point:")[1]
-                                                    .strip()
-                                                    .upper()
-                                                )
-                                        elif "Signal:" in line:
-                                            with contextlib.suppress(
-                                                ValueError, IndexError
-                                            ):
-                                                wifi.signal = int(
-                                                    line.split("Signal:")[1]
-                                                    .strip()
-                                                    .split()[0],
-                                                )
-                                        elif "Noise:" in line:
-                                            with contextlib.suppress(
-                                                ValueError, IndexError
-                                            ):
-                                                wifi.noise = int(
-                                                    line.split("Noise:")[1]
-                                                    .strip()
-                                                    .split()[0],
-                                                )
-                                        elif "Bit Rate:" in line:
-                                            with contextlib.suppress(
-                                                ValueError, IndexError
-                                            ):
-                                                wifi.bitrate = float(
-                                                    line.split("Bit Rate:")[1]
-                                                    .strip()
-                                                    .split()[0],
-                                                )
-                                        elif "Frequency:" in line:
-                                            with contextlib.suppress(IndexError):
-                                                wifi.frequency = line.split(
-                                                    "Frequency:",
-                                                )[1].strip()
+            try:
+                # Get basic info
+                info_str = await self.execute_command(
+                    f'ubus call iwinfo info \'{{"device":"{iface_name}"}}\''
+                )
+                if info_str and info_str.strip().startswith("{"):
+                    info = json.loads(info_str)
+                    if not wifi.ssid:
+                        wifi.ssid = info.get("ssid", "")
+                    wifi.mac_address = info.get("bssid", "").upper()
+                    wifi.channel = info.get("channel", 0)
+                    wifi.frequency = str(info.get("frequency", ""))
+                    wifi.signal = info.get("signal", 0)
+                    wifi.noise = info.get("noise", 0)
+                    wifi.bitrate = (
+                        (info.get("bitrate", 0) / 1000.0)
+                        if info.get("bitrate")
+                        else 0.0
+                    )
 
-                                    # Fallback: Extract frequency from Channel line if still missing
-                                    if not wifi.frequency and "Channel:" in iw_info:
-                                        for line in iw_info.splitlines():
-                                            if (
-                                                "Channel:" in line
-                                                and "(" in line
-                                                and "GHz)" in line
-                                            ):
-                                                try:
-                                                    # Extract "2.462 GHz" from "Channel: 11 (2.462 GHz)"
-                                                    wifi.frequency = (
-                                                        line.split("(")[1]
-                                                        .split(")")[0]
-                                                        .strip()
-                                                    )
-                                                except (
-                                                    IndexError,
-                                                    ValueError,
-                                                ):
-                                                    pass
+                    # Quality
+                    q_val = info.get("quality")
+                    q_max = info.get("quality_max", 100)
+                    if q_val is not None and q_max:
+                        wifi.quality = round((q_val / q_max) * 100, 1)
 
-                                    # Fallback 2: Infer from channel number
-                                    if not wifi.frequency and wifi.channel > 0:
-                                        if 1 <= wifi.channel <= 14:
-                                            wifi.frequency = "2.4 GHz"
-                                        elif 32 <= wifi.channel <= 177:
-                                            wifi.frequency = "5 GHz"
-                                        elif (
-                                            1 <= wifi.channel <= 233
-                                        ):  # 6GHz channels overlap but usually 1-233
-                                            # This is a bit ambiguous without more info, but 5GHz/6GHz are higher
-                                            # We already handled 1-14 as 2.4GHz.
-                                            pass
-
-                                assoc = await self.execute_command(
-                                    f"iwinfo {iface_name} assoclist 2>/dev/null"
-                                )
-                                if assoc and "No information" not in assoc:
-                                    wifi.clients_count = len(
-                                        [
-                                            line
-                                            for line in assoc.strip().splitlines()
-                                            if line.strip() and ":" in line.split()[0]
-                                        ],
-                                    )
-
-                                # Fallback: hostapd ubus call
-                                if wifi.clients_count == 0:
-                                    hostapd_out = await self.execute_command(
-                                        f"ubus call hostapd.{iface_name} get_clients 2>/dev/null"
-                                    )
-                                    if hostapd_out and hostapd_out.strip().startswith(
-                                        "{",
-                                    ):
-                                        try:
-                                            h_data = json.loads(hostapd_out)
-                                            if "clients" in h_data:
-                                                wifi.clients_count = len(
-                                                    h_data["clients"],
-                                                )
-                                        except Exception:
-                                            pass
-                            except Exception:
-                                pass
-
-                        interfaces.append(wifi)
-
-                    # Store mapping for other calls
-                    self._sys_to_uci = sys_to_uci
-                    self._uci_to_sys = uci_to_sys
-
-        except LuciRpcError:
-            pass
+                    # Association list for client count
+                    assoc_str = await self.execute_command(
+                        f'ubus call iwinfo assoclist \'{{"device":"{iface_name}"}}\''
+                    )
+                    if assoc_str and assoc_str.strip().startswith("{"):
+                        assoc = json.loads(assoc_str).get("results", [])
+                        wifi.clients_count = len(assoc)
+            except Exception as err:
+                _LOGGER.debug("Failed to get iwinfo for %s: %s", iface_name, err)
 
         return interfaces
 
@@ -1721,9 +1605,19 @@ class LuciRpcClient(OpenWrtClient):
             packages: list[str] = []
             for line in output.splitlines():
                 name = line.strip()
-                if name:
-                    packages.append(name)
-            return packages
+                if not name:
+                    continue
+
+                # Strip version for apk (package-version-release)
+                if "-" in name and any(c.isdigit() for c in name):
+                    parts = name.split("-")
+                    for i in range(1, len(parts)):
+                        if parts[i] and parts[i][0].isdigit():
+                            name = "-".join(parts[:i])
+                            break
+
+                packages.append(name)
+            return list(set(packages))
         except LuciRpcError:
             _LOGGER.debug("Failed to list installed packages via LuCI RPC")
             return []
@@ -2052,6 +1946,25 @@ class LuciRpcClient(OpenWrtClient):
     async def get_system_logs(self, count: int = 10) -> list[str]:
         """Get recent system log entries via LuCI RPC."""
         try:
+            # 1. Try via direct ubus call (More robust, avoids flag detection issues)
+            try:
+                # In LuCI RPC, ubus call is just another RPC call to 'ubus' endpoint
+                res = await self._rpc_call(
+                    "ubus", "call", ["log", "read", {"lines": int(count or 10)}]
+                )
+                if res and isinstance(res, dict) and "log" in res:
+                    return [
+                        entry.get("msg", "").strip()
+                        for entry in res.get("log", [])
+                        if entry.get("msg")
+                    ]
+            except Exception as err:
+                _LOGGER.debug(
+                    "Direct ubus log read via LuCI RPC failed, falling back to logread: %s",
+                    err,
+                )
+
+            # 2. Fallback to via execute_command (sys.exec)
             cmd = await self._get_logread_command(count)
             output = await self.execute_command(cmd)
             if output:

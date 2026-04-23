@@ -756,7 +756,9 @@ class UbusClient(OpenWrtClient):
                 if assoc:
                     wifi.clients_count = len(assoc.get("results", []))
             except UbusError:
-                _LOGGER.debug("Failed to fetch detailed info for wifi interface %s", wifi.name)
+                _LOGGER.debug(
+                    "Failed to fetch detailed info for wifi interface %s", wifi.name
+                )
 
         return interfaces
 
@@ -1605,9 +1607,23 @@ class UbusClient(OpenWrtClient):
         return False
 
     async def get_system_logs(self, count: int = 10) -> list[str]:
-        """Get recent system log entries via logread."""
+        """Get recent system log entries via logread or direct ubus call."""
         try:
-            # Try via execute_command (file.exec)
+            # 1. Try via direct ubus call (More robust, avoids flag detection issues)
+            try:
+                res = await self._call("log", "read", {"lines": int(count or 10)})
+                if res and isinstance(res, dict) and "log" in res:
+                    return [
+                        entry.get("msg", "").strip()
+                        for entry in res.get("log", [])
+                        if entry.get("msg")
+                    ]
+            except Exception as err:
+                _LOGGER.debug(
+                    "Direct ubus log read failed, falling back to logread: %s", err
+                )
+
+            # 2. Fallback to via execute_command (file.exec)
             cmd = await self._get_logread_command(count)
             output = await self.execute_command(cmd)
             if output:

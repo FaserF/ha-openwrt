@@ -141,12 +141,13 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
         label = ssid or iface_name
         name_label = f"{label} ({band})" if band else label
 
+        router_id = cast(str, entry.unique_id or entry.data[CONF_HOST])
         self._attr_device_info = DeviceInfo(
-            identifiers={format_ap_device_id(cast(str, entry.unique_id), iface_name)},
+            identifiers={format_ap_device_id(router_id, iface_name)},
             name=f"AP {name_label}",
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, cast(str, entry.unique_id)),
+            via_device=(DOMAIN, router_id),
         )
         self._attr_translation_placeholders = {"iface": iface_name}
 

@@ -191,7 +191,8 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        via_device = (DOMAIN, self._entry.unique_id or self._entry.data[CONF_HOST])
+        router_id = cast(str, self._entry.unique_id or self._entry.data[CONF_HOST])
+        via_device = (DOMAIN, router_id)
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if (

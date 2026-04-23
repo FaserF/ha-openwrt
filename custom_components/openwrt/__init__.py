@@ -37,7 +37,6 @@ from .api.luci_rpc import LuciRpcAuthError, LuciRpcError
 from .api.ssh import SshAuthError, SshError
 from .api.ubus import UbusAuthError, UbusError
 from .const import (
-    ATTR_MANUFACTURER,
     DATA_CLIENT,
     DATA_COORDINATOR,
     DOMAIN,
