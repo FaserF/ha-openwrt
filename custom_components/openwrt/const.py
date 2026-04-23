@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from homeassistant.const import Platform
+
 DOMAIN: Final = "openwrt"
 DOCS_URL: Final = "https://github.com/FaserF/ha-openwrt"
 
@@ -53,17 +55,17 @@ DHCP_SOFTWARE_LIST: Final = [
 
 CONF_DHCP_SOFTWARE: Final = "dhcp_software"
 
-PLATFORMS: Final = [
-    "binary_sensor",
-    "button",
-    "device_tracker",
-    "event",
-    "light",
-    "number",
-    "sensor",
-    "switch",
-    "update",
-    "image",
+PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.DEVICE_TRACKER,
+    Platform.EVENT,
+    Platform.LIGHT,
+    Platform.NUMBER,
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.UPDATE,
+    Platform.IMAGE,
 ]
 
 DATA_COORDINATOR: Final = "coordinator"

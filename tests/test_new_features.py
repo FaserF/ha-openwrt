@@ -310,15 +310,19 @@ class TestConstUpdates:
 
     def test_platforms_include_event(self) -> None:
         """Test that PLATFORMS includes event."""
+        from homeassistant.const import Platform
+
         from custom_components.openwrt.const import PLATFORMS
 
-        assert "event" in PLATFORMS
+        assert Platform.EVENT in PLATFORMS
 
     def test_platforms_include_number(self) -> None:
         """Test that PLATFORMS includes number."""
+        from homeassistant.const import Platform
+
         from custom_components.openwrt.const import PLATFORMS
 
-        assert "number" in PLATFORMS
+        assert Platform.NUMBER in PLATFORMS
 
     def test_backup_service_constant(self) -> None:
         """Test that SERVICE_BACKUP constant exists."""

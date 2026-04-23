@@ -137,10 +137,7 @@ def _async_setup_interface_binary_sensors(
     """Set up network interface binary sensors."""
     for iface in coordinator.data.network_interfaces:
         # Include physical interfaces (eth*), bridges (br-*), and WAN
-        if (
-            iface.name.startswith(("eth", "br-", "wan"))
-            or iface.name in coordinator.data.permissions.read_network
-        ):
+        if iface.name.startswith(("eth", "br-", "wan")):
             entities.append(
                 OpenWrtBinarySensorEntity(
                     coordinator,

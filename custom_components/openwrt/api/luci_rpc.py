@@ -1163,10 +1163,13 @@ class LuciRpcClient(OpenWrtClient):
 
             # Create a key for deduplication
             # Priority 1: MAC address (BSSID)
-            # Priority 2: Section ID (UCI)
-            # Priority 3: SSID + Frequency
+            # Priority 2: SSID + Radio (for merging UCI sections with physical interfaces)
+            # Priority 3: Section ID (UCI)
+            # Priority 4: SSID + Frequency
             if wifi.mac_address:
                 key = f"mac_{wifi.mac_address}"
+            elif wifi.ssid and wifi.radio:
+                key = f"ssid_radio_{wifi.ssid}_{wifi.radio}"
             elif wifi.section:
                 key = f"section_{wifi.section}"
             elif wifi.ssid and wifi.frequency:

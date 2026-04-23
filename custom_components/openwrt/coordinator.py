@@ -473,13 +473,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         ap_info: dict[str, tuple[str, str]] = {}
 
         for wifi in data.wireless_interfaces:
-            if wifi.name:
-                label = format_ap_name(wifi.ssid or wifi.name, wifi.frequency)
+            # Skip interfaces without SSID or those that are placeholders
+            if not wifi.name or not wifi.ssid:
+                continue
 
-                # Use section ID as stable identifier if available to avoid duplicates
-                stable_id = wifi.section if wifi.section else wifi.name
-                ap_info[wifi.name] = (label, stable_id)
-                self.interface_to_stable_id[wifi.name] = stable_id
+            label = format_ap_name(wifi.ssid, wifi.frequency)
+
+            # Use section ID as stable identifier if available to avoid duplicates
+            stable_id = wifi.section if wifi.section else wifi.name
+            ap_info[wifi.name] = (label, stable_id)
+            self.interface_to_stable_id[wifi.name] = stable_id
 
         # Also check connected devices for any interfaces we might have missed in status
         for device in data.connected_devices:

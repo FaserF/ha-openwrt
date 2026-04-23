@@ -1369,6 +1369,7 @@ class SshClient(OpenWrtClient):
             perms.write_devices = True
             perms.write_services = True
             perms.write_access_control = True
+            perms.write_vpn = True
         except Exception:
             pass
         return perms

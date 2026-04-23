@@ -34,6 +34,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
+from .helpers import format_ap_device_id
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -203,7 +203,10 @@ class OpenWrtQModemSensorEntity(OpenWrtSensorEntity):
             name=f"QModem ({entry.unique_id})",
             manufacturer=manufacturer,
             model=model,
-            via_device=(DOMAIN, cast(str, entry.unique_id)),
+            via_device=(
+                DOMAIN,
+                cast(str, entry.unique_id or entry.data[CONF_HOST]),
+            ),
         )
 
     @property
@@ -254,7 +257,8 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        via_device = (DOMAIN, cast(str, self._entry.unique_id))
+        router_id = cast(str, self._entry.unique_id or self._entry.data[CONF_HOST])
+        via_device = (DOMAIN, router_id)
         if self.coordinator.data:
             for device in self.coordinator.data.connected_devices:
                 if (
@@ -266,7 +270,10 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
                     via_device = (
                         DOMAIN,
                         format_ap_device_id(
-                            cast(str, self._entry.unique_id), device.interface
+                            router_id,
+                            self.coordinator.interface_to_stable_id.get(
+                                device.interface, device.interface
+                            ),
                         ),
                     )
                     break
@@ -1009,11 +1016,40 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
         """Initialize the nlbwmon sensor."""
         super().__init__(coordinator)
         self._mac = mac.upper()
+        self._entry = entry
+        self._initial_name = f"{name} Traffic"
         self._attr_unique_id = f"{entry.entry_id}_nlbwmon_{mac.replace(':', '_')}"
-        self._attr_name = f"{name} Traffic"
-        self._attr_device_info = DeviceInfo(
-            connections={("mac", mac)},
-            via_device=(DOMAIN, cast(str, entry.unique_id)),
+        self._attr_name = self._initial_name
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        router_id = cast(str, self._entry.unique_id or self._entry.data[CONF_HOST])
+        via_device = (DOMAIN, router_id)
+        if self.coordinator.data:
+            for device in self.coordinator.data.connected_devices:
+                if (
+                    device.mac
+                    and device.mac.lower() == self._mac.lower()
+                    and device.is_wireless
+                    and device.interface
+                ):
+                    via_device = (
+                        DOMAIN,
+                        format_ap_device_id(
+                            router_id,
+                            self.coordinator.interface_to_stable_id.get(
+                                device.interface, device.interface
+                            ),
+                        ),
+                    )
+                    break
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._mac.lower())},
+            connections={(dr.CONNECTION_NETWORK_MAC, self._mac.lower())},
+            name=self._initial_name,
+            via_device=via_device,
         )
 
     @property

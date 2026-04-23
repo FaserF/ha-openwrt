@@ -971,7 +971,51 @@ class UbusClient(OpenWrtClient):
                     "Failed to fetch detailed info for wifi interface %s", wifi.name
                 )
 
-        return interfaces
+        # 4. Deduplicate and clean up
+        unique_ifaces: list[WirelessInterface] = []
+        seen_keys: set[str] = set()
+
+        for wifi in interfaces:
+            # Skip interfaces that are clearly not operational or redundant placeholders
+            if not wifi.mac_address and not wifi.ssid:
+                _LOGGER.debug(
+                    "Skipping non-operational wireless interface: %s", wifi.name
+                )
+                continue
+
+            # Create a key for deduplication
+            if wifi.mac_address:
+                key = f"mac_{wifi.mac_address}"
+            elif wifi.ssid and wifi.radio:
+                key = f"ssid_radio_{wifi.ssid}_{wifi.radio}"
+            elif wifi.section:
+                key = f"section_{wifi.section}"
+            else:
+                key = f"name_{wifi.name}"
+
+            if key not in seen_keys:
+                unique_ifaces.append(wifi)
+                seen_keys.add(key)
+            else:
+                # Merge data if this one has more info
+                for existing in unique_ifaces:
+                    if (
+                        wifi.mac_address and existing.mac_address == wifi.mac_address
+                    ) or (
+                        wifi.ssid
+                        and wifi.radio
+                        and existing.ssid == wifi.ssid
+                        and existing.radio == wifi.radio
+                    ):
+                        if not existing.ssid:
+                            existing.ssid = wifi.ssid
+                        if not existing.mac_address:
+                            existing.mac_address = wifi.mac_address
+                        if wifi.clients_count > 0:
+                            existing.clients_count = wifi.clients_count
+                        break
+
+        return unique_ifaces
 
     async def get_upnp_mappings(self) -> list[UpnpMapping]:
         """Get active UPnP/NAT-PMP port mappings via ubus."""

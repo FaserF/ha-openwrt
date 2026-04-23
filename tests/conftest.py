@@ -106,6 +106,7 @@ platforms = [
     "device_tracker",
     "event",
     "number",
+    "image",
 ]
 for platform in platforms:
     module_name = f"homeassistant.components.{platform}"

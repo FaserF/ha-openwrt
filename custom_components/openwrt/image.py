@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import io
-from typing import cast
+import logging
+from typing import TYPE_CHECKING, cast
 
-import qrcode
 from homeassistant.components.image import ImageEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
@@ -15,10 +15,12 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .api.base import WifiCredentials
-from .const import DATA_COORDINATOR, DOMAIN
-from .coordinator import OpenWrtDataCoordinator
-from .helpers import format_ap_device_id, format_ap_name
+if TYPE_CHECKING:
+    from .api.base import WifiCredentials
+    from .coordinator import OpenWrtDataCoordinator
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -27,14 +29,26 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up OpenWrt image entities from a config entry."""
+    # Local imports to prevent top-level ModuleNotFoundError issues
+    from .const import DATA_COORDINATOR, DOMAIN
+
     coordinator: OpenWrtDataCoordinator = hass.data[DOMAIN][entry.entry_id][
         DATA_COORDINATOR
     ]
 
+    _LOGGER.debug("Setting up OpenWrt image platform for %s", entry.title)
+
     @callback
     def _async_add_new_entities() -> None:
         if not coordinator.data:
+            _LOGGER.debug("No data in coordinator yet for %s", entry.title)
             return
+
+        _LOGGER.debug(
+            "Checking for new Wi-Fi QR entities for %s (found %d credentials)",
+            entry.title,
+            len(coordinator.data.wifi_credentials),
+        )
 
         new_entities: list[ImageEntity] = []
         tracked_keys = {
@@ -42,10 +56,24 @@ async def async_setup_entry(
             for entity in hass.data[DOMAIN][entry.entry_id].get("image_entities", [])
         }
 
+        # Group credentials by SSID to avoid duplicates
+        # Map: (ssid, key) -> WifiCredentials
+        unique_creds: dict[tuple[str, str], WifiCredentials] = {}
         for cred in coordinator.data.wifi_credentials:
-            unique_id = f"{entry.entry_id}_wifi_qr_{cred.iface}"
+            if not cred.ssid:
+                continue
+            key = (cred.ssid, cred.key)
+            if key not in unique_creds:
+                unique_creds[key] = cred
+
+        for (ssid, _password), cred in unique_creds.items():
+            # Use SSID-based unique_id for grouping
+            unique_id = f"{entry.entry_id}_wifi_qr_{ssid.replace(' ', '_')}"
             if unique_id in tracked_keys:
                 continue
+            _LOGGER.debug(
+                "Adding new grouped Wi-Fi QR entity for %s: %s", entry.title, ssid
+            )
             new_entities.append(OpenWrtWifiQrImage(hass, coordinator, entry, cred))
 
         if new_entities:
@@ -63,7 +91,6 @@ class OpenWrtWifiQrImage(ImageEntity):
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -73,21 +100,19 @@ class OpenWrtWifiQrImage(ImageEntity):
         cred: WifiCredentials,
     ) -> None:
         """Initialize the image entity."""
+        # Local imports for helper functions
+        from .const import DOMAIN
+
         super().__init__(hass)
         self.coordinator = coordinator
         self._entry = entry
         self._iface = cred.iface
         self._ssid = cred.ssid
-        self._attr_unique_id = f"{entry.entry_id}_wifi_qr_{cred.iface}"
+        self._attr_unique_id = f"{entry.entry_id}_wifi_qr_{cred.ssid.replace(' ', '_')}"
         self._attr_name = f"Wi-Fi QR Code ({cred.ssid})"
         router_id = cast(str, entry.unique_id or entry.data[CONF_HOST])
-        stable_id = self.coordinator.interface_to_stable_id.get(cred.iface, cred.iface)
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, format_ap_device_id(router_id, stable_id))},
-            name=format_ap_name(cred.ssid),
-            manufacturer="OpenWrt",
-            model="Access Point",
-            via_device=(DOMAIN, router_id),
+            identifiers={(DOMAIN, router_id)},
         )
         self._attr_image_last_updated = dt_util.utcnow()
 
@@ -120,7 +145,9 @@ class OpenWrtWifiQrImage(ImageEntity):
             return None
 
         # Generate QR code
-        img = qrcode.make(qr_string)
+        import segno
+
+        qr = segno.make(qr_string)
         buf = io.BytesIO()
-        img.save(buf, format="PNG")
+        qr.save(buf, kind="png", border=2, scale=10)
         return buf.getvalue()
