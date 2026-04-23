@@ -21,6 +21,9 @@ REDACT_KEYS = {
     "ipv6_address",
     "host",
     "mac",
+    "public_key",
+    "endpoint",
+    "allowed_ips",
 }
 
 
@@ -121,5 +124,39 @@ async def async_get_config_entry_diagnostics(
             "simple_adblock": data.packages.simple_adblock,
             "ban_ip": data.packages.ban_ip,
         }
+        diag["wireguard_interfaces"] = [
+            {
+                "name": w.name,
+                "peers_count": len(w.peers),
+                "peers": [
+                    {
+                        "public_key": p.public_key,
+                        "endpoint": p.endpoint,
+                        "latest_handshake": p.latest_handshake,
+                    }
+                    for p in w.peers
+                ],
+            }
+            for w in data.wireguard_interfaces
+        ]
+        diag["upnp_mappings"] = [
+            {
+                "protocol": m.protocol,
+                "external_port": m.external_port,
+                "internal_ip": m.internal_ip,
+                "internal_port": m.internal_port,
+                "description": m.description,
+            }
+            for m in data.upnp_mappings
+        ]
+        diag["top_processes"] = [
+            {
+                "pid": p.pid,
+                "user": p.user,
+                "cpu": p.cpu_usage,
+                "command": p.command,
+            }
+            for p in data.system_resources.top_processes[:5]
+        ]
 
     return diag

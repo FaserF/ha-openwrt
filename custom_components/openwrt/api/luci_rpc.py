@@ -29,18 +29,20 @@ from .base import (
     FirewallRedirect,
     FirewallRule,
     LldpNeighbor,
+    MwanStatus,
     NetworkInterface,
+    NlbwmonTraffic,
     OpenWrtClient,
     OpenWrtPackages,
     OpenWrtPermissions,
-    ProcessInfo,
     SimpleAdBlockStatus,
     SqmStatus,
     SystemResources,
     UpnpMapping,
-    WirelessInterface,
+    WifiCredentials,
     WireGuardInterface,
     WireGuardPeer,
+    WirelessInterface,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -597,6 +599,14 @@ class LuciRpcClient(OpenWrtClient):
                     packages.mwan3 = True
                 if "luci" in objects or "luci-rpc" in objects:
                     packages.luci_mod_rpc = True
+                if "upnp" in objects:
+                    packages.miniupnpd = True
+                if "nlbwmon" in objects:
+                    packages.nlbwmon = True
+                if "pbr" in objects:
+                    packages.pbr = True
+                if "led" in objects:
+                    packages.rpcd_mod_led = True
             except Exception:
                 pass
 
@@ -610,7 +620,14 @@ class LuciRpcClient(OpenWrtClient):
                 "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
                 "/etc/init.d/adblock "
                 "/etc/init.d/simple-adblock "
-                "/etc/init.d/ban-ip; do "
+                "/etc/init.d/ban-ip "
+                "/etc/init.d/ban-ip "
+                "/etc/init.d/miniupnpd "
+                "/etc/init.d/nlbwmon "
+                "/etc/init.d/pbr "
+                "/etc/init.d/adguardhome "
+                "/etc/init.d/unbound "
+                "/usr/lib/rpcd/led.so; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._rpc_call("sys", "exec", [cmd])
@@ -636,6 +653,13 @@ class LuciRpcClient(OpenWrtClient):
                 packages.adblock = detect_status(10)
                 packages.simple_adblock = detect_status(11)
                 packages.ban_ip = detect_status(12)
+                packages.rpcd_mod_led = detect_status(18)
+
+                packages.miniupnpd = detect_status(13)
+                packages.nlbwmon = detect_status(14)
+                packages.pbr = detect_status(15)
+                packages.adguardhome = detect_status(16)
+                packages.unbound = detect_status(17)
 
             # Step 3: Check UCI configs for remaining packages (very robust fallback)
             if packages.sqm_scripts is not True:
@@ -832,15 +856,15 @@ class LuciRpcClient(OpenWrtClient):
                     freq = data["cpu"].get("frequency")
                     if isinstance(freq, (int, float)):
                         resources.cpu_frequency = freq / 1000000.0 if freq > 10000 else float(freq)
-                
+
                 thermal = data.get("thermal", {})
                 if thermal and isinstance(thermal, dict):
                     for zone, temp in thermal.items():
                         if isinstance(temp, (int, float)):
-                            val = temp / 1000.0 if temp > 1000 else float(temp)
-                            resources.temperatures[zone] = val
+                            temp_val = temp / 1000.0 if temp > 1000 else float(temp)
+                            resources.temperatures[zone] = temp_val
                             if resources.temperature is None or zone == "zone0":
-                                resources.temperature = val
+                                resources.temperature = temp_val
 
                 # Disk info
                 if "disk" in data:
@@ -1059,11 +1083,11 @@ class LuciRpcClient(OpenWrtClient):
             stdout = await self.execute_command("ubus call upnp get_mappings 2>/dev/null")
             if not stdout or not stdout.strip().startswith("{"):
                 return mappings
-                
+
             res = json.loads(stdout)
             if "mappings" not in res:
                 return mappings
-                
+
             for m in res["mappings"]:
                 mappings.append(UpnpMapping(
                     protocol=m.get("protocol", "TCP").upper(),
@@ -1075,25 +1099,25 @@ class LuciRpcClient(OpenWrtClient):
                 ))
         except Exception as err:
             _LOGGER.debug("Failed to fetch UPnP mappings via LuCI RPC: %s", err)
-            
+
         return mappings
 
     async def get_wireguard_interfaces(self) -> list[WireGuardInterface]:
         """Get WireGuard VPN interface and peer information via LuCI RPC."""
-        from .base import WireGuardInterface, WireGuardPeer
+        from .base import WireGuardInterface
         interfaces: list[WireGuardInterface] = []
         try:
             # 1. Discover WG interfaces via ubus call
             status_str = await self.execute_command("ubus call network.interface dump 2>/dev/null")
             if not status_str or not status_str.strip().startswith("{"):
                 return interfaces
-                
+
             status = json.loads(status_str)
             wg_ifaces = []
             for iface_data in status.get("interface", []):
                 if iface_data.get("proto") == "wireguard":
                     wg_ifaces.append(iface_data.get("interface"))
-            
+
             if not wg_ifaces:
                 return interfaces
 
@@ -1132,7 +1156,7 @@ class LuciRpcClient(OpenWrtClient):
                         iface_map[ifname].peers.append(peer)
         except Exception as err:
             _LOGGER.debug("Failed to fetch WireGuard interfaces via LuCI RPC: %s", err)
-            
+
         return interfaces
 
     async def get_network_interfaces(self) -> list[NetworkInterface]:
@@ -2198,3 +2222,137 @@ class LuciRpcClient(OpenWrtClient):
             pass
 
         return results
+
+    async def get_nlbwmon_data(self) -> dict[str, NlbwmonTraffic]:
+        """Get bandwidth usage per MAC from nlbwmon via LuCI RPC."""
+        # Try ubus first if available
+        try:
+            result = await self._rpc_call("ubus", "call", ["nlbwmon", "get_data", {"group_by": "mac"}])
+            if result and "data" in result:
+                traffic = {}
+                for mac, data in result["data"].items():
+                    mac_upper = mac.upper()
+                    traffic[mac_upper] = NlbwmonTraffic(
+                        mac=mac_upper,
+                        rx_bytes=data.get("rx", 0),
+                        tx_bytes=data.get("tx", 0),
+                        rx_packets=data.get("rx_packets", 0),
+                        tx_packets=data.get("tx_packets", 0),
+                    )
+                return traffic
+        except Exception:
+            pass
+
+        # Fallback to sys.exec
+        try:
+            out = await self._rpc_call("sys", "exec", ["nlbw -c json -g mac"])
+            if out:
+                import json
+                result = json.loads(out)
+                if result and "data" in result:
+                    traffic = {}
+                    for entry in result["data"]:
+                        mac = entry.get("mac", "").upper()
+                        if not mac:
+                            continue
+                        traffic[mac] = NlbwmonTraffic(
+                            mac=mac,
+                            rx_bytes=entry.get("rx", 0),
+                            tx_bytes=entry.get("tx", 0),
+                            rx_packets=entry.get("rx_packets", 0),
+                            tx_packets=entry.get("tx_packets", 0),
+                        )
+                    return traffic
+        except Exception as err:
+            _LOGGER.debug("Failed to get nlbwmon data via LuCI RPC: %s", err)
+        return {}
+
+    async def get_wifi_credentials(self) -> list[WifiCredentials]:
+        """Get wifi credentials via LuCI RPC."""
+        try:
+            # We use uci.get_all(["wireless"]) for LuCI RPC
+            data = await self._rpc_call("uci", "get_all", ["wireless"])
+            if not isinstance(data, dict):
+                return []
+
+            creds = []
+            for name, val in data.items():
+                if (
+                    isinstance(val, dict)
+                    and val.get(".type") == "wifi-iface"
+                    and val.get("mode") == "ap"
+                ):
+                    creds.append(
+                        WifiCredentials(
+                            iface=name,
+                            ssid=val.get("ssid", ""),
+                            encryption=val.get("encryption", "none"),
+                            key=val.get("key", ""),
+                            hidden=bool(int(val.get("hidden", 0))),
+                        )
+                    )
+            return creds
+        except Exception as err:
+            _LOGGER.debug("Failed to get wifi credentials via luci_rpc: %s", err)
+            return []
+
+    async def get_mwan_status(self) -> list[MwanStatus]:
+        """Get multi-wan status via LuCI RPC."""
+        try:
+            # Try ubus first
+            stdout = await self.execute_command("ubus call mwan3 status 2>/dev/null")
+            if stdout and stdout.startswith("{"):
+                result = json.loads(stdout)
+                status_list = []
+                for name, data in result.get("interfaces", {}).items():
+                    status_list.append(
+                        MwanStatus(
+                            interface_name=name,
+                            status=data.get("status", "unknown"),
+                            online_ratio=float(data.get("online_ratio", 0.0)),
+                            uptime=int(data.get("uptime", 0)),
+                            enabled=bool(data.get("enabled", False)),
+                            latency=data.get("latency"),
+                            packet_loss=data.get("packet_loss"),
+                        )
+                    )
+                return status_list
+            return []
+        except Exception as err:
+            _LOGGER.debug("Failed to get mwan3 status via luci_rpc: %s", err)
+            return []
+
+    async def trigger_wps_push(self, interface: str) -> bool:
+        """Trigger WPS push button via LuCI RPC."""
+        try:
+            # We use execute_command abstraction to call ubus
+            await self.execute_command(f"ubus call hostapd.{interface} wps_push")
+            return True
+        except Exception as err:
+            _LOGGER.debug(
+                "Failed to trigger WPS push via luci_rpc for %s: %s", interface, err
+            )
+            return False
+
+    async def set_led(self, name: str, enabled: bool) -> bool:
+        """Enable or disable an LED via LuCI RPC."""
+        try:
+            val = 255 if enabled else 0
+            await self.execute_command(
+                f"echo {val} > /sys/class/leds/{name}/brightness"
+            )
+            return True
+        except Exception as err:
+            _LOGGER.debug("Failed to set LED %s via luci_rpc: %s", name, err)
+            return False
+
+
+    async def is_reboot_required(self) -> bool:
+        """Check if reboot is required via LuCI RPC."""
+        try:
+            output = await self.execute_command(
+                "[ -f /tmp/.reboot-needed ] || [ -f /var/run/reboot-required ] && echo 1"
+            )
+            return output.strip() == "1"
+        except Exception:
+            return False

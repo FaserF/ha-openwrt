@@ -64,6 +64,12 @@ async def async_setup_entry(
         if perms.write_sqm and pkgs.sqm_scripts is not False:
             _add_sqm_switches(coordinator, entry, client, entities)
 
+        if perms.write_vpn:
+            _add_vpn_switches(coordinator, entry, client, entities)
+
+        if perms.write_led:
+            _add_led_switches(coordinator, entry, client, entities)
+
         _add_package_switches(coordinator, entry, client, entities, pkgs)
 
     async_add_entities(entities)
@@ -103,6 +109,92 @@ async def async_setup_entry(
     hass.add_job(_async_cleanup_entities)
 
 
+def _add_vpn_switches(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    entities: list[SwitchEntity],
+) -> None:
+    """Add VPN related switches."""
+    if not coordinator.data:
+        return
+
+    for vpn in coordinator.data.wireguard_interfaces:
+        entities.append(OpenWrtWireGuardSwitch(coordinator, entry, client, vpn.name))
+
+
+def _add_led_switches(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    entities: list[SwitchEntity],
+) -> None:
+    """Add LED switches."""
+    if not coordinator.data:
+        return
+
+    for led in coordinator.data.leds:
+        entities.append(OpenWrtLedSwitch(coordinator, entry, client, led.name))
+
+
+class OpenWrtWireGuardSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+    """Switch to enable/disable a WireGuard interface."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:vpn"
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        client: OpenWrtClient,
+        iface_name: str,
+    ) -> None:
+        """Initialize the WireGuard switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._iface_name = iface_name
+        self._attr_unique_id = f"{entry.entry_id}_wg_switch_{iface_name}"
+        self._attr_name = f"WireGuard: {iface_name}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return WireGuard interface status."""
+        if not self.coordinator.data:
+            return None
+        for wg in self.coordinator.data.wireguard_interfaces:
+            if wg.name == self._iface_name:
+                return wg.enabled
+        return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable the WireGuard interface."""
+        try:
+            # We use ifup to bring up the interface
+            await self._client.execute_command(f"ifup {self._iface_name}")
+        except Exception as err:
+            msg = f"Failed to enable WireGuard interface {self._iface_name}: {err}"
+            raise HomeAssistantError(msg) from err
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable the WireGuard interface."""
+        try:
+            # We use ifdown to bring down the interface
+            await self._client.execute_command(f"ifdown {self._iface_name}")
+        except Exception as err:
+            msg = f"Failed to disable WireGuard interface {self._iface_name}: {err}"
+            raise HomeAssistantError(msg) from err
+        await self.coordinator.async_request_refresh()
+
+
+
 def _add_wireless_switches(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
@@ -125,6 +217,18 @@ def _add_wireless_switches(
             )
 
 
+SERVICE_ICONS = {
+    "pbr": "mdi:router-network",
+    "adguardhome": "mdi:shield-check",
+    "unbound": "mdi:dns",
+    "stubby": "mdi:dns-lock",
+    "sqm": "mdi:speedometer",
+    "wireguard": "mdi:vpn",
+    "openvpn": "mdi:vpn",
+    "miniupnpd": "mdi:folder-network",
+}
+
+
 def _add_service_switches(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
@@ -134,8 +238,9 @@ def _add_service_switches(
     """Add switches for system services."""
     for service in coordinator.data.services:
         if service.name:
+            icon = SERVICE_ICONS.get(service.name)
             entities.append(
-                OpenWrtServiceSwitch(coordinator, entry, client, service.name)
+                OpenWrtServiceSwitch(coordinator, entry, client, service.name, icon=icon)
             )
 
 
@@ -547,13 +652,17 @@ class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         entry: ConfigEntry,
         client: OpenWrtClient,
         service_name: str,
+        name: str | None = None,
+        icon: str | None = None,
     ) -> None:
         """Initialize the service switch."""
         super().__init__(coordinator)
         self._client = client
         self._service_name = service_name
         self._attr_unique_id = f"{entry.entry_id}_service_{service_name}"
-        self._attr_name = service_name
+        self._attr_name = name or service_name
+        if icon:
+            self._attr_icon = icon
         self._attr_translation_key = "service_toggle"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
@@ -889,3 +998,55 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
             msg = f"Failed to disable SQM: {err}"
             raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
+
+class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+    """Switch to enable/disable an LED."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:led-on"
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        client: OpenWrtClient,
+        name: str,
+    ) -> None:
+        """Initialize the switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._name = name
+        self._attr_name = f"LED {name.replace('_', ' ').replace('-', ' ').title()}"
+        self._attr_unique_id = f"{entry.entry_id}_led_{name}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, cast(str, entry.unique_id or entry.data[CONF_HOST]))},
+        )
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if LED is on."""
+        if not self.coordinator.data:
+            return False
+        for led in self.coordinator.data.leds:
+            if led.name == self._name:
+                return led.active
+        return False
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the LED on."""
+        try:
+            await self._client.set_led(self._name, True)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to turn on LED {self._name}: {err}") from err
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the LED off."""
+        try:
+            await self._client.set_led(self._name, False)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to turn off LED {self._name}: {err}") from err

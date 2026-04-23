@@ -163,6 +163,18 @@ class MockClient(OpenWrtClient):
     async def perform_diagnostics(self) -> list:
         return []
 
+    async def get_nlbwmon_data(self) -> dict[str, Any]:
+        return {}
+
+    async def get_upnp_mappings(self) -> list[Any]:
+        return []
+
+    async def get_wifi_credentials(self) -> list[Any]:
+        return []
+
+    async def get_wireguard_interfaces(self) -> list[Any]:
+        return []
+
 
 @pytest.mark.asyncio
 async def test_get_all_data_populates_mac_address() -> None:

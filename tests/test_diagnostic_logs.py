@@ -19,9 +19,9 @@ async def test_ubus_get_system_logs():
     # 1. Test direct ubus call success
     with patch.object(client, "_call", new_callable=AsyncMock) as mock_call:
         mock_call.return_value = {"log": [{"msg": "line 1"}, {"msg": "line 2"}]}
-        
+
         logs = await client.get_system_logs(count=10)
-        
+
         assert len(logs) == 2
         assert logs[0] == "line 1"
         mock_call.assert_called_with("log", "read", {"lines": 10})
@@ -29,15 +29,15 @@ async def test_ubus_get_system_logs():
     # 2. Test fallback to logread
     with patch.object(client, "_call", new_callable=AsyncMock) as mock_call, \
          patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec:
-        
+
         mock_call.return_value = None  # Ubus fails
         mock_exec.return_value = "Usage: logread [-n count]" # Help for detection
-        
+
         # Second call to execute_command will be the actual logread
         mock_exec.side_effect = ["Usage: logread [-n count]", "fallback line 1\nfallback line 2"]
-        
+
         logs = await client.get_system_logs(count=10)
-        
+
         assert len(logs) == 2
         assert logs[0] == "fallback line 1"
         mock_exec.assert_any_call("/sbin/logread -n 10")

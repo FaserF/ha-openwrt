@@ -1,8 +1,11 @@
 """Test the OpenWrt UPnP API."""
 
 from unittest.mock import AsyncMock, patch
+
 import pytest
+
 from custom_components.openwrt.api.ubus import UbusClient
+
 
 @pytest.fixture
 def ubus_client() -> UbusClient:
@@ -13,7 +16,7 @@ def ubus_client() -> UbusClient:
 async def test_ubus_get_upnp_mappings(ubus_client: UbusClient):
     """Test fetching UPnP mappings via Ubus."""
     with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
-        
+
         # 1. Mock upnp get_mappings
         mock_call.return_value = {
             "mappings": [
@@ -27,9 +30,9 @@ async def test_ubus_get_upnp_mappings(ubus_client: UbusClient):
                 }
             ]
         }
-        
+
         mappings = await ubus_client.get_upnp_mappings()
-        
+
         assert len(mappings) == 1
         m1 = mappings[0]
         assert m1.protocol == "TCP"

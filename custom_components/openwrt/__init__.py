@@ -43,6 +43,7 @@ from .const import (
     PLATFORMS,
     SERVICE_BACKUP,
     SERVICE_EXEC,
+    SERVICE_GENERATE_REPORT,
     SERVICE_INIT,
     SERVICE_REBOOT,
     SERVICE_UCI_GET,
@@ -370,6 +371,52 @@ def _register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_BACKUP,
         _handle_backup,
+        schema=vol.Schema(
+            {
+                vol.Required("entry_id"): cv.string,
+            },
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    async def _handle_generate_report(call: ServiceCall) -> ServiceResponse:
+        """Handle generate system report service call."""
+        entry_id = call.data["entry_id"]
+        if entry_id not in hass.data[DOMAIN]:
+            msg = f"Config entry {entry_id} not found"
+            raise vol.Invalid(msg)
+
+        coordinator: OpenWrtDataCoordinator = hass.data[DOMAIN][entry_id][
+            DATA_COORDINATOR
+        ]
+        data = coordinator.data
+        if not data:
+            return {"report": "No data available"}
+
+        report = f"# OpenWrt System Report - {data.device_info.hostname}\n\n"
+        report += f"**Model:** {data.device_info.model}\n"
+        report += f"**Firmware:** {data.device_info.firmware_version}\n"
+        report += f"**Uptime:** {data.device_info.uptime}\n\n"
+
+        report += "## System Resources\n"
+        report += f"- CPU Load: {data.system_resources.load_1min}, {data.system_resources.load_5min}, {data.system_resources.load_15min}\n"
+        report += f"- Memory: {data.system_resources.memory_used} / {data.system_resources.memory_total} MB\n\n"
+
+        report += "## Top Processes\n"
+        for p in data.system_resources.top_processes[:10]:
+            report += f"- PID {p.pid}: {p.command} ({p.cpu_usage}% CPU, {p.user})\n"
+
+        report += "\n## Recent Logs\n"
+        report += "`\n"
+        report += "\n".join(data.system_logs[-20:])
+        report += "\n`\n"
+
+        return {"report": report}
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GENERATE_REPORT,
+        _handle_generate_report,
         schema=vol.Schema(
             {
                 vol.Required("entry_id"): cv.string,

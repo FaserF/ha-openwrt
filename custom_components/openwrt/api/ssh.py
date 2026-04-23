@@ -26,7 +26,9 @@ from .base import (
     FirewallRedirect,
     FirewallRule,
     LldpNeighbor,
+    MwanStatus,
     NetworkInterface,
+    NlbwmonTraffic,
     OpenWrtClient,
     OpenWrtPackages,
     OpenWrtPermissions,
@@ -36,9 +38,11 @@ from .base import (
     SqmStatus,
     SystemResources,
     UpnpMapping,
-    WirelessInterface,
+    UsbDevice,
+    WifiCredentials,
     WireGuardInterface,
     WireGuardPeer,
+    WirelessInterface,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -246,7 +250,7 @@ class SshClient(OpenWrtClient):
         def _connect() -> None:
             import io
 
-            import paramiko  # type: ignore[import-untyped]
+            import paramiko  # type: ignore
 
             client = paramiko.SSHClient()
             client.load_system_host_keys()
@@ -459,11 +463,11 @@ class SshClient(OpenWrtClient):
                         resources.memory_cached = val
                     elif key == "MemAvailable":
                         resources.memory_available = val
-            
+
             # Calculate available if not present
             if resources.memory_available == 0:
                 resources.memory_available = resources.memory_free + resources.memory_buffered + resources.memory_cached
-            
+
             if resources.memory_total > 0:
                 resources.memory_available_percent = round(
                     (resources.memory_available / resources.memory_total) * 100.0, 1
@@ -689,11 +693,11 @@ class SshClient(OpenWrtClient):
             stdout = await self._exec("ubus call upnp get_mappings 2>/dev/null")
             if not stdout or not stdout.strip().startswith("{"):
                 return mappings
-                
+
             res = json.loads(stdout)
             if "mappings" not in res:
                 return mappings
-                
+
             for m in res["mappings"]:
                 mappings.append(UpnpMapping(
                     protocol=m.get("protocol", "TCP").upper(),
@@ -705,7 +709,7 @@ class SshClient(OpenWrtClient):
                 ))
         except Exception as err:
             _LOGGER.debug("Failed to fetch UPnP mappings via SSH: %s", err)
-            
+
         return mappings
 
     async def get_wireguard_interfaces(self) -> list[WireGuardInterface]:
@@ -716,13 +720,13 @@ class SshClient(OpenWrtClient):
             status_str = await self._exec("ubus call network.interface dump 2>/dev/null")
             if not status_str or not status_str.strip().startswith("{"):
                 return interfaces
-                
+
             status = json.loads(status_str)
             wg_ifaces = []
             for iface_data in status.get("interface", []):
                 if iface_data.get("proto") == "wireguard":
                     wg_ifaces.append(iface_data.get("interface"))
-            
+
             if not wg_ifaces:
                 return interfaces
 
@@ -761,7 +765,7 @@ class SshClient(OpenWrtClient):
                         iface_map[ifname].peers.append(peer)
         except Exception as err:
             _LOGGER.debug("Failed to fetch WireGuard interfaces via SSH: %s", err)
-            
+
         return interfaces
 
     async def get_network_interfaces(self) -> list[NetworkInterface]:
@@ -874,7 +878,7 @@ class SshClient(OpenWrtClient):
                                 resources.temperature = val
                     except Exception:
                         continue
-            
+
             # Fallback for hwmon
             if not resources.temperatures:
                 hwmon_temp = await self._exec("cat /sys/class/hwmon/hwmon0/temp1_input 2>/dev/null")
@@ -893,12 +897,13 @@ class SshClient(OpenWrtClient):
             if stdout:
                 self._parse_lsusb_output(resources, stdout)
                 return
-            
+
             # Simple lsusb fallback
             stdout = await self._exec("lsusb 2>/dev/null")
             if stdout:
                 for line in stdout.splitlines():
-                    if not line.strip(): continue
+                    if not line.strip():
+                        continue
                     parts = line.split(None, 6)
                     if len(parts) >= 6:
                         resources.usb_devices.append(UsbDevice(
@@ -947,14 +952,13 @@ class SshClient(OpenWrtClient):
 
     def _parse_top_output_ssh(self, resources: SystemResources, stdout: str) -> None:
         """Parse busybox top output from SSH."""
-        from .base import ProcessInfo
         lines = stdout.splitlines()
         header_idx = -1
         for i, line in enumerate(lines):
             if "PID" in line and "COMMAND" in line:
                 header_idx = i
                 break
-        
+
         if header_idx == -1 or header_idx + 1 >= len(lines):
             return
 
@@ -972,7 +976,7 @@ class SshClient(OpenWrtClient):
             parts = line.split()
             if len(parts) <= max(pid_idx, user_idx, vsz_idx, cpu_idx, cmd_idx):
                 continue
-                
+
             try:
                 resources.top_processes.append(ProcessInfo(
                     pid=int(parts[pid_idx]),
@@ -983,7 +987,7 @@ class SshClient(OpenWrtClient):
                 ))
             except (ValueError, IndexError):
                 continue
-            
+
             if len(resources.top_processes) >= 10:
                 break
 
@@ -1051,7 +1055,7 @@ class SshClient(OpenWrtClient):
                         mac = client.get("mac", "").lower()
                         if not mac:
                             continue
-                        
+
                         dev = devices.setdefault(
                             mac, ConnectedDevice(mac=mac, connected=True)
                         )
@@ -1059,7 +1063,7 @@ class SshClient(OpenWrtClient):
                         dev.is_wireless = True
                         dev.interface = iface_name
                         dev.signal = client.get("signal", 0)
-                        
+
                         # Set connection type based on interface frequency/name
                         if "5g" in iface_name.lower() or (wifi_iface.frequency and "5" in wifi_iface.frequency):
                             dev.connection_type = "5GHz"
@@ -1229,10 +1233,11 @@ class SshClient(OpenWrtClient):
 
         return leds
 
-    async def set_led(self, name: str, brightness: int) -> bool:
-        """Set LED brightness via SSH."""
+    async def set_led(self, name: str, enabled: bool) -> bool:
+        """Set LED via SSH."""
         try:
-            await self._exec(f"echo {brightness} > /sys/class/leds/{name}/brightness")
+            val = 255 if enabled else 0
+            await self._exec(f"echo {val} > /sys/class/leds/{name}/brightness")
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set LED %s: %s", name, err)
@@ -1301,7 +1306,7 @@ class SshClient(OpenWrtClient):
             "/usr/share/luci/menu.d/luci-mod-rpc.json "
             "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
             "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
-            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip; do "
+            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so; do "
             "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._exec(cmd)
@@ -1321,6 +1326,12 @@ class SshClient(OpenWrtClient):
         packages.adblock = detect(10)
         packages.simple_adblock = detect(11)
         packages.ban_ip = detect(12)
+        packages.miniupnpd = detect(13)
+        packages.nlbwmon = detect(14)
+        packages.pbr = detect(15)
+        packages.adguardhome = detect(16)
+        packages.unbound = detect(17)
+        packages.rpcd_mod_led = detect(18)
 
     async def _check_packages_from_opkg(self, packages: OpenWrtPackages) -> None:
         """Identify packages by checking the full installed package list."""
@@ -1340,6 +1351,7 @@ class SshClient(OpenWrtClient):
             "adblock": "adblock",
             "simple_adblock": "simple-adblock",
             "ban_ip": "ban-ip",
+            "rpcd_mod_led": "rpcd-mod-led",
         }
         for attr, pkg_name in mapping.items():
             if getattr(packages, attr) is not True:
@@ -1628,34 +1640,36 @@ class SshClient(OpenWrtClient):
                 data = json.loads(stdout)
                 for lease_data in data.get("device", {}).values():
                     lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
-                    for l in lease_list:
-                        if not isinstance(l, dict): continue
+                    for lease in lease_list:
+                        if not isinstance(lease, dict):
+                            continue
                         leases.append(
                             DhcpLease(
-                                hostname=l.get("hostname", ""),
-                                mac=l.get("mac", "").lower(),
-                                ip=l.get("ipaddr", ""),
-                                expires=l.get("expires", 0),
+                                hostname=lease.get("hostname", ""),
+                                mac=lease.get("mac", "").lower(),
+                                ip=lease.get("ipaddr", ""),
+                                expires=lease.get("expires", 0),
                                 type="v4",
                             ),
                         )
-            
+
             # IPv6
             stdout_v6 = await self._exec("ubus call dhcp ipv6leases 2>/dev/null")
             if stdout_v6 and stdout_v6.strip().startswith("{"):
                 data_v6 = json.loads(stdout_v6)
                 for lease_data in data_v6.get("device", {}).values():
                     lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
-                    for l in lease_list:
-                        if not isinstance(l, dict): continue
+                    for lease in lease_list:
+                        if not isinstance(lease, dict):
+                            continue
                         leases.append(
                             DhcpLease(
-                                hostname=l.get("hostname", ""),
-                                mac=l.get("mac", "").lower(),
-                                ip=l.get("ipaddr", ""),
-                                expires=l.get("expires", 0),
+                                hostname=lease.get("hostname", ""),
+                                mac=lease.get("mac", "").lower(),
+                                ip=lease.get("ipaddr", ""),
+                                expires=lease.get("expires", 0),
                                 type="v6",
-                                duid=l.get("duid", ""),
+                                duid=lease.get("duid", ""),
                             ),
                         )
 
@@ -2092,3 +2106,148 @@ class SshClient(OpenWrtClient):
             neighbor_description=neigh.get("description", ""),
             neighbor_system_name=neigh.get("sysname", ""),
         )
+
+    async def get_nlbwmon_data(self) -> dict[str, NlbwmonTraffic]:
+        """Get bandwidth usage per MAC from nlbwmon via SSH."""
+        try:
+            out = await self._exec("nlbw -c json -g mac")
+            if not out:
+                return {}
+
+            import json
+            result = json.loads(out)
+            if not result or "data" not in result:
+                return {}
+
+            traffic = {}
+            for entry in result["data"]:
+                mac = entry.get("mac", "").upper()
+                if not mac:
+                    continue
+                traffic[mac] = NlbwmonTraffic(
+                    mac=mac,
+                    rx_bytes=entry.get("rx", 0),
+                    tx_bytes=entry.get("tx", 0),
+                    rx_packets=entry.get("rx_packets", 0),
+                    tx_packets=entry.get("tx_packets", 0),
+                )
+            return traffic
+        except Exception as err:
+            _LOGGER.debug("Failed to get nlbwmon data via SSH: %s", err)
+            return {}
+
+    async def get_wifi_credentials(self) -> list[WifiCredentials]:
+        """Get wifi credentials via SSH."""
+        try:
+            # Try ubus first
+            stdout = await self._exec("ubus call uci get '{\"config\":\"wireless\"}' 2>/dev/null")
+            if stdout and stdout.startswith("{"):
+                data = json.loads(stdout)
+                creds = []
+                for name, val in data.get("values", {}).items():
+                    if val.get(".type") == "wifi-iface" and val.get("mode") == "ap":
+                        creds.append(WifiCredentials(
+                            iface=name,
+                            ssid=val.get("ssid", ""),
+                            encryption=val.get("encryption", "none"),
+                            key=val.get("key", ""),
+                            hidden=bool(int(val.get("hidden", 0))),
+                        ))
+                return creds
+
+            # Fallback to uci export
+            stdout = await self._exec("uci export wireless 2>/dev/null")
+            if not stdout:
+                return []
+
+            creds = []
+            current_iface = None
+            ssid = None
+            key = None
+            enc = None
+            hidden = False
+
+            for line in stdout.splitlines():
+                line = line.strip()
+                if line.startswith("config wifi-iface"):
+                    if ssid:
+                        creds.append(WifiCredentials(iface=current_iface or "", ssid=ssid, encryption=enc or "none", key=key or "", hidden=hidden))
+                    parts = line.split()
+                    current_iface = parts[-1].strip("'") if len(parts) > 2 else "unknown"
+                    ssid = None
+                    key = None
+                    enc = None
+                    hidden = False
+                elif line.startswith("option ssid"):
+                    parts = line.split("'")
+                    if len(parts) > 1:
+                        ssid = parts[1]
+                elif line.startswith("option key"):
+                    parts = line.split("'")
+                    if len(parts) > 1:
+                        key = parts[1]
+                elif line.startswith("option encryption"):
+                    parts = line.split("'")
+                    if len(parts) > 1:
+                        enc = parts[1]
+                elif line.startswith("option hidden"):
+                    parts = line.split("'")
+                    if len(parts) > 1:
+                        hidden = parts[1] == "1"
+
+            if ssid:
+                creds.append(WifiCredentials(iface=current_iface or "", ssid=ssid, encryption=enc or "none", key=key or "", hidden=hidden))
+
+            return creds
+        except Exception as err:
+            _LOGGER.debug("Failed to get wifi credentials via ssh: %s", err)
+            return []
+
+    async def get_mwan_status(self) -> list[MwanStatus]:
+        """Get multi-wan status via SSH."""
+        try:
+            stdout = await self._exec("ubus call mwan3 status 2>/dev/null")
+            if not stdout or not stdout.startswith("{"):
+                return []
+
+            result = json.loads(stdout)
+            status_list = []
+            for name, data in result.get("interfaces", {}).items():
+                status_list.append(
+                    MwanStatus(
+                        interface_name=name,
+                        status=data.get("status", "unknown"),
+                        online_ratio=float(data.get("online_ratio", 0.0)),
+                        uptime=int(data.get("uptime", 0)),
+                        enabled=bool(data.get("enabled", False)),
+                        latency=data.get("latency"),
+                        packet_loss=data.get("packet_loss"),
+                    )
+                )
+            return status_list
+        except Exception as err:
+            _LOGGER.debug("Failed to get mwan3 status via ssh: %s", err)
+            return []
+
+    async def trigger_wps_push(self, interface: str) -> bool:
+        """Trigger WPS push button via SSH."""
+        try:
+            # hostapd_cli -i wlan0 wps_push
+            await self.execute_command(f"hostapd_cli -i {interface} wps_push")
+            return True
+        except Exception as err:
+            _LOGGER.debug(
+                "Failed to trigger WPS push via ssh for %s: %s", interface, err
+            )
+            return False
+
+
+    async def is_reboot_required(self) -> bool:
+        """Check if reboot is required via SSH."""
+        try:
+            output = await self.execute_command(
+                "[ -f /tmp/.reboot-needed ] || [ -f /var/run/reboot-required ] && echo 1"
+            )
+            return output.strip() == "1"
+        except Exception:
+            return False

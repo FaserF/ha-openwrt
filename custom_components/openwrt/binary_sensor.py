@@ -39,6 +39,13 @@ BINARY_SENSORS: tuple[OpenWrtBinarySensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         is_on_fn=lambda data: True,  # If we get data, device is connected
     ),
+    OpenWrtBinarySensorDescription(
+        key="reboot_required",
+        name="Reboot Required",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=lambda data: data.reboot_required,
+    ),
 )
 
 
@@ -69,6 +76,26 @@ async def async_setup_entry(
 
         if perms.read_vpn:
             _async_setup_vpn_binary_sensors(coordinator, entry, entities, pkgs)
+            _async_setup_wireguard_peer_binary_sensors(coordinator, entry, entities)
+
+        if perms.read_wireless:
+            entities.append(
+                OpenWrtBinarySensorEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtBinarySensorDescription(
+                        key="wps_active",
+                        name="WPS Session Active",
+                        icon="mdi:wifi-sync",
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        entity_registry_enabled_default=False,
+                        is_on_fn=lambda data: data.wps_status.enabled,
+                    ),
+                )
+            )
+
+        if perms.read_services:
+            _async_setup_service_binary_sensors(coordinator, entry, entities)
 
     async_add_entities(entities)
 
@@ -164,6 +191,41 @@ def _async_setup_vpn_binary_sensors(
         )
 
 
+def _async_setup_wireguard_peer_binary_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    entities: list[OpenWrtBinarySensorEntity],
+) -> None:
+    """Set up WireGuard peer binary sensors."""
+    if not coordinator.data:
+        return
+
+    import time
+
+    for wg in coordinator.data.wireguard_interfaces:
+        for peer in wg.peers:
+            entities.append(
+                OpenWrtBinarySensorEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtBinarySensorDescription(
+                        key=f"wireguard_{wg.name}_peer_{peer.public_key[:8]}_active",
+                        name=f"WireGuard {wg.name} Peer {peer.public_key[:8]} Active",
+                        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        entity_registry_enabled_default=False,
+                        is_on_fn=lambda data, i=wg.name, p=peer.public_key: any(
+                            (time.time() - peer_data.latest_handshake < 180)
+                            for w in data.wireguard_interfaces
+                            if w.name == i
+                            for peer_data in w.peers
+                            if peer_data.public_key == p and peer_data.latest_handshake > 0
+                        ),
+                    ),
+                )
+            )
+
+
 class OpenWrtBinarySensorEntity(
     CoordinatorEntity[OpenWrtDataCoordinator],
     BinarySensorEntity,
@@ -202,3 +264,33 @@ class OpenWrtBinarySensorEntity(
         if self.entity_description.available_fn and self.coordinator.data:
             return self.entity_description.available_fn(self.coordinator.data)
         return True
+
+
+def _async_setup_service_binary_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    entities: list[OpenWrtBinarySensorEntity],
+) -> None:
+    """Set up service status binary sensors."""
+    for service in coordinator.data.services:
+        if not service.name:
+            continue
+        entities.append(
+            OpenWrtBinarySensorEntity(
+                coordinator, entry,
+                OpenWrtBinarySensorDescription(
+                    key=f"service_{service.name}_running",
+                    name=f"Service {service.name}",
+                    translation_key="service_running",
+                    translation_placeholders={"service": service.name},
+                    device_class=BinarySensorDeviceClass.RUNNING,
+                    entity_category=EntityCategory.DIAGNOSTIC,
+                    entity_registry_enabled_default=False,
+                    is_on_fn=lambda data, n=service.name: any(
+                        s.running
+                        for s in data.services
+                        if s.name == n
+                    ),
+                ),
+            )
+        )

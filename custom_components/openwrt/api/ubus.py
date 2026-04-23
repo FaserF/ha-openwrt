@@ -30,6 +30,7 @@ from .base import (
     LldpNeighbor,
     MwanStatus,
     NetworkInterface,
+    NlbwmonTraffic,
     OpenWrtClient,
     OpenWrtPackages,
     OpenWrtPermissions,
@@ -39,9 +40,11 @@ from .base import (
     SqmStatus,
     SystemResources,
     UpnpMapping,
-    WirelessInterface,
+    UsbDevice,
+    WifiCredentials,
     WireGuardInterface,
     WireGuardPeer,
+    WirelessInterface,
     WpsStatus,
 )
 
@@ -469,12 +472,12 @@ class UbusClient(OpenWrtClient):
         resources.memory_free = mem.get("free", 0)
         resources.memory_buffered = mem.get("buffered", 0)
         resources.memory_cached = mem.get("cached", 0)
-        
+
         # Calculate available memory
-        resources.memory_available = mem.get("available", 
+        resources.memory_available = mem.get("available",
             resources.memory_free + resources.memory_buffered + resources.memory_cached
         )
-        
+
         if resources.memory_total > 0:
             resources.memory_available_percent = round(
                 (resources.memory_available / resources.memory_total) * 100.0, 1
@@ -609,17 +612,20 @@ class UbusClient(OpenWrtClient):
             with contextlib.suppress(Exception):
                 res = await self._call("file", "read", {"path": path})
                 if res and isinstance(res, dict) and res.get("data"):
-                    if self._parse_temp_raw(resources, res.get("data", "")):
-                        return
+                    self._parse_temp_raw(resources, res.get("data", ""), path)
 
         # 2. Fallback to shell command
-        for path in temp_paths:
-            with contextlib.suppress(Exception):
-                temp_raw = await self.execute_command(f"cat {path} 2>/dev/null")
-                if temp_raw and self._parse_temp_raw(resources, temp_raw):
-                    return
+        if not resources.temperatures:
+            for path in temp_paths:
+                with contextlib.suppress(Exception):
+                    temp_raw = await self.execute_command(f"cat {path} 2>/dev/null")
+                    if temp_raw:
+                        self._parse_temp_raw(resources, temp_raw, path)
 
-    def _parse_temp_raw(self, resources: SystemResources, raw: str) -> bool:
+
+    def _parse_temp_raw(
+        self, resources: SystemResources, raw: str, path: str = ""
+    ) -> bool:
         """Parse raw temperature string into resources."""
         import re
 
@@ -629,9 +635,22 @@ class UbusClient(OpenWrtClient):
             if temp > 200:  # millidegrees
                 temp /= 1000.0
             if 0 < temp < 150:
-                resources.temperature = temp
+                if resources.temperature is None:
+                    resources.temperature = temp
+
+                # Add to multi-zone dict
+                name = "System"
+                if "thermal_zone" in path:
+                    zone = path.split("thermal_zone")[-1].split("/")[0]
+                    name = f"Zone {zone}"
+                elif "hwmon" in path:
+                    hw = path.split("hwmon")[-1].split("/")[0]
+                    name = f"Hwmon {hw}"
+
+                resources.temperatures[name] = temp
                 return True
         return False
+
 
     async def _fetch_detailed_storage(self, resources: SystemResources) -> None:
         """Fetch detailed storage usage via 'df' command."""
@@ -679,12 +698,13 @@ class UbusClient(OpenWrtClient):
             if res and res.get("code") == 0:
                 self._parse_lsusb_output(resources, res.get("stdout", ""))
                 return
-            
+
             # Fallback: simple lsusb
             res = await self._call("file", "exec", {"command": "/usr/bin/lsusb"})
             if res and res.get("code") == 0:
                 for line in res.get("stdout", "").splitlines():
-                    if not line.strip(): continue
+                    if not line.strip():
+                        continue
                     parts = line.split(None, 6)
                     if len(parts) >= 6:
                         resources.usb_devices.append(UsbDevice(
@@ -728,7 +748,7 @@ class UbusClient(OpenWrtClient):
             stdout = await self.execute_command("top -n 1 -b 2>/dev/null")
             if not stdout:
                 return
-                
+
             self._parse_top_output(resources, stdout)
         except Exception:
             pass
@@ -742,7 +762,7 @@ class UbusClient(OpenWrtClient):
             if "PID" in line and "COMMAND" in line:
                 header_idx = i
                 break
-        
+
         if header_idx == -1 or header_idx + 1 >= len(lines):
             return
 
@@ -762,7 +782,7 @@ class UbusClient(OpenWrtClient):
             parts = line.split()
             if len(parts) <= max(pid_idx, user_idx, vsz_idx, cpu_idx, cmd_idx):
                 continue
-                
+
             try:
                 resources.top_processes.append(ProcessInfo(
                     pid=int(parts[pid_idx]),
@@ -773,7 +793,7 @@ class UbusClient(OpenWrtClient):
                 ))
             except (ValueError, IndexError):
                 continue
-            
+
             # Only keep top 10
             if len(resources.top_processes) >= 10:
                 break
@@ -916,7 +936,7 @@ class UbusClient(OpenWrtClient):
             res = await self._call("upnp", "get_mappings")
             if not isinstance(res, dict) or "mappings" not in res:
                 return mappings
-                
+
             for m in res["mappings"]:
                 mappings.append(UpnpMapping(
                     protocol=m.get("protocol", "TCP").upper(),
@@ -930,7 +950,7 @@ class UbusClient(OpenWrtClient):
             pass  # upnp object might not exist
         except Exception as err:
             _LOGGER.debug("Failed to fetch UPnP mappings: %s", err)
-            
+
         return mappings
 
     async def get_wireguard_interfaces(self) -> list[WireGuardInterface]:
@@ -941,12 +961,12 @@ class UbusClient(OpenWrtClient):
             status = await self._call("network.interface", "dump")
             if not isinstance(status, dict):
                 return interfaces
-                
+
             wg_ifaces = []
             for iface_data in status.get("interface", []):
                 if iface_data.get("proto") == "wireguard":
                     wg_ifaces.append(iface_data.get("interface"))
-            
+
             if not wg_ifaces:
                 return interfaces
 
@@ -954,7 +974,7 @@ class UbusClient(OpenWrtClient):
             # wg show all dump format:
             # interface public_key listen_port fwmark
             # peer_public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
-            
+
             stdout = await self.execute_command("wg show all dump 2>/dev/null")
             if not stdout:
                 return interfaces
@@ -984,7 +1004,7 @@ class UbusClient(OpenWrtClient):
                     # Peer: peer_public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
                     # If using 'all', it's:
                     # interface peer_public_key preshared_key endpoint allowed_ips latest_handshake transfer_rx transfer_tx persistent_keepalive
-                    
+
                     ifname = parts[0]
                     if ifname in iface_map:
                         peer = WireGuardPeer(
@@ -999,7 +1019,7 @@ class UbusClient(OpenWrtClient):
                         iface_map[ifname].peers.append(peer)
         except Exception as err:
             _LOGGER.debug("Failed to fetch WireGuard interfaces: %s", err)
-            
+
         return interfaces
 
     async def get_network_interfaces(self) -> list[NetworkInterface]:
@@ -1048,7 +1068,7 @@ class UbusClient(OpenWrtClient):
                 iface.is_link_up = dev_status.get("link", False)
                 iface.link_speed = dev_status.get("speed", 0)
                 iface.link_duplex = "full" if dev_status.get("full_duplex") else "half"
-                
+
                 stats = dev_status.get("statistics", {})
                 iface.rx_bytes = stats.get("rx_bytes", 0)
                 iface.tx_bytes = stats.get("tx_bytes", 0)
@@ -1062,7 +1082,7 @@ class UbusClient(OpenWrtClient):
                 iface.multicast = stats.get("multicast", 0)
                 iface.mac_address = dev_status.get("macaddr", "")
                 iface.speed = str(iface.link_speed) if iface.link_speed else dev_status.get("speed", "")
-            
+
             interfaces.append(iface)
 
         return interfaces
@@ -1213,19 +1233,19 @@ class UbusClient(OpenWrtClient):
             config = await self._call("uci", "get", {"config": "dhcp"})
             if not config or not isinstance(config, dict):
                 return
-            
-            for section, values in config.items():
+
+            for _section, values in config.items():
                 if values.get(".type") == "host":
                     macs = values.get("mac")
                     if not macs:
                         continue
-                    
+
                     # mac can be a space-separated string or a list
                     if isinstance(macs, str):
                         mac_list = macs.split()
                     else:
                         mac_list = macs
-                    
+
                     for mac in mac_list:
                         mac_lower = mac.lower()
                         if mac_lower not in devices:
@@ -1251,7 +1271,7 @@ class UbusClient(OpenWrtClient):
             for dev_name, dev_info in device_status.items():
                 if not dev_info.get("up"):
                     continue
-                
+
                 try:
                     fdb = await self._call("network.device", "fdb", {"name": dev_name})
                     if fdb and isinstance(fdb, list):
@@ -1259,7 +1279,7 @@ class UbusClient(OpenWrtClient):
                             mac = entry.get("mac", "").lower()
                             if mac not in devices:
                                 continue
-                            
+
                             dev = devices[mac]
                             # Only apply to wired devices or as supplemental info
                             port = entry.get("port", "")
@@ -1503,6 +1523,14 @@ class UbusClient(OpenWrtClient):
                 packages.sqm_scripts = True
             if "adblock" in objects:
                 packages.adblock = True
+            if "upnp" in objects:
+                packages.miniupnpd = True
+            if "nlbwmon" in objects:
+                packages.nlbwmon = True
+            if "pbr" in objects:
+                packages.pbr = True
+            if "led" in objects:
+                packages.rpcd_mod_led = True
 
             # Step 2: Try executing a small script for remaining/all (fastest for root)
             try:
@@ -1515,7 +1543,13 @@ class UbusClient(OpenWrtClient):
                     "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
                     "/etc/init.d/adblock "
                     "/etc/init.d/simple-adblock "
-                    "/etc/init.d/ban-ip; do "
+                    "/etc/init.d/ban-ip "
+                    "/etc/init.d/miniupnpd "
+                    "/etc/init.d/nlbwmon "
+                    "/etc/init.d/pbr "
+                    "/etc/init.d/adguardhome "
+                    "/etc/init.d/unbound "
+                    "/usr/lib/rpcd/led.so; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
@@ -1553,6 +1587,18 @@ class UbusClient(OpenWrtClient):
                     packages.simple_adblock = detect_status(11)
                 if packages.ban_ip is not True:
                     packages.ban_ip = detect_status(12)
+                if packages.miniupnpd is not True:
+                    packages.miniupnpd = detect_status(13)
+                if packages.nlbwmon is not True:
+                    packages.nlbwmon = detect_status(14)
+                if packages.pbr is not True:
+                    packages.pbr = detect_status(15)
+                if packages.adguardhome is not True:
+                    packages.adguardhome = detect_status(16)
+                if packages.unbound is not True:
+                    packages.unbound = detect_status(17)
+                if packages.rpcd_mod_led is not True:
+                    packages.rpcd_mod_led = detect_status(18)
             except Exception as err:
                 _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)
                 # Step 1: Re-use _list_objects() which uses the correct JSON-RPC
@@ -1816,32 +1862,34 @@ class UbusClient(OpenWrtClient):
                 for lease_data in result.get("device", {}).values():
                     # odhcpd can return list or dict per interface
                     lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
-                    for l in lease_list:
-                        if not isinstance(l, dict): continue
+                    for lease in lease_list:
+                        if not isinstance(lease, dict):
+                            continue
                         leases.append(
                             DhcpLease(
-                                hostname=l.get("hostname", ""),
-                                mac=l.get("mac", "").lower(),
-                                ip=l.get("ipaddr", ""),
-                                expires=l.get("expires", 0),
+                                hostname=lease.get("hostname", ""),
+                                mac=lease.get("mac", "").lower(),
+                                ip=lease.get("ipaddr", ""),
+                                expires=lease.get("expires", 0),
                                 type="v4",
                             ),
                         )
-                
+
                 # IPv6 leases
                 result_v6 = await self._call("dhcp", "ipv6leases")
                 for lease_data in result_v6.get("device", {}).values():
                     lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
-                    for l in lease_list:
-                        if not isinstance(l, dict): continue
+                    for lease in lease_list:
+                        if not isinstance(lease, dict):
+                            continue
                         leases.append(
                             DhcpLease(
-                                hostname=l.get("hostname", ""),
-                                mac=l.get("mac", "").lower(),
-                                ip=l.get("ipaddr", ""),
-                                expires=l.get("expires", 0),
+                                hostname=lease.get("hostname", ""),
+                                mac=lease.get("mac", "").lower(),
+                                ip=lease.get("ipaddr", ""),
+                                expires=lease.get("expires", 0),
                                 type="v6",
-                                duid=l.get("duid", ""),
+                                duid=lease.get("duid", ""),
                             ),
                         )
 
@@ -2952,3 +3000,113 @@ class UbusClient(OpenWrtClient):
             pass
 
         return results
+
+    async def get_nlbwmon_data(self) -> dict[str, NlbwmonTraffic]:
+        """Get bandwidth usage per MAC from nlbwmon."""
+        try:
+            result = await self._call("nlbwmon", "get_data", {"group_by": "mac"})
+            if not result or "data" not in result:
+                return {}
+
+            traffic = {}
+            for mac, data in result["data"].items():
+                mac_upper = mac.upper()
+                traffic[mac_upper] = NlbwmonTraffic(
+                    mac=mac_upper,
+                    rx_bytes=data.get("rx", 0),
+                    tx_bytes=data.get("tx", 0),
+                    rx_packets=data.get("rx_packets", 0),
+                )
+            return traffic
+        except Exception as err:
+            _LOGGER.debug("Failed to get nlbwmon data via ubus: %s", err)
+            return {}
+
+    async def get_wifi_credentials(self) -> list[WifiCredentials]:
+        """Get wifi credentials via UCI."""
+        try:
+            uci = await self._call("uci", "get", {"config": "wireless"})
+            if not uci or "values" not in uci:
+                return []
+
+            creds = []
+            for key, val in uci["values"].items():
+                if isinstance(val, dict) and val.get(".type") == "wifi-iface":
+                    if val.get("mode") == "ap":
+                        ssid = val.get("ssid")
+                        key_val = val.get("key")
+                        if ssid:
+                            creds.append(WifiCredentials(
+                                iface=key,
+                                ssid=ssid,
+                                encryption=val.get("encryption", "none"),
+                                key=key_val or "",
+                                hidden=bool(int(val.get("hidden", 0))),
+                            ))
+            return creds
+        except Exception as err:
+            _LOGGER.debug("Failed to get wifi credentials via ubus: %s", err)
+            return []
+
+    async def trigger_wps_push(self, interface: str) -> bool:
+        """Trigger WPS push button on a specific wireless interface via ubus."""
+        try:
+            # 1. Try direct guess: hostapd.interface
+            obj = f"hostapd.{interface}"
+            await self._call(obj, "wps_push")
+            return True
+        except Exception:
+            try:
+                # 2. List objects and find matching hostapd interface
+                objects = await self._list_objects()
+                for obj in objects:
+                    if obj.startswith("hostapd.") and interface in obj:
+                        await self._call(obj, "wps_push")
+                        return True
+                return False
+            except Exception as err:
+                _LOGGER.debug(
+                    "Failed to trigger WPS push via ubus for %s: %s", interface, err
+                )
+                return False
+
+    async def set_led(self, name: str, enabled: bool) -> bool:
+        """Enable or disable an LED via ubus."""
+        try:
+            val = "255" if enabled else "0"
+            # Try file.write
+            await self._call(
+                "file", "write", {"path": f"/sys/class/leds/{name}/brightness", "data": val}
+            )
+            return True
+        except Exception:
+            try:
+                # Fallback to shell
+                await self.execute_command(
+                    f"echo {val} > /sys/class/leds/{name}/brightness"
+                )
+                return True
+            except Exception as err:
+                _LOGGER.debug("Failed to set LED %s via ubus: %s", name, err)
+                return False
+
+
+    async def is_reboot_required(self) -> bool:
+        """Check if reboot is required via common OpenWrt flags."""
+        try:
+            # Check for common flags
+            paths = ["/tmp/.reboot-needed", "/var/run/reboot-required"]
+            for path in paths:
+                res = await self._call("file", "stat", {"path": path})
+                if res and isinstance(res, dict) and "type" in res:
+                    return True
+            return False
+        except Exception:
+            # Fallback to shell
+            try:
+                output = await self.execute_command(
+                    "[ -f /tmp/.reboot-needed ] || [ -f /var/run/reboot-required ] && echo 1"
+                )
+                return output.strip() == "1"
+            except Exception:
+                return False

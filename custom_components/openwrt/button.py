@@ -108,7 +108,13 @@ async def async_setup_entry(
         # 3. Interface buttons
         _add_interface_buttons(coordinator, entry, client, tracked_keys, new_entities)
 
-        # 4. Device-specific buttons (WoL, Kick)
+        # 4. Wireless buttons (WPS Push)
+        _add_wireless_buttons(coordinator, entry, client, tracked_keys, new_entities)
+
+        # 5. Extra service buttons (AdBlock, etc.)
+        _add_extra_service_buttons(coordinator, entry, client, tracked_keys, new_entities)
+
+        # 6. Device-specific buttons (WoL, Kick)
         _add_device_buttons(coordinator, entry, client, tracked_keys, new_entities)
 
         if new_entities:
@@ -274,6 +280,152 @@ def _add_interface_buttons(
                     client,
                 )
             )
+
+
+def _add_wireless_buttons(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    tracked_keys: set[str],
+    new_entities: list[ButtonEntity],
+) -> None:
+    """Add buttons for wireless interfaces (WPS Push)."""
+    if not coordinator.data or not coordinator.data.permissions.write_wireless:
+        return
+
+    # Look for wireless interfaces in network_interfaces or connected_devices info
+    wireless_ifaces = set()
+    for iface in coordinator.data.network_interfaces:
+        if "wlan" in iface.name or "radio" in iface.name:
+            wireless_ifaces.add(iface.name)
+
+    # Fallback to checking connected devices to see which interfaces are wireless
+    for dev in coordinator.data.connected_devices:
+        if dev.is_wireless and dev.interface:
+            wireless_ifaces.add(dev.interface)
+
+    for iface in wireless_ifaces:
+        key = f"wps_push_{iface}"
+        if key in tracked_keys:
+            continue
+
+        tracked_keys.add(key)
+        new_entities.append(
+            OpenWrtButtonEntity(
+                coordinator,
+                entry,
+                OpenWrtButtonDescription(
+                    key=key,
+                    name=f"WPS Push ({iface})",
+                    icon="mdi:wifi-sync",
+                    entity_category=EntityCategory.CONFIG,
+                    entity_registry_enabled_default=False,
+                    press_fn=lambda c, i=iface: c.trigger_wps_push(i),
+                ),
+                client,
+            )
+        )
+
+
+def _add_extra_service_buttons(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    client: OpenWrtClient,
+    tracked_keys: set[str],
+    new_entities: list[ButtonEntity],
+) -> None:
+    """Add specialized buttons for common services."""
+    if not coordinator.data or not coordinator.data.permissions.write_services:
+        return
+
+    pkgs = coordinator.data.packages
+
+    # AdBlock
+    if pkgs.adblock:
+        for action in ("reload", "suspend", "resume"):
+            key = f"adblock_{action}"
+            if key in tracked_keys:
+                continue
+            tracked_keys.add(key)
+            new_entities.append(
+                OpenWrtButtonEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtButtonDescription(
+                        key=key,
+                        name=f"AdBlock {action.capitalize()}",
+                        icon="mdi:shield-refresh"
+                        if action == "reload"
+                        else "mdi:shield-off",
+                        entity_category=EntityCategory.CONFIG,
+                        entity_registry_enabled_default=False,
+                        press_fn=lambda c, a=action: c.manage_service("adblock", a),
+                    ),
+                    client,
+                )
+            )
+
+    # AdGuardHome
+    if pkgs.adguardhome:
+        key = "adguardhome_reload"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            new_entities.append(
+                OpenWrtButtonEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtButtonDescription(
+                        key=key,
+                        name="AdGuard Home Reload",
+                        icon="mdi:shield-sync",
+                        entity_category=EntityCategory.CONFIG,
+                        entity_registry_enabled_default=False,
+                        press_fn=lambda c: c.manage_service("adguardhome", "reload"),
+                    ),
+                    client,
+                )
+            )
+
+    # Unbound
+    if pkgs.unbound:
+        key = "unbound_reload"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            new_entities.append(
+                OpenWrtButtonEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtButtonDescription(
+                        key=key,
+                        name="Unbound Reload",
+                        icon="mdi:dns-sync",
+                        entity_category=EntityCategory.CONFIG,
+                        entity_registry_enabled_default=False,
+                        press_fn=lambda c: c.manage_service("unbound", "reload"),
+                    ),
+                    client,
+                )
+            )
+
+    # DNS Cache
+    key = "dns_flush"
+    if key not in tracked_keys and coordinator.data.permissions.write_services:
+        tracked_keys.add(key)
+        new_entities.append(
+            OpenWrtButtonEntity(
+                coordinator,
+                entry,
+                OpenWrtButtonDescription(
+                    key=key,
+                    name="Flush DNS Cache",
+                    icon="mdi:dns-sync",
+                    entity_category=EntityCategory.CONFIG,
+                    entity_registry_enabled_default=False,
+                    press_fn=lambda c: c.execute_command("/etc/init.d/dnsmasq restart"),
+                ),
+                client,
+            )
+        )
 
 
 def _add_device_buttons(

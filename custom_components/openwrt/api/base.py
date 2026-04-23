@@ -366,6 +366,7 @@ class SystemResources:
     memory_available: int = 0
     memory_available_percent: float = 0.0
     memory_used: int = 0
+    memory_used_percent: float = 0.0
     memory_free: int = 0
     memory_buffered: int = 0
     memory_cached: int = 0
@@ -424,6 +425,8 @@ class MwanStatus:
     online_ratio: float = 0.0
     uptime: int = 0
     enabled: bool = False
+    latency: float | None = None
+    packet_loss: float | None = None
 
 
 @dataclass
@@ -433,9 +436,22 @@ class LldpNeighbor:
     local_interface: str = ""
     neighbor_name: str = ""
     neighbor_port: str = ""
+    neighbor_id: str = ""
+    neighbor_management_address: str = ""
     neighbor_chassis: str = ""  # Often the MAC address
     neighbor_description: str = ""
     neighbor_system_name: str = ""
+
+
+@dataclass
+class WifiCredentials:
+    """Wi-Fi credentials for QR code generation."""
+
+    iface: str = ""
+    ssid: str = ""
+    encryption: str = ""
+    key: str = ""
+    hidden: bool = False
 
 
 @dataclass
@@ -654,6 +670,17 @@ class LatencyResult:
 
 
 @dataclass
+class NlbwmonTraffic:
+    """Traffic statistics for a specific MAC address from nlbwmon."""
+
+    mac: str = ""
+    rx_bytes: int = 0
+    tx_bytes: int = 0
+    rx_packets: int = 0
+    tx_packets: int = 0
+
+
+@dataclass
 class OpenWrtPermissions:
     """Permissions granted to the current user."""
 
@@ -694,6 +721,12 @@ class OpenWrtPackages:
     adblock_fast: bool | None = None
     simple_adblock: bool | None = None
     ban_ip: bool | None = None
+    miniupnpd: bool | None = None
+    nlbwmon: bool | None = None
+    pbr: bool | None = None
+    adguardhome: bool | None = None
+    unbound: bool | None = None
+    rpcd_mod_led: bool | None = None
 
 
 @dataclass
@@ -708,10 +741,11 @@ class OpenWrtData:
     network_interfaces: list[NetworkInterface] = field(default_factory=list)
     connected_devices: list[ConnectedDevice] = field(default_factory=list)
     dhcp_leases: list[DhcpLease] = field(default_factory=list)
+    reboot_required: bool = False
+    system_logs: list[str] = field(default_factory=list)
     ip_neighbors: list[IpNeighbor] = field(default_factory=list)
     mwan_status: list[MwanStatus] = field(default_factory=list)
     wps_status: WpsStatus = field(default_factory=WpsStatus)
-    system_logs: list[str] = field(default_factory=list)
     adblock: AdBlockStatus = field(default_factory=AdBlockStatus)
     adblock_fast: SimpleAdBlockStatus = field(default_factory=SimpleAdBlockStatus)
     simple_adblock: SimpleAdBlockStatus = field(default_factory=SimpleAdBlockStatus)
@@ -738,6 +772,10 @@ class OpenWrtData:
     asu_image_url: str | None = None
     lldp_neighbors: list[LldpNeighbor] = field(default_factory=list)
     qmodem_info: QModemInfo = field(default_factory=QModemInfo)
+    wireguard_interfaces: list[WireGuardInterface] = field(default_factory=list)
+    upnp_mappings: list[UpnpMapping] = field(default_factory=list)
+    nlbwmon_traffic: dict[str, NlbwmonTraffic] = field(default_factory=dict)
+    wifi_credentials: list[WifiCredentials] = field(default_factory=list)
     sqm: list[SqmStatus] = field(default_factory=list)
     packages: OpenWrtPackages = field(default_factory=OpenWrtPackages)
     permissions: OpenWrtPermissions = field(default_factory=OpenWrtPermissions)
@@ -980,6 +1018,14 @@ class OpenWrtClient(abc.ABC):
         return []
 
     @abc.abstractmethod
+    async def get_nlbwmon_data(self) -> dict[str, NlbwmonTraffic]:
+        """Get bandwidth usage per MAC from nlbwmon."""
+
+    @abc.abstractmethod
+    async def get_wifi_credentials(self) -> list[WifiCredentials]:
+        """Get Wi-Fi credentials for QR code generation."""
+
+    @abc.abstractmethod
     async def get_local_macs(self) -> set[str]:
         """Get all MAC addresses belonging to the router's physical and virtual interfaces."""
         raise NotImplementedError
@@ -1050,7 +1096,7 @@ class OpenWrtClient(abc.ABC):
             return None
 
         ip, mac, interface, state = parts[0], "", "", parts[-1]
-        
+
         # Filter out invalid states
         if state in ("FAILED", "INCOMPLETE"):
             return None
@@ -1135,13 +1181,26 @@ class OpenWrtClient(abc.ABC):
         """Enable or disable WPS."""
         return False
 
-    async def get_services(self) -> list[ServiceInfo]:
-        """Get list of system services."""
-        return []
+    async def trigger_wps_push(self, interface: str) -> bool:
+        """Trigger WPS push button on a specific wireless interface."""
+        return False
+
+    async def set_led(self, name: str, enabled: bool) -> bool:
+        """Enable or disable an LED."""
+        return False
 
     async def get_system_logs(self, count: int = 10) -> list[str]:
         """Get recent system log entries."""
         return []
+
+    async def is_reboot_required(self) -> bool:
+        """Check if the system requires a reboot."""
+        return False
+
+    async def get_services(self) -> list[ServiceInfo]:
+        """Get list of system services."""
+        return []
+
 
     async def manage_service(self, name: str, action: str) -> bool:
         """Manage a system service (start/stop/restart/enable/disable)."""
@@ -1193,9 +1252,6 @@ class OpenWrtClient(abc.ABC):
         """Get list of router LEDs."""
         return []
 
-    async def set_led(self, name: str, brightness: int) -> bool:
-        """Set LED brightness (0=off, max=on)."""
-        return False
 
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status."""
@@ -1205,34 +1261,6 @@ class OpenWrtClient(abc.ABC):
     async def set_sqm_config(self, section_id: str, **kwargs: Any) -> bool:
         """Set SQM configuration and reload."""
         raise NotImplementedError
-
-    async def get_firewall_rules(self) -> list[FirewallRule]:
-        """Get general firewall rules via UCI."""
-        return []
-
-    async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
-        """Enable or disable a firewall rule via UCI."""
-        return False
-
-    async def get_firewall_redirects(self) -> list[FirewallRedirect]:
-        """Get firewall port forwarding redirects via UCI."""
-        return []
-
-    async def set_firewall_redirect_enabled(
-        self,
-        section_id: str,
-        enabled: bool,
-    ) -> bool:
-        """Enable or disable a firewall redirect via UCI."""
-        return False
-
-    async def get_access_control_rules(self) -> list[AccessControlRule]:
-        """Get list of access control rules via UCI firewall rules."""
-        return []
-
-    async def set_device_internet_access(self, mac: str, blocked: bool) -> bool:
-        """Block or unblock a device's internet access via UCI firewall rule."""
-        return False
 
     @abc.abstractmethod
     async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
@@ -1566,6 +1594,8 @@ class OpenWrtClient(abc.ABC):
                 self.get_connected_devices(),
                 self.get_local_macs(),
                 self.get_local_ips(),
+                self.is_reboot_required(),
+                self.get_system_logs(count=10),
             )
             (
                 data.device_info,
@@ -1574,7 +1604,9 @@ class OpenWrtClient(abc.ABC):
                 data.connected_devices,
                 data.local_macs,
                 data.local_ips,
-            ) = core_results
+                data.reboot_required,
+                data.system_logs,
+            ) = core_results  # type: ignore[assignment]
             self._cached_device_info = data.device_info
             self._cached_local_macs = data.local_macs
             self._cached_local_ips = data.local_ips
@@ -1632,7 +1664,9 @@ class OpenWrtClient(abc.ABC):
             self.get_external_ip(),
             self.get_gateway_mac(),
             self.get_lldp_neighbors(),
-            self.get_system_logs(),
+            self.get_wireguard_interfaces(),
+            self.get_upnp_mappings(),
+            self.get_wifi_credentials(),
         ]
 
         # Dynamically add adblock-related tasks if packages are present
@@ -1649,6 +1683,9 @@ class OpenWrtClient(abc.ABC):
         if data.packages.ban_ip:
             extra_tasks_map["ban_ip"] = len(fast_optional_tasks)
             fast_optional_tasks.append(self.get_banip_status())
+        if data.packages.nlbwmon:
+            extra_tasks_map["nlbwmon"] = len(fast_optional_tasks)
+            fast_optional_tasks.append(self.get_nlbwmon_data())
 
         fast_results = await asyncio.gather(
             *fast_optional_tasks,
@@ -1672,7 +1709,9 @@ class OpenWrtClient(abc.ABC):
         data.external_ip = get_val(fast_results[8], None, "external IP")
         data.device_info.gateway_mac = get_val(fast_results[9], None, "gateway MAC")
         data.lldp_neighbors = get_val(fast_results[10], [], "LLDP neighbors")
-        data.system_logs = get_val(fast_results[11], [], "system logs")
+        data.wireguard_interfaces = get_val(fast_results[11], [], "WireGuard")
+        data.upnp_mappings = get_val(fast_results[12], [], "UPnP")
+        data.wifi_credentials = get_val(fast_results[13], [], "wifi_credentials")
 
         # Handle adblock-related results
         if "adblock" in extra_tasks_map:
@@ -1699,6 +1738,12 @@ class OpenWrtClient(abc.ABC):
                 BanIpStatus(),
                 "ban-ip",
             )
+        if "nlbwmon" in extra_tasks_map:
+            data.nlbwmon_traffic = get_val(
+                fast_results[extra_tasks_map["nlbwmon"]],
+                {},
+                "nlbwmon",
+            )
 
         # Slow-changing optional data (services, LEDs, firewall, access control, packages, permissions)
         if is_full_poll:
@@ -1711,6 +1756,8 @@ class OpenWrtClient(abc.ABC):
                 self.get_sqm_status(),
                 self.check_packages(),
                 self.check_permissions(),
+                self.is_reboot_required(),
+                self.get_system_logs(count=10),
             ]
             slow_results = await asyncio.gather(
                 *slow_optional_tasks,
@@ -1729,6 +1776,8 @@ class OpenWrtClient(abc.ABC):
                 OpenWrtPermissions(),
                 "permissions",
             )
+            data.reboot_required = get_val(slow_results[8], False, "reboot required")
+            data.system_logs = get_val(slow_results[9], [], "system logs")
 
             # Cache slow results
             self._cached_slow_data = {
