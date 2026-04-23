@@ -823,6 +823,21 @@ class LuciRpcClient(OpenWrtClient):
                     )
                     resources.cpu_usage = self._calculate_cpu_usage(stat_line)
 
+                # CPU Frequency and Thermal
+                if "cpu" in data and isinstance(data["cpu"], dict):
+                    freq = data["cpu"].get("frequency")
+                    if isinstance(freq, (int, float)):
+                        resources.cpu_frequency = freq / 1000000.0 if freq > 10000 else float(freq)
+                
+                thermal = data.get("thermal", {})
+                if thermal and isinstance(thermal, dict):
+                    for zone, temp in thermal.items():
+                        if isinstance(temp, (int, float)):
+                            val = temp / 1000.0 if temp > 1000 else float(temp)
+                            resources.temperatures[zone] = val
+                            if resources.temperature is None or zone == "zone0":
+                                resources.temperature = val
+
                 # Disk info
                 if "disk" in data:
                     disk = data["disk"]
@@ -1277,7 +1292,49 @@ class LuciRpcClient(OpenWrtClient):
         except Exception:
             pass
 
+        # 5. Supplemental source: Bridge FDB (Forwarding Database)
+        await self._process_bridge_fdb(devices)
+
         return list(devices.values())
+
+    async def _process_bridge_fdb(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Fetch and merge bridge FDB (forwarding database) information via LuCI RPC."""
+        try:
+            # 1. Fetch all network devices
+            dev_status_str = await self.execute_command(
+                "ubus call network.device status 2>/dev/null"
+            )
+            if not dev_status_str or not dev_status_str.strip().startswith("{"):
+                return
+
+            device_status = json.loads(dev_status_str)
+
+            # 2. For each active device, fetch its FDB
+            for dev_name, dev_info in device_status.items():
+                if not dev_info.get("up"):
+                    continue
+
+                try:
+                    fdb_str = await self.execute_command(
+                        f"ubus call network.device fdb '{{\"name\":\"{dev_name}\"}}' 2>/dev/null"
+                    )
+                    if fdb_str and fdb_str.strip().startswith("["):
+                        fdb = json.loads(fdb_str)
+                        for entry in fdb:
+                            mac = entry.get("mac", "").lower()
+                            if mac not in devices:
+                                continue
+
+                            dev = devices[mac]
+                            port = entry.get("port", "")
+                            if port:
+                                dev.port = port
+                                if not dev.is_wireless and not dev.interface:
+                                    dev.interface = dev_name
+                except Exception:
+                    continue
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch bridge FDB via LuCI RPC: %s", err)
 
     async def _get_wireless_mapping(self) -> tuple[dict[str, str], dict[str, str]]:
         """Get mapping of UCI sections to system names and vice-versa."""

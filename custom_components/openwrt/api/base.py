@@ -131,10 +131,10 @@ if ! cat <<EOF > "$ACL_FILE"
                 "/etc/group": ["read"],
                 "/etc/shadow": ["read"],
                 "/etc/shells": ["read"],
-                "/usr/bin/iwinfo": ["read", "stat"],
-                "/usr/bin/etherwake": ["read", "stat"],
-                "/usr/bin/wg": ["read", "stat"],
-                "/usr/sbin/openvpn": ["read", "stat"],
+                "/usr/bin/iwinfo": ["read", "stat", "exec"],
+                "/usr/bin/etherwake": ["read", "stat", "exec"],
+                "/usr/bin/wg": ["read", "stat", "exec"],
+                "/usr/sbin/openvpn": ["read", "stat", "exec"],
                 "/usr/bin/id": ["read", "stat", "exec"],
                 "/bin/sh": ["read", "stat", "exec"],
                 "/bin/ash": ["read", "stat", "exec"],
@@ -142,10 +142,20 @@ if ! cat <<EOF > "$ACL_FILE"
                 "/sbin/apk": ["read", "stat", "exec"],
                 "/bin/opkg": ["read", "stat", "exec"],
                 "/sbin/logread": ["read", "stat"],
+                "/bin/cat": ["read", "stat", "exec"],
+                "/bin/grep": ["read", "stat", "exec"],
+                "/usr/bin/awk": ["read", "stat", "exec"],
+                "/bin/df": ["read", "stat", "exec"],
+                "/sbin/ip": ["read", "stat", "exec"],
+                "/usr/sbin/ip": ["read", "stat", "exec"],
+                "/bin/ubus": ["read", "stat", "exec"],
+                "/usr/bin/uptime": ["read", "stat", "exec"],
                 "/proc/stat": ["read"],
+                "/proc/meminfo": ["read"],
                 "/proc/net/arp": ["read"],
                 "/proc/net/dev": ["read"],
-                "/tmp/dhcp.leases": ["read"]
+                "/tmp/dhcp.leases": ["read"],
+                "/sys/class/thermal/*": ["read"]
             }}
         }},
         "write": {{
@@ -270,6 +280,9 @@ class WirelessInterface:
     mesh_fwding: bool = False
     ifname: str = ""
     section: str = ""
+    band: str = ""  # 2.4 GHz, 5 GHz, 6 GHz
+    width: str = "" # 20 MHz, 40 MHz, 80 MHz, 160 MHz, 320 MHz
+    standard: str = "" # 802.11n/ac/ax/be
 
 
 @dataclass
@@ -295,9 +308,14 @@ class NetworkInterface:
     tx_rate: float = 0.0
     speed: str = ""
     duplex: str = ""
+    is_link_up: bool = False
+    link_speed: int = 0
+    link_duplex: str = ""
     protocol: str = ""
     device: str = ""
     dns_servers: list[str] = field(default_factory=list)
+    ipv6_prefix: list[str] = field(default_factory=list)
+    ipv6_prefix_assignment: list[dict[str, Any]] = field(default_factory=list)
     uptime: int = 0
 
 
@@ -309,6 +327,8 @@ class ConnectedDevice:
     ip: str = ""
     hostname: str = ""
     interface: str = ""
+    port: str = ""
+    port_description: str = ""
     connected_via: str = ""
     rx_bytes: int = 0
     tx_bytes: int = 0
@@ -343,6 +363,8 @@ class SystemResources:
 
     cpu_usage: float = 0.0
     memory_total: int = 0
+    memory_available: int = 0
+    memory_available_percent: float = 0.0
     memory_used: int = 0
     memory_free: int = 0
     memory_buffered: int = 0
@@ -356,10 +378,27 @@ class SystemResources:
     uptime: int = 0
     processes: int = 0
     temperature: float | None = None
+    temperatures: dict[str, float] = field(default_factory=dict)
+    cpu_frequency: float | None = None
     filesystem_total: int = 0
     filesystem_used: int = 0
     filesystem_free: int = 0
     storage: list[StorageUsage] = field(default_factory=list)
+    usb_devices: list[UsbDevice] = field(default_factory=list)
+
+
+@dataclass
+class UsbDevice:
+    """USB device information."""
+
+    id: str = ""  # Bus:Device e.g. 001:002
+    vendor_id: str = ""
+    product_id: str = ""
+    manufacturer: str = ""
+    product: str = ""
+    serial: str = ""
+    speed: str = ""  # e.g. 480M, 5G
+    class_name: str = ""
 
 
 @dataclass
@@ -393,6 +432,8 @@ class DhcpLease:
     mac: str = ""
     ip: str = ""
     expires: int = 0
+    type: str = "v4" # v4 or v6
+    duid: str = ""   # DHCPv6 DUID
 
 
 @dataclass
@@ -600,6 +641,7 @@ class OpenWrtPackages:
     luci_mod_rpc: bool | None = None
     asu: bool | None = None
     adblock: bool | None = None
+    adblock_fast: bool | None = None
     simple_adblock: bool | None = None
     ban_ip: bool | None = None
 
@@ -621,6 +663,7 @@ class OpenWrtData:
     wps_status: WpsStatus = field(default_factory=WpsStatus)
     system_logs: list[str] = field(default_factory=list)
     adblock: AdBlockStatus = field(default_factory=AdBlockStatus)
+    adblock_fast: SimpleAdBlockStatus = field(default_factory=SimpleAdBlockStatus)
     simple_adblock: SimpleAdBlockStatus = field(default_factory=SimpleAdBlockStatus)
     ban_ip: BanIpStatus = field(default_factory=BanIpStatus)
     services: list[ServiceInfo] = field(default_factory=list)
@@ -947,6 +990,11 @@ class OpenWrtClient(abc.ABC):
             return None
 
         ip, mac, interface, state = parts[0], "", "", parts[-1]
+        
+        # Filter out invalid states
+        if state in ("FAILED", "INCOMPLETE"):
+            return None
+
         if "lladdr" in parts:
             idx = parts.index("lladdr")
             if len(parts) > idx + 1:
@@ -1098,6 +1146,34 @@ class OpenWrtClient(abc.ABC):
         """Set SQM configuration and reload."""
         raise NotImplementedError
 
+    async def get_firewall_rules(self) -> list[FirewallRule]:
+        """Get general firewall rules via UCI."""
+        return []
+
+    async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
+        """Enable or disable a firewall rule via UCI."""
+        return False
+
+    async def get_firewall_redirects(self) -> list[FirewallRedirect]:
+        """Get firewall port forwarding redirects via UCI."""
+        return []
+
+    async def set_firewall_redirect_enabled(
+        self,
+        section_id: str,
+        enabled: bool,
+    ) -> bool:
+        """Enable or disable a firewall redirect via UCI."""
+        return False
+
+    async def get_access_control_rules(self) -> list[AccessControlRule]:
+        """Get list of access control rules via UCI firewall rules."""
+        return []
+
+    async def set_device_internet_access(self, mac: str, blocked: bool) -> bool:
+        """Block or unblock a device's internet access via UCI firewall rule."""
+        return False
+
     @abc.abstractmethod
     async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         """Install firmware from the given URL."""
@@ -1240,6 +1316,14 @@ class OpenWrtClient(abc.ABC):
 
     async def set_simple_adblock_enabled(self, enabled: bool) -> bool:
         """Enable/disable the simple-adblock service."""
+        return False
+
+    async def get_adblock_fast_status(self) -> SimpleAdBlockStatus:
+        """Get status of the adblock-fast package."""
+        return SimpleAdBlockStatus()
+
+    async def set_adblock_fast_enabled(self, enabled: bool) -> bool:
+        """Enable/disable the adblock-fast service."""
         return False
 
     async def get_banip_status(self) -> BanIpStatus:
@@ -1496,6 +1580,9 @@ class OpenWrtClient(abc.ABC):
         if data.packages.adblock:
             extra_tasks_map["adblock"] = len(fast_optional_tasks)
             fast_optional_tasks.append(self.get_adblock_status())
+        if data.packages.adblock_fast:
+            extra_tasks_map["adblock_fast"] = len(fast_optional_tasks)
+            fast_optional_tasks.append(self.get_adblock_fast_status())
         if data.packages.simple_adblock:
             extra_tasks_map["simple_adblock"] = len(fast_optional_tasks)
             fast_optional_tasks.append(self.get_simple_adblock_status())
@@ -1533,6 +1620,12 @@ class OpenWrtClient(abc.ABC):
                 fast_results[extra_tasks_map["adblock"]],
                 AdBlockStatus(),
                 "adblock",
+            )
+        if "adblock_fast" in extra_tasks_map:
+            data.adblock_fast = get_val(
+                fast_results[extra_tasks_map["adblock_fast"]],
+                SimpleAdBlockStatus(),
+                "adblock-fast",
             )
         if "simple_adblock" in extra_tasks_map:
             data.simple_adblock = get_val(

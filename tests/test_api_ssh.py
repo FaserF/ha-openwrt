@@ -102,8 +102,10 @@ async def test_ssh_get_temperature_fallback(ssh_client: SshClient):
     with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
 
         def exec_side_effect(command: str) -> str:
-            if "thermal_zone0" in command:
-                return "45000" if "temp" in command else "cpu-thermal"
+            if "ls -d /sys/class/thermal/thermal_zone*" in command:
+                return "/sys/class/thermal/thermal_zone0"
+            if "thermal_zone0/temp" in command:
+                return "45000"
             if "loadavg" in command:
                 return "0.0 0.0 0.0 1/100 1234"
             if "uptime" in command:

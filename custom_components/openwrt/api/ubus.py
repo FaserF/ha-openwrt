@@ -447,6 +447,9 @@ class UbusClient(OpenWrtClient):
         # 5. Detailed Storage monitoring via df
         await self._fetch_detailed_storage(resources)
 
+        # 6. USB Device Discovery
+        await self._fetch_usb_devices(resources)
+
         return resources
 
     def _parse_system_info(
@@ -459,11 +462,22 @@ class UbusClient(OpenWrtClient):
         resources.memory_free = mem.get("free", 0)
         resources.memory_buffered = mem.get("buffered", 0)
         resources.memory_cached = mem.get("cached", 0)
+        
+        # Calculate available memory
+        resources.memory_available = mem.get("available", 
+            resources.memory_free + resources.memory_buffered + resources.memory_cached
+        )
+        
+        if resources.memory_total > 0:
+            resources.memory_available_percent = round(
+                (resources.memory_available / resources.memory_total) * 100.0, 1
+            )
+            resources.memory_used_percent = round(
+                ((resources.memory_total - resources.memory_available) / resources.memory_total) * 100.0, 1
+            )
+
         resources.memory_used = (
-            resources.memory_total
-            - resources.memory_free
-            - resources.memory_buffered
-            - resources.memory_cached
+            resources.memory_total - resources.memory_available
         )
 
         # Swap parsing
@@ -473,6 +487,25 @@ class UbusClient(OpenWrtClient):
         resources.swap_used = resources.swap_total - resources.swap_free
 
         resources.uptime = data.get("uptime", 0)
+
+        # Thermal parsing from ubus
+        thermal = data.get("thermal", {})
+        if thermal and isinstance(thermal, dict):
+            for zone, temp in thermal.items():
+                if isinstance(temp, (int, float)):
+                    # OpenWrt ubus typically reports in mC (milli-Celsius)
+                    val = temp / 1000.0 if temp > 1000 else float(temp)
+                    resources.temperatures[zone] = val
+                    if resources.temperature is None or zone == "zone0":
+                        resources.temperature = val
+
+        # CPU frequency from ubus
+        if "cpu" in data and isinstance(data["cpu"], dict):
+            freq = data["cpu"].get("frequency")
+            if isinstance(freq, (int, float)):
+                resources.cpu_frequency = (
+                    freq / 1000000.0 if freq > 10000 else float(freq)
+                )
 
         # Load parsing
         load = data.get("load", [])
@@ -631,6 +664,56 @@ class UbusClient(OpenWrtClient):
             resources.filesystem_used = usage.used
             resources.filesystem_free = usage.free
 
+    async def _fetch_usb_devices(self, resources: SystemResources) -> None:
+        """Fetch connected USB devices using lsusb or sysfs."""
+        try:
+            # Try lsusb via file.exec if available (hardened provisioning usually allows it)
+            res = await self._call("file", "exec", {"command": "/usr/bin/lsusb", "params": ["-v"]})
+            if res and res.get("code") == 0:
+                self._parse_lsusb_output(resources, res.get("stdout", ""))
+                return
+            
+            # Fallback: simple lsusb
+            res = await self._call("file", "exec", {"command": "/usr/bin/lsusb"})
+            if res and res.get("code") == 0:
+                for line in res.get("stdout", "").splitlines():
+                    if not line.strip(): continue
+                    parts = line.split(None, 6)
+                    if len(parts) >= 6:
+                        resources.usb_devices.append(UsbDevice(
+                            id=f"{parts[1]}:{parts[3].strip(':')}",
+                            vendor_id=parts[5].split(":")[0],
+                            product_id=parts[5].split(":")[1],
+                            product=parts[6] if len(parts) > 6 else ""
+                        ))
+        except Exception:
+            pass
+
+    def _parse_lsusb_output(self, resources: SystemResources, stdout: str) -> None:
+        """Parse verbose lsusb output."""
+        current_dev = None
+        for line in stdout.splitlines():
+            line = line.strip()
+            if line.startswith("Bus "):
+                parts = line.split()
+                if len(parts) >= 4:
+                    current_dev = UsbDevice(id=f"{parts[1]}:{parts[3].strip(':')}")
+                    resources.usb_devices.append(current_dev)
+                    if len(parts) >= 6:
+                        ids = parts[5].split(":")
+                        if len(ids) == 2:
+                            current_dev.vendor_id = ids[0]
+                            current_dev.product_id = ids[1]
+            elif current_dev:
+                if "iManufacturer" in line:
+                    current_dev.manufacturer = line.split(None, 2)[-1]
+                elif "iProduct" in line:
+                    current_dev.product = line.split(None, 2)[-1]
+                elif "iSerial" in line:
+                    current_dev.serial = line.split(None, 2)[-1]
+                elif "bDeviceClass" in line:
+                    current_dev.class_name = line.split(None, 2)[-1]
+
     async def get_external_ip(self) -> str | None:
         """Get public/external IP address by checking the WAN interface."""
         try:
@@ -771,6 +854,13 @@ class UbusClient(OpenWrtClient):
         except UbusError:
             return interfaces
 
+        # 2. Fetch all device statistics and link status in one call (efficient)
+        device_stats = {}
+        try:
+            device_stats = await self._call("network.device", "status")
+        except UbusError:
+            _LOGGER.debug("Failed to fetch all network device stats")
+
         for iface_data in status.get("interface", []):
             iface = NetworkInterface(
                 name=iface_data.get("interface", ""),
@@ -788,33 +878,34 @@ class UbusClient(OpenWrtClient):
             if ipv6_addrs:
                 iface.ipv6_address = ipv6_addrs[0].get("address", "")
 
-            dns_servers = iface_data.get("dns-server", [])
-            iface.dns_servers = dns_servers
+            iface.dns_servers = iface_data.get("dns-server", [])
+            iface.ipv6_prefix = [
+                p.get("address", "") for p in iface_data.get("ipv6-prefix", [])
+            ]
+            iface.ipv6_prefix_assignment = iface_data.get("ipv6-prefix-assignment", [])
 
+            # Apply statistics and link status
             dev_name = iface.device
-            if dev_name:
-                try:
-                    dev_status = await self._call(
-                        "network.device",
-                        "status",
-                        {"name": dev_name},
-                    )
-                    stats = dev_status.get("statistics", {})
-                    iface.rx_bytes = stats.get("rx_bytes", 0)
-                    iface.tx_bytes = stats.get("tx_bytes", 0)
-                    iface.rx_packets = stats.get("rx_packets", 0)
-                    iface.tx_packets = stats.get("tx_packets", 0)
-                    iface.rx_errors = stats.get("rx_errors", 0)
-                    iface.tx_errors = stats.get("tx_errors", 0)
-                    iface.rx_dropped = stats.get("rx_dropped", 0)
-                    iface.tx_dropped = stats.get("tx_dropped", 0)
-                    iface.collisions = stats.get("collisions", 0)
-                    iface.multicast = stats.get("multicast", 0)
-                    iface.mac_address = dev_status.get("macaddr", "")
-                    iface.speed = dev_status.get("speed", "")
-                except UbusError:
-                    pass
-
+            if dev_name and dev_name in device_stats:
+                dev_status = device_stats[dev_name]
+                iface.is_link_up = dev_status.get("link", False)
+                iface.link_speed = dev_status.get("speed", 0)
+                iface.link_duplex = "full" if dev_status.get("full_duplex") else "half"
+                
+                stats = dev_status.get("statistics", {})
+                iface.rx_bytes = stats.get("rx_bytes", 0)
+                iface.tx_bytes = stats.get("tx_bytes", 0)
+                iface.rx_packets = stats.get("rx_packets", 0)
+                iface.tx_packets = stats.get("tx_packets", 0)
+                iface.rx_errors = stats.get("rx_errors", 0)
+                iface.tx_errors = stats.get("tx_errors", 0)
+                iface.rx_dropped = stats.get("rx_dropped", 0)
+                iface.tx_dropped = stats.get("tx_dropped", 0)
+                iface.collisions = stats.get("collisions", 0)
+                iface.multicast = stats.get("multicast", 0)
+                iface.mac_address = dev_status.get("macaddr", "")
+                iface.speed = str(iface.link_speed) if iface.link_speed else dev_status.get("speed", "")
+            
             interfaces.append(iface)
 
         return interfaces
@@ -823,8 +914,9 @@ class UbusClient(OpenWrtClient):
         """Get connected devices by combining DHCP leases, ARP, and wireless clients."""
         devices: dict[str, ConnectedDevice] = {}
 
-        # 1. Start with DHCP leases
+        # 1. Start with initial device list from DHCP leases (active and static)
         await self._get_devices_from_dhcp(devices)
+        await self._get_devices_from_static_leases(devices)
 
         # 2. Get wireless status for iwinfo and hostapd processing
         wireless_data: dict[str, Any] = {}
@@ -844,6 +936,10 @@ class UbusClient(OpenWrtClient):
         # 5. Process wireless client details (hostapd)
         if wireless_data:
             await self._process_hostapd_clients(devices, wireless_data)
+
+        # 6. Supplemental source: Bridge FDB (Forwarding Database)
+        # This helps identifying which physical port a wired device is on
+        await self._process_bridge_fdb(devices)
 
         # Always run fallback to ensure we catch any manually added or mesh interfaces
         await self._process_hostapd_fallback(devices)
@@ -953,6 +1049,72 @@ class UbusClient(OpenWrtClient):
                     self._merge_hostapd_clients(
                         devices, hostapd_data.get("clients", {}), ifname
                     )
+
+    async def _get_devices_from_static_leases(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Populate device list from static DHCP leases in UCI."""
+        try:
+            config = await self._call("uci", "get", {"config": "dhcp"})
+            if not config or not isinstance(config, dict):
+                return
+            
+            for section, values in config.items():
+                if values.get(".type") == "host":
+                    macs = values.get("mac")
+                    if not macs:
+                        continue
+                    
+                    # mac can be a space-separated string or a list
+                    if isinstance(macs, str):
+                        mac_list = macs.split()
+                    else:
+                        mac_list = macs
+                    
+                    for mac in mac_list:
+                        mac_lower = mac.lower()
+                        if mac_lower not in devices:
+                            devices[mac_lower] = ConnectedDevice(
+                                mac=mac_lower,
+                                ip=values.get("ip", ""),
+                                hostname=values.get("name", ""),
+                                is_wireless=False,
+                                connected=False,
+                            )
+        except Exception:
+            pass
+
+    async def _process_bridge_fdb(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Fetch and merge bridge FDB (forwarding database) information."""
+        try:
+            # 1. Fetch all network devices to find bridges and members
+            device_status = await self._call("network.device", "status")
+            if not device_status or not isinstance(device_status, dict):
+                return
+
+            # 2. For each device, fetch its FDB if it's a bridge or has members
+            for dev_name, dev_info in device_status.items():
+                if not dev_info.get("up"):
+                    continue
+                
+                try:
+                    fdb = await self._call("network.device", "fdb", {"name": dev_name})
+                    if fdb and isinstance(fdb, list):
+                        for entry in fdb:
+                            mac = entry.get("mac", "").lower()
+                            if mac not in devices:
+                                continue
+                            
+                            dev = devices[mac]
+                            # Only apply to wired devices or as supplemental info
+                            port = entry.get("port", "")
+                            if port:
+                                dev.port = port
+                                # If it's a wired device, we can improve its interface info
+                                if not dev.is_wireless and not dev.interface:
+                                    dev.interface = dev_name
+                except Exception:
+                    continue
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch bridge FDB: %s", err)
 
     async def _process_iwinfo_fallback(
         self, devices: dict[str, ConnectedDevice]
@@ -1492,16 +1654,40 @@ class UbusClient(OpenWrtClient):
         # Try odhcpd via ubus
         if self.dhcp_software in ("auto", "odhcpd"):
             try:
+                # IPv4 leases
                 result = await self._call("dhcp", "ipv4leases")
-                for lease_data in result.get("dhcp_leases", []):
-                    leases.append(
-                        DhcpLease(
-                            hostname=lease_data.get("hostname", ""),
-                            mac=lease_data.get("mac", "").lower(),
-                            ip=lease_data.get("ipaddr", ""),
-                            expires=lease_data.get("expires", 0),
-                        ),
-                    )
+                for lease_data in result.get("device", {}).values():
+                    # odhcpd can return list or dict per interface
+                    lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
+                    for l in lease_list:
+                        if not isinstance(l, dict): continue
+                        leases.append(
+                            DhcpLease(
+                                hostname=l.get("hostname", ""),
+                                mac=l.get("mac", "").lower(),
+                                ip=l.get("ipaddr", ""),
+                                expires=l.get("expires", 0),
+                                type="v4",
+                            ),
+                        )
+                
+                # IPv6 leases
+                result_v6 = await self._call("dhcp", "ipv6leases")
+                for lease_data in result_v6.get("device", {}).values():
+                    lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
+                    for l in lease_list:
+                        if not isinstance(l, dict): continue
+                        leases.append(
+                            DhcpLease(
+                                hostname=l.get("hostname", ""),
+                                mac=l.get("mac", "").lower(),
+                                ip=l.get("ipaddr", ""),
+                                expires=l.get("expires", 0),
+                                type="v6",
+                                duid=l.get("duid", ""),
+                            ),
+                        )
+
                 if leases and self.dhcp_software == "odhcpd":
                     return leases
             except UbusError:

@@ -453,16 +453,21 @@ class SshClient(OpenWrtClient):
                         resources.memory_buffered = val
                     elif key == "Cached":
                         resources.memory_cached = val
-                    elif key == "SwapTotal":
-                        resources.swap_total = val
-                    elif key == "SwapFree":
-                        resources.swap_free = val
-            resources.memory_used = (
-                resources.memory_total
-                - resources.memory_free
-                - resources.memory_buffered
-                - resources.memory_cached
-            )
+                    elif key == "MemAvailable":
+                        resources.memory_available = val
+            
+            # Calculate available if not present
+            if resources.memory_available == 0:
+                resources.memory_available = resources.memory_free + resources.memory_buffered + resources.memory_cached
+            
+            if resources.memory_total > 0:
+                resources.memory_available_percent = round(
+                    (resources.memory_available / resources.memory_total) * 100.0, 1
+                )
+                resources.memory_used = resources.memory_total - resources.memory_available
+                resources.memory_used_percent = round(
+                    (resources.memory_used / resources.memory_total) * 100.0, 1
+                )
             resources.swap_used = resources.swap_total - resources.swap_free
 
         # 2. Load
@@ -547,32 +552,19 @@ class SshClient(OpenWrtClient):
             except Exception:  # noqa: BLE001
                 pass
 
-        # 6. Thermal
-        for thermal_path in [
-            "/sys/class/thermal/thermal_zone0/temp",
-            "/sys/class/thermal/thermal_zone1/temp",
-            "/sys/devices/virtual/thermal/thermal_zone0/temp",
-            "/sys/devices/virtual/thermal/thermal_zone1/temp",
-            "/sys/class/hwmon/hwmon0/temp1_input",
-        ]:
-            try:
-                temp = await self._exec(f"cat {thermal_path} 2>/dev/null")
-                if not temp:
-                    continue
-                temp_clean = temp.strip().strip("'").strip('"')
-                if not temp_clean or not temp_clean.isdigit():
-                    continue
-                temp_val = int(temp_clean)
-                if temp_val > 1000:
-                    resources.temperature = temp_val / 1000.0
-                else:
-                    resources.temperature = float(temp_val)
-                break
-            except (
-                ValueError,
-                Exception,
-            ):
-                continue
+        # 5. CPU Frequency
+        try:
+            freq = await self._exec("cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null")
+            if freq and freq.strip().isdigit():
+                resources.cpu_frequency = int(freq.strip()) / 1000.0
+        except Exception:
+            pass
+
+        # 6. Dynamic Thermal Zones
+        await self._fetch_dynamic_thermals_ssh(resources)
+
+        # 7. USB Device Discovery
+        await self._fetch_usb_devices_ssh(resources)
 
         return resources
 
@@ -732,7 +724,127 @@ class SshClient(OpenWrtClient):
         if not any(d.is_wireless for d in devices.values()):
             await self._add_wireless_devices_ubus_ssh(devices)
 
+        # 4. Supplemental source: Bridge FDB (Forwarding Database)
+        await self._process_bridge_fdb(devices)
+
         return list(devices.values())
+
+    async def _process_bridge_fdb(self, devices: dict[str, ConnectedDevice]) -> None:
+        """Fetch and merge bridge FDB (forwarding database) information via SSH."""
+        try:
+            # 1. Fetch all network devices
+            dev_status_str = await self._exec("ubus call network.device status 2>/dev/null")
+            if not dev_status_str or not dev_status_str.strip().startswith("{"):
+                return
+
+            device_status = json.loads(dev_status_str)
+
+            # 2. For each active device, fetch its FDB
+            for dev_name, dev_info in device_status.items():
+                if not dev_info.get("up"):
+                    continue
+
+                try:
+                    fdb_str = await self._exec(
+                        f"ubus call network.device fdb '{{\"name\":\"{dev_name}\"}}' 2>/dev/null"
+                    )
+                    if fdb_str and fdb_str.strip().startswith("["):
+                        fdb = json.loads(fdb_str)
+                        for entry in fdb:
+                            mac = entry.get("mac", "").lower()
+                            if mac not in devices:
+                                continue
+
+                            dev = devices[mac]
+                            port = entry.get("port", "")
+                            if port:
+                                dev.port = port
+                                if not dev.is_wireless and not dev.interface:
+                                    dev.interface = dev_name
+                except Exception:
+                    continue
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch bridge FDB via SSH: %s", err)
+
+    async def _fetch_dynamic_thermals_ssh(self, resources: SystemResources) -> None:
+        """Fetch thermal zones dynamically via SSH."""
+        try:
+            # Find all thermal zones
+            zones_output = await self._exec("ls -d /sys/class/thermal/thermal_zone* 2>/dev/null")
+            if zones_output:
+                for zone_path in zones_output.strip().split():
+                    zone_name = zone_path.split("/")[-1]
+                    try:
+                        temp_str = await self._exec(f"cat {zone_path}/temp 2>/dev/null")
+                        if temp_str and temp_str.strip().isdigit():
+                            temp_val = int(temp_str.strip())
+                            # Handle mC vs C
+                            val = temp_val / 1000.0 if temp_val > 1000 else float(temp_val)
+                            resources.temperatures[zone_name] = val
+                            if resources.temperature is None or zone_name == "thermal_zone0":
+                                resources.temperature = val
+                    except Exception:
+                        continue
+            
+            # Fallback for hwmon
+            if not resources.temperatures:
+                hwmon_temp = await self._exec("cat /sys/class/hwmon/hwmon0/temp1_input 2>/dev/null")
+                if hwmon_temp and hwmon_temp.strip().isdigit():
+                    val = int(hwmon_temp.strip()) / 1000.0
+                    resources.temperature = val
+                    resources.temperatures["hwmon0"] = val
+        except Exception:
+            pass
+
+    async def _fetch_usb_devices_ssh(self, resources: SystemResources) -> None:
+        """Fetch connected USB devices via SSH."""
+        try:
+            # Try verbose lsusb
+            stdout = await self._exec("lsusb -v 2>/dev/null")
+            if stdout:
+                self._parse_lsusb_output(resources, stdout)
+                return
+            
+            # Simple lsusb fallback
+            stdout = await self._exec("lsusb 2>/dev/null")
+            if stdout:
+                for line in stdout.splitlines():
+                    if not line.strip(): continue
+                    parts = line.split(None, 6)
+                    if len(parts) >= 6:
+                        resources.usb_devices.append(UsbDevice(
+                            id=f"{parts[1]}:{parts[3].strip(':')}",
+                            vendor_id=parts[5].split(":")[0],
+                            product_id=parts[5].split(":")[1],
+                            product=parts[6] if len(parts) > 6 else ""
+                        ))
+        except Exception:
+            pass
+
+    def _parse_lsusb_output(self, resources: SystemResources, stdout: str) -> None:
+        """Parse verbose lsusb output."""
+        current_dev = None
+        for line in stdout.splitlines():
+            line = line.strip()
+            if line.startswith("Bus "):
+                parts = line.split()
+                if len(parts) >= 4:
+                    current_dev = UsbDevice(id=f"{parts[1]}:{parts[3].strip(':')}")
+                    resources.usb_devices.append(current_dev)
+                    if len(parts) >= 6:
+                        ids = parts[5].split(":")
+                        if len(ids) == 2:
+                            current_dev.vendor_id = ids[0]
+                            current_dev.product_id = ids[1]
+            elif current_dev:
+                if "iManufacturer" in line:
+                    current_dev.manufacturer = line.split(None, 2)[-1]
+                elif "iProduct" in line:
+                    current_dev.product = line.split(None, 2)[-1]
+                elif "iSerial" in line:
+                    current_dev.serial = line.split(None, 2)[-1]
+                elif "bDeviceClass" in line:
+                    current_dev.class_name = line.split(None, 2)[-1]
 
     async def _add_dhcp_devices_ssh(self, devices: dict[str, ConnectedDevice]) -> None:
         """Add devices discovered via DHCP leases."""
@@ -784,40 +896,40 @@ class SshClient(OpenWrtClient):
     async def _add_wireless_devices_iwinfo_ssh(
         self, devices: dict[str, ConnectedDevice]
     ) -> None:
-        """Add or update wireless devices via iwinfo."""
+        """Add or update wireless devices via iwinfo ubus calls."""
         try:
-            iw_out = await self._exec(
-                "iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'"
-            )
-            ifaces = iw_out.strip().split()
-            for iface in ifaces:
-                assoc = await self._exec(f"iwinfo {iface} assoclist 2>/dev/null")
-                for line in assoc.strip().split("\n"):
-                    if not line.strip() or "No information" in line:
-                        continue
-                    parts = line.split()
-                    if (
-                        len(parts) >= 1
-                        and parts[0].count(":") == 5
-                        and len(parts[0]) == 17
-                    ):
-                        mac = parts[0].lower()
+            # Use get_wireless_interfaces to find active interfaces
+            wireless_ifaces = await self.get_wireless_interfaces()
+            for wifi_iface in wireless_ifaces:
+                iface_name = wifi_iface.name
+                # Use ubus call for JSON output over SSH
+                assoc_str = await self._exec(f'ubus call iwinfo assoclist \'{{"device":"{iface_name}"}}\' 2>/dev/null')
+                if assoc_str and assoc_str.strip().startswith("{"):
+                    assoc = json.loads(assoc_str).get("results", [])
+                    for client in assoc:
+                        mac = client.get("mac", "").lower()
+                        if not mac:
+                            continue
+                        
                         dev = devices.setdefault(
                             mac, ConnectedDevice(mac=mac, connected=True)
                         )
+                        dev.connected = True
                         dev.is_wireless = True
-                        dev.interface = iface
-                        if len(parts) >= 2 and parts[1].lstrip("-").isdigit():
-                            dev.signal = int(parts[1])
-                        dev.connection_type = (
-                            "5GHz"
-                            if "5g" in iface.lower()
-                            else "2.4GHz"
-                            if "2g" in iface.lower()
-                            else "wireless"
-                        )
+                        dev.interface = iface_name
+                        dev.signal = client.get("signal", 0)
+                        
+                        # Set connection type based on interface frequency/name
+                        if "5g" in iface_name.lower() or (wifi_iface.frequency and "5" in wifi_iface.frequency):
+                            dev.connection_type = "5GHz"
+                        elif "6g" in iface_name.lower() or (wifi_iface.frequency and "6" in wifi_iface.frequency):
+                            dev.connection_type = "6GHz"
+                        elif "2g" in iface_name.lower() or (wifi_iface.frequency and "2" in wifi_iface.frequency):
+                            dev.connection_type = "2.4GHz"
+                        else:
+                            dev.connection_type = "wireless"
         except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("iwinfo wireless discovery failed: %s", err)
+            _LOGGER.debug("iwinfo wireless discovery failed (SSH): %s", err)
 
     async def _add_wireless_devices_ubus_ssh(
         self, devices: dict[str, ConnectedDevice]
@@ -1369,18 +1481,42 @@ class SshClient(OpenWrtClient):
     async def _get_leases_odhcpd(self, leases: list[DhcpLease]) -> None:
         """Fetch DHCP leases from odhcpd via ubus over SSH."""
         with contextlib.suppress(Exception):
+            # IPv4
             stdout = await self._exec("ubus call dhcp ipv4leases 2>/dev/null")
             if stdout and stdout.strip().startswith("{"):
                 data = json.loads(stdout)
-                for l_data in data.get("dhcp_leases", []):
-                    leases.append(
-                        DhcpLease(
-                            hostname=l_data.get("hostname", ""),
-                            mac=l_data.get("mac", "").lower(),
-                            ip=l_data.get("ipaddr", ""),
-                            expires=l_data.get("expires", 0),
-                        ),
-                    )
+                for lease_data in data.get("device", {}).values():
+                    lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
+                    for l in lease_list:
+                        if not isinstance(l, dict): continue
+                        leases.append(
+                            DhcpLease(
+                                hostname=l.get("hostname", ""),
+                                mac=l.get("mac", "").lower(),
+                                ip=l.get("ipaddr", ""),
+                                expires=l.get("expires", 0),
+                                type="v4",
+                            ),
+                        )
+            
+            # IPv6
+            stdout_v6 = await self._exec("ubus call dhcp ipv6leases 2>/dev/null")
+            if stdout_v6 and stdout_v6.strip().startswith("{"):
+                data_v6 = json.loads(stdout_v6)
+                for lease_data in data_v6.get("device", {}).values():
+                    lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
+                    for l in lease_list:
+                        if not isinstance(l, dict): continue
+                        leases.append(
+                            DhcpLease(
+                                hostname=l.get("hostname", ""),
+                                mac=l.get("mac", "").lower(),
+                                ip=l.get("ipaddr", ""),
+                                expires=l.get("expires", 0),
+                                type="v6",
+                                duid=l.get("duid", ""),
+                            ),
+                        )
 
     async def _get_leases_dnsmasq(self, leases: list[DhcpLease]) -> None:
         """Fetch DHCP leases from dnsmasq lease file via SSH."""
@@ -1460,6 +1596,36 @@ class SshClient(OpenWrtClient):
         except Exception:
             pass
         return status
+
+    async def get_adblock_fast_status(self) -> SimpleAdBlockStatus:
+        """Get adblock-fast status via SSH."""
+        from .base import SimpleAdBlockStatus
+
+        status = SimpleAdBlockStatus()
+        try:
+            # Fallback to uci
+            res = await self._exec("uci -q get adblock-fast.config.enabled")
+            status.enabled = res.strip() == "1"
+            status.status = "enabled" if status.enabled else "disabled"
+            count = await self._exec("wc -l < /tmp/adblock-fast.blocked 2>/dev/null")
+            if count and count.strip().isdigit():
+                status.blocked_domains = int(count.strip())
+        except Exception:
+            pass
+        return status
+
+    async def set_adblock_fast_enabled(self, enabled: bool) -> bool:
+        """Enable/disable adblock-fast service via SSH."""
+        val = "1" if enabled else "0"
+        try:
+            await self._exec(
+                f"uci set adblock-fast.config.enabled='{val}' && uci commit adblock-fast",
+            )
+            action = "start" if enabled else "stop"
+            await self._exec(f"/etc/init.d/adblock-fast {action}")
+            return True
+        except Exception:
+            return False
 
     async def manage_service(self, name: str, action: str) -> bool:
         """Manage a system service (start/stop/restart/enable/disable) via SSH."""
