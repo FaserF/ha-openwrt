@@ -37,6 +37,7 @@ from .base import (
     SimpleAdBlockStatus,
     SqmStatus,
     SystemResources,
+    UpnpMapping,
     WirelessInterface,
     WireGuardInterface,
     WireGuardPeer,
@@ -1050,6 +1051,32 @@ class LuciRpcClient(OpenWrtClient):
                 _LOGGER.debug("Failed to get iwinfo for %s: %s", iface_name, err)
 
         return interfaces
+
+    async def get_upnp_mappings(self) -> list[UpnpMapping]:
+        """Get active UPnP/NAT-PMP port mappings via LuCI RPC."""
+        mappings: list[UpnpMapping] = []
+        try:
+            stdout = await self.execute_command("ubus call upnp get_mappings 2>/dev/null")
+            if not stdout or not stdout.strip().startswith("{"):
+                return mappings
+                
+            res = json.loads(stdout)
+            if "mappings" not in res:
+                return mappings
+                
+            for m in res["mappings"]:
+                mappings.append(UpnpMapping(
+                    protocol=m.get("protocol", "TCP").upper(),
+                    external_port=int(m.get("ext_port", 0)),
+                    internal_ip=m.get("int_addr", ""),
+                    internal_port=int(m.get("int_port", 0)),
+                    description=m.get("descr", ""),
+                    enabled=bool(m.get("enabled", True)),
+                ))
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch UPnP mappings via LuCI RPC: %s", err)
+            
+        return mappings
 
     async def get_wireguard_interfaces(self) -> list[WireGuardInterface]:
         """Get WireGuard VPN interface and peer information via LuCI RPC."""

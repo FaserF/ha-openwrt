@@ -153,6 +153,7 @@ If you are using a non-root user (e.g. for security reasons), you need to grant 
 | **Firewall** | Read firewall rules & port forwards | Toggling rules/forwards, Parental Control (Device Blocking) |
 | **Devices** | Read DHCP Leases, ARP/Neighbor table (Connected devices) | Wake on LAN, Kicking wireless clients |
 | **VPN** | Read WireGuard & OpenVPN status | - |
+| **UPnP** | Read active UPnP/NAT-PMP port mappings | - |
 | **SQM** | Read SQM instance status | Toggling SQM, Changing bandwidth limits |
 | **Services** | Read active system services (OpenVPN, AdGuard, etc.) | Toggling & restarting services |
 | **LEDs** | Read current state of router LEDs | Toggling LEDs, changing brightness |

@@ -581,6 +581,18 @@ class FirewallRedirect:
 
 
 @dataclass
+class UpnpMapping:
+    """UPnP/NAT-PMP port mapping."""
+
+    protocol: str = ""  # TCP/UDP
+    external_port: int = 0
+    internal_ip: str = ""
+    internal_port: int = 0
+    description: str = ""
+    enabled: bool = True
+
+
+@dataclass
 class FirewallRule:
     """General firewall rule."""
 
@@ -975,6 +987,11 @@ class OpenWrtClient(abc.ABC):
     @abc.abstractmethod
     async def get_local_ips(self) -> set[str]:
         """Get all IP addresses belonging to the router."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def get_upnp_mappings(self) -> list[UpnpMapping]:
+        """Get active UPnP/NAT-PMP port mappings."""
         raise NotImplementedError
 
     @abc.abstractmethod
