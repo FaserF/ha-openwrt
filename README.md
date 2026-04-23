@@ -41,6 +41,12 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
     - Set download and upload limits (Mbps) via native number sliders.
     - Diagnostic sensors for configured interface, qdisc, and setup script.
   - **Service Management**: Monitor, start, stop, and restart system services (e.g., AdGuard Home, OpenVPN, Samba).
+  - **Security & Ad-Blocking**:
+    - **AdBlock/Simple-AdBlock**: Track status, blocked domain counts, and toggle filtering.
+    - **Ban-IP**: Monitor banned IP counts and service state.
+  - **Diagnostic Sensors**:
+    - **Reboot Required**: Alerts you when the router needs a restart (e.g., after kernel updates).
+    - **Process Monitoring**: Tracks top CPU and memory consuming processes for real-time performance troubleshooting.
   - **Backup & Commands**: Trigger configuration backups or execute arbitrary shell commands directly from HA.
 - **Parental Control & Device Management**:
   - **Internet Access Control**: Per-device "Internet Access" switches to block/allow traffic (Fritz!Box style).
@@ -113,7 +119,9 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
 3. Follow the guided setup:
    - Select your connection method: **Ubus (HTTP/HTTPS)** is highly recommended.
    - Enter your router's IP/Hostname, Username (usually `root`), and Password.
-   - For Ubus, ensure the `rpcd` package is installed on your router.
+   - For Ubus, ensure the `uhttpd-mod-ubus` package is installed on your router.
+   - **Secure Provisioning**: If connecting as `root`, the integration will offer to automatically create a dedicated, least-privilege `homeassistant` user and configure all required ACL permissions for you.
+   - **Connection Diagnostics**: If setup fails, a detailed diagnostic report will be displayed to help you identify the cause (e.g. firewall blocking, missing packages, or incorrect ACLs).
 
 ### Supported Connection Methods
 

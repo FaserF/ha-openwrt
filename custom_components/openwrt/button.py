@@ -112,7 +112,9 @@ async def async_setup_entry(
         _add_wireless_buttons(coordinator, entry, client, tracked_keys, new_entities)
 
         # 5. Extra service buttons (AdBlock, etc.)
-        _add_extra_service_buttons(coordinator, entry, client, tracked_keys, new_entities)
+        _add_extra_service_buttons(
+            coordinator, entry, client, tracked_keys, new_entities
+        )
 
         # 6. Device-specific buttons (WoL, Kick)
         _add_device_buttons(coordinator, entry, client, tracked_keys, new_entities)
@@ -239,6 +241,7 @@ def _add_service_buttons(
                         translation_key=f"service_{action}",
                         translation_placeholders={"service": service.name},
                         entity_category=EntityCategory.CONFIG,
+                        entity_registry_enabled_default=False,
                         press_fn=lambda c, n=service.name, a=action: c.manage_service(
                             n, a
                         ),
@@ -293,16 +296,9 @@ def _add_wireless_buttons(
     if not coordinator.data or not coordinator.data.permissions.write_wireless:
         return
 
-    # Look for wireless interfaces in network_interfaces or connected_devices info
-    wireless_ifaces = set()
-    for iface in coordinator.data.network_interfaces:
-        if "wlan" in iface.name or "radio" in iface.name:
-            wireless_ifaces.add(iface.name)
-
-    # Fallback to checking connected devices to see which interfaces are wireless
-    for dev in coordinator.data.connected_devices:
-        if dev.is_wireless and dev.interface:
-            wireless_ifaces.add(dev.interface)
+    wireless_ifaces = {
+        wifi.name for wifi in coordinator.data.wireless_interfaces if wifi.name
+    }
 
     for iface in wireless_ifaces:
         key = f"wps_push_{iface}"
@@ -621,7 +617,15 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
                 ):
                     via_device = (
                         DOMAIN,
-                        f"{self._entry.unique_id}_ap_{device.interface}",
+                        format_ap_device_id(
+                            cast(
+                                str,
+                                self._entry.unique_id or self._entry.data[CONF_HOST],
+                            ),
+                            self.coordinator.interface_to_stable_id.get(
+                                device.interface, device.interface
+                            ),
+                        ),
                     )
                     break
 
@@ -701,7 +705,15 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
                 ):
                     via_device = (
                         DOMAIN,
-                        f"{self._entry.unique_id}_ap_{device.interface}",
+                        format_ap_device_id(
+                            cast(
+                                str,
+                                self._entry.unique_id or self._entry.data[CONF_HOST],
+                            ),
+                            self.coordinator.interface_to_stable_id.get(
+                                device.interface, device.interface
+                            ),
+                        ),
                     )
                     break
 

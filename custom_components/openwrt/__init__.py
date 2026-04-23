@@ -12,6 +12,7 @@ Provides deep integration with OpenWrt routers including:
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import logging
 from typing import Any
@@ -129,11 +130,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
 
     # Pre-import platforms in the background to avoid blocking the event loop
     # during async_forward_entry_setups which calls sync import_module
-    for platform in PLATFORMS:
-        hass.async_add_import_executor_job(
-            importlib.import_module,
-            f"custom_components.{DOMAIN}.{platform}",
+    await asyncio.gather(
+        *(
+            hass.async_add_import_executor_job(
+                importlib.import_module,
+                f"custom_components.{DOMAIN}.{platform}",
+            )
+            for platform in PLATFORMS
         )
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

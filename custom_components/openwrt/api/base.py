@@ -281,8 +281,40 @@ class WirelessInterface:
     ifname: str = ""
     section: str = ""
     band: str = ""  # 2.4 GHz, 5 GHz, 6 GHz
-    width: str = "" # 20 MHz, 40 MHz, 80 MHz, 160 MHz, 320 MHz
-    standard: str = "" # 802.11n/ac/ax/be
+    width: str = ""  # 20 MHz, 40 MHz, 80 MHz, 160 MHz, 320 MHz
+    standard: str = ""  # 802.11n/ac/ax/be
+
+    def __post_init__(self) -> None:
+        """Post-process wireless data."""
+        if not self.band:
+            if self.frequency:
+                freq_str = str(self.frequency).lower()
+                if "2.4" in freq_str or (
+                    freq_str.replace(".", "").isdigit()
+                    and 2000 <= float(freq_str) <= 3000
+                ):
+                    self.band = "2.4 GHz"
+                elif "5" in freq_str or (
+                    freq_str.replace(".", "").isdigit()
+                    and 4900 <= float(freq_str) <= 5900
+                ):
+                    self.band = "5 GHz"
+                elif "6" in freq_str or (
+                    freq_str.replace(".", "").isdigit()
+                    and 5900 < float(freq_str) <= 7200
+                ):
+                    self.band = "6 GHz"
+
+            if not self.band and self.hwmode:
+                mode = self.hwmode.lower()
+                if any(x in mode for x in ["b", "g"]):
+                    self.band = "2.4 GHz"
+                elif any(x in mode for x in ["a", "ac"]):
+                    self.band = "5 GHz"
+                elif "ax" in mode:
+                    # ax can be both, but usually 5GHz on OpenWrt routers
+                    # unless it's specifically radio0/1 check
+                    pass
 
 
 @dataclass
@@ -462,8 +494,8 @@ class DhcpLease:
     mac: str = ""
     ip: str = ""
     expires: int = 0
-    type: str = "v4" # v4 or v6
-    duid: str = ""   # DHCPv6 DUID
+    type: str = "v4"  # v4 or v6
+    duid: str = ""  # DHCPv6 DUID
 
 
 @dataclass
@@ -618,6 +650,7 @@ class FirewallRule:
     target: str = ""
     src: str = ""
     dest: str = ""
+    src_mac: str = ""
 
 
 @dataclass
@@ -697,6 +730,7 @@ class OpenWrtPermissions:
     read_sqm: bool = False
     write_sqm: bool = False
     read_vpn: bool = False
+    write_vpn: bool = False
     read_mwan: bool = False
     read_led: bool = False
     write_led: bool = False
@@ -1201,7 +1235,6 @@ class OpenWrtClient(abc.ABC):
         """Get list of system services."""
         return []
 
-
     async def manage_service(self, name: str, action: str) -> bool:
         """Manage a system service (start/stop/restart/enable/disable)."""
         return False
@@ -1251,7 +1284,6 @@ class OpenWrtClient(abc.ABC):
     async def get_leds(self) -> list[LedInfo]:
         """Get list of router LEDs."""
         return []
-
 
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status."""

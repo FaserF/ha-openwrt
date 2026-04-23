@@ -28,6 +28,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
+from .helpers import format_ap_device_id, format_ap_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -194,7 +195,6 @@ class OpenWrtWireGuardSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEn
         await self.coordinator.async_request_refresh()
 
 
-
 def _add_wireless_switches(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
@@ -213,6 +213,7 @@ def _add_wireless_switches(
                     wifi.name,
                     wifi.ssid,
                     wifi.frequency,
+                    wifi.section,
                 ),
             )
 
@@ -240,7 +241,9 @@ def _add_service_switches(
         if service.name:
             icon = SERVICE_ICONS.get(service.name)
             entities.append(
-                OpenWrtServiceSwitch(coordinator, entry, client, service.name, icon=icon)
+                OpenWrtServiceSwitch(
+                    coordinator, entry, client, service.name, icon=icon
+                )
             )
 
 
@@ -573,33 +576,43 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         iface_name: str,
         ssid: str,
         frequency: str = "",
+        section_id: str | None = None,
     ) -> None:
         """Initialize the wireless switch."""
         super().__init__(coordinator)
         self._client = client
         self._iface_name = iface_name
 
-        # Build a descriptive label: "SSID (Band)" or just "SSID" if frequency is missing
+        # Build descriptive labels
+        self._attr_unique_id = f"{entry.entry_id}_wireless_{iface_name}"
+        self._attr_translation_key = "wireless_radio"
+
+        # Calculate band for placeholders
         band = ""
         if frequency:
-            if frequency.startswith("2."):
+            freq_str = str(frequency).lower()
+            if "2.4" in freq_str or (
+                freq_str.replace(".", "").isdigit() and 2000 <= float(freq_str) <= 3000
+            ):
                 band = "2.4 GHz"
-            elif frequency.startswith("5."):
+            elif "5" in freq_str or (
+                freq_str.replace(".", "").isdigit() and 4900 <= float(freq_str) <= 5900
+            ):
                 band = "5 GHz"
-            elif frequency.startswith("6."):
+            elif "6" in freq_str or (
+                freq_str.replace(".", "").isdigit() and 5900 < float(freq_str) <= 7200
+            ):
                 band = "6 GHz"
-            else:
-                band = frequency.replace(" GHz", "") + " GHz"
 
-        label = ssid or iface_name
-        name_label = f"{label} ({band})" if band else label
-
-        self._attr_unique_id = f"{entry.entry_id}_wireless_{iface_name}"
-        self._attr_name = name_label
-        self._attr_translation_key = "wireless_radio"
+        self._attr_translation_placeholders = {
+            "ssid": ssid or iface_name,
+            "band": band,
+        }
+        # Use section ID as stable identifier if available
+        stable_id = section_id if section_id else iface_name
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.unique_id}_ap_{iface_name}")},
-            name=f"AP {name_label}",
+            identifiers={(DOMAIN, format_ap_device_id(entry, stable_id))},
+            name=format_ap_name(ssid or iface_name, frequency),
             manufacturer="OpenWrt",
             model="Access Point",
             via_device=(DOMAIN, cast(str, entry.unique_id)),
@@ -999,6 +1012,7 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
             raise HomeAssistantError(msg) from err
         await self.coordinator.async_request_refresh()
 
+
 class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
     """Switch to enable/disable an LED."""
 
@@ -1041,7 +1055,9 @@ class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
             await self._client.set_led(self._name, True)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            raise HomeAssistantError(f"Failed to turn on LED {self._name}: {err}") from err
+            raise HomeAssistantError(
+                f"Failed to turn on LED {self._name}: {err}"
+            ) from err
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the LED off."""
@@ -1049,4 +1065,6 @@ class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
             await self._client.set_led(self._name, False)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            raise HomeAssistantError(f"Failed to turn off LED {self._name}: {err}") from err
+            raise HomeAssistantError(
+                f"Failed to turn off LED {self._name}: {err}"
+            ) from err

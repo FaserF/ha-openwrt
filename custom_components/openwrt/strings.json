@@ -492,6 +492,9 @@
       }
     },
     "binary_sensor": {
+      "reboot_required": {
+        "name": "Reboot Required"
+      },
       "device_connected": {
         "name": "Connected"
       },
@@ -541,6 +544,9 @@
       }
     },
     "switch": {
+      "device_access": {
+        "name": "Internet Access"
+      },
       "wps": {
         "name": "WPS"
       },

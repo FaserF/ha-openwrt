@@ -63,6 +63,7 @@ PLATFORMS: Final = [
     "sensor",
     "switch",
     "update",
+    "image",
 ]
 
 DATA_COORDINATOR: Final = "coordinator"

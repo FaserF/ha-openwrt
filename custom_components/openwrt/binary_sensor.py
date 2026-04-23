@@ -136,7 +136,11 @@ def _async_setup_interface_binary_sensors(
 ) -> None:
     """Set up network interface binary sensors."""
     for iface in coordinator.data.network_interfaces:
-        if iface.name in ("wan", "wan6"):
+        # Include physical interfaces (eth*), bridges (br-*), and WAN
+        if (
+            iface.name.startswith(("eth", "br-", "wan"))
+            or iface.name in coordinator.data.permissions.read_network
+        ):
             entities.append(
                 OpenWrtBinarySensorEntity(
                     coordinator,
@@ -219,7 +223,8 @@ def _async_setup_wireguard_peer_binary_sensors(
                             for w in data.wireguard_interfaces
                             if w.name == i
                             for peer_data in w.peers
-                            if peer_data.public_key == p and peer_data.latest_handshake > 0
+                            if peer_data.public_key == p
+                            and peer_data.latest_handshake > 0
                         ),
                     ),
                 )
@@ -277,7 +282,8 @@ def _async_setup_service_binary_sensors(
             continue
         entities.append(
             OpenWrtBinarySensorEntity(
-                coordinator, entry,
+                coordinator,
+                entry,
                 OpenWrtBinarySensorDescription(
                     key=f"service_{service.name}_running",
                     name=f"Service {service.name}",
@@ -287,9 +293,7 @@ def _async_setup_service_binary_sensors(
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
                     is_on_fn=lambda data, n=service.name: any(
-                        s.running
-                        for s in data.services
-                        if s.name == n
+                        s.running for s in data.services if s.name == n
                     ),
                 ),
             )

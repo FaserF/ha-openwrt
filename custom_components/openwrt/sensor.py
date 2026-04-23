@@ -37,7 +37,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import UNDEFINED, StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api.base import OpenWrtData, StorageUsage, WifiCredentials
+from .api.base import OpenWrtData, StorageUsage
 from .const import (
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
@@ -47,7 +47,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import format_ap_device_id
+from .helpers import format_ap_device_id, format_ap_name
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -121,30 +121,19 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
         iface_name: str,
         ssid: str,
         frequency: str = "",
+        section_id: str | None = None,
     ) -> None:
         """Initialize the WiFi sensor."""
         super().__init__(coordinator, entry, description)
 
-        # Build a descriptive label: "SSID (Band)" or just "SSID" if frequency is missing
-        # Frequency is typically like "2.412 GHz", we want to simplify to "2.4 GHz"
-        band = ""
-        if frequency:
-            if frequency.startswith("2."):
-                band = "2.4 GHz"
-            elif frequency.startswith("5."):
-                band = "5 GHz"
-            elif frequency.startswith("6."):
-                band = "6 GHz"
-            else:
-                band = frequency.replace(" GHz", "") + " GHz"
+        name_label = format_ap_name(ssid or iface_name, frequency)
 
-        label = ssid or iface_name
-        name_label = f"{label} ({band})" if band else label
-
+        # Use section ID as stable identifier if available
+        stable_id = section_id if section_id else iface_name
         router_id = cast(str, entry.unique_id or entry.data[CONF_HOST])
         self._attr_device_info = DeviceInfo(
-            identifiers={format_ap_device_id(router_id, iface_name)},
-            name=f"AP {name_label}",
+            identifiers={(DOMAIN, format_ap_device_id(router_id, stable_id))},
+            name=name_label,
             manufacturer="OpenWrt",
             model="Access Point",
             via_device=(DOMAIN, router_id),
@@ -274,16 +263,18 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
                     and device.is_wireless
                     and device.interface
                 ):
-                    via_device = format_ap_device_id(
-                        cast(str, self._entry.unique_id), device.interface
+                    via_device = (
+                        DOMAIN,
+                        format_ap_device_id(
+                            cast(str, self._entry.unique_id), device.interface
+                        ),
                     )
                     break
 
         return DeviceInfo(
             identifiers={(DOMAIN, self._mac)},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
-            name=(self.name if self.name is not UNDEFINED else None)
-            or self._initial_name,
+            name=self._initial_name,
             via_device=via_device,
         )
 
@@ -606,7 +597,9 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             icon="mdi:usb",
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
-            value_fn=lambda data: len(data.system_resources.usb_devices) if data.system_resources else 0,
+            value_fn=lambda data: (
+                len(data.system_resources.usb_devices) if data.system_resources else 0
+            ),
             attrs_fn=lambda data: {
                 "devices": [
                     {
@@ -617,7 +610,11 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
                         "product": dev.product,
                         "speed": dev.speed,
                     }
-                    for dev in (data.system_resources.usb_devices if data.system_resources else [])
+                    for dev in (
+                        data.system_resources.usb_devices
+                        if data.system_resources
+                        else []
+                    )
                 ]
             },
         ),
@@ -1067,7 +1064,11 @@ def _async_setup_wireguard_sensors(
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
                     value_fn=lambda data, n=wg.name: next(
-                        (len(w.peers) for w in data.wireguard_interfaces if w.name == n),
+                        (
+                            len(w.peers)
+                            for w in data.wireguard_interfaces
+                            if w.name == n
+                        ),
                         0,
                     ),
                 ),
@@ -1269,6 +1270,7 @@ def _async_setup_wireless_sensors(
                 wifi.ssid,
                 wifi.mode,
                 wifi.frequency,
+                wifi.section,
             )
         )
 
@@ -1285,19 +1287,13 @@ def _async_setup_network_sensors(
     # MWAN3 Metrics
     for mwan in coordinator.data.mwan_status:
         entities.append(
-            OpenWrtMwanMetricSensor(
-                coordinator, entry, mwan.interface_name, "latency"
-            )
+            OpenWrtMwanMetricSensor(coordinator, entry, mwan.interface_name, "latency")
         )
         entities.append(
             OpenWrtMwanMetricSensor(
                 coordinator, entry, mwan.interface_name, "packet_loss"
             )
         )
-
-    # Wi-Fi QR Code
-    for cred in coordinator.data.wifi_credentials:
-        entities.append(OpenWrtWifiQrSensor(coordinator, entry, cred))
 
     # DHCP Lease Count
     entities.append(
@@ -1489,17 +1485,20 @@ def _create_wifi_sensors(
     ssid: str,
     mode: str,
     frequency: str = "",
+    section_id: str | None = None,
 ) -> list[OpenWrtWifiSensorEntity]:
     """Create sensors for a wireless interface."""
     sensors: list[OpenWrtWifiSensorEntity] = []
 
     # 1. Base configuration sensors
-    _create_wifi_base_sensors(coordinator, entry, iface_name, ssid, frequency, sensors)
+    _create_wifi_base_sensors(
+        coordinator, entry, iface_name, ssid, frequency, section_id, sensors
+    )
 
     # 2. Station-specific quality sensors (STA/Mesh/etc)
     if mode.lower() not in ("ap", "master", "access point"):
         _create_wifi_station_sensors(
-            coordinator, entry, iface_name, ssid, frequency, sensors
+            coordinator, entry, iface_name, ssid, frequency, section_id, sensors
         )
 
     return sensors
@@ -1511,6 +1510,7 @@ def _create_wifi_base_sensors(
     iface_name: str,
     ssid: str,
     frequency: str,
+    section_id: str | None,
     sensors: list[OpenWrtWifiSensorEntity],
 ) -> None:
     """Create basic WiFi sensors (Clients, Channel, Power, etc.)."""
@@ -1570,6 +1570,7 @@ def _create_wifi_base_sensors(
                 iface_name,
                 ssid,
                 frequency,
+                section_id,
             )
         )
 
@@ -1580,6 +1581,7 @@ def _create_wifi_station_sensors(
     iface_name: str,
     ssid: str,
     frequency: str,
+    section_id: str | None,
     sensors: list[OpenWrtWifiSensorEntity],
 ) -> None:
     """Create quality sensors for WiFi station interfaces."""
@@ -2144,8 +2146,10 @@ def _create_lldp_sensors(
         ),
     ]
 
+
 class OpenWrtTemperatureSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
     """Temperature sensor for extra thermal zones."""
+
     _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -2153,10 +2157,14 @@ class OpenWrtTemperatureSensor(CoordinatorEntity[OpenWrtDataCoordinator], Sensor
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
 
-    def __init__(self, coordinator: OpenWrtDataCoordinator, entry: ConfigEntry, zone_name: str) -> None:
+    def __init__(
+        self, coordinator: OpenWrtDataCoordinator, entry: ConfigEntry, zone_name: str
+    ) -> None:
         super().__init__(coordinator)
         self._zone_name = zone_name
-        self._attr_unique_id = f"{entry.entry_id}_temp_{zone_name.lower().replace(' ', '_')}"
+        self._attr_unique_id = (
+            f"{entry.entry_id}_temp_{zone_name.lower().replace(' ', '_')}"
+        )
         self._attr_name = f"Temperature {zone_name}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
@@ -2168,13 +2176,21 @@ class OpenWrtTemperatureSensor(CoordinatorEntity[OpenWrtDataCoordinator], Sensor
             return None
         return self.coordinator.data.system_resources.temperatures.get(self._zone_name)
 
+
 class OpenWrtMwanMetricSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
     """MWAN3 metric sensor (latency, packet loss)."""
+
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
 
-    def __init__(self, coordinator: OpenWrtDataCoordinator, entry: ConfigEntry, iface: str, metric: str) -> None:
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        iface: str,
+        metric: str,
+    ) -> None:
         super().__init__(coordinator)
         self._iface = iface
         self._metric = metric
@@ -2199,36 +2215,3 @@ class OpenWrtMwanMetricSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorE
             if m.interface_name == self._iface:
                 return getattr(m, self._metric)
         return None
-
-class OpenWrtWifiQrSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
-    """Wi-Fi QR Code sensor."""
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:qrcode"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
-
-    def __init__(self, coordinator: OpenWrtDataCoordinator, entry: ConfigEntry, cred: WifiCredentials) -> None:
-        super().__init__(coordinator)
-        self._iface = cred.iface
-        self._ssid = cred.ssid
-        self._attr_unique_id = f"{entry.entry_id}_wifi_qr_{cred.iface}"
-        self._attr_name = f"Wi-Fi QR Code ({cred.ssid})"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        )
-
-    @property
-    def native_value(self) -> str | None:
-        if not self.coordinator.data:
-            return None
-        for cred in self.coordinator.data.wifi_credentials:
-            if cred.iface == self._iface:
-                t = "WPA"
-                if "wep" in cred.encryption.lower():
-                    t = "WEP"
-                elif "none" in cred.encryption.lower() or "nopass" in cred.encryption.lower():
-                    t = "nopass"
-                h = "true" if cred.hidden else "false"
-                return f"WIFI:S:{cred.ssid};T:{t};P:{cred.key};H:{h};;"
-        return None
-

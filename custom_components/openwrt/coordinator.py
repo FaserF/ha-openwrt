@@ -66,7 +66,7 @@ from .const import (
     DOMAIN,
     OPENWRT_RELEASE_API,
 )
-from .helpers import format_ap_device_id
+from .helpers import format_ap_device_id, format_ap_name
 from .repairs import (
     async_create_auth_repair,
     async_create_connection_lost_repair,
@@ -157,6 +157,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self._last_update_time: float = 0.0
         self._prev_network_stats: dict[str, dict[str, int]] = {}
         self._device_history: dict[str, dict[str, Any]] = {}
+        self.interface_to_stable_id: dict[str, str] = {}
         self._store: storage.Store = storage.Store(
             hass,
             1,
@@ -468,39 +469,32 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         # 2. Register/Update AP devices for wireless interfaces
         # This ensures via_device references in platforms are valid even for dynamic interfaces
-        ap_interfaces: dict[str, str] = {}  # iface_name -> label
+        # Map: system_ifname -> (label, stable_id)
+        ap_info: dict[str, tuple[str, str]] = {}
 
         for wifi in data.wireless_interfaces:
             if wifi.name:
-                # Build label like SSID (Band) or just SSID
-                band = ""
-                if wifi.frequency:
-                    if wifi.frequency.startswith("2."):
-                        band = "2.4 GHz"
-                    elif wifi.frequency.startswith("5."):
-                        band = "5 GHz"
-                    elif wifi.frequency.startswith("6."):
-                        band = "6 GHz"
+                label = format_ap_name(wifi.ssid or wifi.name, wifi.frequency)
 
-                label = wifi.ssid or wifi.name
-                if band:
-                    label = f"{label} ({band})"
-                ap_interfaces[wifi.name] = label
+                # Use section ID as stable identifier if available to avoid duplicates
+                stable_id = wifi.section if wifi.section else wifi.name
+                ap_info[wifi.name] = (label, stable_id)
+                self.interface_to_stable_id[wifi.name] = stable_id
 
         # Also check connected devices for any interfaces we might have missed in status
         for device in data.connected_devices:
             if (
                 device.is_wireless
                 and device.interface
-                and device.interface not in ap_interfaces
+                and device.interface not in ap_info
             ):
-                ap_interfaces[device.interface] = device.interface
+                ap_info[device.interface] = (device.interface, device.interface)
 
-        for iface_name, label in ap_interfaces.items():
+        for _iface_name, (label, stable_id) in ap_info.items():
             device_registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
-                identifiers={format_ap_device_id(router_id, iface_name)},
-                name=f"AP {label}",
+                identifiers={(DOMAIN, format_ap_device_id(router_id, stable_id))},
+                name=label,
                 manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
                 model="Access Point",
                 via_device=(DOMAIN, router_id),

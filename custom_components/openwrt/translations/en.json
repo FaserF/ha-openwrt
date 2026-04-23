@@ -503,6 +503,9 @@
       },
       "vpn_up": {
         "name": "VPN {interface} Connected"
+      },
+      "reboot_required": {
+        "name": "Reboot Required"
       }
     },
     "button": {
@@ -551,7 +554,10 @@
         "name": "Service"
       },
       "firewall_port_forward": {
-        "name": "Port Forward"
+        "name": "Port Forward: {name}"
+      },
+      "device_access": {
+        "name": "Internet Access"
       },
       "firewall_rule": {
         "name": "Firewall Rule"

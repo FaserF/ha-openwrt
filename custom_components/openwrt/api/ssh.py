@@ -466,13 +466,19 @@ class SshClient(OpenWrtClient):
 
             # Calculate available if not present
             if resources.memory_available == 0:
-                resources.memory_available = resources.memory_free + resources.memory_buffered + resources.memory_cached
+                resources.memory_available = (
+                    resources.memory_free
+                    + resources.memory_buffered
+                    + resources.memory_cached
+                )
 
             if resources.memory_total > 0:
                 resources.memory_available_percent = round(
                     (resources.memory_available / resources.memory_total) * 100.0, 1
                 )
-                resources.memory_used = resources.memory_total - resources.memory_available
+                resources.memory_used = (
+                    resources.memory_total - resources.memory_available
+                )
                 resources.memory_used_percent = round(
                     (resources.memory_used / resources.memory_total) * 100.0, 1
                 )
@@ -562,7 +568,9 @@ class SshClient(OpenWrtClient):
 
         # 5. CPU Frequency
         try:
-            freq = await self._exec("cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null")
+            freq = await self._exec(
+                "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null"
+            )
             if freq and freq.strip().isdigit():
                 resources.cpu_frequency = int(freq.strip()) / 1000.0
         except Exception:
@@ -612,7 +620,11 @@ class SshClient(OpenWrtClient):
                         continue
                     for iface in radio_data.get("interfaces", []):
                         config = iface.get("config", {})
-                        iface_name = iface.get("ifname", "")
+                        iface_name = (
+                            iface.get("section")
+                            or iface.get("ifname")
+                            or iface.get("device", "")
+                        )
                         if not iface_name or iface_name in iface_names:
                             continue
 
@@ -624,6 +636,7 @@ class SshClient(OpenWrtClient):
                             enabled=not radio_data.get("disabled", False),
                             up=radio_data.get("up", False),
                             radio=radio_name,
+                            hwmode=radio_data.get("config", {}).get("hwmode", ""),
                         )
                         interfaces.append(wifi)
                         iface_names.add(iface_name)
@@ -640,8 +653,52 @@ class SshClient(OpenWrtClient):
                         wifi = WirelessInterface(name=name, enabled=True, up=True)
                         interfaces.append(wifi)
                         iface_names.add(name)
-        except Exception:
-            pass
+        except Exception as err:
+            _LOGGER.debug("network.wireless status failed via SSH, trying UCI: %s", err)
+            try:
+                uci_wireless_str = await self._exec("uci export wireless")
+                if uci_wireless_str:
+                    sections: dict[str, dict[str, str]] = {}
+                    current_section = ""
+                    for line in uci_wireless_str.splitlines():
+                        line = line.strip()
+                        if line.startswith("config"):
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                current_section = parts[2].strip("'\"")
+                                sections[current_section] = {".type": parts[1]}
+                        elif line.startswith("option") and current_section:
+                            parts = line.split(None, 2)
+                            if len(parts) >= 3:
+                                sections[current_section][parts[1]] = parts[2].strip(
+                                    "'\""
+                                )
+
+                    for sect_name, sect_data in sections.items():
+                        if sect_data.get(".type") != "wifi-iface":
+                            continue
+
+                        iface_name = sect_data.get("ifname") or sect_name
+                        radio_name = sect_data.get("device", "")
+                        radio_disabled = (
+                            sections.get(radio_name, {}).get("disabled", "0") == "1"
+                        )
+                        iface_disabled = sect_data.get("disabled", "0") == "1"
+
+                        wifi = WirelessInterface(
+                            name=iface_name,
+                            ssid=sect_data.get("ssid", ""),
+                            mode=sect_data.get("mode", ""),
+                            encryption=sect_data.get("encryption", ""),
+                            enabled=not (radio_disabled or iface_disabled),
+                            up=not (radio_disabled or iface_disabled),
+                            radio=radio_name,
+                            hwmode=sections.get(radio_name, {}).get("hwmode", ""),
+                        )
+                        interfaces.append(wifi)
+                        iface_names.add(iface_name)
+            except Exception as e:
+                _LOGGER.debug("UCI wireless fallback failed via SSH: %s", e)
 
         # 3. Populate metrics via ubus iwinfo
         for wifi in interfaces:
@@ -699,14 +756,16 @@ class SshClient(OpenWrtClient):
                 return mappings
 
             for m in res["mappings"]:
-                mappings.append(UpnpMapping(
-                    protocol=m.get("protocol", "TCP").upper(),
-                    external_port=int(m.get("ext_port", 0)),
-                    internal_ip=m.get("int_addr", ""),
-                    internal_port=int(m.get("int_port", 0)),
-                    description=m.get("descr", ""),
-                    enabled=bool(m.get("enabled", True)),
-                ))
+                mappings.append(
+                    UpnpMapping(
+                        protocol=m.get("protocol", "TCP").upper(),
+                        external_port=int(m.get("ext_port", 0)),
+                        internal_ip=m.get("int_addr", ""),
+                        internal_port=int(m.get("int_port", 0)),
+                        description=m.get("descr", ""),
+                        enabled=bool(m.get("enabled", True)),
+                    )
+                )
         except Exception as err:
             _LOGGER.debug("Failed to fetch UPnP mappings via SSH: %s", err)
 
@@ -717,7 +776,9 @@ class SshClient(OpenWrtClient):
         interfaces: list[WireGuardInterface] = []
         try:
             # 1. Discover WG interfaces via ubus call
-            status_str = await self._exec("ubus call network.interface dump 2>/dev/null")
+            status_str = await self._exec(
+                "ubus call network.interface dump 2>/dev/null"
+            )
             if not status_str or not status_str.strip().startswith("{"):
                 return interfaces
 
@@ -756,11 +817,15 @@ class SshClient(OpenWrtClient):
                         peer = WireGuardPeer(
                             public_key=parts[1],
                             endpoint=parts[3] if parts[3] != "(none)" else "",
-                            allowed_ips=parts[4].split(",") if parts[4] != "(none)" else [],
+                            allowed_ips=parts[4].split(",")
+                            if parts[4] != "(none)"
+                            else [],
                             latest_handshake=int(parts[5]) if parts[5].isdigit() else 0,
                             transfer_rx=int(parts[6]) if parts[6].isdigit() else 0,
                             transfer_tx=int(parts[7]) if parts[7].isdigit() else 0,
-                            persistent_keepalive=int(parts[8]) if len(parts) > 8 and parts[8].isdigit() else 0,
+                            persistent_keepalive=int(parts[8])
+                            if len(parts) > 8 and parts[8].isdigit()
+                            else 0,
                         )
                         iface_map[ifname].peers.append(peer)
         except Exception as err:
@@ -826,7 +891,9 @@ class SshClient(OpenWrtClient):
         """Fetch and merge bridge FDB (forwarding database) information via SSH."""
         try:
             # 1. Fetch all network devices
-            dev_status_str = await self._exec("ubus call network.device status 2>/dev/null")
+            dev_status_str = await self._exec(
+                "ubus call network.device status 2>/dev/null"
+            )
             if not dev_status_str or not dev_status_str.strip().startswith("{"):
                 return
 
@@ -839,7 +906,7 @@ class SshClient(OpenWrtClient):
 
                 try:
                     fdb_str = await self._exec(
-                        f"ubus call network.device fdb '{{\"name\":\"{dev_name}\"}}' 2>/dev/null"
+                        f'ubus call network.device fdb \'{{"name":"{dev_name}"}}\' 2>/dev/null'
                     )
                     if fdb_str and fdb_str.strip().startswith("["):
                         fdb = json.loads(fdb_str)
@@ -863,7 +930,9 @@ class SshClient(OpenWrtClient):
         """Fetch thermal zones dynamically via SSH."""
         try:
             # Find all thermal zones
-            zones_output = await self._exec("ls -d /sys/class/thermal/thermal_zone* 2>/dev/null")
+            zones_output = await self._exec(
+                "ls -d /sys/class/thermal/thermal_zone* 2>/dev/null"
+            )
             if zones_output:
                 for zone_path in zones_output.strip().split():
                     zone_name = zone_path.split("/")[-1]
@@ -872,16 +941,25 @@ class SshClient(OpenWrtClient):
                         if temp_str and temp_str.strip().isdigit():
                             temp_val = int(temp_str.strip())
                             # Handle mC vs C
-                            val = temp_val / 1000.0 if temp_val > 1000 else float(temp_val)
+                            val = (
+                                temp_val / 1000.0
+                                if temp_val > 1000
+                                else float(temp_val)
+                            )
                             resources.temperatures[zone_name] = val
-                            if resources.temperature is None or zone_name == "thermal_zone0":
+                            if (
+                                resources.temperature is None
+                                or zone_name == "thermal_zone0"
+                            ):
                                 resources.temperature = val
                     except Exception:
                         continue
 
             # Fallback for hwmon
             if not resources.temperatures:
-                hwmon_temp = await self._exec("cat /sys/class/hwmon/hwmon0/temp1_input 2>/dev/null")
+                hwmon_temp = await self._exec(
+                    "cat /sys/class/hwmon/hwmon0/temp1_input 2>/dev/null"
+                )
                 if hwmon_temp and hwmon_temp.strip().isdigit():
                     val = int(hwmon_temp.strip()) / 1000.0
                     resources.temperature = val
@@ -906,12 +984,14 @@ class SshClient(OpenWrtClient):
                         continue
                     parts = line.split(None, 6)
                     if len(parts) >= 6:
-                        resources.usb_devices.append(UsbDevice(
-                            id=f"{parts[1]}:{parts[3].strip(':')}",
-                            vendor_id=parts[5].split(":")[0],
-                            product_id=parts[5].split(":")[1],
-                            product=parts[6] if len(parts) > 6 else ""
-                        ))
+                        resources.usb_devices.append(
+                            UsbDevice(
+                                id=f"{parts[1]}:{parts[3].strip(':')}",
+                                vendor_id=parts[5].split(":")[0],
+                                product_id=parts[5].split(":")[1],
+                                product=parts[6] if len(parts) > 6 else "",
+                            )
+                        )
         except Exception:
             pass
 
@@ -972,20 +1052,24 @@ class SshClient(OpenWrtClient):
         except ValueError:
             return
 
-        for line in lines[header_idx+1:]:
+        for line in lines[header_idx + 1 :]:
             parts = line.split()
             if len(parts) <= max(pid_idx, user_idx, vsz_idx, cpu_idx, cmd_idx):
                 continue
 
             try:
-                resources.top_processes.append(ProcessInfo(
-                    pid=int(parts[pid_idx]),
-                    user=parts[user_idx],
-                    vsz=int(parts[vsz_idx].rstrip('mGk')) if parts[vsz_idx].rstrip('mGk').isdigit() else 0,
-                    cpu_usage=float(parts[cpu_idx].rstrip('%')),
-                    command=" ".join(parts[cmd_idx:]),
-                ))
-            except (ValueError, IndexError):
+                resources.top_processes.append(
+                    ProcessInfo(
+                        pid=int(parts[pid_idx]),
+                        user=parts[user_idx],
+                        vsz=int(parts[vsz_idx].rstrip("mGk"))
+                        if parts[vsz_idx].rstrip("mGk").isdigit()
+                        else 0,
+                        cpu_usage=float(parts[cpu_idx].rstrip("%")),
+                        command=" ".join(parts[cmd_idx:]),
+                    )
+                )
+            except ValueError, IndexError:
                 continue
 
             if len(resources.top_processes) >= 10:
@@ -1048,7 +1132,9 @@ class SshClient(OpenWrtClient):
             for wifi_iface in wireless_ifaces:
                 iface_name = wifi_iface.name
                 # Use ubus call for JSON output over SSH
-                assoc_str = await self._exec(f'ubus call iwinfo assoclist \'{{"device":"{iface_name}"}}\' 2>/dev/null')
+                assoc_str = await self._exec(
+                    f'ubus call iwinfo assoclist \'{{"device":"{iface_name}"}}\' 2>/dev/null'
+                )
                 if assoc_str and assoc_str.strip().startswith("{"):
                     assoc = json.loads(assoc_str).get("results", [])
                     for client in assoc:
@@ -1065,11 +1151,17 @@ class SshClient(OpenWrtClient):
                         dev.signal = client.get("signal", 0)
 
                         # Set connection type based on interface frequency/name
-                        if "5g" in iface_name.lower() or (wifi_iface.frequency and "5" in wifi_iface.frequency):
+                        if "5g" in iface_name.lower() or (
+                            wifi_iface.frequency and "5" in wifi_iface.frequency
+                        ):
                             dev.connection_type = "5GHz"
-                        elif "6g" in iface_name.lower() or (wifi_iface.frequency and "6" in wifi_iface.frequency):
+                        elif "6g" in iface_name.lower() or (
+                            wifi_iface.frequency and "6" in wifi_iface.frequency
+                        ):
                             dev.connection_type = "6GHz"
-                        elif "2g" in iface_name.lower() or (wifi_iface.frequency and "2" in wifi_iface.frequency):
+                        elif "2g" in iface_name.lower() or (
+                            wifi_iface.frequency and "2" in wifi_iface.frequency
+                        ):
                             dev.connection_type = "2.4GHz"
                         else:
                             dev.connection_type = "wireless"
@@ -1639,7 +1731,9 @@ class SshClient(OpenWrtClient):
             if stdout and stdout.strip().startswith("{"):
                 data = json.loads(stdout)
                 for lease_data in data.get("device", {}).values():
-                    lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
+                    lease_list = (
+                        lease_data if isinstance(lease_data, list) else [lease_data]
+                    )
                     for lease in lease_list:
                         if not isinstance(lease, dict):
                             continue
@@ -1658,7 +1752,9 @@ class SshClient(OpenWrtClient):
             if stdout_v6 and stdout_v6.strip().startswith("{"):
                 data_v6 = json.loads(stdout_v6)
                 for lease_data in data_v6.get("device", {}).values():
-                    lease_list = lease_data if isinstance(lease_data, list) else [lease_data]
+                    lease_list = (
+                        lease_data if isinstance(lease_data, list) else [lease_data]
+                    )
                     for lease in lease_list:
                         if not isinstance(lease, dict):
                             continue
@@ -2115,6 +2211,7 @@ class SshClient(OpenWrtClient):
                 return {}
 
             import json
+
             result = json.loads(out)
             if not result or "data" not in result:
                 return {}
@@ -2140,19 +2237,23 @@ class SshClient(OpenWrtClient):
         """Get wifi credentials via SSH."""
         try:
             # Try ubus first
-            stdout = await self._exec("ubus call uci get '{\"config\":\"wireless\"}' 2>/dev/null")
+            stdout = await self._exec(
+                'ubus call uci get \'{"config":"wireless"}\' 2>/dev/null'
+            )
             if stdout and stdout.startswith("{"):
                 data = json.loads(stdout)
                 creds = []
                 for name, val in data.get("values", {}).items():
                     if val.get(".type") == "wifi-iface" and val.get("mode") == "ap":
-                        creds.append(WifiCredentials(
-                            iface=name,
-                            ssid=val.get("ssid", ""),
-                            encryption=val.get("encryption", "none"),
-                            key=val.get("key", ""),
-                            hidden=bool(int(val.get("hidden", 0))),
-                        ))
+                        creds.append(
+                            WifiCredentials(
+                                iface=name,
+                                ssid=val.get("ssid", ""),
+                                encryption=val.get("encryption", "none"),
+                                key=val.get("key", ""),
+                                hidden=bool(int(val.get("hidden", 0))),
+                            )
+                        )
                 return creds
 
             # Fallback to uci export
@@ -2171,9 +2272,19 @@ class SshClient(OpenWrtClient):
                 line = line.strip()
                 if line.startswith("config wifi-iface"):
                     if ssid:
-                        creds.append(WifiCredentials(iface=current_iface or "", ssid=ssid, encryption=enc or "none", key=key or "", hidden=hidden))
+                        creds.append(
+                            WifiCredentials(
+                                iface=current_iface or "",
+                                ssid=ssid,
+                                encryption=enc or "none",
+                                key=key or "",
+                                hidden=hidden,
+                            )
+                        )
                     parts = line.split()
-                    current_iface = parts[-1].strip("'") if len(parts) > 2 else "unknown"
+                    current_iface = (
+                        parts[-1].strip("'") if len(parts) > 2 else "unknown"
+                    )
                     ssid = None
                     key = None
                     enc = None
@@ -2196,7 +2307,15 @@ class SshClient(OpenWrtClient):
                         hidden = parts[1] == "1"
 
             if ssid:
-                creds.append(WifiCredentials(iface=current_iface or "", ssid=ssid, encryption=enc or "none", key=key or "", hidden=hidden))
+                creds.append(
+                    WifiCredentials(
+                        iface=current_iface or "",
+                        ssid=ssid,
+                        encryption=enc or "none",
+                        key=key or "",
+                        hidden=hidden,
+                    )
+                )
 
             return creds
         except Exception as err:
@@ -2240,7 +2359,6 @@ class SshClient(OpenWrtClient):
                 "Failed to trigger WPS push via ssh for %s: %s", interface, err
             )
             return False
-
 
     async def is_reboot_required(self) -> bool:
         """Check if reboot is required via SSH."""
