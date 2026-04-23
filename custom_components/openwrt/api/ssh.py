@@ -30,6 +30,7 @@ from .base import (
     OpenWrtClient,
     OpenWrtPackages,
     OpenWrtPermissions,
+    ProcessInfo,
     ServiceInfo,
     SimpleAdBlockStatus,
     SqmStatus,
@@ -568,6 +569,9 @@ class SshClient(OpenWrtClient):
         # 7. USB Device Discovery
         await self._fetch_usb_devices_ssh(resources)
 
+        # 8. Top Processes Discovery
+        await self._fetch_top_processes_ssh(resources)
+
         return resources
 
     async def get_external_ip(self) -> str | None:
@@ -903,6 +907,58 @@ class SshClient(OpenWrtClient):
                     current_dev.serial = line.split(None, 2)[-1]
                 elif "bDeviceClass" in line:
                     current_dev.class_name = line.split(None, 2)[-1]
+
+    async def _fetch_top_processes_ssh(self, resources: SystemResources) -> None:
+        """Fetch top CPU-consuming processes via SSH."""
+        try:
+            stdout = await self._exec("top -n 1 -b 2>/dev/null")
+            if not stdout:
+                return
+            self._parse_top_output_ssh(resources, stdout)
+        except Exception:
+            pass
+
+    def _parse_top_output_ssh(self, resources: SystemResources, stdout: str) -> None:
+        """Parse busybox top output from SSH."""
+        from .base import ProcessInfo
+        lines = stdout.splitlines()
+        header_idx = -1
+        for i, line in enumerate(lines):
+            if "PID" in line and "COMMAND" in line:
+                header_idx = i
+                break
+        
+        if header_idx == -1 or header_idx + 1 >= len(lines):
+            return
+
+        header = lines[header_idx].split()
+        try:
+            pid_idx = header.index("PID")
+            user_idx = header.index("USER")
+            vsz_idx = header.index("VSZ")
+            cpu_idx = header.index("%CPU")
+            cmd_idx = header.index("COMMAND")
+        except ValueError:
+            return
+
+        for line in lines[header_idx+1:]:
+            parts = line.split()
+            if len(parts) <= max(pid_idx, user_idx, vsz_idx, cpu_idx, cmd_idx):
+                continue
+                
+            try:
+                resources.top_processes.append(ProcessInfo(
+                    pid=int(parts[pid_idx]),
+                    user=parts[user_idx],
+                    vsz=int(parts[vsz_idx].rstrip('mGk')) if parts[vsz_idx].rstrip('mGk').isdigit() else 0,
+                    cpu_usage=float(parts[cpu_idx].rstrip('%')),
+                    command=" ".join(parts[cmd_idx:]),
+                ))
+            except (ValueError, IndexError):
+                continue
+            
+            if len(resources.top_processes) >= 10:
+                break
 
     async def _add_dhcp_devices_ssh(self, devices: dict[str, ConnectedDevice]) -> None:
         """Add devices discovered via DHCP leases."""

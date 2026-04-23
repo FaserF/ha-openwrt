@@ -385,6 +385,20 @@ class SystemResources:
     filesystem_free: int = 0
     storage: list[StorageUsage] = field(default_factory=list)
     usb_devices: list[UsbDevice] = field(default_factory=list)
+    top_processes: list[ProcessInfo] = field(default_factory=list)
+
+
+@dataclass
+class ProcessInfo:
+    """Process information."""
+
+    pid: int = 0
+    user: str = ""
+    command: str = ""
+    cpu_usage: float = 0.0
+    memory_usage: float = 0.0
+    vsz: int = 0
+    rss: int = 0
 
 
 @dataclass

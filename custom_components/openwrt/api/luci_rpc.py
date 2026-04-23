@@ -33,6 +33,7 @@ from .base import (
     OpenWrtClient,
     OpenWrtPackages,
     OpenWrtPermissions,
+    ProcessInfo,
     SimpleAdBlockStatus,
     SqmStatus,
     SystemResources,

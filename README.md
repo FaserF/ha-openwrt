@@ -53,6 +53,7 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
   - **Infrastructure Filtering**: Automatically identifies and filters out the router's own network interfaces to prevent circular self-tracking.
   - **New Device Event**: Fires `openwrt_new_device` when previously unknown MAC addresses are discovered.
 - **Advanced Diagnostics**:
+  - **Process Monitoring**: Tracks top CPU and memory consuming processes for real-time performance troubleshooting.
   - **Refined Naming**: Routers are primarily identified by their product model (e.g. "Xiaomi AX3600") for a premium dashboard look.
   - **LLDP Neighbors**: Discover and monitor physical port connections via the LLDP protocol (if available on the router).
 - **Optimized for Large Environments**: 
