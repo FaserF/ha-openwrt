@@ -72,6 +72,7 @@ from .repairs import (
     async_create_missing_packages_repair,
     async_delete_connection_lost_repair,
 )
+from .helpers import format_ap_device_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -440,20 +441,17 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         via_device = next(iter(dev.identifiers))
                     break
 
+        router_id = self.config_entry.unique_id or self.config_entry.data[CONF_HOST]
         _LOGGER.debug(
             "Updating device registry for %s: model=%s",
-            self.config_entry.unique_id or self.config_entry.data[CONF_HOST],
+            router_id,
             device_info.model,
         )
 
+        # 1. Register/Update the main router device
         device_registry.async_get_or_create(
             config_entry_id=self.config_entry.entry_id,
-            identifiers={
-                (
-                    DOMAIN,
-                    self.config_entry.unique_id or self.config_entry.data[CONF_HOST],
-                ),
-            },
+            identifiers={(DOMAIN, router_id)},
             connections=(
                 {(dr.CONNECTION_NETWORK_MAC, device_info.mac_address.lower())}
                 if device_info.mac_address
@@ -467,6 +465,46 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             via_device=via_device,
             configuration_url=f"http://{self.config_entry.data[CONF_HOST]}",
         )
+
+        # 2. Register/Update AP devices for wireless interfaces
+        # This ensures via_device references in platforms are valid even for dynamic interfaces
+        ap_interfaces: dict[str, str] = {}  # iface_name -> label
+
+        for wifi in data.wireless_interfaces:
+            if wifi.name:
+                # Build label like SSID (Band) or just SSID
+                band = ""
+                if wifi.frequency:
+                    if wifi.frequency.startswith("2."):
+                        band = "2.4 GHz"
+                    elif wifi.frequency.startswith("5."):
+                        band = "5 GHz"
+                    elif wifi.frequency.startswith("6."):
+                        band = "6 GHz"
+                
+                label = wifi.ssid or wifi.name
+                if band:
+                    label = f"{label} ({band})"
+                ap_interfaces[wifi.name] = label
+
+        # Also check connected devices for any interfaces we might have missed in status
+        for device in data.connected_devices:
+            if (
+                device.is_wireless
+                and device.interface
+                and device.interface not in ap_interfaces
+            ):
+                ap_interfaces[device.interface] = device.interface
+
+        for iface_name, label in ap_interfaces.items():
+            device_registry.async_get_or_create(
+                config_entry_id=self.config_entry.entry_id,
+                identifiers={format_ap_device_id(router_id, iface_name)},
+                name=f"AP {label}",
+                manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
+                model="Access Point",
+                via_device=(DOMAIN, router_id),
+            )
 
     async def _check_firmware_update(self, data: OpenWrtData) -> None:
         """Check for firmware updates (official or custom)."""

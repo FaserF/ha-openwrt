@@ -648,93 +648,115 @@ class UbusClient(OpenWrtClient):
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interface information."""
         interfaces: list[WirelessInterface] = []
+        iface_names: set[str] = set()
 
+        # 1. Primary source: network.wireless status
         try:
             wireless_data = await self._call("network.wireless", "status")
+            if wireless_data and isinstance(wireless_data, dict):
+                for radio_name, radio_data in wireless_data.items():
+                    if not isinstance(radio_data, dict):
+                        continue
+
+                    radio_interfaces = radio_data.get("interfaces", [])
+                    for iface in radio_interfaces:
+                        iface_name = (
+                            iface.get("ifname")
+                            or iface.get("device")
+                            or iface.get("section", "")
+                        )
+                        if not iface_name:
+                            continue
+
+                        iface_config = iface.get("config", {})
+                        wifi = WirelessInterface(
+                            name=iface_name,
+                            ssid=iface_config.get("ssid", ""),
+                            mode=iface_config.get("mode", ""),
+                            encryption=iface_config.get("encryption", ""),
+                            enabled=not radio_data.get("disabled", False),
+                            up=radio_data.get("up", False),
+                            radio=radio_name,
+                            htmode=radio_data.get("config", {}).get("htmode", ""),
+                            hwmode=radio_data.get("config", {}).get("hwmode", ""),
+                            txpower=radio_data.get("config", {}).get("txpower", 0),
+                            mesh_id=iface_config.get("mesh_id", ""),
+                            mesh_fwding=iface_config.get("mesh_fwding", False),
+                        )
+                        interfaces.append(wifi)
+                        iface_names.add(iface_name)
         except UbusError:
-            return interfaces
+            _LOGGER.debug("network.wireless status call failed")
 
-        for _radio_name, radio_data in wireless_data.items():
-            if not isinstance(radio_data, dict):
-                continue
+        # 2. Supplement/Fallback: iwinfo devices
+        # This is critical for devices like Velop where interfaces aren't always in network.wireless
+        try:
+            iw_devs = await self._call("iwinfo", "devices")
+            candidates = []
+            if isinstance(iw_devs, list):
+                candidates = iw_devs
+            elif isinstance(iw_devs, dict) and "devices" in iw_devs:
+                candidates = iw_devs["devices"]
 
-            radio_interfaces = radio_data.get("interfaces", [])
-            for iface in radio_interfaces:
-                iface_name = (
-                    iface.get("ifname")
-                    or iface.get("device")
-                    or iface.get("section", "")
-                )
-                iface_config = iface.get("config", {})
-                _iface_network = iface_config.get("network", [])
+            for iface_name in candidates:
+                if iface_name in iface_names:
+                    continue
 
-                wifi = WirelessInterface(
-                    name=iface_name,
-                    ssid=iface_config.get("ssid", ""),
-                    mode=iface_config.get("mode", ""),
-                    encryption=iface_config.get("encryption", ""),
-                    enabled=not radio_data.get("disabled", False),
-                    up=radio_data.get("up", False),
-                    radio=_radio_name,
-                    htmode=radio_data.get("config", {}).get("htmode", ""),
-                    hwmode=radio_data.get("config", {}).get("hwmode", ""),
-                    txpower=radio_data.get("config", {}).get("txpower", 0),
-                    mesh_id=iface_config.get("mesh_id", ""),
-                    mesh_fwding=iface_config.get("mesh_fwding", False),
-                )
-
-                try:
-                    if iface_name:
-                        iwinfo = await self._call(
-                            "iwinfo",
-                            "info",
-                            {"device": iface_name},
-                        )
-                        wifi.mac_address = iwinfo.get("bssid", "").upper()
-                        wifi.channel = iwinfo.get("channel", 0)
-                        wifi.frequency = str(iwinfo.get("frequency", ""))
-
-                        # Fallback: Infer from channel if frequency is missing or empty
-                        if (
-                            not wifi.frequency or wifi.frequency == "None"
-                        ) and wifi.channel > 0:
-                            if 1 <= wifi.channel <= 14:
-                                wifi.frequency = "2.4 GHz"
-                            elif 32 <= wifi.channel <= 177:
-                                wifi.frequency = "5 GHz"
-                        wifi.signal = iwinfo.get("signal", 0)
-                        wifi.noise = iwinfo.get("noise", 0)
-                        wifi.bitrate = (
-                            iwinfo.get("bitrate", 0) / 1000.0
-                            if iwinfo.get("bitrate")
-                            else 0.0
-                        )
-                        q_val = iwinfo.get("quality")
-                        q_max = iwinfo.get("quality_max", 100)
-                        if q_val is not None and q_max:
-                            wifi.quality = round((q_val / q_max) * 100, 1)
-                        if "hwmode" in iwinfo and not wifi.hwmode:
-                            if isinstance(iwinfo["hwmode"], list):
-                                wifi.hwmode = "/".join(iwinfo["hwmode"])
-                            else:
-                                wifi.hwmode = str(iwinfo["hwmode"])
-                        if "htmode" in iwinfo and not wifi.htmode:
-                            wifi.htmode = str(iwinfo["htmode"])
-                except UbusError:
-                    pass
-
-                try:
-                    if iface_name:
-                        clients = await self._call(
-                            "iwinfo",
-                            "assoclist",
-                            {"device": iface_name},
-                        )
-                        wifi.clients_count = len(clients.get("results", []))
-                except UbusError:
-                    pass
-
+                # Found a new interface not in UCI status
+                wifi = WirelessInterface(name=iface_name, enabled=True, up=True)
                 interfaces.append(wifi)
+                iface_names.add(iface_name)
+        except UbusError:
+            _LOGGER.debug("iwinfo devices call failed")
+
+        # 3. Populate metrics for all discovered interfaces
+        for wifi in interfaces:
+            try:
+                iwinfo = await self._call("iwinfo", "info", {"device": wifi.name})
+                if iwinfo:
+                    if not wifi.ssid:
+                        wifi.ssid = iwinfo.get("ssid", "")
+                    wifi.mac_address = iwinfo.get("bssid", "").upper()
+                    wifi.channel = iwinfo.get("channel", 0)
+                    wifi.frequency = str(iwinfo.get("frequency", ""))
+
+                    # Fallback: Infer from channel if frequency is missing or empty
+                    if (
+                        not wifi.frequency or wifi.frequency == "None"
+                    ) and wifi.channel > 0:
+                        if 1 <= wifi.channel <= 14:
+                            wifi.frequency = "2.4 GHz"
+                        elif 32 <= wifi.channel <= 177:
+                            wifi.frequency = "5 GHz"
+                        elif 182 <= wifi.channel <= 196:
+                            wifi.frequency = "6 GHz"
+
+                    wifi.signal = iwinfo.get("signal", 0)
+                    wifi.noise = iwinfo.get("noise", 0)
+                    wifi.bitrate = (
+                        iwinfo.get("bitrate", 0) / 1000.0
+                        if iwinfo.get("bitrate")
+                        else 0.0
+                    )
+                    q_val = iwinfo.get("quality")
+                    q_max = iwinfo.get("quality_max", 100)
+                    if q_val is not None and q_max:
+                        wifi.quality = round((q_val / q_max) * 100, 1)
+
+                    if "hwmode" in iwinfo and not wifi.hwmode:
+                        if isinstance(iwinfo["hwmode"], list):
+                            wifi.hwmode = "/".join(iwinfo["hwmode"])
+                        else:
+                            wifi.hwmode = str(iwinfo["hwmode"])
+                    if "htmode" in iwinfo and not wifi.htmode:
+                        wifi.htmode = str(iwinfo["htmode"])
+
+                # Association list
+                assoc = await self._call("iwinfo", "assoclist", {"device": wifi.name})
+                if assoc:
+                    wifi.clients_count = len(assoc.get("results", []))
+            except UbusError:
+                _LOGGER.debug("Failed to fetch detailed info for wifi interface %s", wifi.name)
 
         return interfaces
 

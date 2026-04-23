@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.device_tracker import (
     ScannerEntity,
@@ -40,6 +40,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
+from .helpers import format_ap_device_id
 from .helpers.mac_vendor import get_mac_vendor_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -199,9 +200,9 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                     and device.is_wireless
                     and device.interface
                 ):
-                    via_device = (
-                        DOMAIN,
-                        f"{self._entry.unique_id or self._entry.data[CONF_HOST]}_ap_{device.interface}",
+                    via_device = format_ap_device_id(
+                        cast(str, self._entry.unique_id or self._entry.data[CONF_HOST]),
+                        device.interface,
                     )
                     break
 

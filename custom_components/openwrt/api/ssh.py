@@ -580,19 +580,22 @@ class SshClient(OpenWrtClient):
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interfaces."""
         interfaces: list[WirelessInterface] = []
+        iface_names: set[str] = set()
 
+        # 1. Primary source: network.wireless status
         try:
-            wifi_json = await self._exec(
-                "ubus call network.wireless status 2>/dev/null",
-            )
+            wifi_json = await self._exec("ubus call network.wireless status 2>/dev/null")
             if wifi_json and wifi_json.strip().startswith("{"):
                 data = json.loads(wifi_json)
-                for radio_data in data.values():
+                for radio_name, radio_data in data.items():
                     if not isinstance(radio_data, dict):
                         continue
                     for iface in radio_data.get("interfaces", []):
                         config = iface.get("config", {})
                         iface_name = iface.get("ifname", "")
+                        if not iface_name:
+                            continue
+
                         wifi = WirelessInterface(
                             name=iface_name,
                             ssid=config.get("ssid", ""),
@@ -600,9 +603,30 @@ class SshClient(OpenWrtClient):
                             encryption=config.get("encryption", ""),
                             enabled=not radio_data.get("disabled", False),
                             up=radio_data.get("up", False),
+                            radio=radio_name,
                         )
+                        interfaces.append(wifi)
+                        iface_names.add(iface_name)
+        except Exception:
+            pass
 
-                        if iface_name:
+        # 2. Supplement: iwinfo devices
+        try:
+            iw_out = await self._exec("iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'")
+            if iw_out:
+                for iface_name in iw_out.strip().split():
+                    if iface_name in iface_names:
+                        continue
+                    wifi = WirelessInterface(name=iface_name, enabled=True, up=True)
+                    interfaces.append(wifi)
+                    iface_names.add(iface_name)
+        except Exception:
+            pass
+
+        # 3. Populate metrics
+        for wifi in interfaces:
+            iface_name = wifi.name
+            if iface_name:
                             try:
                                 iwinfo = await self._exec(
                                     f"iwinfo {iface_name} info 2>/dev/null",

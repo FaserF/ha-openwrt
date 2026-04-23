@@ -945,24 +945,44 @@ class LuciRpcClient(OpenWrtClient):
         return None
 
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
-        """Get wireless interfaces via iwinfo."""
+        """Get wireless interfaces via iwinfo and UCI."""
         interfaces: list[WirelessInterface] = []
+        iface_names: set[str] = set()
 
-        with contextlib.suppress(LuciRpcError):
-            await self.execute_command(
-                "iwinfo | grep -E 'ESSID|Channel|Signal|Noise|Bit Rate'"
+        # 1. Primary source: iwinfo (actual active interfaces)
+        try:
+            iw_out = await self.execute_command(
+                "iwinfo 2>/dev/null | grep -E '^[a-z0-9_-]+' | awk '{print $1}'"
             )
+            if iw_out:
+                for name in iw_out.strip().split():
+                    wifi = WirelessInterface(name=name, enabled=True, up=True)
+                    interfaces.append(wifi)
+                    iface_names.add(name)
+        except Exception:
+            pass
 
         uci_to_sys, sys_to_uci = await self._get_wireless_mapping()
+        self._sys_to_uci = sys_to_uci
+        self._uci_to_sys = uci_to_sys
 
+        # 2. Check UCI for additional (possibly disabled) interfaces
         try:
             wireless_config = await self._rpc_call("uci", "get_all", ["wireless"])
             if isinstance(wireless_config, dict):
                 for section, values in wireless_config.items():
                     if isinstance(values, dict) and values.get(".type") == "wifi-iface":
-                        # Fallback: Find system name by SSID if reverse mapping is missing
-                        iface_name = uci_to_sys.get(section)
-                        if not iface_name:
+                        sys_name = uci_to_sys.get(section)
+                        if sys_name and sys_name in iface_names:
+                            # Already found via iwinfo, just update info
+                            wifi = next(i for i in interfaces if i.name == sys_name)
+                            wifi.section = section
+                            wifi.ssid = values.get("ssid", "")
+                            wifi.enabled = values.get("disabled", "0") != "1"
+                            continue
+
+                        # Not found via iwinfo (maybe disabled or non-standard naming)
+                        if not sys_name:
                             ssid = values.get("ssid", "")
                             if ssid:
                                 try:
@@ -970,24 +990,33 @@ class LuciRpcClient(OpenWrtClient):
                                         f"iwinfo 2>/dev/null | grep -F '\"{ssid}\"' | awk '{{print $1}}'"
                                     )
                                     if match_out:
-                                        iface_name = match_out.strip().splitlines()[0]
+                                        sys_name = match_out.strip().splitlines()[0]
                                 except Exception:
                                     pass
 
-                        sys_name = iface_name or section
-                        wifi = WirelessInterface(
-                            name=section,
-                            ifname=sys_name,
-                            section=section,
-                            ssid=values.get("ssid", ""),
-                            mode=values.get("mode", ""),
-                            encryption=values.get("encryption", ""),
-                            enabled=values.get("disabled", "0") != "1",
-                        )
+                        # Still not found or truly new
+                        final_name = sys_name or section
+                        if final_name not in iface_names:
+                            wifi = WirelessInterface(
+                                name=final_name,
+                                ifname=final_name,
+                                section=section,
+                                ssid=values.get("ssid", ""),
+                                mode=values.get("mode", ""),
+                                encryption=values.get("encryption", ""),
+                                enabled=values.get("disabled", "0") != "1",
+                            )
+                            interfaces.append(wifi)
+                            iface_names.add(final_name)
 
-                        # Fetch metrics via iwinfo
-                        if iface_name:
-                            try:
+        except LuciRpcError:
+            pass
+
+        # 3. Populate metrics for all found interfaces
+        for wifi in interfaces:
+            iface_name = wifi.name
+            if iface_name:
+                try:
                                 iw_info = await self._rpc_call(
                                     "sys",
                                     "exec",

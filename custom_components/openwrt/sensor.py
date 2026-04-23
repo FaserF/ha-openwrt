@@ -47,6 +47,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
+from .helpers import format_ap_device_id
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -141,7 +142,7 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
         name_label = f"{label} ({band})" if band else label
 
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.unique_id}_ap_{iface_name}")},
+            identifiers={format_ap_device_id(cast(str, entry.unique_id), iface_name)},
             name=f"AP {name_label}",
             manufacturer="OpenWrt",
             model="Access Point",
@@ -272,9 +273,8 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
                     and device.is_wireless
                     and device.interface
                 ):
-                    via_device = (
-                        DOMAIN,
-                        f"{self._entry.unique_id}_ap_{device.interface}",
+                    via_device = format_ap_device_id(
+                        cast(str, self._entry.unique_id), device.interface
                     )
                     break
 
