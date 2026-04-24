@@ -1,6 +1,7 @@
 """Diagnostics support for OpenWrt integration."""
 
 from __future__ import annotations
+
 import math
 from typing import Any
 
@@ -12,6 +13,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from .const import CONF_SSH_KEY, DATA_COORDINATOR, DOMAIN
+from .coordinator import OpenWrtDataCoordinator
 
 REDACT_KEYS = {
     CONF_PASSWORD,
@@ -58,7 +60,7 @@ async def async_get_config_entry_diagnostics(
             DATA_COORDINATOR
         ]
         data = coordinator.data
-    except (KeyError, AttributeError):
+    except KeyError, AttributeError:
         return {"error": "Coordinator not found"}
 
     diag: dict[str, Any] = {
@@ -105,6 +107,21 @@ async def async_get_config_entry_diagnostics(
                 "latest_version": data.firmware_latest_version,
                 "is_custom_build": data.is_custom_build,
             }
+            diag["wireless_interfaces"] = [
+                {
+                    "name": w.name,
+                    "ssid": w.ssid,
+                    "mode": w.mode,
+                    "channel": w.channel,
+                    "frequency": w.frequency,
+                    "signal": w.signal,
+                    "noise": w.noise,
+                    "enabled": w.enabled,
+                    "up": w.up,
+                    "clients_count": w.clients_count,
+                }
+                for w in data.wireless_interfaces
+            ]
             diag["mwan_status"] = [
                 {
                     "interface": m.interface_name,
@@ -146,7 +163,7 @@ async def async_get_config_entry_diagnostics(
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
-        for _dev in dr.async_entries(dev_reg):
+        for _dev in dev_reg.devices.values():
             # Only include devices related to this config entry
             if entry.entry_id not in _dev.config_entries:
                 continue

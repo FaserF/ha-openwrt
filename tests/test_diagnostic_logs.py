@@ -27,14 +27,18 @@ async def test_ubus_get_system_logs():
         mock_call.assert_called_with("log", "read", {"lines": 10})
 
     # 2. Test fallback to logread
-    with patch.object(client, "_call", new_callable=AsyncMock) as mock_call, \
-         patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec:
-
+    with (
+        patch.object(client, "_call", new_callable=AsyncMock) as mock_call,
+        patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec,
+    ):
         mock_call.return_value = None  # Ubus fails
-        mock_exec.return_value = "Usage: logread [-n count]" # Help for detection
+        mock_exec.return_value = "Usage: logread [-n count]"  # Help for detection
 
         # Second call to execute_command will be the actual logread
-        mock_exec.side_effect = ["Usage: logread [-n count]", "fallback line 1\nfallback line 2"]
+        mock_exec.side_effect = [
+            "Usage: logread [-n count]",
+            "fallback line 1\nfallback line 2",
+        ]
 
         logs = await client.get_system_logs(count=10)
 
@@ -51,13 +55,15 @@ async def test_ssh_get_system_logs():
 
     with patch.object(client, "_exec", new_callable=AsyncMock) as mock_exec:
         # Success via ubus call log read
-        mock_exec.return_value = json.dumps({"log": [{"msg": "ssh log line 1"}, {"msg": "ssh log line 2"}]})
+        mock_exec.return_value = json.dumps(
+            {"log": [{"msg": "ssh log line 1"}, {"msg": "ssh log line 2"}]}
+        )
 
         logs = await client.get_system_logs(count=5)
 
         assert len(logs) == 2
         assert "ssh log line 1" in logs
-        mock_exec.assert_any_call('ubus call log read \'{"lines": 5}\'')
+        mock_exec.assert_any_call("ubus call log read '{\"lines\": 5}'")
 
 
 @pytest.mark.asyncio

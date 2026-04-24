@@ -6,6 +6,7 @@ update checking against the official OpenWrt release API.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import re
@@ -69,7 +70,11 @@ from .const import (
     DOMAIN,
     OPENWRT_RELEASE_API,
 )
-from .helpers import format_ap_device_id, format_ap_name, is_random_mac
+from .helpers import (
+    format_ap_device_id,
+    format_ap_name,
+    is_random_mac,
+)
 from .repairs import (
     async_create_auth_repair,
     async_create_connection_lost_repair,
@@ -255,11 +260,14 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # 2. Transfer firmware state if revision hasn't changed
         self._async_sync_firmware_state(data)
 
-        # 3. Periodic firmware checks
+        # 3. Periodic firmware checks (wrapped in try-except to prevent crashing the whole coordinator)
         now = self.hass.loop.time()
         if now - self._last_firmware_check > FIRMWARE_CHECK_INTERVAL.total_seconds():
             self._last_firmware_check = now
-            await self._check_firmware_update(data)
+            try:
+                await self._check_firmware_update(data)
+            except Exception as err:
+                _LOGGER.debug("Firmware update check failed: %s", err)
 
         # 4. Calculate network rates
         self._async_process_network_rates(data, now)
@@ -399,6 +407,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # 4. Filter connected devices
         filtered_devices = []
         for device in data.connected_devices:
+            if not device.mac:
+                continue
             mac = device.mac.lower()
             # 1. Filter out router's own interfaces (always)
             if mac in own_macs:
@@ -579,10 +589,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             device_info.model,
         )
 
-        # 1. Register/Update the main router device
+        # Combine both MAC and IP identifiers to ensure stable device association
+        # during migration and consistent lookup.
+        identifiers = {(DOMAIN, router_id)}
+        if router_id != self.config_entry.data[CONF_HOST]:
+            identifiers.add((DOMAIN, self.config_entry.data[CONF_HOST]))
+
         device_registry.async_get_or_create(
             config_entry_id=self.config_entry.entry_id,
-            identifiers={(DOMAIN, router_id)},
+            identifiers=identifiers,
             connections=(
                 {(dr.CONNECTION_NETWORK_MAC, device_info.mac_address.lower())}
                 if device_info.mac_address
@@ -613,15 +628,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             stable_id = wifi.name
             ap_info[wifi.name] = (label, stable_id)
             self.interface_to_stable_id[wifi.name] = stable_id
-
-        # Also check connected devices for any interfaces we might have missed
-        for device in data.connected_devices:
-            if (
-                device.is_wireless
-                and device.interface
-                and device.interface not in ap_info
-            ):
-                ap_info[device.interface] = (device.interface, device.interface)
 
         for _iface_name, (label, stable_id) in ap_info.items():
             device_registry.async_get_or_create(
@@ -656,8 +662,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             for ident in dev.identifiers:
                 if ident[0] == DOMAIN:
                     ident_str = str(ident[1])
-                    if ident_str == router_id or ident_str.startswith(
-                        f"{router_id}_ap_"
+                    if (
+                        ident_str == router_id
+                        or ident_str == self.config_entry.data.get(CONF_HOST)
+                        or ident_str.startswith(f"{router_id}_")
                     ):
                         is_ours = True
                     elif re.match(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", ident_str):
@@ -704,7 +712,30 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 # usually what the user wants for randomized MACs to clear them out.
                 devices_to_remove.append(dev.id)
 
+        # Get the ID of our main router device to use as a fallback for orphans
+        router_dev = device_registry.async_get_device(identifiers={(DOMAIN, router_id)})
+        router_dev_id = router_dev.id if router_dev else None
+
+        # Build a mapping of via_device_id to find children efficiently without nested loops
+        via_map: dict[str, list[dr.DeviceEntry]] = {}
+        if router_dev_id:
+            for other_dev in device_registry.devices.values():
+                if other_dev.via_device_id:
+                    via_map.setdefault(other_dev.via_device_id, []).append(other_dev)
+
         for dev_id in devices_to_remove:
+            # Before removing, check if any other devices are connected via this one
+            # and redirect them to the router if possible using our pre-built map.
+            if router_dev_id and dev_id in via_map:
+                for child in via_map[dev_id]:
+                    _LOGGER.info(
+                        "Redirecting device '%s' via_device_id to router before removing ghost AP",
+                        child.name,
+                    )
+                    device_registry.async_update_device(
+                        child.id, via_device_id=router_dev_id
+                    )
+
             device_registry.async_remove_device(dev_id)
 
     async def _check_firmware_update(self, data: OpenWrtData) -> None:
@@ -771,10 +802,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     data.firmware_current_version,
                     latest_snapshot,
                 )
+                data.firmware_latest_version = latest_snapshot
                 if self._version_is_newer(
                     data.firmware_current_version, latest_snapshot
                 ):
-                    data.firmware_latest_version = latest_snapshot
                     data.firmware_upgradable = True
                     _LOGGER.info(
                         "Newer snapshot found for %s: %s", target, latest_snapshot
@@ -783,13 +814,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         f"https://downloads.openwrt.org/snapshots/targets/{target}/"
                     )
                 else:
-                    _LOGGER.info("No newer snapshot version found.")
+                    data.firmware_upgradable = False
+                    _LOGGER.debug("Snapshot is up-to-date: %s", latest_snapshot)
 
                 # Find sysupgrade image
                 profiles = profile_data.get("profiles", {})
-                board_key = data.device_info.board_name.replace("-", "_").replace(
-                    ",", "_"
-                )
+                board_name = data.device_info.board_name or ""
+                board_key = board_name.replace("-", "_").replace(",", "_")
                 board_profile = profiles.get(board_key)
                 if board_profile:
                     for img in board_profile.get("images", []):
@@ -818,12 +849,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                             latest_stable = key
                             break
 
-                if latest_stable and self._version_is_newer(
-                    data.device_info.release_version, latest_stable
-                ):
+                if latest_stable:
                     data.firmware_latest_version = latest_stable
-                    data.firmware_upgradable = True
-                    self._set_stable_release_urls(data, latest_stable)
+                    if self._version_is_newer(
+                        data.device_info.release_version, latest_stable
+                    ):
+                        data.firmware_upgradable = True
+                        self._set_stable_release_urls(data, latest_stable)
+                    else:
+                        data.firmware_upgradable = False
 
     def _set_stable_release_urls(self, data: OpenWrtData, latest_stable: str) -> None:
         """Determine release and install URLs for a stable release."""
@@ -1042,7 +1076,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 best_asset = asset
 
         if not best_asset:
-            board = data.device_info.board_name.replace(",", "_").replace(" ", "_")
+            board_name = data.device_info.board_name or ""
+            board = board_name.replace(",", "_").replace(" ", "_")
             for asset in assets:
                 if board in asset.get("name", "") and "sysupgrade" in asset.get(
                     "name", ""

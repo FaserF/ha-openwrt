@@ -139,7 +139,9 @@ def test_device_tracker_randomized_mac(mock_coordinator, mock_config_entry) -> N
     tracker_normal = OpenWrtDeviceTracker(
         mock_coordinator, mock_config_entry, "00:11:22:33:44:55"
     )
-    assert getattr(tracker_normal, "_attr_entity_registry_enabled_default", True) is True
+    assert (
+        getattr(tracker_normal, "_attr_entity_registry_enabled_default", True) is True
+    )
 
     # Randomized MAC (bit 1 of 1st byte is set: 02:...)
     tracker_random = OpenWrtDeviceTracker(

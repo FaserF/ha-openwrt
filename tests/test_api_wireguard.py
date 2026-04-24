@@ -12,18 +12,22 @@ def ubus_client() -> UbusClient:
     """Fixture for Ubus client."""
     return UbusClient(host="192.168.1.1", username="root", password="password")
 
+
 @pytest.mark.asyncio
 async def test_ubus_get_wireguard_interfaces(ubus_client: UbusClient):
     """Test fetching WireGuard interfaces via Ubus."""
-    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call, \
-         patch.object(ubus_client, "execute_command", new_callable=AsyncMock) as mock_exec:
-
+    with (
+        patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call,
+        patch.object(
+            ubus_client, "execute_command", new_callable=AsyncMock
+        ) as mock_exec,
+    ):
         # 1. Mock network.interface dump
         mock_call.side_effect = [
             {
                 "interface": [
                     {"interface": "wg0", "proto": "wireguard"},
-                    {"interface": "lan", "proto": "static"}
+                    {"interface": "lan", "proto": "static"},
                 ]
             }
         ]

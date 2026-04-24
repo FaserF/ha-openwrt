@@ -635,18 +635,21 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
                     and device.is_wireless
                     and device.interface
                 ):
-                    via_device = (
-                        DOMAIN,
-                        format_ap_device_id(
-                            cast(
-                                str,
-                                self._entry.unique_id or self._entry.data[CONF_HOST],
-                            ),
-                            self.coordinator.interface_to_stable_id.get(
-                                device.interface, device.interface
-                            ),
-                        ),
+                    stable_id = self.coordinator.interface_to_stable_id.get(
+                        device.interface
                     )
+                    if stable_id:
+                        via_device = (
+                            DOMAIN,
+                            format_ap_device_id(
+                                cast(
+                                    str,
+                                    self._entry.unique_id
+                                    or self._entry.data[CONF_HOST],
+                                ),
+                                stable_id,
+                            ),
+                        )
                     break
 
         return DeviceInfo(
@@ -727,18 +730,21 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
                     and device.is_wireless
                     and device.interface
                 ):
-                    via_device = (
-                        DOMAIN,
-                        format_ap_device_id(
-                            cast(
-                                str,
-                                self._entry.unique_id or self._entry.data[CONF_HOST],
-                            ),
-                            self.coordinator.interface_to_stable_id.get(
-                                device.interface, device.interface
-                            ),
-                        ),
+                    stable_id = self.coordinator.interface_to_stable_id.get(
+                        device.interface
                     )
+                    if stable_id:
+                        via_device = (
+                            DOMAIN,
+                            format_ap_device_id(
+                                cast(
+                                    str,
+                                    self._entry.unique_id
+                                    or self._entry.data[CONF_HOST],
+                                ),
+                                stable_id,
+                            ),
+                        )
                     break
 
         return DeviceInfo(

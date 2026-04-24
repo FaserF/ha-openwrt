@@ -1038,19 +1038,6 @@ class LuciRpcClient(OpenWrtClient):
                         # because iwinfo info only works with system ifnames.
                         system_ifname = iface.get("ifname")
 
-                        # Filter out generic UCI section names if we have a better name
-                        if (
-                            any(
-                                iface_name.startswith(p)
-                                for p in ["default_radio", "wifinet", "radio"]
-                            )
-                            and not system_ifname
-                        ):
-                            _LOGGER.debug(
-                                "Filtering ghost ubus wireless section: %s", iface_name
-                            )
-                            continue
-
                         final_name = system_ifname or iface_name
 
                         # Deduplicate based on final name or SSID on this radio
@@ -1098,16 +1085,6 @@ class LuciRpcClient(OpenWrtClient):
                         if sect_data.get(".type") != "wifi-iface":
                             continue
 
-                        # Filter out generic UCI section names (ghosts)
-                        if any(
-                            sect_name.startswith(p)
-                            for p in ["default_radio", "wifinet", "radio"]
-                        ) and not sect_data.get("ifname"):
-                            _LOGGER.debug(
-                                "Filtering ghost UCI wireless section: %s", sect_name
-                            )
-                            continue
-
                         iface_name = sect_data.get("ifname") or sect_name
                         radio_name = sect_data.get("device", "")
                         radio_disabled = (
@@ -1132,10 +1109,11 @@ class LuciRpcClient(OpenWrtClient):
                 _LOGGER.debug("UCI wireless fallback failed via LuCI: %s", e)
 
         # 2. Supplement/Fallback: iwinfo devices
+        iw_devs = set()
         try:
             iw_devs_str = await self.execute_command("ubus call iwinfo devices")
             if iw_devs_str and iw_devs_str.strip().startswith("{"):
-                iw_devs = json.loads(iw_devs_str).get("devices", [])
+                iw_devs = set(json.loads(iw_devs_str).get("devices", []))
                 for name in iw_devs:
                     if name not in iface_names:
                         wifi = WirelessInterface(name=name, enabled=True, up=True)
@@ -1144,9 +1122,15 @@ class LuciRpcClient(OpenWrtClient):
         except Exception:
             pass
 
-        # 3. Populate metrics via ubus iwinfo info
-        for wifi in interfaces:
+        # 3. Populate metrics via ubus iwinfo info in parallel
+        async def _fetch_metrics(wifi: WirelessInterface) -> None:
             iface_name = wifi.name
+            # Only call iwinfo if the device is known to iwinfo to avoid slow timeouts/errors
+            if iface_name not in iw_devs and not iface_name.startswith(
+                ("wlan", "ath", "ra", "wl")
+            ):
+                return
+
             try:
                 # Get basic info
                 info_str = await self.execute_command(
@@ -1182,6 +1166,9 @@ class LuciRpcClient(OpenWrtClient):
                         wifi.clients_count = len(assoc)
             except Exception as err:
                 _LOGGER.debug("Failed to get iwinfo for %s: %s", iface_name, err)
+
+        if interfaces:
+            await asyncio.gather(*[_fetch_metrics(w) for w in interfaces])
 
         # 4. Deduplicate and clean up
         # We group by Section ID (UCI), MAC address, or SSID+Frequency

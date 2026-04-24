@@ -872,20 +872,6 @@ class UbusClient(OpenWrtClient):
                         if not iface_name:
                             continue
 
-                        # Filter out generic UCI section names (ghosts)
-                        system_ifname = iface.get("ifname")
-                        if (
-                            any(
-                                iface_name.startswith(p)
-                                for p in ["default_radio", "wifinet", "radio"]
-                            )
-                            and not system_ifname
-                        ):
-                            _LOGGER.debug(
-                                "Filtering ghost ubus wireless section: %s", iface_name
-                            )
-                            continue
-
                         iface_config = iface.get("config", {})
                         wifi = WirelessInterface(
                             name=iface_name,
@@ -915,16 +901,6 @@ class UbusClient(OpenWrtClient):
                     vals = uci_wireless["values"]
                     for sect_name, sect_data in vals.items():
                         if sect_data.get(".type") != "wifi-iface":
-                            continue
-
-                        # Filter out generic UCI section names (ghosts)
-                        if any(
-                            sect_name.startswith(p)
-                            for p in ["default_radio", "wifinet", "radio"]
-                        ) and not sect_data.get("ifname"):
-                            _LOGGER.debug(
-                                "Filtering ghost UCI wireless section: %s", sect_name
-                            )
                             continue
 
                         iface_name = sect_data.get("ifname") or sect_name
@@ -971,8 +947,8 @@ class UbusClient(OpenWrtClient):
         except UbusError:
             _LOGGER.debug("iwinfo devices call failed")
 
-        # 3. Populate metrics for all discovered interfaces
-        for wifi in interfaces:
+        # 3. Populate metrics for all discovered interfaces in parallel
+        async def _fetch_metrics(wifi: WirelessInterface) -> None:
             try:
                 iwinfo = await self._call("iwinfo", "info", {"device": wifi.name})
                 if iwinfo:
@@ -1022,6 +998,9 @@ class UbusClient(OpenWrtClient):
                     "Failed to fetch detailed info for wifi interface %s", wifi.name
                 )
 
+        if interfaces:
+            await asyncio.gather(*[_fetch_metrics(w) for w in interfaces])
+
         # 4. Deduplicate and clean up
         unique_ifaces: list[WirelessInterface] = []
         seen_keys: set[str] = set()
@@ -1031,24 +1010,6 @@ class UbusClient(OpenWrtClient):
             if not wifi.mac_address and not wifi.ssid:
                 _LOGGER.debug(
                     "Skipping non-operational wireless interface: %s", wifi.name
-                )
-                continue
-
-            # Skip unconfigured generic placeholders (ghosts)
-            is_ghost_name = any(
-                (wifi.name or "").startswith(p) or (wifi.section or "").startswith(p)
-                for p in ["default_radio", "wifinet", "radio"]
-            )
-            if is_ghost_name and (
-                not wifi.ssid
-                or wifi.ssid == "OpenWrt"
-                or not wifi.mac_address
-                or wifi.mac_address == "00:00:00:00:00:00"
-            ):
-                _LOGGER.debug(
-                    "Skipping ghost wireless interface: %s (SSID: %s)",
-                    wifi.name,
-                    wifi.ssid,
                 )
                 continue
 

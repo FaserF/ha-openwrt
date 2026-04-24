@@ -12,17 +12,21 @@ def ubus_client() -> UbusClient:
     """Fixture for Ubus client."""
     return UbusClient(host="192.168.1.1", username="root", password="password")
 
+
 @pytest.mark.asyncio
 async def test_ubus_get_top_processes(ubus_client: UbusClient):
     """Test fetching top processes via Ubus."""
-    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call, \
-         patch.object(ubus_client, "execute_command", new_callable=AsyncMock) as mock_exec:
-
+    with (
+        patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call,
+        patch.object(
+            ubus_client, "execute_command", new_callable=AsyncMock
+        ) as mock_exec,
+    ):
         # 1. Mock system.info
         mock_call.return_value = {
             "uptime": 1000,
             "load": [0, 0, 0],
-            "memory": {"total": 1024, "free": 512}
+            "memory": {"total": 1024, "free": 512},
         }
 
         # 2. Mock top -n 1 -b

@@ -260,18 +260,14 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                     and device.is_wireless
                     and device.interface
                 ):
-                    via_device = (
-                        DOMAIN,
-                        format_ap_device_id(
-                            cast(
-                                str,
-                                self._entry.unique_id or self._entry.data[CONF_HOST],
-                            ),
-                            self.coordinator.interface_to_stable_id.get(
-                                device.interface, device.interface
-                            ),
-                        ),
+                    stable_id = self.coordinator.interface_to_stable_id.get(
+                        device.interface
                     )
+                    if stable_id:
+                        via_device = (
+                            DOMAIN,
+                            format_ap_device_id(router_id, stable_id),
+                        )
                     break
 
         # Standard values for tracked devices

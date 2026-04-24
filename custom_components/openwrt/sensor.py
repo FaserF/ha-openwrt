@@ -277,15 +277,14 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
                     and device.is_wireless
                     and device.interface
                 ):
-                    via_device = (
-                        DOMAIN,
-                        format_ap_device_id(
-                            router_id,
-                            self.coordinator.interface_to_stable_id.get(
-                                device.interface, device.interface
-                            ),
-                        ),
+                    stable_id = self.coordinator.interface_to_stable_id.get(
+                        device.interface
                     )
+                    if stable_id:
+                        via_device = (
+                            DOMAIN,
+                            format_ap_device_id(router_id, stable_id),
+                        )
                     break
 
         return DeviceInfo(
@@ -1054,8 +1053,9 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
         super().__init__(coordinator)
         self._mac = mac.upper()
         self._entry = entry
+        self._initial_name = name
+        self._attr_name = name
         self._attr_unique_id = f"{entry.entry_id}_nlbwmon_{mac.replace(':', '_')}"
-        self._attr_name = None
         from .helpers import is_random_mac
 
         if is_random_mac(mac):
@@ -1074,15 +1074,14 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
                     and device.is_wireless
                     and device.interface
                 ):
-                    via_device = (
-                        DOMAIN,
-                        format_ap_device_id(
-                            router_id,
-                            self.coordinator.interface_to_stable_id.get(
-                                device.interface, device.interface
-                            ),
-                        ),
+                    stable_id = self.coordinator.interface_to_stable_id.get(
+                        device.interface
                     )
+                    if stable_id:
+                        via_device = (
+                            DOMAIN,
+                            format_ap_device_id(router_id, stable_id),
+                        )
                     break
 
         return DeviceInfo(
