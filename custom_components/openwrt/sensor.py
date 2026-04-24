@@ -41,13 +41,15 @@ from .api.base import OpenWrtData, StorageUsage
 from .const import (
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_SKIP_RANDOM_MAC,
     DATA_COORDINATOR,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
+    DEFAULT_SKIP_RANDOM_MAC,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import format_ap_device_id, format_ap_name
+from .helpers import format_ap_device_id, format_ap_name, is_random_mac
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -924,10 +926,18 @@ async def async_setup_entry(
             if not device.mac:
                 continue
             mac = device.mac.lower()
-            if mac in tracked_macs:
+            is_random = is_random_mac(mac)
+            skip_random = entry.options.get(
+                CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
+            )
+
+            if is_random and skip_random:
                 continue
 
-            if not track_wired and not device.is_wireless:
+            if not track_wired and not device.is_wireless and not is_random:
+                continue
+
+            if mac in tracked_macs:
                 continue
 
             tracked_macs.add(mac)

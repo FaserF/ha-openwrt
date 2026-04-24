@@ -23,6 +23,7 @@ CONF_CONSIDER_HOME: Final = "consider_home"
 CONF_TRACK_DEVICES: Final = "track_devices"
 CONF_TRACK_WIRED: Final = "track_wired"
 CONF_INTERFACE: Final = "interface"
+CONF_SKIP_RANDOM_MAC: Final = "skip_random_mac"
 
 CONNECTION_TYPE_UBUS: Final = "ubus"
 CONNECTION_TYPE_LUCI_RPC: Final = "luci_rpc"
@@ -40,6 +41,7 @@ DEFAULT_TRACK_DEVICES: Final = True
 DEFAULT_TRACK_WIRED: Final = True
 DEFAULT_USE_SSL: Final = False
 DEFAULT_VERIFY_SSL: Final = False
+DEFAULT_SKIP_RANDOM_MAC: Final = False
 
 DHCP_SOFTWARE_AUTO: Final = "auto"
 DHCP_SOFTWARE_DNSMASQ: Final = "dnsmasq"

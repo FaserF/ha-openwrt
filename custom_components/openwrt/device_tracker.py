@@ -33,14 +33,16 @@ from .const import (
     CONF_CONSIDER_HOME,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_SKIP_RANDOM_MAC,
     DATA_COORDINATOR,
     DEFAULT_CONSIDER_HOME,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
+    DEFAULT_SKIP_RANDOM_MAC,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import format_ap_device_id
+from .helpers import format_ap_device_id, is_random_mac
 from .helpers.mac_vendor import get_mac_vendor_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -129,19 +131,63 @@ async def async_setup_entry(
         if not perms.read_network and not perms.read_wireless:
             return
 
+        # Collect all unique MACs from both connected devices and DHCP leases
+        unique_devices: dict[str, str | None] = {}
+        for device in coordinator.data.connected_devices:
+            if device.mac:
+                unique_devices[device.mac.lower()] = device.hostname
+        for lease in coordinator.data.dhcp_leases:
+            if lease.mac:
+                mac_lower = lease.mac.lower()
+                if mac_lower not in unique_devices or not unique_devices[mac_lower]:
+                    unique_devices[mac_lower] = lease.hostname
+
         new_entities: list[OpenWrtDeviceTracker] = []
 
-        for device in coordinator.data.connected_devices:
-            if not device.mac:
-                continue
-            mac = device.mac.lower()
+        for mac, hostname in unique_devices.items():
             if mac in tracked_macs:
                 continue
-            if not track_wired and not device.is_wireless:
+
+            # Check if it's wireless (from current data or history)
+            is_wireless = False
+            for device in coordinator.data.connected_devices:
+                if device.mac and device.mac.lower() == mac:
+                    is_wireless = device.is_wireless
+                    break
+
+            if not is_wireless and mac in coordinator._device_history:
+                is_wireless = coordinator._device_history[mac].get("is_wireless", False)
+
+            is_random = is_random_mac(mac)
+            skip_random = entry.options.get(
+                CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
+            )
+
+            if is_random and skip_random:
+                _LOGGER.debug(
+                    "Skipping randomized MAC device %s (option enabled)",
+                    mac,
+                )
                 continue
 
+            if not track_wired and not is_wireless and not is_random:
+                _LOGGER.debug(
+                    "Skipping device %s (hostname: %s): not wireless, not random, and track_wired is False",
+                    mac,
+                    hostname,
+                )
+                continue
+
+            _LOGGER.debug(
+                "Adding/updating device tracker for %s (hostname: %s, wireless: %s, random: %s)",
+                mac,
+                hostname,
+                is_wireless,
+                is_random,
+            )
+
             tracked_macs.add(mac)
-            new_entities.append(OpenWrtDeviceTracker(coordinator, entry, mac))
+            new_entities.append(OpenWrtDeviceTracker(coordinator, entry, mac, hostname))
 
         if new_entities:
             async_add_entities(new_entities)
@@ -166,6 +212,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         coordinator: OpenWrtDataCoordinator,
         entry: ConfigEntry,
         mac: str,
+        hostname: str | None = None,
     ) -> None:
         """Initialize the device tracker."""
         super().__init__(coordinator)
@@ -178,12 +225,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             self._attr_entity_registry_enabled_default = False
 
         # Initial device name fallback
-        self._initial_name = mac
-        if coordinator.data:
-            for device in coordinator.data.connected_devices:
-                if device.mac == mac and device.hostname:
-                    self._initial_name = device.hostname
-                    break
+        self._initial_name = hostname or mac
         self._consider_home = timedelta(
             seconds=entry.options.get(
                 CONF_CONSIDER_HOME,

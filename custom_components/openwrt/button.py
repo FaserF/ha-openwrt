@@ -27,10 +27,12 @@ from .api.base import OpenWrtClient
 from .const import (
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_SKIP_RANDOM_MAC,
     DATA_CLIENT,
     DATA_COORDINATOR,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
+    DEFAULT_SKIP_RANDOM_MAC,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
@@ -452,8 +454,18 @@ def _add_device_buttons(
         entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
     )
 
+    from .helpers import is_random_mac
+
+    skip_random = entry.options.get(
+        CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
+    )
+
     for mac_lower, info in unique_devices.items():
         mac = info["mac"]
+
+        if skip_random and is_random_mac(mac_lower):
+            continue
+
         if not track_wired and not info["is_wireless"]:
             continue
         hostname = info["hostname"]

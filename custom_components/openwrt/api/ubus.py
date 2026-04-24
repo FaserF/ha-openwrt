@@ -874,10 +874,13 @@ class UbusClient(OpenWrtClient):
 
                         # Filter out generic UCI section names (ghosts)
                         system_ifname = iface.get("ifname")
-                        if any(
-                            iface_name.startswith(p)
-                            for p in ["default_radio", "wifinet", "radio"]
-                        ) and not system_ifname:
+                        if (
+                            any(
+                                iface_name.startswith(p)
+                                for p in ["default_radio", "wifinet", "radio"]
+                            )
+                            and not system_ifname
+                        ):
                             _LOGGER.debug(
                                 "Filtering ghost ubus wireless section: %s", iface_name
                             )

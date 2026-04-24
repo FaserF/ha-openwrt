@@ -21,10 +21,12 @@ from .api.base import OpenWrtClient
 from .const import (
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_SKIP_RANDOM_MAC,
     DATA_CLIENT,
     DATA_COORDINATOR,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
+    DEFAULT_SKIP_RANDOM_MAC,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
@@ -309,10 +311,19 @@ def _add_access_control_switches(
         CONF_TRACK_WIRED,
         entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
     )
+    skip_random = entry.options.get(
+        CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
+    )
+    from .helpers import is_random_mac
 
     for device in coordinator.data.connected_devices:
         if not device.mac:
             continue
+
+        mac = device.mac.lower()
+        if skip_random and is_random_mac(mac):
+            continue
+
         if not track_wired and not device.is_wireless:
             continue
         dev_name = (

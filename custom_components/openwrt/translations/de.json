@@ -41,7 +41,8 @@
           "port": "Port",
           "ubus_path": "Ubus-Pfad (z. B. /ubus)",
           "dhcp_software": "DHCP-Software",
-          "track_devices": "Netzwerk-Clients verfolgen (Device Tracker)"
+          "track_devices": "Netzwerk-Clients verfolgen (Device Tracker)",
+          "skip_random_mac": "Geräte mit zufälliger MAC-Adresse ignorieren"
         }
       },
       "ssh": {
@@ -166,7 +167,8 @@
           "auto_backup": "Automatisches Backup vor Firmware-Update",
           "custom_firmware_repo": "Benutzerdefiniertes Firmware GitHub-Repo (Besitzer/Repo)",
           "asu_url": "Attended Sysupgrade Server URL",
-          "target_override": "Ziel-Überschreibung (z. B. arch/subtarget)"
+          "target_override": "Ziel-Überschreibung (z. B. arch/subtarget)",
+          "skip_random_mac": "Geräte mit zufälliger MAC-Adresse ignorieren"
         },
         "description": "Konfiguriere die Optionen der OpenWrt-Integration."
       },

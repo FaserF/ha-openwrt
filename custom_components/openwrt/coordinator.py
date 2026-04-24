@@ -44,13 +44,14 @@ from .api.ubus import (
 )
 from .const import (
     CONF_ASU_URL,
-    CONF_TARGET_OVERRIDE,
     CONF_CONNECTION_TYPE,
     CONF_CUSTOM_FIRMWARE_REPO,
     CONF_DHCP_SOFTWARE,
     CONF_PASSWORD,
     CONF_PORT,
+    CONF_SKIP_RANDOM_MAC,
     CONF_SSH_KEY,
+    CONF_TARGET_OVERRIDE,
     CONF_UBUS_PATH,
     CONF_UPDATE_INTERVAL,
     CONF_USE_SSL,
@@ -62,6 +63,7 @@ from .const import (
     DEFAULT_PORT_SSH,
     DEFAULT_PORT_UBUS,
     DEFAULT_PORT_UBUS_SSL,
+    DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_UBUS_PATH,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
@@ -91,6 +93,10 @@ SNAPSHOT_TARGET_MAP = {
     "mediatek/mt7622": "mediatek/filogic",
     "mediatek/mt7623": "mediatek/filogic",
     "rockchip/armv8": "rockchip/rk3328",
+    "ipq807x": "qualcommax/ipq807x",
+    "ipq60xx": "qualcommax/ipq60xx",
+    "ipq50xx": "qualcommax/ipq50xx",
+    "qualcommax/generic": "qualcommax/ipq807x",
 }
 
 
@@ -352,12 +358,23 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         own_ips = data.local_ips
         current_time = int(time.time())
         history_updated = False
+        skip_random = self.config_entry.options.get(
+            CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
+        )
 
+        from .helpers import is_random_mac
+
+        # 4. Filter connected devices
         filtered_devices = []
         for device in data.connected_devices:
             mac = device.mac.lower()
             # 1. Filter out router's own interfaces (always)
             if mac in own_macs:
+                continue
+
+            # 2. Filter out randomized MACs if option is set
+            if skip_random and is_random_mac(mac):
+                _LOGGER.debug("Skipping randomized MAC device (option enabled): %s", mac)
                 continue
 
             # 2. Filter out router's own IP addresses
@@ -384,6 +401,14 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
             filtered_devices.append(device)
 
+            _LOGGER.debug(
+                "Processing connected device: %s (hostname: %s, interface: %s, wireless: %s)",
+                mac,
+                device.hostname,
+                device.interface,
+                device.is_wireless,
+            )
+
             if mac not in self._device_history:
                 self._device_history[mac] = {
                     "initially_seen": current_time,
@@ -391,6 +416,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     "is_wireless": device.is_wireless,
                 }
                 history_updated = True
+                _LOGGER.debug("New device added to history: %s", mac)
             else:
                 hist = self._device_history[mac]
                 hist["last_seen"] = current_time
@@ -417,6 +443,38 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     hostname,
                 ):
                     continue
+
+            # Filter out randomized MACs if option is set
+            if skip_random and is_random_mac(mac):
+                continue
+
+            _LOGGER.debug(
+                "Processing DHCP lease: %s (hostname: %s, ip: %s)",
+                mac,
+                lease.hostname,
+                lease.ip,
+            )
+
+            # Ensure lease devices are also in history so they are discovered as trackers
+            if mac not in self._device_history:
+                from .helpers import is_random_mac
+
+                is_wireless = is_random_mac(mac)
+                self._device_history[mac] = {
+                    "initially_seen": current_time,
+                    "last_seen": current_time,
+                    "is_wireless": is_wireless,
+                }
+                history_updated = True
+                _LOGGER.debug(
+                    "New lease-only device added to history: %s (guessed wireless: %s)",
+                    mac,
+                    is_wireless,
+                )
+            else:
+                self._device_history[mac]["last_seen"] = current_time
+                history_updated = True
+
             filtered_leases.append(lease)
         data.dhcp_leases = filtered_leases
 
@@ -508,8 +566,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             ):
                 ap_info[device.interface] = (device.interface, device.interface)
 
-        # Collect all valid stable_ids for this update cycle
-        valid_stable_ids = {info[1] for info in ap_info.values()}
 
         for _iface_name, (label, stable_id) in ap_info.items():
             device_registry.async_get_or_create(
@@ -534,21 +590,20 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         )
 
         devices_to_remove = []
-        # Iterate over ALL devices in the registry to catch orphaned ones
+        # Use device_registry.devices.values() to iterate over all devices
         for dev in list(device_registry.devices.values()):
-            # Check if the device has any identifier belonging to our domain
-            our_identifiers = [
-                ident for ident in dev.identifiers if ident[0] == DOMAIN
-            ]
-            if not our_identifiers:
-                continue
+            # Check if any identifier belonging to our domain matches this router
+            is_ours = False
+            for ident in dev.identifiers:
+                if ident[0] == DOMAIN:
+                    ident_str = str(ident[1])
+                    if ident_str == router_id or ident_str.startswith(
+                        f"{router_id}_ap_"
+                    ):
+                        is_ours = True
+                        break
 
-            # Check if it belongs to THIS physical router
-            # We check if the identifier starts with our router_id
-            belongs_to_this_router = any(
-                str(ident[1]).startswith(router_id) for ident in our_identifiers
-            )
-            if not belongs_to_this_router:
+            if not is_ours:
                 continue
 
             # If it's one of our currently active devices, keep it
@@ -556,17 +611,32 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 continue
 
             # Identify if this is an Access Point device (old or new style)
-            is_ap_related = any("_ap_" in str(ident[1]) for ident in our_identifiers)
-
-            # Also check for the specific ghost names the user reported
+            # We also check the name as a fallback for old installations
+            is_ap_related = any(
+                "_ap_" in str(ident[1])
+                for ident in dev.identifiers
+                if ident[0] == DOMAIN
+            )
             is_ghost_name = any(
                 ghost in (dev.name or "")
                 for ghost in ["default_radio", "wifinet", "radio"]
             )
 
-            if is_ap_related or is_ghost_name:
+            # Identify if this is a randomized MAC device and skip_random is enabled
+            is_random_tracked = False
+            if skip_random:
+                for ident in dev.identifiers:
+                    if ident[0] == DOMAIN:
+                        ident_val = str(ident[1])
+                        # Tracked devices use simple MAC as identifier
+                        if re.match(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", ident_val):
+                            if is_random_mac(ident_val):
+                                is_random_tracked = True
+                                break
+
+            if is_ap_related or is_ghost_name or is_random_tracked:
                 _LOGGER.info(
-                    "Removing orphaned/ghost device '%s' (id: %s, identifiers: %s)",
+                    "Removing orphaned/ghost/randomized device '%s' (id: %s, identifiers: %s)",
                     dev.name,
                     dev.id,
                     dev.identifiers,
@@ -610,6 +680,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     ) -> None:
         """Check for updates in SNAPSHOT builds."""
         target = self._get_target(data.device_info.target)
+        _LOGGER.debug(
+            "Checking snapshot update for target: %s (original: %s)",
+            target,
+            data.device_info.target,
+        )
         if not target:
             return
 
@@ -619,6 +694,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             async with session.get(
                 url, timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
+                _LOGGER.debug(
+                    "Snapshot profiles.json status for %s: %s", target, resp.status
+                )
                 if resp.status != 200:
                     return
                 profile_data = await resp.json()
@@ -627,14 +705,24 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     return
 
                 latest_snapshot = f"SNAPSHOT ({version_code})"
+                _LOGGER.debug(
+                    "Comparing snapshot versions: current=%s, latest=%s",
+                    data.firmware_current_version,
+                    latest_snapshot,
+                )
                 if self._version_is_newer(
                     data.firmware_current_version, latest_snapshot
                 ):
                     data.firmware_latest_version = latest_snapshot
                     data.firmware_upgradable = True
+                    _LOGGER.info(
+                        "Newer snapshot found for %s: %s", target, latest_snapshot
+                    )
                     data.firmware_release_url = (
                         f"https://downloads.openwrt.org/snapshots/targets/{target}/"
                     )
+                else:
+                    _LOGGER.debug("No newer snapshot version found.")
 
                     # Find sysupgrade image
                     profiles = profile_data.get("profiles", {})
@@ -964,15 +1052,34 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             rev_current = get_rev_num(current)
             rev_latest = get_rev_num(latest)
 
+            _LOGGER.debug(
+                "Comparing snapshots: current=%s (rev=%s), latest=%s (rev=%s)",
+                current,
+                rev_current,
+                latest,
+                rev_latest,
+            )
+
             if rev_current >= 0 and rev_latest >= 0:
                 if rev_latest != rev_current:
                     return rev_latest > rev_current
-            
+
             # Fallback to string comparison if revisions aren't numeric/comparable
             # but strip "SNAPSHOT" and extra chars for a cleaner comparison
-            clean_current = re.sub(r"[^a-zA-Z0-9-]", "", current.upper().replace("SNAPSHOT", ""))
-            clean_latest = re.sub(r"[^a-zA-Z0-9-]", "", latest.upper().replace("SNAPSHOT", ""))
-            return clean_latest != clean_current
+            clean_current = re.sub(
+                r"[^a-zA-Z0-9-]", "", current.upper().replace("SNAPSHOT", "")
+            )
+            clean_latest = re.sub(
+                r"[^a-zA-Z0-9-]", "", latest.upper().replace("SNAPSHOT", "")
+            )
+            result = clean_latest != clean_current
+            _LOGGER.debug(
+                "Snapshot fallback comparison: %s != %s -> %s",
+                clean_latest,
+                clean_current,
+                result,
+            )
+            return result
 
         try:
             current_parts = [int(p) for p in current.split(".")]
