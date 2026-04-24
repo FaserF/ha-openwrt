@@ -25,14 +25,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtClient
 from .const import (
+    CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
-    CONF_SKIP_RANDOM_MAC,
     DATA_CLIENT,
     DATA_COORDINATOR,
+    DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
-    DEFAULT_SKIP_RANDOM_MAC,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
@@ -92,7 +92,12 @@ async def async_setup_entry(
     ]
     client: OpenWrtClient = hass.data[DOMAIN][entry.entry_id][DATA_CLIENT]
 
-    tracked_keys: set[str] = set()
+    ent_reg = er.async_get(hass)
+    tracked_keys = {
+        ent.unique_id.split(f"{entry.entry_id}_")[-1]
+        for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+        if ent.domain == "button"
+    }
 
     def _async_add_new_entities() -> None:
         """Add new entities when devices are discovered."""
@@ -456,9 +461,7 @@ def _add_device_buttons(
 
     from .helpers import is_random_mac
 
-    skip_random = entry.options.get(
-        CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
-    )
+    skip_random = entry.options.get(CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC)
 
     for mac_lower, info in unique_devices.items():
         mac = info["mac"]

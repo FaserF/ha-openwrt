@@ -23,13 +23,13 @@ async def test_wol_button_restriction(hass) -> None:
         device_info=DeviceInfo(hostname="router"),
         connected_devices=[
             ConnectedDevice(
-                mac="AA:BB:CC:DD:EE:01",
+                mac="00:11:22:33:44:01",
                 hostname="wired-dev",
                 is_wireless=False,
                 interface="br-lan",
             ),
             ConnectedDevice(
-                mac="AA:BB:CC:DD:EE:02",
+                mac="00:11:22:33:44:02",
                 hostname="wireless-dev",
                 is_wireless=True,
                 interface="wlan0",
@@ -58,7 +58,7 @@ async def test_wol_button_restriction(hass) -> None:
         assert mock_wol_button.call_count == 1
         args, _kwargs = mock_wol_button.call_args
         # args[3] is the mac address in OpenWrtWakeOnLanButton(coordinator, entry, client, mac, name, interface)
-        assert args[3] == "AA:BB:CC:DD:EE:01"
+        assert args[3] == "00:11:22:33:44:01"
 
 
 @pytest.mark.asyncio
@@ -69,7 +69,7 @@ async def test_kick_button_default_disabled(hass) -> None:
         device_info=DeviceInfo(hostname="router"),
         connected_devices=[
             ConnectedDevice(
-                mac="AA:BB:CC:DD:EE:02",
+                mac="00:11:22:33:44:02",
                 hostname="wireless-dev",
                 is_wireless=True,
                 interface="wlan0",

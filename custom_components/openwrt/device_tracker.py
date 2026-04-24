@@ -21,9 +21,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
     device_registry as dr,
 )
-from homeassistant.helpers import (
-    entity_registry as er,
-)
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -31,14 +29,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     ATTR_MANUFACTURER,
     CONF_CONSIDER_HOME,
+    CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
-    CONF_SKIP_RANDOM_MAC,
     DATA_COORDINATOR,
     DEFAULT_CONSIDER_HOME,
+    DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
-    DEFAULT_SKIP_RANDOM_MAC,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
@@ -119,7 +117,12 @@ async def async_setup_entry(
         entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
     )
 
-    tracked_macs: set[str] = set()
+    ent_reg = er.async_get(hass)
+    tracked_macs = {
+        ent.unique_id.split("_tracker_")[-1].lower()
+        for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+        if ent.domain == "device_tracker" and "_tracker_" in ent.unique_id
+    }
 
     @callback
     def _async_add_new_devices() -> None:
@@ -161,6 +164,16 @@ async def async_setup_entry(
             is_random = is_random_mac(mac)
             skip_random = entry.options.get(
                 CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
+            )
+
+            _LOGGER.debug(
+                "Evaluating device %s (hostname: %s): wireless=%s, random=%s, skip_random=%s, track_wired=%s",
+                mac,
+                hostname,
+                is_wireless,
+                is_random,
+                skip_random,
+                track_wired,
             )
 
             if is_random and skip_random:

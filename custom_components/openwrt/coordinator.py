@@ -69,7 +69,7 @@ from .const import (
     DOMAIN,
     OPENWRT_RELEASE_API,
 )
-from .helpers import format_ap_device_id, format_ap_name
+from .helpers import format_ap_device_id, format_ap_name, is_random_mac
 from .repairs import (
     async_create_auth_repair,
     async_create_connection_lost_repair,
@@ -212,11 +212,38 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         except Exception as err:
             _LOGGER.warning("Could not load persistent history: %s", err)
 
-        try:
-            await self.client.connect()
-        except Exception as err:
-            msg = f"Cannot connect to OpenWrt device: {err}"
-            raise UpdateFailed(msg) from err
+        # Try to connect and perform first fetch
+        for attempt in range(1, 4):
+            try:
+                _LOGGER.debug(
+                    "Connecting to OpenWrt device %s (attempt %s/3)",
+                    self.name,
+                    attempt,
+                )
+                if not self.client.connected:
+                    await self.client.connect()
+
+                # Also try an initial data fetch to populate the coordinator
+                self.data = await self.client.get_all_data()
+                self.last_update_success = True
+                _LOGGER.info("Successfully connected to %s", self.name)
+                break
+            except Exception as err:
+                if attempt < 3:
+                    _LOGGER.warning(
+                        "Initial connection/fetch failed for %s, retrying in 5s: %s",
+                        self.name,
+                        err,
+                    )
+                    await asyncio.sleep(5)
+                else:
+                    _LOGGER.warning(
+                        "Initial connection/fetch failed for %s after 3 attempts: %s. "
+                        "Integration will retry in the background.",
+                        self.name,
+                        err,
+                    )
+                    self.last_update_success = False
 
     async def _async_update_data(self) -> OpenWrtData:
         """Fetch data from the OpenWrt device."""
@@ -258,6 +285,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             try:
                 await self.client.connect()
             except Exception as err:
+                if self.data:
+                    _LOGGER.info(
+                        "Reconnection failed for %s, using stale data: %s",
+                        self.name,
+                        err,
+                    )
+                    return self.data
                 raise UpdateFailed(f"Cannot connect: {err}") from err
 
         try:
@@ -362,8 +396,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
         )
 
-        from .helpers import is_random_mac
-
         # 4. Filter connected devices
         filtered_devices = []
         for device in data.connected_devices:
@@ -373,9 +405,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 continue
 
             # 2. Filter out randomized MACs if option is set
-            if skip_random and is_random_mac(mac):
-                _LOGGER.debug("Skipping randomized MAC device (option enabled): %s", mac)
-                continue
+            if is_random_mac(mac):
+                if skip_random:
+                    _LOGGER.debug(
+                        "Skipping randomized MAC device (option enabled): %s", mac
+                    )
+                    continue
+                _LOGGER.debug(
+                    "Keeping randomized MAC device (option disabled): %s", mac
+                )
 
             # 2. Filter out router's own IP addresses
             if device.ip and device.ip in own_ips:
@@ -457,8 +495,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
             # Ensure lease devices are also in history so they are discovered as trackers
             if mac not in self._device_history:
-                from .helpers import is_random_mac
-
                 is_wireless = is_random_mac(mac)
                 self._device_history[mac] = {
                     "initially_seen": current_time,
@@ -501,6 +537,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         device_info = data.device_info
         device_registry = dr.async_get(self.hass)
+        skip_random = self.config_entry.options.get(
+            CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
+        )
 
         # Identify gateway device for topology mapping
         via_device = None
@@ -515,7 +554,25 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         via_device = next(iter(dev.identifiers))
                     break
 
+        # Prefer MAC address for router identity to ensure consistency with legacy devices
         router_id = self.config_entry.unique_id or self.config_entry.data[CONF_HOST]
+        if device_info.mac_address:
+            mac_id = device_info.mac_address.lower()
+            if router_id != mac_id:
+                _LOGGER.debug(
+                    "Switching router identity for cleanup from %s to %s",
+                    router_id,
+                    mac_id,
+                )
+                router_id = mac_id
+                # Update config entry unique_id if it's missing or an IP
+                if not self.config_entry.unique_id or re.match(
+                    r"^\d{1,3}(\.\d{1,3}){3}$", self.config_entry.unique_id
+                ):
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry, unique_id=mac_id
+                    )
+
         _LOGGER.debug(
             "Updating device registry for %s: model=%s",
             router_id,
@@ -566,7 +623,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             ):
                 ap_info[device.interface] = (device.interface, device.interface)
 
-
         for _iface_name, (label, stable_id) in ap_info.items():
             device_registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
@@ -590,10 +646,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         )
 
         devices_to_remove = []
-        # Use device_registry.devices.values() to iterate over all devices
+        # Iterate over all devices in the registry
         for dev in list(device_registry.devices.values()):
             # Check if any identifier belonging to our domain matches this router
             is_ours = False
+            is_tracked_device = False
+            tracked_mac = None
+
             for ident in dev.identifiers:
                 if ident[0] == DOMAIN:
                     ident_str = str(ident[1])
@@ -601,13 +660,17 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         f"{router_id}_ap_"
                     ):
                         is_ours = True
-                        break
+                    elif re.match(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", ident_str):
+                        is_tracked_device = True
+                        tracked_mac = ident_str
 
-            if not is_ours:
+            if not is_ours and not is_tracked_device:
                 continue
 
-            # If it's one of our currently active devices, keep it
-            if any(ident in active_identifiers for ident in dev.identifiers):
+            # If it's one of our currently active APs or the router itself, keep it
+            if is_ours and any(
+                ident in active_identifiers for ident in dev.identifiers
+            ):
                 continue
 
             # Identify if this is an Access Point device (old or new style)
@@ -624,15 +687,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
             # Identify if this is a randomized MAC device and skip_random is enabled
             is_random_tracked = False
-            if skip_random:
-                for ident in dev.identifiers:
-                    if ident[0] == DOMAIN:
-                        ident_val = str(ident[1])
-                        # Tracked devices use simple MAC as identifier
-                        if re.match(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", ident_val):
-                            if is_random_mac(ident_val):
-                                is_random_tracked = True
-                                break
+            if skip_random and is_tracked_device and tracked_mac:
+                if is_random_mac(tracked_mac):
+                    is_random_tracked = True
 
             if is_ap_related or is_ghost_name or is_random_tracked:
                 _LOGGER.info(
@@ -641,6 +698,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     dev.id,
                     dev.identifiers,
                 )
+
+                # If it's a tracked device, we might only want to remove our config entry from it
+                # if other integrations also track it. But async_remove_device is simpler and
+                # usually what the user wants for randomized MACs to clear them out.
                 devices_to_remove.append(dev.id)
 
         for dev_id in devices_to_remove:
@@ -680,7 +741,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     ) -> None:
         """Check for updates in SNAPSHOT builds."""
         target = self._get_target(data.device_info.target)
-        _LOGGER.debug(
+        _LOGGER.info(
             "Checking snapshot update for target: %s (original: %s)",
             target,
             data.device_info.target,
@@ -694,7 +755,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             async with session.get(
                 url, timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
-                _LOGGER.debug(
+                _LOGGER.info(
                     "Snapshot profiles.json status for %s: %s", target, resp.status
                 )
                 if resp.status != 200:
@@ -705,7 +766,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     return
 
                 latest_snapshot = f"SNAPSHOT ({version_code})"
-                _LOGGER.debug(
+                _LOGGER.info(
                     "Comparing snapshot versions: current=%s, latest=%s",
                     data.firmware_current_version,
                     latest_snapshot,
@@ -722,21 +783,19 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         f"https://downloads.openwrt.org/snapshots/targets/{target}/"
                     )
                 else:
-                    _LOGGER.debug("No newer snapshot version found.")
+                    _LOGGER.info("No newer snapshot version found.")
 
-                    # Find sysupgrade image
-                    profiles = profile_data.get("profiles", {})
-                    board_key = data.device_info.board_name.replace("-", "_").replace(
-                        ",", "_"
-                    )
-                    board_profile = profiles.get(board_key)
-                    if board_profile:
-                        for img in board_profile.get("images", []):
-                            if "sysupgrade" in img.get("name", ""):
-                                data.firmware_install_url = (
-                                    f"{data.firmware_release_url}{img.get('name')}"
-                                )
-                                break
+                # Find sysupgrade image
+                profiles = profile_data.get("profiles", {})
+                board_key = data.device_info.board_name.replace("-", "_").replace(
+                    ",", "_"
+                )
+                board_profile = profiles.get(board_key)
+                if board_profile:
+                    for img in board_profile.get("images", []):
+                        if "sysupgrade" in img.get("name", ""):
+                            data.firmware_install_url = f"https://downloads.openwrt.org/snapshots/targets/{target}/{img.get('name')}"
+                            break
 
     async def _check_stable_release_update(
         self, data: OpenWrtData, session: aiohttp.ClientSession

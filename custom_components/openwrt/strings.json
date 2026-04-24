@@ -41,7 +41,8 @@
           "port": "Port",
           "ubus_path": "Ubus Path (e.g. /ubus)",
           "dhcp_software": "DHCP Software",
-          "track_devices": "Track network clients (Device Tracker)"
+          "track_devices": "Track network clients (Device Tracker)",
+          "skip_random_mac": "Ignore devices with randomized MAC addresses"
         }
       },
       "ssh": {
@@ -53,7 +54,8 @@
           "ssh_key": "Private SSH Key (Optional, leaves password blank if used)",
           "port": "Port",
           "dhcp_software": "DHCP Software",
-          "track_devices": "Track network clients (Device Tracker)"
+          "track_devices": "Track network clients (Device Tracker)",
+          "skip_random_mac": "Ignore devices with randomized MAC addresses"
         }
       },
       "reauth_confirm": {
@@ -73,7 +75,8 @@
           "use_ssl": "Use SSL (HTTPS)",
           "port": "Port (Optional)",
           "dhcp_software": "DHCP Software",
-          "track_devices": "Track network clients (Device Tracker)"
+          "track_devices": "Track network clients (Device Tracker)",
+          "skip_random_mac": "Ignore devices with randomized MAC addresses"
         }
       },
       "permissions": {
@@ -166,7 +169,8 @@
           "auto_backup": "Automatic Backup before Firmware Update",
           "custom_firmware_repo": "Custom Firmware GitHub Repo (owner/repo)",
           "asu_url": "Attended Sysupgrade Server URL",
-          "target_override": "Target Override (e.g. arch/subtarget)"
+          "target_override": "Target Override (e.g. arch/subtarget)",
+          "skip_random_mac": "Ignore devices with randomized MAC addresses"
         },
         "description": "Configure OpenWrt integration options."
       },

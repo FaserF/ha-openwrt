@@ -19,14 +19,14 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtClient
 from .const import (
+    CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
-    CONF_SKIP_RANDOM_MAC,
     DATA_CLIENT,
     DATA_COORDINATOR,
+    DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
-    DEFAULT_SKIP_RANDOM_MAC,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
@@ -46,36 +46,66 @@ async def async_setup_entry(
     ]
     client: OpenWrtClient = hass.data[DOMAIN][entry.entry_id][DATA_CLIENT]
 
-    entities: list[SwitchEntity] = []
 
     if coordinator.data:
         perms = coordinator.data.permissions
         pkgs = coordinator.data.packages
 
+    ent_reg = er.async_get(hass)
+    tracked_keys = {
+        ent.unique_id.split(f"{entry.entry_id}_")[-1]
+        for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+        if ent.domain == "switch"
+    }
+
+    def _async_add_new_entities() -> None:
+        """Add new entities when devices are discovered."""
+        if coordinator.data is None:
+            return
+
+        new_entities: list[SwitchEntity] = []
+
         if perms.write_wireless:
-            _add_wireless_switches(coordinator, entry, client, entities)
+            _add_wireless_switches(
+                coordinator, entry, client, new_entities, tracked_keys
+            )
 
         if perms.write_services:
-            _add_service_switches(coordinator, entry, client, entities)
+            _add_service_switches(
+                coordinator, entry, client, new_entities, tracked_keys
+            )
 
         if perms.write_firewall:
-            _add_firewall_switches(coordinator, entry, client, entities)
+            _add_firewall_switches(
+                coordinator, entry, client, new_entities, tracked_keys
+            )
 
         if perms.write_access_control:
-            _add_access_control_switches(coordinator, entry, client, entities)
+            _add_access_control_switches(
+                coordinator, entry, client, new_entities, tracked_keys
+            )
 
         if perms.write_sqm and pkgs.sqm_scripts is not False:
-            _add_sqm_switches(coordinator, entry, client, entities)
+            _add_sqm_switches(coordinator, entry, client, new_entities, tracked_keys)
 
         if perms.write_vpn:
-            _add_vpn_switches(coordinator, entry, client, entities)
+            _add_vpn_switches(coordinator, entry, client, new_entities, tracked_keys)
 
         if perms.write_led:
-            _add_led_switches(coordinator, entry, client, entities)
+            _add_led_switches(coordinator, entry, client, new_entities, tracked_keys)
 
-        _add_package_switches(coordinator, entry, client, entities, pkgs)
+        _add_package_switches(
+            coordinator, entry, client, new_entities, tracked_keys, pkgs
+        )
 
-    async_add_entities(entities)
+        if new_entities:
+            async_add_entities(new_entities)
+
+    # Initial setup
+    _async_add_new_entities()
+
+    # Dynamic setup
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
 
     @callback
     def _async_cleanup_entities() -> None:
@@ -127,13 +157,19 @@ def _add_vpn_switches(
     entry: ConfigEntry,
     client: OpenWrtClient,
     entities: list[SwitchEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Add VPN related switches."""
     if not coordinator.data:
         return
 
     for vpn in coordinator.data.wireguard_interfaces:
-        entities.append(OpenWrtWireGuardSwitch(coordinator, entry, client, vpn.name))
+        key = f"wg_switch_{vpn.name}"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            entities.append(
+                OpenWrtWireGuardSwitch(coordinator, entry, client, vpn.name)
+            )
 
 
 def _add_led_switches(
@@ -141,13 +177,17 @@ def _add_led_switches(
     entry: ConfigEntry,
     client: OpenWrtClient,
     entities: list[SwitchEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Add LED switches."""
     if not coordinator.data:
         return
 
     for led in coordinator.data.leds:
-        entities.append(OpenWrtLedSwitch(coordinator, entry, client, led.name))
+        key = f"led_{led.name}"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            entities.append(OpenWrtLedSwitch(coordinator, entry, client, led.name))
 
 
 class OpenWrtWireGuardSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
@@ -212,22 +252,28 @@ def _add_wireless_switches(
     entry: ConfigEntry,
     client: OpenWrtClient,
     entities: list[SwitchEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Add wireless-related switches."""
-    entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
+    if "wps" not in tracked_keys:
+        tracked_keys.add("wps")
+        entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
     for wifi in coordinator.data.wireless_interfaces:
         if wifi.name:
-            entities.append(
-                OpenWrtWirelessSwitch(
-                    coordinator,
-                    entry,
-                    client,
-                    wifi.name,
-                    wifi.ssid,
-                    wifi.frequency,
-                    wifi.section,
-                ),
-            )
+            key = f"wireless_{wifi.name}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.append(
+                    OpenWrtWirelessSwitch(
+                        coordinator,
+                        entry,
+                        client,
+                        wifi.name,
+                        wifi.ssid,
+                        wifi.frequency,
+                        wifi.section,
+                    ),
+                )
 
 
 SERVICE_ICONS = {
@@ -247,16 +293,20 @@ def _add_service_switches(
     entry: ConfigEntry,
     client: OpenWrtClient,
     entities: list[SwitchEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Add switches for system services."""
     for service in coordinator.data.services:
         if service.name:
-            icon = SERVICE_ICONS.get(service.name)
-            entities.append(
-                OpenWrtServiceSwitch(
-                    coordinator, entry, client, service.name, icon=icon
+            key = f"service_{service.name}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                icon = SERVICE_ICONS.get(service.name)
+                entities.append(
+                    OpenWrtServiceSwitch(
+                        coordinator, entry, client, service.name, icon=icon
+                    )
                 )
-            )
 
 
 def _add_firewall_switches(
@@ -264,30 +314,37 @@ def _add_firewall_switches(
     entry: ConfigEntry,
     client: OpenWrtClient,
     entities: list[SwitchEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Add firewall-related switches (redirects and rules)."""
     for redirect in coordinator.data.firewall_redirects:
         if redirect.section_id:
-            entities.append(
-                OpenWrtFirewallSwitch(
-                    coordinator,
-                    entry,
-                    client,
-                    redirect.section_id,
-                    redirect.name,
-                ),
-            )
+            key = f"firewall_{redirect.section_id}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.append(
+                    OpenWrtFirewallSwitch(
+                        coordinator,
+                        entry,
+                        client,
+                        redirect.section_id,
+                        redirect.name,
+                    ),
+                )
     for rule in coordinator.data.firewall_rules:
         if rule.name and rule.section_id and not rule.name.startswith("cfg"):
-            entities.append(
-                OpenWrtFirewallRuleSwitch(
-                    coordinator,
-                    entry,
-                    client,
-                    rule.section_id,
-                    rule.name,
-                ),
-            )
+            key = f"firewall_rule_{rule.section_id}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.append(
+                    OpenWrtFirewallRuleSwitch(
+                        coordinator,
+                        entry,
+                        client,
+                        rule.section_id,
+                        rule.name,
+                    ),
+                )
 
 
 def _add_access_control_switches(
@@ -295,6 +352,7 @@ def _add_access_control_switches(
     entry: ConfigEntry,
     client: OpenWrtClient,
     entities: list[SwitchEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Add access control (blocking) switches for devices."""
     router_hostname = (
@@ -311,9 +369,7 @@ def _add_access_control_switches(
         CONF_TRACK_WIRED,
         entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
     )
-    skip_random = entry.options.get(
-        CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
-    )
+    skip_random = entry.options.get(CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC)
     from .helpers import is_random_mac
 
     for device in coordinator.data.connected_devices:
@@ -326,29 +382,33 @@ def _add_access_control_switches(
 
         if not track_wired and not device.is_wireless:
             continue
-        dev_name = (
-            device.hostname
-            if device.hostname and device.hostname not in ("*", router_hostname)
-            else device.mac
-        )
-        ac_rule = next(
-            (
-                r
-                for r in coordinator.data.access_control
-                if r.mac and r.mac.lower() == device.mac.lower()
-            ),
-            None,
-        )
-        entities.append(
-            OpenWrtAccessControlSwitch(
-                coordinator,
-                entry,
-                client,
-                device.mac.lower(),
-                dev_name,
-                ac_rule.section_id if ac_rule else None,
-            ),
-        )
+
+        key = f"access_{mac.replace(':', '_')}"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            dev_name = (
+                device.hostname
+                if device.hostname and device.hostname not in ("*", router_hostname)
+                else device.mac
+            )
+            ac_rule = next(
+                (
+                    r
+                    for r in coordinator.data.access_control
+                    if r.mac and r.mac.lower() == device.mac.lower()
+                ),
+                None,
+            )
+            entities.append(
+                OpenWrtAccessControlSwitch(
+                    coordinator,
+                    entry,
+                    client,
+                    device.mac.lower(),
+                    dev_name,
+                    ac_rule.section_id if ac_rule else None,
+                ),
+            )
 
 
 def _add_sqm_switches(
@@ -356,13 +416,19 @@ def _add_sqm_switches(
     entry: ConfigEntry,
     client: OpenWrtClient,
     entities: list[SwitchEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Add SQM QoS switches."""
     for sqm in coordinator.data.sqm:
         if sqm.section_id:
-            entities.append(
-                OpenWrtSqmSwitch(coordinator, entry, client, sqm.section_id, sqm.name)
-            )
+            key = f"sqm_{sqm.section_id}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.append(
+                    OpenWrtSqmSwitch(
+                        coordinator, entry, client, sqm.section_id, sqm.name
+                    )
+                )
 
 
 def _add_package_switches(
@@ -370,14 +436,18 @@ def _add_package_switches(
     entry: ConfigEntry,
     client: OpenWrtClient,
     entities: list[SwitchEntity],
+    tracked_keys: set[str],
     pkgs: Any,
 ) -> None:
     """Add package-specific toggle switches."""
-    if pkgs.adblock:
+    if pkgs.adblock and "adblock" not in tracked_keys:
+        tracked_keys.add("adblock")
         entities.append(OpenWrtAdBlockSwitch(coordinator, entry, client))
-    if pkgs.simple_adblock:
+    if pkgs.simple_adblock and "simple_adblock" not in tracked_keys:
+        tracked_keys.add("simple_adblock")
         entities.append(OpenWrtSimpleAdBlockSwitch(coordinator, entry, client))
-    if pkgs.ban_ip:
+    if pkgs.ban_ip and "banip" not in tracked_keys:
+        tracked_keys.add("banip")
         entities.append(OpenWrtBanIpSwitch(coordinator, entry, client))
 
 

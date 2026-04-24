@@ -20,6 +20,7 @@ async def test_router_device_registration_with_mac(hass):
     entry.data = {"host": "192.168.1.1", "username": "root", "password": "password"}
     entry.entry_id = "test_entry_id"
     entry.title = "OpenWrt Router"
+    entry.unique_id = "192.168.1.1"
     entry.options = {}
 
     # Mock client and data

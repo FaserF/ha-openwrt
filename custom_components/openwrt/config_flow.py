@@ -68,11 +68,11 @@ from .const import (
     CONF_CONSIDER_HOME,
     CONF_CUSTOM_FIRMWARE_REPO,
     CONF_DHCP_SOFTWARE,
+    CONF_SKIP_RANDOM_MAC,
     CONF_SSH_KEY,
     CONF_TARGET_OVERRIDE,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
-    CONF_SKIP_RANDOM_MAC,
     CONF_UBUS_PATH,
     CONF_UPDATE_INTERVAL,
     CONF_USE_SSL,
@@ -84,9 +84,9 @@ from .const import (
     DEFAULT_PORT_SSH,
     DEFAULT_PORT_UBUS,
     DEFAULT_PORT_UBUS_SSL,
+    DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
-    DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_UBUS_PATH,
     DEFAULT_UPDATE_INTERVAL,
     DEFAULT_USE_SSL,
@@ -1756,9 +1756,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 ),
                 vol.Optional(
                     CONF_SKIP_RANDOM_MAC,
-                    default=current.get(
-                        CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
-                    ),
+                    default=current.get(CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC),
                 ): bool,
             },
         )

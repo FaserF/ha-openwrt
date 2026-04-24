@@ -54,7 +54,8 @@
           "ssh_key": "Privater SSH-Schlüssel (Optional, lässt das Passwort leer, falls verwendet)",
           "port": "Port",
           "dhcp_software": "DHCP-Software",
-          "track_devices": "Netzwerk-Clients verfolgen (Device Tracker)"
+          "track_devices": "Netzwerk-Clients verfolgen (Device Tracker)",
+          "skip_random_mac": "Geräte mit zufälliger MAC-Adresse ignorieren"
         }
       },
       "reauth_confirm": {
@@ -74,7 +75,8 @@
           "use_ssl": "SSL (HTTPS) verwenden",
           "port": "Port (Optional)",
           "dhcp_software": "DHCP-Software",
-          "track_devices": "Netzwerk-Clients verfolgen (Device Tracker)"
+          "track_devices": "Netzwerk-Clients verfolgen (Device Tracker)",
+          "skip_random_mac": "Geräte mit zufälliger MAC-Adresse ignorieren"
         }
       },
       "permissions": {

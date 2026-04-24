@@ -39,13 +39,13 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtData, StorageUsage
 from .const import (
+    CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
-    CONF_SKIP_RANDOM_MAC,
     DATA_COORDINATOR,
+    DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
-    DEFAULT_SKIP_RANDOM_MAC,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
@@ -898,7 +898,13 @@ async def async_setup_entry(
     async_add_entities(entities)
 
     # Dynamic device tracking sensors
-    tracked_macs: set[str] = set()
+    ent_reg = er.async_get(hass)
+    tracked_macs = {
+        ent.unique_id.split("_")[-2].lower()
+        for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+        if ent.domain == "sensor"
+        and (ent.unique_id.endswith("_rx") or ent.unique_id.endswith("_tx"))
+    }
 
     @callback
     def _async_add_device_sensors() -> None:
@@ -1048,9 +1054,8 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
         super().__init__(coordinator)
         self._mac = mac.upper()
         self._entry = entry
-        self._initial_name = f"{name} Traffic"
         self._attr_unique_id = f"{entry.entry_id}_nlbwmon_{mac.replace(':', '_')}"
-        self._attr_name = self._initial_name
+        self._attr_name = None
         from .helpers import is_random_mac
 
         if is_random_mac(mac):

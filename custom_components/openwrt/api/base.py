@@ -1619,6 +1619,13 @@ class OpenWrtClient(abc.ABC):
         last_full_poll = getattr(self, "_last_full_poll", 0)
         is_full_poll = (current_time - last_full_poll) >= SLOW_DATA_TTL
 
+        def get_val(res: Any, default: Any, name: str) -> Any:
+            """Safely get value from gather result."""
+            if isinstance(res, Exception):
+                _LOGGER.debug("Fetch of %s failed: %s", name, res)
+                return default
+            return res
+
         if is_full_poll:
             # Full poll: fetch device_info fresh
             core_results = await asyncio.gather(
@@ -1630,17 +1637,19 @@ class OpenWrtClient(abc.ABC):
                 self.get_local_ips(),
                 self.is_reboot_required(),
                 self.get_system_logs(count=10),
+                return_exceptions=True,
             )
-            (
-                data.device_info,
-                data.system_resources,
-                data.network_interfaces,
-                data.connected_devices,
-                data.local_macs,
-                data.local_ips,
-                data.reboot_required,
-                data.system_logs,
-            ) = core_results  # type: ignore[assignment]
+            data.device_info = get_val(core_results[0], data.device_info, "device_info")
+            data.system_resources = get_val(
+                core_results[1], data.system_resources, "system_resources"
+            )
+            data.network_interfaces = get_val(core_results[2], [], "network_interfaces")
+            data.connected_devices = get_val(core_results[3], [], "connected_devices")
+            data.local_macs = get_val(core_results[4], set(), "local_macs")
+            data.local_ips = get_val(core_results[5], set(), "local_ips")
+            data.reboot_required = get_val(core_results[6], False, "reboot_required")
+            data.system_logs = get_val(core_results[7], [], "system_logs")
+
             self._cached_device_info = data.device_info
             self._cached_local_macs = data.local_macs
             self._cached_local_ips = data.local_ips
@@ -1652,14 +1661,20 @@ class OpenWrtClient(abc.ABC):
                 self.get_connected_devices(),
                 self.get_local_macs(),
                 self.get_local_ips(),
+                return_exceptions=True,
             )
-            (
-                data.system_resources,
-                data.network_interfaces,
-                data.connected_devices,
-                data.local_macs,
-                data.local_ips,
-            ) = core_results_fast
+            data.system_resources = get_val(
+                core_results_fast[0], data.system_resources, "system_resources"
+            )
+            data.network_interfaces = get_val(
+                core_results_fast[1], [], "network_interfaces"
+            )
+            data.connected_devices = get_val(
+                core_results_fast[2], [], "connected_devices"
+            )
+            data.local_macs = get_val(core_results_fast[3], set(), "local_macs")
+            data.local_ips = get_val(core_results_fast[4], set(), "local_ips")
+
             data.device_info = getattr(self, "_cached_device_info", data.device_info)
             # We don't cache MACs/IPs yet as they are dynamic in some setups (VPNs etc)
             # but we can reuse cached if call fails or return empty set
@@ -1725,12 +1740,6 @@ class OpenWrtClient(abc.ABC):
             *fast_optional_tasks,
             return_exceptions=True,
         )
-
-        def get_val(res: Any, default: Any, name: str) -> Any:
-            if isinstance(res, Exception):
-                _LOGGER.debug("Optional %s info failed: %s", name, res)
-                return default
-            return res
 
         data.wireless_interfaces = get_val(fast_results[0], [], "wireless")
         data.dhcp_leases = get_val(fast_results[1], [], "DHCP leases")
