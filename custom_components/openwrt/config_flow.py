@@ -1548,7 +1548,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id=step_id,
-            data_schema=vol.Schema({}),
+            data_schema=vol.Schema({vol.Optional("acknowledge", default=True): bool}),
             description_placeholders={
                 "permissions_table": table,
                 "username": self._data.get(CONF_USERNAME, ""),
@@ -1574,7 +1574,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="ubus_restricted",
-            data_schema=vol.Schema({}),
+            data_schema=vol.Schema({vol.Optional("acknowledge", default=True): bool}),
             description_placeholders={
                 "host": self._data.get(CONF_HOST, ""),
                 "model": self._device_info.get("model", "Router"),
@@ -1614,7 +1614,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="packages",
-            data_schema=vol.Schema({}),
+            data_schema=vol.Schema({vol.Optional("acknowledge", default=True): bool}),
             description_placeholders={"packages_table": table},
         )
 
@@ -1816,7 +1816,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id=step_id,
-            data_schema=vol.Schema({}),
+            data_schema=vol.Schema({vol.Optional("acknowledge", default=True): bool}),
             description_placeholders={
                 "permissions_table": table,
                 "username": self._config_entry.data.get(CONF_USERNAME, ""),
@@ -1845,7 +1845,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="options_ubus_restricted",
-            data_schema=vol.Schema({}),
+            data_schema=vol.Schema({vol.Optional("acknowledge", default=True): bool}),
             description_placeholders={
                 "host": self._config_entry.data.get(CONF_HOST, ""),
                 "model": model,
@@ -1890,6 +1890,6 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="options_packages",
-            data_schema=vol.Schema({}),
+            data_schema=vol.Schema({vol.Optional("acknowledge", default=True): bool}),
             description_placeholders={"packages_table": table},
         )

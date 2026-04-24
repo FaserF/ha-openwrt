@@ -982,6 +982,19 @@ async def async_setup_entry(
                             ent_reg.async_remove(ent.entity_id)
                             continue
 
+            # Cleanup orphaned wireless sensors (e.g. ghost radios)
+            if "_wifi_" in unique_id and coordinator.data:
+                found = False
+                for w in coordinator.data.wireless_interfaces:
+                    if f"_wifi_{w.name}_" in unique_id or (
+                        w.section and f"_wifi_{w.section}_" in unique_id
+                    ):
+                        found = True
+                        break
+                if not found:
+                    ent_reg.async_remove(ent.entity_id)
+                    continue
+
     hass.add_job(_async_cleanup_entities)
 
 

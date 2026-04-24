@@ -107,6 +107,16 @@ async def async_setup_entry(
                         ent_reg.async_remove(ent.entity_id)
                         continue
 
+            # Cleanup orphaned wireless switches (e.g. ghost radios)
+            if "_wireless_" in unique_id and coordinator.data:
+                iface_name = unique_id.split("_wireless_")[-1]
+                if not any(
+                    w.name == iface_name or w.section == iface_name
+                    for w in coordinator.data.wireless_interfaces
+                ):
+                    ent_reg.async_remove(ent.entity_id)
+                    continue
+
     hass.add_job(_async_cleanup_entities)
 
 

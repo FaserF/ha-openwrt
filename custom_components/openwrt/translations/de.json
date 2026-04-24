@@ -78,15 +78,24 @@
       },
       "permissions": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist."
+        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist.",
+        "data": {
+          "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
+        }
       },
       "permissions_ubus": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen auf einigen Routern (insbesondere bei neueren Versionen oder Nicht-Root-Benutzern) können sehr restriktiv sein. Sie blockieren oft 'DHCP Leases' oder 'Systemtemperatur', selbst wenn der Benutzer grundlegenden Zugriff hat.\n\nWenn Funktionen fehlen oder Sensoren 0 anzeigen, bedeutet dies normalerweise, dass deinem Benutzer ACL-Berechtigungen für bestimmte rohe Ubus-Objekte fehlen. Versuche in den Integrationseinstellungen auf **LuCI RPC** umzuschalten, was oft besser mit eingeschränkten Benutzern kompatibel ist.\n\nDu kannst fortfahren, wenn dies wie erwartet ist."
+        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen auf einigen Routern (insbesondere bei neueren Versionen oder Nicht-Root-Benutzern) können sehr restriktiv sein. Sie blockieren oft 'DHCP Leases' oder 'Systemtemperatur', selbst wenn der Benutzer grundlegenden Zugriff hat.\n\nWenn Funktionen fehlen oder Sensoren 0 anzeigen, bedeutet dies normalerweise, dass deinem Benutzer ACL-Berechtigungen für bestimmte rohe Ubus-Objekte fehlen. Versuche in den Integrationseinstellungen auf **LuCI RPC** umzuschalten, was oft besser mit eingeschränkten Benutzern kompatibel ist.\n\nDu kannst fortfahren, wenn dies wie erwartet ist.",
+        "data": {
+          "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
+        }
       },
       "packages": {
         "title": "Paketübersicht",
-        "description": "Die folgenden optionalen Pakete wurden auf deinem Router erkannt. Einige Funktionen können eingeschränkt sein, wenn Pakete fehlen:\n\n{packages_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist."
+        "description": "Die folgenden optionalen Pakete wurden auf deinem Router erkannt. Einige Funktionen können eingeschränkt sein, wenn Pakete fehlen:\n\n{packages_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist.",
+        "data": {
+          "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
+        }
       },
       "provision_user": {
         "title": "Sichere Benutzerbereitstellung",
@@ -119,7 +128,10 @@
       },
       "ubus_restricted": {
         "title": "Eingeschränktes Ubus erkannt",
-        "description": "Die Verbindung zu **{host}** ({model}) über **ubus** war erfolgreich, aber der Router gibt keine Informationen über WLAN-Schnittstellen oder Systemdienste zurück.\n\nUm die verfügbaren Funktionen zu identifizieren, hat die Integration diese Prüfungen durchgeführt:\n1. `network.wireless status` -> Zugriff verweigert oder keine Daten\n2. `rc list` (Dienste) -> Zugriff verweigert oder keine Daten\n\n**Mögliche Ursachen:**\n- **Herstellersperre:** Firmwares (wie Xiaomi AX3600) schränken die Ubus-HTTP-Schnittstelle oft ein.\n- **ACL-Einschränkungen:** Deinem Benutzer fehlen die Berechtigungen für diese spezifischen Objekte in `/etc/config/rpcd`.\n- **Eingeschränkte Benutzerfunktion:** Die Verwendung des 'eingeschränkten Benutzers' von LuCI gewährt oft nur Zugriff auf `luci`-Objekt-RPCs, aber nicht auf die für diese Verbindungsmethode erforderlichen rohen Ubus-Objekte.\n\n**Empfehlung:** Wir empfehlen dringend, zurückzugehen und **LuCI RPC** oder **SSH** als Verbindungsmethode auszuwählen. Andernfalls siehst du nur grundlegende Systemsensoren und keine WLAN-Clients oder Dienststeuerungen."
+        "description": "Die Verbindung zu **{host}** ({model}) über **ubus** war erfolgreich, aber der Router gibt keine Informationen über WLAN-Schnittstellen oder Systemdienste zurück.\n\nUm die verfügbaren Funktionen zu identifizieren, hat die Integration diese Prüfungen durchgeführt:\n1. `network.wireless status` -> Zugriff verweigert oder keine Daten\n2. `rc list` (Dienste) -> Zugriff verweigert oder keine Daten\n\n**Mögliche Ursachen:**\n- **Herstellersperre:** Firmwares (wie Xiaomi AX3600) schränken die Ubus-HTTP-Schnittstelle oft ein.\n- **ACL-Einschränkungen:** Deinem Benutzer fehlen die Berechtigungen für diese spezifischen Objekte in `/etc/config/rpcd`.\n- **Eingeschränkte Benutzerfunktion:** Die Verwendung des 'eingeschränkten Benutzers' von LuCI gewährt oft nur Zugriff auf `luci`-Objekt-RPCs, aber nicht auf die für diese Verbindungsmethode erforderlichen rohen Ubus-Objekte.\n\n**Empfehlung:** Wir empfehlen dringend, zurückzugehen und **LuCI RPC** oder **SSH** als Verbindungsmethode auszuwählen. Andernfalls siehst du nur grundlegende Systemsensoren und keine WLAN-Clients oder Dienststeuerungen.",
+        "data": {
+          "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
+        }
       }
     },
     "error": {
@@ -159,19 +171,31 @@
       },
       "options_permissions": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist."
+        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist.",
+        "data": {
+          "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
+        }
       },
       "options_permissions_ubus": {
         "title": "Berechtigungsübersicht",
-        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen auf einigen Routern (insbesondere bei neueren Versionen oder Nicht-Root-Benutzern) können sehr restriktiv sein. Sie blockieren oft 'DHCP Leases' oder 'Systemtemperatur', selbst wenn der Benutzer grundlegenden Zugriff hat.\n\nWenn Funktionen fehlen oder Sensoren 0 anzeigen, bedeutet dies normalerweise, dass deinem Benutzer ACL-Berechtigungen für bestimmte rohe Ubus-Objekte fehlen. Versuche in den Integrationseinstellungen auf **LuCI RPC** umzuschalten, was oft besser mit eingeschränkten Benutzern kompatibel ist.\n\nDu kannst fortfahren, wenn dies wie erwartet ist."
+        "description": "Basierend auf den Zugangsdaten für den Benutzer **{username}** wurden die folgenden Berechtigungen erkannt:\n\n{permissions_table}\n\n**Hinweis:** UBUS-Berechtigungen auf einigen Routern (insbesondere bei neueren Versionen oder Nicht-Root-Benutzern) können sehr restriktiv sein. Sie blockieren oft 'DHCP Leases' oder 'Systemtemperatur', selbst wenn der Benutzer grundlegenden Zugriff hat.\n\nWenn Funktionen fehlen oder Sensoren 0 anzeigen, bedeutet dies normalerweise, dass deinem Benutzer ACL-Berechtigungen für bestimmte rohe Ubus-Objekte fehlen. Versuche in den Integrationseinstellungen auf **LuCI RPC** umzuschalten, was oft besser mit eingeschränkten Benutzern kompatibel ist.\n\nDu kannst fortfahren, wenn dies wie erwartet ist.",
+        "data": {
+          "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
+        }
       },
       "options_ubus_restricted": {
         "title": "Eingeschränktes Ubus erkannt",
-        "description": "Die Verbindung zu **{host}** ({model}) über **ubus** war erfolgreich, aber der Router gibt keine Informationen über WLAN-Schnittstellen oder Systemdienste zurück.\n\nUm die verfügbaren Funktionen zu identifizieren, hat die Integration diese Prüfungen durchgeführt:\n1. `network.wireless status` -> Zugriff verweigert oder keine Daten\n2. `rc list` (Dienste) -> Zugriff verweigert oder keine Daten\n\n**Mögliche Ursachen:**\n- **Herstellersperre:** Firmwares (wie Xiaomi AX3600) schränken die Ubus-HTTP-Schnittstelle oft ein.\n- **ACL-Einschränkungen:** Deinem Benutzer fehlen die Berechtigungen für diese spezifischen Objekte in `/etc/config/rpcd`.\n- **Eingeschränkte Benutzerfunktion:** Die Verwendung des 'eingeschränkten Benutzers' von LuCI gewährt oft nur Zugriff auf `luci`-Objekt-RPCs, aber nicht auf die für diese Verbindungsmethode erforderlichen rohen Ubus-Objekte.\n\n**Empfehlung:** Wir empfehlen dringend, zurückzugehen und **LuCI RPC** oder **SSH** als Verbindungsmethode auszuwählen. Andernfalls siehst du nur grundlegende Systemsensoren und keine WLAN-Clients oder Dienststeuerungen."
+        "description": "Die Verbindung zu **{host}** ({model}) über **ubus** war erfolgreich, aber der Router gibt keine Informationen über WLAN-Schnittstellen oder Systemdienste zurück.\n\nUm die verfügbaren Funktionen zu identifizieren, hat die Integration diese Prüfungen durchgeführt:\n1. `network.wireless status` -> Zugriff verweigert oder keine Daten\n2. `rc list` (Dienste) -> Zugriff verweigert oder keine Daten\n\n**Mögliche Ursachen:**\n- **Herstellersperre:** Firmwares (wie Xiaomi AX3600) schränken die Ubus-HTTP-Schnittstelle oft ein.\n- **ACL-Einschränkungen:** Deinem Benutzer fehlen die Berechtigungen für diese spezifischen Objekte in `/etc/config/rpcd`.\n- **Eingeschränkte Benutzerfunktion:** Die Verwendung des 'eingeschränkten Benutzers' von LuCI gewährt oft nur Zugriff auf `luci`-Objekt-RPCs, aber nicht auf die für diese Verbindungsmethode erforderlichen rohen Ubus-Objekte.\n\n**Empfehlung:** Wir empfehlen dringend, zurückzugehen und **LuCI RPC** oder **SSH** als Verbindungsmethode auszuwählen. Andernfalls siehst du nur grundlegende Systemsensoren und keine WLAN-Clients oder Dienststeuerungen.",
+        "data": {
+          "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
+        }
       },
       "options_packages": {
         "title": "Paketübersicht",
-        "description": "Die folgenden optionalen Pakete wurden auf deinem Router erkannt. Einige Funktionen können eingeschränkt sein, wenn Pakete fehlen:\n\n{packages_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist."
+        "description": "Die folgenden optionalen Pakete wurden auf deinem Router erkannt. Einige Funktionen können eingeschränkt sein, wenn Pakete fehlen:\n\n{packages_table}\n\nDu kannst fortfahren, wenn dies wie erwartet ist.",
+        "data": {
+          "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
+        }
       }
     }
   },

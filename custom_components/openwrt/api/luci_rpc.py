@@ -1198,6 +1198,24 @@ class LuciRpcClient(OpenWrtClient):
                 )
                 continue
 
+            # Skip unconfigured generic placeholders (ghosts)
+            is_ghost_name = any(
+                (wifi.name or "").startswith(p) or (wifi.section or "").startswith(p)
+                for p in ["default_radio", "wifinet", "radio"]
+            )
+            if is_ghost_name and (
+                not wifi.ssid
+                or wifi.ssid == "OpenWrt"
+                or not wifi.mac_address
+                or wifi.mac_address == "00:00:00:00:00:00"
+            ):
+                _LOGGER.debug(
+                    "Skipping ghost wireless interface: %s (SSID: %s)",
+                    wifi.name,
+                    wifi.ssid,
+                )
+                continue
+
             # Create a key for deduplication
             # Priority 1: MAC address (BSSID)
             # Priority 2: SSID + Radio (for merging UCI sections with physical interfaces)

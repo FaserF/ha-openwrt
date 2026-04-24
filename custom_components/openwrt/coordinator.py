@@ -367,12 +367,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             ):
                 continue
 
-            # 5. Filter out randomized/locally administered MAC addresses
-            # These change frequently and pollute the device registry.
-            from .helpers import is_random_mac
-            if is_random_mac(mac):
-                continue
-
             filtered_devices.append(device)
 
             if mac not in self._device_history:
@@ -408,11 +402,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     hostname,
                 ):
                     continue
-
-            from .helpers import is_random_mac
-            if is_random_mac(mac):
-                continue
-
             filtered_leases.append(lease)
         data.dhcp_leases = filtered_leases
 
@@ -479,23 +468,23 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         )
 
         # 2. Register/Update AP devices for wireless interfaces
-        # This ensures via_device references in platforms are valid even for dynamic interfaces
-        # Map: system_ifname -> (label, stable_id)
+        # Ensure stable_id is always the physical interface name (e.g. phy1-ap0)
+        # to avoid ghost devices from UCI section name changes.
         ap_info: dict[str, tuple[str, str]] = {}
 
         for wifi in data.wireless_interfaces:
-            # Skip interfaces without SSID or those that are placeholders
+            # Skip interfaces without name or SSID
             if not wifi.name or not wifi.ssid:
                 continue
 
             label = format_ap_name(wifi.ssid, wifi.frequency)
 
-            # Use section ID as stable identifier if available to avoid duplicates
-            stable_id = wifi.section if wifi.section else wifi.name
+            # Use physical interface name as stable identifier to prevent duplicates
+            stable_id = wifi.name
             ap_info[wifi.name] = (label, stable_id)
             self.interface_to_stable_id[wifi.name] = stable_id
 
-        # Also check connected devices for any interfaces we might have missed in status
+        # Also check connected devices for any interfaces we might have missed
         for device in data.connected_devices:
             if (
                 device.is_wireless
@@ -503,6 +492,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 and device.interface not in ap_info
             ):
                 ap_info[device.interface] = (device.interface, device.interface)
+
+        # Collect all valid stable_ids for this update cycle
+        valid_stable_ids = {info[1] for info in ap_info.values()}
 
         for _iface_name, (label, stable_id) in ap_info.items():
             device_registry.async_get_or_create(
@@ -513,6 +505,27 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 model="Access Point",
                 via_device=(DOMAIN, router_id),
             )
+
+        # 3. Cleanup orphaned AP devices
+        devices_to_remove = []
+        for dev in dr.async_entries_for_config_entry(
+            device_registry, self.config_entry.entry_id
+        ):
+            ap_stable_id = None
+            for identifier in dev.identifiers:
+                if identifier[0] == DOMAIN and "_ap_" in identifier[1]:
+                    # Extract the part after the last '_ap_'
+                    ap_stable_id = identifier[1].split("_ap_", 1)[-1]
+                    break
+
+            if ap_stable_id and ap_stable_id not in valid_stable_ids:
+                _LOGGER.info(
+                    "Removing orphaned AP device '%s' (id: %s)", ap_stable_id, dev.id
+                )
+                devices_to_remove.append(dev.id)
+
+        for dev_id in devices_to_remove:
+            device_registry.async_remove_device(dev_id)
 
     async def _check_firmware_update(self, data: OpenWrtData) -> None:
         """Check for firmware updates (official or custom)."""
