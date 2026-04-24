@@ -8,6 +8,8 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .const import CONF_SSH_KEY, DATA_COORDINATOR, DOMAIN
 
@@ -158,5 +160,30 @@ async def async_get_config_entry_diagnostics(
             }
             for p in data.system_resources.top_processes[:5]
         ]
+
+    # Registry debug: safe serialization (all primitives)
+    dev_reg = dr.async_get(hass)
+    ent_reg = er.async_get(hass)
+
+    reg_devices = []
+    for _dev in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+        reg_devices.append({
+            "name": str(_dev.name or ""),
+            "model": str(_dev.model or ""),
+            "id": str(_dev.id),
+            "identifiers": [list(i) for i in _dev.identifiers],
+        })
+
+    reg_entities = []
+    for _ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        reg_entities.append({
+            "entity_id": str(_ent.entity_id),
+            "unique_id": str(_ent.unique_id),
+            "domain": str(_ent.domain),
+            "disabled": _ent.disabled_by is not None,
+            "device_id": str(_ent.device_id),
+        })
+
+    diag["registry"] = {"devices": reg_devices, "entities": reg_entities}
 
     return diag

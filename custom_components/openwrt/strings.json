@@ -165,7 +165,8 @@
           "dhcp_software": "DHCP Software",
           "auto_backup": "Automatic Backup before Firmware Update",
           "custom_firmware_repo": "Custom Firmware GitHub Repo (owner/repo)",
-          "asu_url": "Attended Sysupgrade Server URL"
+          "asu_url": "Attended Sysupgrade Server URL",
+          "target_override": "Target Override (e.g. arch/subtarget)"
         },
         "description": "Configure OpenWrt integration options."
       },

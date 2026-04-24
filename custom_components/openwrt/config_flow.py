@@ -71,6 +71,7 @@ from .const import (
     CONF_SSH_KEY,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_TARGET_OVERRIDE,
     CONF_UBUS_PATH,
     CONF_UPDATE_INTERVAL,
     CONF_USE_SSL,
@@ -1675,6 +1676,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             if key in data:
                 options[key] = data.pop(key)
 
+        if CONF_TARGET_OVERRIDE in data:
+            options[CONF_TARGET_OVERRIDE] = data.pop(CONF_TARGET_OVERRIDE)
+
         title = hostname if hostname else host
         return self.async_create_entry(title=title, data=data, options=options)
 
@@ -1732,6 +1736,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_ASU_URL,
                     default=current.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org"),
+                ): str,
+                vol.Optional(
+                    CONF_TARGET_OVERRIDE,
+                    default=current.get(CONF_TARGET_OVERRIDE, ""),
                 ): str,
                 vol.Optional(
                     CONF_DHCP_SOFTWARE,

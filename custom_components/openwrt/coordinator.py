@@ -44,6 +44,7 @@ from .api.ubus import (
 )
 from .const import (
     CONF_ASU_URL,
+    CONF_TARGET_OVERRIDE,
     CONF_CONNECTION_TYPE,
     CONF_CUSTOM_FIRMWARE_REPO,
     CONF_DHCP_SOFTWARE,
@@ -77,6 +78,20 @@ from .repairs import (
 _LOGGER = logging.getLogger(__name__)
 
 FIRMWARE_CHECK_INTERVAL = timedelta(hours=6)
+
+# Map of legacy/deprecated snapshot targets to their modern equivalents.
+# OpenWrt periodically consolidates targets (e.g. the AX generation moved to qualcommax).
+SNAPSHOT_TARGET_MAP = {
+    "ipq807x/generic": "qualcommax/ipq807x",
+    "ipq60xx/generic": "qualcommax/ipq60xx",
+    "ipq50xx/generic": "qualcommax/ipq50xx",
+    "ipq806x/generic": "qualcommax/ipq806x",
+    "mediatek/mt7981": "mediatek/filogic",
+    "mediatek/mt7986": "mediatek/filogic",
+    "mediatek/mt7622": "mediatek/filogic",
+    "mediatek/mt7623": "mediatek/filogic",
+    "rockchip/armv8": "rockchip/rk3328",
+}
 
 
 def create_client(config: dict[str, Any]) -> OpenWrtClient:
@@ -506,21 +521,55 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 via_device=(DOMAIN, router_id),
             )
 
-        # 3. Cleanup orphaned AP devices
-        devices_to_remove = []
-        for dev in dr.async_entries_for_config_entry(
-            device_registry, self.config_entry.entry_id
-        ):
-            ap_stable_id = None
-            for identifier in dev.identifiers:
-                if identifier[0] == DOMAIN and "_ap_" in identifier[1]:
-                    # Extract the part after the last '_ap_'
-                    ap_stable_id = identifier[1].split("_ap_", 1)[-1]
-                    break
+        # 3. Cleanup orphaned devices
+        # We scan the ENTIRE registry for devices that belong to this router
+        # but are no longer active. This catches ghosts from previous installations.
+        active_identifiers = {(DOMAIN, router_id)}
+        for _, stable_id in ap_info.values():
+            active_identifiers.add((DOMAIN, format_ap_device_id(router_id, stable_id)))
 
-            if ap_stable_id and ap_stable_id not in valid_stable_ids:
+        _LOGGER.debug(
+            "Starting deep device registry cleanup. Active identifiers: %s",
+            active_identifiers,
+        )
+
+        devices_to_remove = []
+        # Iterate over ALL devices in the registry to catch orphaned ones
+        for dev in list(device_registry.devices.values()):
+            # Check if the device has any identifier belonging to our domain
+            our_identifiers = [
+                ident for ident in dev.identifiers if ident[0] == DOMAIN
+            ]
+            if not our_identifiers:
+                continue
+
+            # Check if it belongs to THIS physical router
+            # We check if the identifier starts with our router_id
+            belongs_to_this_router = any(
+                str(ident[1]).startswith(router_id) for ident in our_identifiers
+            )
+            if not belongs_to_this_router:
+                continue
+
+            # If it's one of our currently active devices, keep it
+            if any(ident in active_identifiers for ident in dev.identifiers):
+                continue
+
+            # Identify if this is an Access Point device (old or new style)
+            is_ap_related = any("_ap_" in str(ident[1]) for ident in our_identifiers)
+
+            # Also check for the specific ghost names the user reported
+            is_ghost_name = any(
+                ghost in (dev.name or "")
+                for ghost in ["default_radio", "wifinet", "radio"]
+            )
+
+            if is_ap_related or is_ghost_name:
                 _LOGGER.info(
-                    "Removing orphaned AP device '%s' (id: %s)", ap_stable_id, dev.id
+                    "Removing orphaned/ghost device '%s' (id: %s, identifiers: %s)",
+                    dev.name,
+                    dev.id,
+                    dev.identifiers,
                 )
                 devices_to_remove.append(dev.id)
 
@@ -549,14 +598,21 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         else:
             await self._check_stable_release_update(data, session)
 
+    def _get_target(self, target: str) -> str:
+        """Apply target migrations/mappings if needed."""
+        override = self.config_entry.options.get(CONF_TARGET_OVERRIDE)
+        if override:
+            return override
+        return SNAPSHOT_TARGET_MAP.get(target, target)
+
     async def _check_snapshot_update(
         self, data: OpenWrtData, session: aiohttp.ClientSession
     ) -> None:
         """Check for updates in SNAPSHOT builds."""
-        if not data.device_info.target:
+        target = self._get_target(data.device_info.target)
+        if not target:
             return
 
-        target = data.device_info.target
         url = f"https://downloads.openwrt.org/snapshots/targets/{target}/profiles.json"
 
         with contextlib.suppress(Exception):
@@ -572,7 +628,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
                 latest_snapshot = f"SNAPSHOT ({version_code})"
                 if self._version_is_newer(
-                    data.device_info.release_version, latest_snapshot
+                    data.firmware_current_version, latest_snapshot
                 ):
                     data.firmware_latest_version = latest_snapshot
                     data.firmware_upgradable = True
@@ -626,8 +682,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         """Determine release and install URLs for a stable release."""
         data.firmware_release_url = f"https://openwrt.org/releases/{latest_stable}"
         info = data.device_info
-        if info.target and info.board_name:
-            target = info.target
+        target = self._get_target(info.target)
+        if target and info.board_name:
             board = info.board_name.replace("_", "-").replace(",", "-")
             dist = info.release_distribution or "openwrt"
             data.firmware_install_url = (
@@ -637,7 +693,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     async def _check_asu_update(self, data: OpenWrtData) -> None:
         """Check for updates via the ASU (Attended Sysupgrade) API."""
-        if not data.device_info.target or not data.device_info.board_name:
+        target = self._get_target(data.device_info.target)
+        if not target or not data.device_info.board_name:
             return
 
         asu_url = self.config_entry.options.get(
@@ -671,7 +728,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self, data: OpenWrtData, asu_url: str, session: aiohttp.ClientSession
     ) -> dict[str, Any] | None:
         """Fetch metadata from ASU API with model name variation fallback."""
-        target = data.device_info.target
+        target = self._get_target(data.device_info.target)
         model = data.device_info.board_name
         is_snapshot = "SNAPSHOT" in data.device_info.release_version.upper()
 
@@ -895,22 +952,27 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         """Compare firmware versions (e.g., '24.10.1' vs '25.12.0')."""
         import re
 
-        if "SNAPSHOT" in current.upper() and "SNAPSHOT" not in latest.upper():
-            return False
-
-        if "SNAPSHOT" in current.upper() and "SNAPSHOT" in latest.upper():
-
+        if "SNAPSHOT" in current.upper() or "SNAPSHOT" in latest.upper():
+            # For snapshots, we always prefer revision comparison if possible
             def get_rev_num(v: str) -> int:
-                match = re.search(r"r(\d+)-", v)
+                # Matches r12345 or SNAPSHOT (r12345)
+                match = re.search(r"r(\d+)", v)
                 if match:
                     return int(match.group(1))
                 return -1
 
             rev_current = get_rev_num(current)
             rev_latest = get_rev_num(latest)
-            if rev_current >= 0 and rev_latest >= 0 and rev_latest != rev_current:
-                return rev_latest > rev_current
-            return current != latest
+
+            if rev_current >= 0 and rev_latest >= 0:
+                if rev_latest != rev_current:
+                    return rev_latest > rev_current
+            
+            # Fallback to string comparison if revisions aren't numeric/comparable
+            # but strip "SNAPSHOT" and extra chars for a cleaner comparison
+            clean_current = re.sub(r"[^a-zA-Z0-9-]", "", current.upper().replace("SNAPSHOT", ""))
+            clean_latest = re.sub(r"[^a-zA-Z0-9-]", "", latest.upper().replace("SNAPSHOT", ""))
+            return clean_latest != clean_current
 
         try:
             current_parts = [int(p) for p in current.split(".")]
