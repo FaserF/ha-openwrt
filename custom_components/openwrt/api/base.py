@@ -1131,8 +1131,10 @@ class OpenWrtClient(abc.ABC):
 
         ip, mac, interface, state = parts[0], "", "", parts[-1]
 
-        # Filter out invalid states
-        if state in ("FAILED", "INCOMPLETE"):
+        # Filter out invalid or inactive states
+        # LuCI typically only considers REACHABLE, DELAY, PROBE, and PERMANENT as active.
+        # STALE means the device was seen recently but hasn't responded to the last probe.
+        if state in ("FAILED", "INCOMPLETE", "STALE"):
             return None
 
         if "lladdr" in parts:

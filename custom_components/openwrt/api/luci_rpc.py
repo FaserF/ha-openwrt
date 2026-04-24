@@ -462,6 +462,14 @@ class LuciRpcClient(OpenWrtClient):
                 )
                 if model_out:
                     info.model = model_out.strip()
+
+                # Fallback 2: /etc/model
+                if not info.model:
+                    model_out = await self.execute_command(
+                        "cat /etc/model 2>/dev/null",
+                    )
+                    if model_out:
+                        info.model = model_out.strip()
             except Exception:
                 pass
 
@@ -1030,8 +1038,25 @@ class LuciRpcClient(OpenWrtClient):
                         # because iwinfo info only works with system ifnames.
                         system_ifname = iface.get("ifname")
 
+                        # Filter out generic UCI section names if we have a better name
+                        if any(
+                            iface_name.startswith(p)
+                            for p in ["default_radio", "wifinet", "radio"]
+                        ) and not system_ifname:
+                            _LOGGER.debug(
+                                "Filtering ghost ubus wireless section: %s", iface_name
+                            )
+                            continue
+
+                        final_name = system_ifname or iface_name
+
+                        # Deduplicate based on final name or SSID on this radio
+                        dedup_key = f"{radio_name}_{iface_config.get('ssid', '')}"
+                        if final_name in iface_names or dedup_key in iface_names:
+                            continue
+
                         wifi = WirelessInterface(
-                            name=system_ifname or iface_name,
+                            name=final_name,
                             ssid=iface_config.get("ssid", ""),
                             mode=iface_config.get("mode", ""),
                             encryption=iface_config.get("encryption", ""),
@@ -1041,7 +1066,8 @@ class LuciRpcClient(OpenWrtClient):
                             hwmode=radio_data.get("config", {}).get("hwmode", ""),
                         )
                         interfaces.append(wifi)
-                        iface_names.add(wifi.name)
+                        iface_names.add(final_name)
+                        iface_names.add(dedup_key)
         except Exception as err:
             _LOGGER.debug(
                 "network.wireless status failed via LuCI, trying UCI: %s", err
@@ -1069,7 +1095,17 @@ class LuciRpcClient(OpenWrtClient):
                         if sect_data.get(".type") != "wifi-iface":
                             continue
 
-                        iface_name = sect_name
+                        # Filter out generic UCI section names (ghosts)
+                        if any(
+                            sect_name.startswith(p)
+                            for p in ["default_radio", "wifinet", "radio"]
+                        ) and not sect_data.get("ifname"):
+                            _LOGGER.debug(
+                                "Filtering ghost UCI wireless section: %s", sect_name
+                            )
+                            continue
+
+                        iface_name = sect_data.get("ifname") or sect_name
                         radio_name = sect_data.get("device", "")
                         radio_disabled = (
                             sections.get(radio_name, {}).get("disabled", "0") == "1"
@@ -1085,6 +1121,7 @@ class LuciRpcClient(OpenWrtClient):
                             up=not (radio_disabled or iface_disabled),
                             radio=radio_name,
                             hwmode=sections.get(radio_name, {}).get("hwmode", ""),
+                            section=sect_name,
                         )
                         interfaces.append(wifi)
                         iface_names.add(iface_name)
@@ -1167,7 +1204,7 @@ class LuciRpcClient(OpenWrtClient):
             # Priority 3: Section ID (UCI)
             # Priority 4: SSID + Frequency
             if wifi.mac_address:
-                key = f"mac_{wifi.mac_address}"
+                key = f"mac_{wifi.mac_address.lower()}"
             elif wifi.ssid and wifi.radio:
                 key = f"ssid_radio_{wifi.ssid}_{wifi.radio}"
             elif wifi.section:

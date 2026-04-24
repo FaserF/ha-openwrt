@@ -253,6 +253,14 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         )
         self._entry = entry
         self._initial_name = device_name or mac
+        from .helpers import is_random_mac
+
+        if is_random_mac(self._mac):
+            self._attr_entity_registry_enabled_default = False
+        elif hasattr(description, "entity_registry_enabled_default"):
+            self._attr_entity_registry_enabled_default = (
+                description.entity_registry_enabled_default
+            )
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -1020,6 +1028,10 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
         self._initial_name = f"{name} Traffic"
         self._attr_unique_id = f"{entry.entry_id}_nlbwmon_{mac.replace(':', '_')}"
         self._attr_name = self._initial_name
+        from .helpers import is_random_mac
+
+        if is_random_mac(mac):
+            self._attr_entity_registry_enabled_default = False
 
     @property
     def device_info(self) -> DeviceInfo:

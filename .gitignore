@@ -181,4 +181,4 @@ ruff_errors.json
 *output*.json
 test_live.py
 /scratch
-config_entry-openwrt-01KPX7TZRHEVDHMY15MGDDC3FH.json
+config_entry-openwrt-*.json

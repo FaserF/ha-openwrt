@@ -156,6 +156,22 @@
           "asu_url": "Attended Sysupgrade Server URL"
         },
         "description": "Configure OpenWrt integration options."
+      },
+      "options_permissions": {
+        "title": "Permissions Summary",
+        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\nYou can proceed if this is expected."
+      },
+      "options_permissions_ubus": {
+        "title": "Permissions Summary",
+        "description": "Based on the credentials provided for user **{username}**, the following permissions were detected:\n\n{permissions_table}\n\n**Note:** UBUS permissions on some routers (especially newer versions or non-root users) can be very restrictive. They often block 'DHCP Leases' or 'System Temperature' even if the user has basic access.\n\nIf features are missing or sensors show 0, it usually means your user lacks ACL permissions for specific raw ubus objects. Try switching to **LuCI RPC** in the integration settings, which is often more compatible with restricted users.\n\nYou can proceed if this is expected."
+      },
+      "options_ubus_restricted": {
+        "title": "Restricted Ubus Detected",
+        "description": "The connection to **{host}** ({model}) via **ubus** was successful, but the router is not returning information about wireless interfaces or system services.\n\nTo identify available features, the integration performed these checks:\n1. `network.wireless status` -> Access Denied or No data\n2. `rc list` (Services) -> Access Denied or No data\n\n**Potential Causes:**\n- **Manufacturer Lock:** Firmwares (like Xiaomi AX3600) often restrict the Ubus-HTTP interface.\n- **ACL Restrictions:** Your user lacks permissions for these specific objects in `/etc/config/rpcd`.\n- **Restricted User Feature:** Using LuCI's 'limited user' often only grants access to `luci` object RPCs, but not the raw Ubus objects needed here.\n\n**Recommendation:** We strongly recommend going back and selecting **LuCI RPC** or **SSH** as the connection method. Otherwise, you will only see basic system sensors and no wireless clients or service controls."
+      },
+      "options_packages": {
+        "title": "Packages Summary",
+        "description": "The following optional packages were detected on your router. Some features may be limited if packages are missing:\n\n{packages_table}\n\nYou can proceed if this is expected."
       }
     }
   },

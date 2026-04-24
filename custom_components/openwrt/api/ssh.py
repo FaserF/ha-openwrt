@@ -367,12 +367,59 @@ class SshClient(OpenWrtClient):
             info.target = release.get("target", "")
             info.firmware_version = f"{info.release_version} ({info.release_revision})"
 
+        if not info.model:
+            try:
+                # Fallback 1: /tmp/sysinfo/model (Standard OpenWrt)
+                model_str = await self._exec("cat /tmp/sysinfo/model 2>/dev/null")
+                if model_str:
+                    info.model = model_str.strip()
+
+                # Fallback 2: /etc/model (Xiaomi/Custom)
+                if not info.model:
+                    model_str = await self._exec("cat /etc/model 2>/dev/null")
+                    if model_str:
+                        info.model = model_str.strip()
+
+                # Fallback for board_name
+                if not info.board_name:
+                    board_str = await self._exec(
+                        "cat /tmp/sysinfo/board_name 2>/dev/null"
+                    )
+                    if board_str:
+                        info.board_name = board_str.strip()
+            except Exception:
+                pass
+
         if not info.hostname:
             try:
+                # Fallback 1: Direct kernel hostname access
+                host_str = await self._exec("cat /proc/sys/kernel/hostname 2>/dev/null")
+                if host_str and host_str.strip() not in ["", "localhost"]:
+                    info.hostname = host_str.strip()
+
+                # Fallback 2: UCI system hostname
+                if not info.hostname:
+                    host_str = await self._exec(
+                        "uci get system.@system[0].hostname 2>/dev/null"
+                    )
+                    if host_str:
+                        info.hostname = host_str.strip()
+
+                # Fallback 3: Standard hostname command
+                if not info.hostname:
+                    host_str = await self._exec("hostname 2>/dev/null")
+                    if host_str and host_str.strip() not in ["", "localhost"]:
+                        info.hostname = host_str.strip()
+            except Exception:
+                pass
+
+        if not info.hostname:
+            try:
+                # Fallback 2: UCI
                 info.hostname = (
-                    await self._exec("uci get system.@system[0].hostname")
+                    await self._exec("uci get system.@system[0].hostname 2>/dev/null")
                 ).strip()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
         if not info.release_version:
@@ -590,18 +637,70 @@ class SshClient(OpenWrtClient):
     async def get_external_ip(self) -> str | None:
         """Get public/external IP address."""
         try:
+            # 1. Try to find the default gateway interface
+            route_info = await self.execute_command("ip route show default 2>/dev/null")
+            wan_iface = None
+            if route_info and "dev " in route_info:
+                parts = route_info.split()
+                try:
+                    dev_idx = parts.index("dev")
+                    wan_iface = parts[dev_idx + 1]
+                except ValueError, IndexError:
+                    pass
+
+            # 2. Get interface dump
             status = await self._exec("ubus call network.interface dump 2>/dev/null")
             if status and status.startswith("{"):
                 data = json.loads(status)
                 for iface_data in data.get("interface", []):
-                    iface_name = iface_data.get("interface", "").lower()
-                    if iface_name in ["wan", "wan6", "wwan", "modem"]:
+                    iface_id = iface_data.get("interface", "").lower()
+                    l3_dev = iface_data.get("l3_device", "").lower()
+
+                    # Match by name or by the device found in routes
+                    if iface_id in ["wan", "wan6", "wwan", "modem"] or (
+                        wan_iface and (iface_id == wan_iface or l3_dev == wan_iface)
+                    ):
                         ipv4_addrs = iface_data.get("ipv4-address", [])
                         if ipv4_addrs:
-                            return ipv4_addrs[0].get("address")
+                            ip = ipv4_addrs[0].get("address")
+                            # If it's a private IP, we might want to try an external check
+                            if ip and not ip.startswith(
+                                (
+                                    "192.168.",
+                                    "10.",
+                                    "172.16.",
+                                    "172.17.",
+                                    "172.18.",
+                                    "172.19.",
+                                    "172.20.",
+                                    "172.21.",
+                                    "172.22.",
+                                    "172.23.",
+                                    "172.24.",
+                                    "172.25.",
+                                    "172.26.",
+                                    "172.27.",
+                                    "172.28.",
+                                    "172.29.",
+                                    "172.30.",
+                                    "172.31.",
+                                )
+                            ):
+                                return ip
+
+                            # If we found a private IP but no public one yet, keep it as fallback
+                            fallback_ip = ip
+
+            # 3. Fallback: Try to get real public IP via external service if we only have a private one or none
+            external_check = await self.execute_command(
+                "curl -s http://icanhazip.com || wget -qO- http://icanhazip.com || curl -s https://api.ipify.org || wget -qO- https://api.ipify.org 2>/dev/null"
+            )
+            if external_check and "." in external_check:
+                return external_check.strip().splitlines()[0]
+
+            return fallback_ip if "fallback_ip" in locals() else None
         except Exception:  # noqa: BLE001
-            pass
-        return None
+            return None
 
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interfaces via ubus iwinfo."""
@@ -1399,7 +1498,7 @@ class SshClient(OpenWrtClient):
             "/usr/share/luci/menu.d/luci-mod-rpc.json "
             "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
             "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
-            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so; do "
+            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm; do "
             "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._exec(cmd)
@@ -1408,7 +1507,7 @@ class SshClient(OpenWrtClient):
         def detect(idx: int) -> bool:
             return len(results) > idx and results[idx].strip() == "1"
 
-        packages.sqm_scripts = detect(0)
+        packages.sqm_scripts = detect(0) or detect(19)
         packages.mwan3 = detect(1)
         packages.iwinfo = detect(2)
         packages.etherwake = detect(3)
@@ -2058,16 +2157,52 @@ class SshClient(OpenWrtClient):
                 )
             )
 
+        # 1.5 Firmware Identification
+        try:
+            os_info = await self.execute_command(
+                "cat /etc/openwrt_release /etc/os-release 2>/dev/null"
+            )
+            distro = "Unknown"
+            if os_info:
+                if "DISTRIB_DESCRIPTION" in os_info:
+                    match = re.search(
+                        r'DISTRIB_DESCRIPTION=["\'](.*?)["\']', os_info
+                    ) or re.search(r"DISTRIB_DESCRIPTION=(.*)", os_info)
+                    if match:
+                        distro = match.group(1).strip()
+                elif "PRETTY_NAME" in os_info:
+                    match = re.search(r'PRETTY_NAME=["\'](.*?)["\']', os_info)
+                    if match:
+                        distro = match.group(1).strip()
+
+            results.append(
+                DiagnosticResult(
+                    name="Firmware Identification",
+                    status="PASS" if "OpenWrt" in distro else "WARN",
+                    message=f"Detected: {distro}",
+                    details=os_info if os_info else "No release info found.",
+                )
+            )
+        except Exception:
+            pass
+
         # 2. Check Package Manager
         try:
-            apk_path = await self.execute_command("command -v apk")
-            opkg_path = await self.execute_command("command -v opkg")
+            # Try multiple ways to find package managers
+            apk_check = await self.execute_command(
+                "command -v apk || which apk || ls /sbin/apk /usr/bin/apk 2>/dev/null"
+            )
+            opkg_check = await self.execute_command(
+                "command -v opkg || which opkg || ls /bin/opkg /usr/bin/opkg 2>/dev/null"
+            )
 
             msg = []
-            if apk_path:
-                msg.append(f"apk found at {apk_path.strip()}")
-            if opkg_path:
-                msg.append(f"opkg found at {opkg_path.strip()}")
+            if apk_check and ("/" in apk_check or "apk" in apk_check):
+                path = apk_check.strip().splitlines()[0]
+                msg.append(f"apk found ({path})")
+            if opkg_check and ("/" in opkg_check or "opkg" in opkg_check):
+                path = opkg_check.strip().splitlines()[0]
+                msg.append(f"opkg found ({path})")
 
             results.append(
                 DiagnosticResult(
@@ -2075,7 +2210,7 @@ class SshClient(OpenWrtClient):
                     status="PASS" if msg else "WARN",
                     message=", ".join(msg)
                     if msg
-                    else "No package manager (apk/opkg) detected.",
+                    else "No package manager (apk/opkg) detected. Firmware may be restricted or custom.",
                 )
             )
         except Exception as err:

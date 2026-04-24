@@ -131,3 +131,24 @@ def test_device_tracker_stable_device_info(mock_coordinator, mock_config_entry) 
         # We check the second part of the tuple as DOMAIN might be mocked
         assert device_info["via_device"][1] == "11:22:33:44:55:66"
         assert (dr.CONNECTION_NETWORK_MAC, mac.lower()) in device_info["connections"]
+
+
+def test_device_tracker_randomized_mac(mock_coordinator, mock_config_entry) -> None:
+    """Test that randomized MACs are disabled by default."""
+    # Normal MAC
+    tracker_normal = OpenWrtDeviceTracker(
+        mock_coordinator, mock_config_entry, "00:11:22:33:44:55"
+    )
+    assert getattr(tracker_normal, "_attr_entity_registry_enabled_default", True) is True
+
+    # Randomized MAC (bit 1 of 1st byte is set: 02:...)
+    tracker_random = OpenWrtDeviceTracker(
+        mock_coordinator, mock_config_entry, "02:11:22:33:44:55"
+    )
+    assert tracker_random._attr_entity_registry_enabled_default is False
+
+    # Another Randomized MAC (ae:...)
+    tracker_random2 = OpenWrtDeviceTracker(
+        mock_coordinator, mock_config_entry, "ae:11:22:33:44:55"
+    )
+    assert tracker_random2._attr_entity_registry_enabled_default is False

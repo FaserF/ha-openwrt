@@ -1684,6 +1684,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
+        super().__init__()
         self._config_entry = config_entry
         self._options: dict[str, Any] = {}
         self._permissions: Any = None
@@ -1696,8 +1697,9 @@ class OpenWrtOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
+            _LOGGER.debug("Options init submitted: %s", user_input)
             self._options = user_input
-            return await self.async_step_permissions()
+            return await self.async_step_options_permissions()
 
         current = self._config_entry.options
 
@@ -1746,14 +1748,14 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
         return self.async_show_form(step_id="init", data_schema=schema)
 
-    async def async_step_permissions(
+    async def async_step_options_permissions(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show permissions summary."""
         if user_input is not None:
             if self._packages is not None:
-                return await self.async_step_packages()
+                return await self.async_step_options_packages()
             return self.async_create_entry(title="", data=self._options)
 
         client = create_client({**self._config_entry.data, **self._options})
@@ -1789,11 +1791,11 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
         if self._permissions is None:
             if self._packages is not None:
-                return await self.async_step_packages()
+                return await self.async_step_options_packages()
             return self.async_create_entry(title="", data=self._options)
 
         if self._ubus_restricted:
-            return await self.async_step_ubus_restricted()
+            return await self.async_step_options_ubus_restricted()
 
         # Get translations for table
         translations = await translation.async_get_translations(
@@ -1801,9 +1803,16 @@ class OpenWrtOptionsFlow(OptionsFlow):
         )
         table = _generate_permission_table(self._permissions, translations)
 
-        step_id = "permissions"
+        step_id = "options_permissions"
         if self._config_entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_UBUS:
-            step_id = "permissions_ubus"
+            step_id = "options_permissions_ubus"
+
+        _LOGGER.debug(
+            "Showing options permissions step: id=%s, username=%s, table_len=%d",
+            step_id,
+            self._config_entry.data.get(CONF_USERNAME, ""),
+            len(table),
+        )
 
         return self.async_show_form(
             step_id=step_id,
@@ -1814,28 +1823,28 @@ class OpenWrtOptionsFlow(OptionsFlow):
             },
         )
 
-    async def async_step_permissions_ubus(
+    async def async_step_options_permissions_ubus(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Show permissions summary (ubus variant)."""
-        return await self.async_step_permissions(user_input)
+        return await self.async_step_options_permissions(user_input)
 
-    async def async_step_ubus_restricted(
+    async def async_step_options_ubus_restricted(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Inform the user about restricted Ubus access."""
         if user_input is not None:
             if self._packages is not None:
-                return await self.async_step_packages()
+                return await self.async_step_options_packages()
             return self.async_create_entry(title="", data=self._options)
 
         # Try to get model from direct client or use existing device registry if available
         model = self._config_entry.data.get(CONF_HOST, "Router")
 
         return self.async_show_form(
-            step_id="ubus_restricted",
+            step_id="options_ubus_restricted",
             data_schema=vol.Schema({}),
             description_placeholders={
                 "host": self._config_entry.data.get(CONF_HOST, ""),
@@ -1843,7 +1852,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
             },
         )
 
-    async def async_step_packages(
+    async def async_step_options_packages(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
@@ -1874,8 +1883,13 @@ class OpenWrtOptionsFlow(OptionsFlow):
             translations=feature_translations,
         )
 
+        _LOGGER.debug(
+            "Showing options packages step: table_len=%d",
+            len(table),
+        )
+
         return self.async_show_form(
-            step_id="packages",
+            step_id="options_packages",
             data_schema=vol.Schema({}),
             description_placeholders={"packages_table": table},
         )

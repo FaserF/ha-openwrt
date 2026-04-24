@@ -58,3 +58,23 @@ def format_ap_name(ssid: str, band: str = "") -> str:
     if band:
         return f"AP {label} ({band})"
     return f"AP {label}"
+
+
+def is_random_mac(mac: str) -> bool:
+    """Check if a MAC address is locally administered (randomized).
+
+    A MAC address is randomized if the 'locally administered' bit is set
+    in the first byte (the second-least significant bit).
+    """
+    if not mac:
+        return False
+    try:
+        # Normalize: remove separators and take the first two chars (first byte)
+        clean_mac = mac.replace(":", "").replace("-", "").replace(".", "")
+        if len(clean_mac) < 2:
+            return False
+        first_byte = int(clean_mac[:2], 16)
+        # Check the 'locally administered' bit (bit 1 of first byte)
+        return bool(first_byte & 0x02)
+    except ValueError, IndexError:
+        return False

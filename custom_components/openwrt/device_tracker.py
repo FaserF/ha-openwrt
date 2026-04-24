@@ -172,6 +172,10 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         self._mac = mac.lower()
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_tracker_{self._mac}"
+        from .helpers import is_random_mac
+
+        if is_random_mac(self._mac):
+            self._attr_entity_registry_enabled_default = False
 
         # Initial device name fallback
         self._initial_name = mac

@@ -367,6 +367,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             ):
                 continue
 
+            # 5. Filter out randomized/locally administered MAC addresses
+            # These change frequently and pollute the device registry.
+            from .helpers import is_random_mac
+            if is_random_mac(mac):
+                continue
+
             filtered_devices.append(device)
 
             if mac not in self._device_history:
@@ -402,6 +408,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     hostname,
                 ):
                     continue
+
+            from .helpers import is_random_mac
+            if is_random_mac(mac):
+                continue
+
             filtered_leases.append(lease)
         data.dhcp_leases = filtered_leases
 

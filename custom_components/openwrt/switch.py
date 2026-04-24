@@ -823,6 +823,10 @@ class OpenWrtAccessControlSwitch(
         self._attr_unique_id = f"{entry.entry_id}_access_{self._mac.replace(':', '_')}"
         self._attr_name = "Internet Access"
         self._attr_translation_key = "device_access"
+        from .helpers import is_random_mac
+
+        if is_random_mac(self._mac):
+            self._attr_entity_registry_enabled_default = False
         self._attr_device_info = DeviceInfo(
             connections={("mac", self._mac)},
             name=name,

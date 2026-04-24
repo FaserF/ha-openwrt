@@ -378,8 +378,35 @@ class UbusClient(OpenWrtClient):
         info.release_distribution = release.get("distribution", "OpenWrt")
         info.release_version = release.get("version", "")
         info.release_revision = release.get("revision", "")
-        info.firmware_version = f"{info.release_version} ({info.release_revision})"
         info.target = release.get("target", data.get("board_name", ""))
+        info.firmware_version = f"{info.release_version} ({info.release_revision})"
+
+        # Fallback for model name via /tmp/sysinfo
+        if not info.model:
+            try:
+                # Try reading via ubus file read if available
+                model_data = await self._call(
+                    "file", "read", {"path": "/tmp/sysinfo/model"}
+                )
+                if model_data and isinstance(model_data, dict):
+                    info.model = model_data.get("data", "").strip()
+
+                if not info.board_name:
+                    board_data = await self._call(
+                        "file", "read", {"path": "/tmp/sysinfo/board_name"}
+                    )
+                    if board_data and isinstance(board_data, dict):
+                        info.board_name = board_data.get("data", "").strip()
+
+                # Fallback 2: /etc/model
+                if not info.model:
+                    model_data = await self._call(
+                        "file", "read", {"path": "/etc/model"}
+                    )
+                    if model_data and isinstance(model_data, dict):
+                        info.model = model_data.get("data", "").strip()
+            except Exception:
+                pass
 
         try:
             sys_info = await self._call("system", "info")
@@ -845,6 +872,17 @@ class UbusClient(OpenWrtClient):
                         if not iface_name:
                             continue
 
+                        # Filter out generic UCI section names (ghosts)
+                        system_ifname = iface.get("ifname")
+                        if any(
+                            iface_name.startswith(p)
+                            for p in ["default_radio", "wifinet", "radio"]
+                        ) and not system_ifname:
+                            _LOGGER.debug(
+                                "Filtering ghost ubus wireless section: %s", iface_name
+                            )
+                            continue
+
                         iface_config = iface.get("config", {})
                         wifi = WirelessInterface(
                             name=iface_name,
@@ -876,7 +914,17 @@ class UbusClient(OpenWrtClient):
                         if sect_data.get(".type") != "wifi-iface":
                             continue
 
-                        iface_name = sect_name
+                        # Filter out generic UCI section names (ghosts)
+                        if any(
+                            sect_name.startswith(p)
+                            for p in ["default_radio", "wifinet", "radio"]
+                        ) and not sect_data.get("ifname"):
+                            _LOGGER.debug(
+                                "Filtering ghost UCI wireless section: %s", sect_name
+                            )
+                            continue
+
+                        iface_name = sect_data.get("ifname") or sect_name
                         radio_name = sect_data.get("device", "")
 
                         # Get radio status to determine if enabled
@@ -1658,7 +1706,8 @@ class UbusClient(OpenWrtClient):
                     "/etc/init.d/pbr "
                     "/etc/init.d/adguardhome "
                     "/etc/init.d/unbound "
-                    "/usr/lib/rpcd/led.so; do "
+                    "/usr/lib/rpcd/led.so "
+                    "/etc/config/sqm; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
@@ -1673,7 +1722,7 @@ class UbusClient(OpenWrtClient):
                     return len(results) > idx and results[idx].strip() == "1"
 
                 if packages.sqm_scripts is not True:
-                    packages.sqm_scripts = detect_status(0)
+                    packages.sqm_scripts = detect_status(0) or detect_status(15)
                 if packages.mwan3 is not True:
                     packages.mwan3 = detect_status(1)
                 if packages.iwinfo is not True:

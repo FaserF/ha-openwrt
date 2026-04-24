@@ -600,6 +600,10 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
         self._attr_unique_id = f"{entry.entry_id}_{self._mac}_wol"
         self._entry = entry
         self._initial_name = name
+        from .helpers import is_random_mac
+
+        if is_random_mac(self._mac):
+            self._attr_entity_registry_enabled_default = False
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -688,6 +692,10 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
         self._attr_unique_id = f"{entry.entry_id}_{self._mac}_kick_{interface}"
         self._entry = entry
         self._initial_name = hostname
+        from .helpers import is_random_mac
+
+        if is_random_mac(self._mac):
+            self._attr_entity_registry_enabled_default = False
 
     @property
     def device_info(self) -> DeviceInfo:
