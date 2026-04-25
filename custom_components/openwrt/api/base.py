@@ -1615,6 +1615,19 @@ class OpenWrtClient(abc.ABC):
         data = OpenWrtData()
         self._poll_count = getattr(self, "_poll_count", 0) + 1
 
+        # Pre-populate with cached slow-changing data to ensure availability during poll
+        cached = getattr(self, "_cached_slow_data", {})
+        data.services = cached.get("services", [])
+        data.leds = cached.get("leds", [])
+        data.firewall_redirects = cached.get("firewall_redirects", [])
+        data.firewall_rules = cached.get("firewall_rules", [])
+        data.access_control = cached.get("access_control", [])
+        data.sqm = cached.get("sqm", [])
+        data.packages = cached.get("packages", OpenWrtPackages())
+        data.permissions = cached.get("permissions", OpenWrtPermissions())
+        data.reboot_required = cached.get("reboot_required", False)
+        data.system_logs = cached.get("system_logs", [])
+
         current_time = time.time()
         last_full_poll = getattr(self, "_last_full_poll", 0)
         is_full_poll = (current_time - last_full_poll) >= SLOW_DATA_TTL
@@ -1676,8 +1689,19 @@ class OpenWrtClient(abc.ABC):
             data.local_ips = get_val(core_results_fast[4], set(), "local_ips")
 
             data.device_info = getattr(self, "_cached_device_info", data.device_info)
-            # We don't cache MACs/IPs yet as they are dynamic in some setups (VPNs etc)
-            # but we can reuse cached if call fails or return empty set
+
+            # Reuse cached slow-changing data
+            cached = getattr(self, "_cached_slow_data", {})
+            data.services = cached.get("services", [])
+            data.leds = cached.get("leds", [])
+            data.firewall_redirects = cached.get("firewall_redirects", [])
+            data.firewall_rules = cached.get("firewall_rules", [])
+            data.access_control = cached.get("access_control", [])
+            data.sqm = cached.get("sqm", [])
+            data.packages = cached.get("packages", OpenWrtPackages())
+            data.permissions = cached.get("permissions", OpenWrtPermissions())
+            data.reboot_required = cached.get("reboot_required", False)
+            data.system_logs = cached.get("system_logs", [])
 
         # Ensure router MAC address is populated from interfaces if missing
         if data.device_info and not data.device_info.mac_address:
@@ -1807,20 +1831,36 @@ class OpenWrtClient(abc.ABC):
                 return_exceptions=True,
             )
 
-            data.services = get_val(slow_results[0], [], "services")
-            data.leds = get_val(slow_results[1], [], "LEDs")
-            data.firewall_redirects = get_val(slow_results[2], [], "firewall redirects")
-            data.firewall_rules = get_val(slow_results[3], [], "firewall rules")
-            data.access_control = get_val(slow_results[4], [], "access control")
-            data.sqm = get_val(slow_results[5], [], "SQM")
-            data.packages = get_val(slow_results[6], OpenWrtPackages(), "packages")
+            data.services = get_val(
+                slow_results[0], cached.get("services", []), "services"
+            )
+            data.leds = get_val(slow_results[1], cached.get("leds", []), "LEDs")
+            data.firewall_redirects = get_val(
+                slow_results[2],
+                cached.get("firewall_redirects", []),
+                "firewall redirects",
+            )
+            data.firewall_rules = get_val(
+                slow_results[3], cached.get("firewall_rules", []), "firewall rules"
+            )
+            data.access_control = get_val(
+                slow_results[4], cached.get("access_control", []), "access control"
+            )
+            data.sqm = get_val(slow_results[5], cached.get("sqm", []), "SQM")
+            data.packages = get_val(
+                slow_results[6], cached.get("packages", OpenWrtPackages()), "packages"
+            )
             data.permissions = get_val(
                 slow_results[7],
-                OpenWrtPermissions(),
+                cached.get("permissions", OpenWrtPermissions()),
                 "permissions",
             )
-            data.reboot_required = get_val(slow_results[8], False, "reboot required")
-            data.system_logs = get_val(slow_results[9], [], "system logs")
+            data.reboot_required = get_val(
+                slow_results[8], cached.get("reboot_required", False), "reboot required"
+            )
+            data.system_logs = get_val(
+                slow_results[9], cached.get("system_logs", []), "system logs"
+            )
 
             # Cache slow results
             self._cached_slow_data = {
@@ -1832,6 +1872,8 @@ class OpenWrtClient(abc.ABC):
                 "sqm": data.sqm,
                 "packages": data.packages,
                 "permissions": data.permissions,
+                "reboot_required": data.reboot_required,
+                "system_logs": data.system_logs,
             }
             self._last_full_poll = current_time
             _LOGGER.debug(
@@ -1849,5 +1891,7 @@ class OpenWrtClient(abc.ABC):
             data.sqm = cached.get("sqm", [])
             data.packages = cached.get("packages", OpenWrtPackages())
             data.permissions = cached.get("permissions", OpenWrtPermissions())
+            data.reboot_required = cached.get("reboot_required", False)
+            data.system_logs = cached.get("system_logs", [])
 
         return data
