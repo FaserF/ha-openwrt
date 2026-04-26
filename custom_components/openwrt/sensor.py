@@ -867,93 +867,105 @@ async def async_setup_entry(
         DATA_COORDINATOR
     ]
 
-    entities: list[SensorEntity] = []
+    tracked_keys: set[str] = set()
 
-    if coordinator.data:
+    @callback
+    def _async_discover_entities() -> None:
+        """Discover and add all sensors (static and dynamic)."""
+        if not coordinator.data:
+            return
+
+        new_entities: list[SensorEntity] = []
         perms = coordinator.data.permissions
         pkgs = coordinator.data.packages
 
-        if perms.read_system:
-            _async_setup_system_sensors(coordinator, entry, entities, pkgs)
-            _async_setup_storage_sensors(coordinator, entry, entities)
+        _LOGGER.debug(
+            "Discovering sensors for %s. Permissions: %s, Packages: %s",
+            entry.title,
+            perms,
+            pkgs,
+        )
 
+        # 1. System & Storage Sensors
+        _async_setup_system_sensors(
+            coordinator, entry, new_entities, pkgs, tracked_keys
+        )
+        _async_setup_storage_sensors(
+            coordinator, entry, new_entities, tracked_keys
+        )
+
+        # 2. VPN Sensors
         if perms.read_vpn and pkgs.wireguard is not False:
-            _async_setup_wireguard_sensors(coordinator, entry, entities)
+            _async_setup_wireguard_sensors(
+                coordinator, entry, new_entities, tracked_keys
+            )
 
+        # 3. Wireless Sensors
         if perms.read_wireless and pkgs.iwinfo is not False:
-            _async_setup_wireless_sensors(coordinator, entry, entities)
+            _async_setup_wireless_sensors(
+                coordinator, entry, new_entities, tracked_keys
+            )
 
-        if perms.read_network:
-            _async_setup_network_sensors(coordinator, entry, entities)
-            if pkgs.nlbwmon:
-                for device in coordinator.data.connected_devices:
-                    if device.mac:
-                        entities.extend(
-                            _create_nlbwmon_sensors(coordinator, entry, device)
-                        )
+        # 4. Network Sensors
+        _async_setup_network_sensors(
+            coordinator, entry, new_entities, tracked_keys
+        )
 
-        _async_setup_specialized_sensors(coordinator, entry, entities, perms, pkgs)
+        # 5. Specialized Sensors
+        _async_setup_specialized_sensors(
+            coordinator, entry, new_entities, perms, pkgs, tracked_keys
+        )
 
-    async_add_entities(entities)
-
-    # Dynamic device tracking sensors
-    ent_reg = er.async_get(hass)
-    tracked_macs = {
-        ent.unique_id.split("_")[-2].lower()
-        for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
-        if ent.domain == "sensor"
-        and (ent.unique_id.endswith("_rx") or ent.unique_id.endswith("_tx"))
-    }
-
-    @callback
-    def _async_add_device_sensors() -> None:
-        """Add sensors for newly discovered devices."""
-        if coordinator.data is None or not coordinator.data.permissions.read_wireless:
-            return
-
-        if coordinator.data.packages.iwinfo is False:
-            return
-
+        # 6. Device-specific sensors (Dynamic)
         track_devices = entry.options.get(
             CONF_TRACK_DEVICES,
             entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
         )
-        if not track_devices:
-            return
-
-        track_wired = entry.options.get(
-            CONF_TRACK_WIRED,
-            entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
-        )
-
-        new_entities: list[SensorEntity] = []
-        for device in coordinator.data.connected_devices:
-            if not device.mac:
-                continue
-            mac = device.mac.lower()
-            is_random = is_random_mac(mac)
+        if track_devices:
+            track_wired = entry.options.get(
+                CONF_TRACK_WIRED,
+                entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
+            )
             skip_random = entry.options.get(
                 CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC
             )
 
-            if is_random and skip_random:
-                continue
+            for device in coordinator.data.connected_devices:
+                if not device.mac:
+                    continue
+                mac = device.mac.lower()
+                is_random = is_random_mac(mac)
 
-            if not track_wired and not device.is_wireless and not is_random:
-                continue
+                if is_random and skip_random:
+                    continue
+                if not track_wired and not device.is_wireless and not is_random:
+                    continue
 
-            if mac in tracked_macs:
-                continue
+                # Bandwidth sensors (RX/TX)
+                for direction in ("rx", "tx"):
+                    key = f"device_{mac.replace(':', '_')}_{direction}"
+                    if key not in tracked_keys:
+                        tracked_keys.add(key)
+                        new_entities.extend(
+                            _create_device_sensors(coordinator, entry, device)
+                        )
+                        break
 
-            tracked_macs.add(mac)
-            new_entities.extend(_create_device_sensors(coordinator, entry, device))
-            new_entities.extend(_create_nlbwmon_sensors(coordinator, entry, device))
+                # NLBWmon sensors
+                if pkgs.nlbwmon:
+                    key = f"nlbwmon_{mac.replace(':', '_')}"
+                    if key not in tracked_keys:
+                        tracked_keys.add(key)
+                        new_entities.extend(
+                            _create_nlbwmon_sensors(coordinator, entry, device)
+                        )
 
         if new_entities:
             async_add_entities(new_entities)
 
-    _async_add_device_sensors()
-    entry.async_on_unload(coordinator.async_add_listener(_async_add_device_sensors))
+    # Initial discovery and listener registration
+    _async_discover_entities()
+    entry.async_on_unload(coordinator.async_add_listener(_async_discover_entities))
 
     @callback
     def _async_cleanup_entities() -> None:
@@ -1232,12 +1244,38 @@ def _async_setup_system_sensors(
     entry: ConfigEntry,
     entities: list[SensorEntity],
     pkgs: Any,
+    tracked_keys: set[str],
 ) -> None:
-    """Set up system sensors."""
+    """Set up system-wide sensors."""
     for description in _get_system_sensors():
-        entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+        if description.key not in tracked_keys:
+            _LOGGER.debug("Adding system sensor: %s", description.key)
+            tracked_keys.add(description.key)
+            entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+        else:
+            _LOGGER.debug("System sensor already tracked: %s", description.key)
 
-    # Add multi-zone temperature sensors
+    # Package-specific system sensors
+    if pkgs.temp:
+        key = "temperature"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            entities.append(
+                OpenWrtSensorEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtSensorDescription(
+                        key=key,
+                        name="Temperature",
+                        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+                        device_class=SensorDeviceClass.TEMPERATURE,
+                        state_class=SensorStateClass.MEASUREMENT,
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        value_fn=lambda data: data.system_resources.temperature,
+                        available_fn=lambda data: data.system_resources.temperature > 0,
+                    ),
+                )
+            )
     if coordinator.data and coordinator.data.system_resources.temperatures:
         for zone_name in coordinator.data.system_resources.temperatures:
             if zone_name.lower() == "system":
@@ -1265,8 +1303,9 @@ def _async_setup_storage_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
     entities: list[SensorEntity],
+    tracked_keys: set[str],
 ) -> None:
-    """Set up storage usage sensors."""
+    """Set up storage sensors for each mount point."""
     if not coordinator.data or not coordinator.data.system_resources:
         return
     if not coordinator.data.system_resources.storage:
@@ -1276,7 +1315,7 @@ def _async_setup_storage_sensors(
         OpenWrtStorageSensorDescription(
             key="storage_total",
             translation_key="mount_storage_total",
-            native_unit_of_measurement=UnitOfInformation.BYTES,
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -1286,7 +1325,7 @@ def _async_setup_storage_sensors(
         OpenWrtStorageSensorDescription(
             key="storage_used",
             translation_key="mount_storage_used",
-            native_unit_of_measurement=UnitOfInformation.BYTES,
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -1296,7 +1335,7 @@ def _async_setup_storage_sensors(
         OpenWrtStorageSensorDescription(
             key="storage_free",
             translation_key="mount_storage_free",
-            native_unit_of_measurement=UnitOfInformation.BYTES,
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -1321,15 +1360,19 @@ def _async_setup_storage_sensors(
             continue
 
         for description in storage_descriptions:
-            entities.append(
-                OpenWrtStorageSensor(coordinator, entry, description, usage.mount_point)
-            )
+            key = f"storage_{usage.mount_point}_{description.key}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.append(
+                    OpenWrtStorageSensor(coordinator, entry, description, usage.mount_point)
+                )
 
 
 def _async_setup_wireless_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
     entities: list[SensorEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Set up interface-specific wireless sensors."""
     if not coordinator.data:
@@ -1337,23 +1380,28 @@ def _async_setup_wireless_sensors(
     for wifi in coordinator.data.wireless_interfaces:
         if not wifi.name:
             continue
-        entities.extend(
-            _create_wifi_sensors(
-                coordinator,
-                entry,
-                wifi.name,
-                wifi.ssid,
-                wifi.mode,
-                wifi.frequency,
-                wifi.section,
+        # Use signal as a representative key for the group of sensors created by _create_wifi_sensors
+        key = f"wifi_{wifi.name}_signal"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            entities.extend(
+                _create_wifi_sensors(
+                    coordinator,
+                    entry,
+                    wifi.name,
+                    wifi.ssid,
+                    wifi.mode,
+                    wifi.frequency,
+                    wifi.section,
+                )
             )
-        )
 
 
 def _async_setup_network_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
     entities: list[SensorEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Set up interface-specific network sensors."""
     if not coordinator.data:
@@ -1361,31 +1409,33 @@ def _async_setup_network_sensors(
 
     # MWAN3 Metrics
     for mwan in coordinator.data.mwan_status:
-        entities.append(
-            OpenWrtMwanMetricSensor(coordinator, entry, mwan.interface_name, "latency")
-        )
-        entities.append(
-            OpenWrtMwanMetricSensor(
-                coordinator, entry, mwan.interface_name, "packet_loss"
-            )
-        )
+        for metric in ("latency", "packet_loss"):
+            key = f"mwan_{mwan.interface_name}_{metric}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.append(
+                    OpenWrtMwanMetricSensor(coordinator, entry, mwan.interface_name, metric)
+                )
 
     # DHCP Lease Count
-    entities.append(
-        OpenWrtSensorEntity(
-            coordinator,
-            entry,
-            OpenWrtSensorDescription(
-                key="dhcp_lease_count",
-                name="DHCP Leases",
-                translation_key="dhcp_lease_count",
-                state_class=SensorStateClass.MEASUREMENT,
-                entity_category=EntityCategory.DIAGNOSTIC,
-                entity_registry_enabled_default=False,
-                value_fn=lambda data: len(data.dhcp_leases),
-            ),
+    key = "dhcp_lease_count"
+    if key not in tracked_keys:
+        tracked_keys.add(key)
+        entities.append(
+            OpenWrtSensorEntity(
+                coordinator,
+                entry,
+                OpenWrtSensorDescription(
+                    key=key,
+                    name="DHCP Leases",
+                    translation_key="dhcp_lease_count",
+                    state_class=SensorStateClass.MEASUREMENT,
+                    entity_category=EntityCategory.DIAGNOSTIC,
+                    entity_registry_enabled_default=False,
+                    value_fn=lambda data: len(data.dhcp_leases),
+                ),
+            )
         )
-    )
 
 
 def _async_setup_specialized_sensors(
@@ -1394,6 +1444,7 @@ def _async_setup_specialized_sensors(
     entities: list[SensorEntity],
     perms: Any,
     pkgs: Any,
+    tracked_keys: set[str],
 ) -> None:
     """Set up sensors for specialized services (VPN, MWAN, SQM, etc.)."""
     if not coordinator.data:
@@ -1401,20 +1452,30 @@ def _async_setup_specialized_sensors(
 
     if perms.read_mwan and pkgs.mwan3 is not False:
         for mwan in coordinator.data.mwan_status:
-            entities.extend(
-                _create_mwan_sensors(coordinator, entry, mwan.interface_name)
-            )
+            key = f"mwan_{mwan.interface_name}_main"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.extend(
+                    _create_mwan_sensors(coordinator, entry, mwan.interface_name)
+                )
 
     if coordinator.data.qmodem_info.enabled:
-        for description in _get_qmodem_sensors():
-            entities.append(OpenWrtQModemSensorEntity(coordinator, entry, description))
+        # QModem sensors don't have a stable key pattern in this helper, but they are relatively static
+        key = "qmodem_info"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            for description in _get_qmodem_sensors():
+                entities.append(OpenWrtQModemSensorEntity(coordinator, entry, description))
 
     if perms.read_sqm and pkgs.sqm_scripts is not False:
         for sqm in coordinator.data.sqm:
             if sqm.section_id:
-                entities.extend(
-                    _create_sqm_sensors(coordinator, entry, sqm.section_id, sqm.name)
-                )
+                key = f"sqm_{sqm.section_id}"
+                if key not in tracked_keys:
+                    tracked_keys.add(key)
+                    entities.extend(
+                        _create_sqm_sensors(coordinator, entry, sqm.section_id, sqm.name)
+                    )
 
     if perms.read_vpn:
         for vpn in coordinator.data.vpn_interfaces:
@@ -1424,37 +1485,46 @@ def _async_setup_specialized_sensors(
                 continue
             if vpn.type == "openvpn" and pkgs.openvpn is False:
                 continue
-            entities.extend(_create_vpn_sensors(coordinator, entry, vpn.name, vpn.type))
+            key = f"vpn_{vpn.name}_traffic"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.extend(_create_vpn_sensors(coordinator, entry, vpn.name, vpn.type))
 
     if coordinator.data.lldp_neighbors:
         for neighbor in coordinator.data.lldp_neighbors:
             if neighbor.local_interface:
-                entities.extend(
-                    _create_lldp_sensors(coordinator, entry, neighbor.local_interface)
-                )
+                key = f"lldp_{neighbor.local_interface}_{neighbor.chassis_id}"
+                if key not in tracked_keys:
+                    tracked_keys.add(key)
+                    entities.extend(
+                        _create_lldp_sensors(coordinator, entry, neighbor.local_interface)
+                    )
 
     # WAN Latency
-    entities.append(
-        OpenWrtSensorEntity(
-            coordinator,
-            entry,
-            OpenWrtSensorDescription(
-                key="wan_latency",
-                name="WAN Latency",
-                translation_key="wan_latency",
-                native_unit_of_measurement="ms",
-                state_class=SensorStateClass.MEASUREMENT,
-                suggested_display_precision=1,
-                entity_registry_enabled_default=False,
-                value_fn=lambda data: data.latency.latency_ms,
-                available_fn=lambda data: data.latency.available,
-                attrs_fn=lambda data: {
-                    "target": data.latency.target,
-                    "packet_loss": data.latency.packet_loss,
-                },
-            ),
+    key = "wan_latency"
+    if key not in tracked_keys:
+        tracked_keys.add(key)
+        entities.append(
+            OpenWrtSensorEntity(
+                coordinator,
+                entry,
+                OpenWrtSensorDescription(
+                    key=key,
+                    name="WAN Latency",
+                    translation_key="wan_latency",
+                    native_unit_of_measurement="ms",
+                    state_class=SensorStateClass.MEASUREMENT,
+                    suggested_display_precision=1,
+                    entity_registry_enabled_default=False,
+                    value_fn=lambda data: data.latency.latency_ms,
+                    available_fn=lambda data: data.latency.available,
+                    attrs_fn=lambda data: {
+                        "target": data.latency.target,
+                        "packet_loss": data.latency.packet_loss,
+                    },
+                ),
+            )
         )
-    )
 
 
 def _create_device_sensors(

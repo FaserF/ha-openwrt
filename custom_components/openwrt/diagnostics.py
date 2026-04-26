@@ -60,7 +60,7 @@ async def async_get_config_entry_diagnostics(
             DATA_COORDINATOR
         ]
         data = coordinator.data
-    except KeyError, AttributeError:
+    except (KeyError, AttributeError):
         return {"error": "Coordinator not found"}
 
     diag: dict[str, Any] = {

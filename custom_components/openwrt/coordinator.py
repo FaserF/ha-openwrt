@@ -230,6 +230,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
                 # Also try an initial data fetch to populate the coordinator
                 self.data = await self.client.get_all_data()
+                if self.data:
+                    self.data.firmware_current_version = (
+                        self.data.device_info.firmware_version
+                        or self.data.device_info.release_version
+                    )
                 self.last_update_success = True
                 _LOGGER.info("Successfully connected to %s", self.name)
                 break
@@ -343,12 +348,20 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     def _async_sync_firmware_state(self, data: OpenWrtData) -> None:
         """Sync firmware metadata from previous data if revision is unchanged."""
+        # Always initialize current version from device info
+        data.firmware_current_version = (
+            data.device_info.firmware_version or data.device_info.release_version
+        )
+
         if (
             self.data
             and self.data.device_info.release_revision
             == data.device_info.release_revision
         ):
-            data.firmware_current_version = self.data.firmware_current_version
+            # Preserve previously discovered current version if it was set
+            if self.data.firmware_current_version:
+                data.firmware_current_version = self.data.firmware_current_version
+
             data.firmware_latest_version = self.data.firmware_latest_version
             data.firmware_upgradable = self.data.firmware_upgradable
             data.firmware_release_url = self.data.firmware_release_url
@@ -360,10 +373,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             data.asu_image_status = self.data.asu_image_status
             data.asu_image_url = self.data.asu_image_url
             data.installed_packages = self.data.installed_packages
-        else:
-            data.firmware_current_version = (
-                data.device_info.firmware_version or data.device_info.release_version
-            )
 
     def _async_process_network_rates(self, data: OpenWrtData, now: float) -> None:
         """Calculate network rates based on bytes diff since last update."""

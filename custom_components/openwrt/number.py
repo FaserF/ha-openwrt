@@ -33,41 +33,63 @@ async def async_setup_entry(
         DATA_COORDINATOR
     ]
 
-    entities: list[NumberEntity] = []
+    tracked_keys: set[str] = set()
 
-    # TX Power per wireless interface
-    if coordinator.data:
+    def _async_add_new_entities() -> None:
+        """Add new entities when devices are discovered."""
+        if not coordinator.data:
+            return
+
+        new_entities: list[NumberEntity] = []
         perms = coordinator.data.permissions
         pkgs = coordinator.data.packages
 
+        # TX Power per wireless interface
         if perms.write_wireless:
             for wifi in coordinator.data.wireless_interfaces:
                 if wifi.name and wifi.txpower > 0:
-                    entities.append(
-                        OpenWrtTxPowerNumber(coordinator, entry, wifi.name, wifi.ssid),
-                    )
+                    key = f"txpower_{wifi.name}"
+                    if key not in tracked_keys:
+                        tracked_keys.add(key)
+                        new_entities.append(
+                            OpenWrtTxPowerNumber(
+                                coordinator, entry, wifi.name, wifi.ssid
+                            ),
+                        )
 
+        # SQM Limits
         if perms.write_sqm and pkgs.sqm_scripts is not False:
             for sqm in coordinator.data.sqm:
                 if sqm.section_id:
-                    entities.append(
-                        OpenWrtSqmDownloadNumber(
-                            coordinator,
-                            entry,
-                            sqm.section_id,
-                            sqm.name,
-                        ),
-                    )
-                    entities.append(
-                        OpenWrtSqmUploadNumber(
-                            coordinator,
-                            entry,
-                            sqm.section_id,
-                            sqm.name,
-                        ),
-                    )
+                    for direction in ("download", "upload"):
+                        key = f"sqm_{sqm.section_id}_{direction}"
+                        if key not in tracked_keys:
+                            tracked_keys.add(key)
+                            if direction == "download":
+                                new_entities.append(
+                                    OpenWrtSqmDownloadNumber(
+                                        coordinator,
+                                        entry,
+                                        sqm.section_id,
+                                        sqm.name,
+                                    ),
+                                )
+                            else:
+                                new_entities.append(
+                                    OpenWrtSqmUploadNumber(
+                                        coordinator,
+                                        entry,
+                                        sqm.section_id,
+                                        sqm.name,
+                                    ),
+                                )
 
-    async_add_entities(entities)
+        if new_entities:
+            async_add_entities(new_entities)
+
+    # Register listener and run initial discovery
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
+    _async_add_new_entities()
 
 
 class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEntity):

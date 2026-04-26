@@ -3,6 +3,7 @@
 [![GitHub Release](https://img.shields.io/github/release/FaserF/ha-openwrt.svg?style=flat-square)](https://github.com/FaserF/ha-openwrt/releases)
 [![License](https://img.shields.io/github/license/FaserF/ha-openwrt.svg?style=flat-square)](LICENSE)
 [![hacs](https://img.shields.io/badge/HACS-custom-orange.svg?style=flat-square)](https://hacs.xyz)
+[![Add to Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=openwrt)
 [![CI Orchestrator](https://github.com/FaserF/ha-openwrt/actions/workflows/ci-orchestrator.yml/badge.svg)](https://github.com/FaserF/ha-openwrt/actions/workflows/ci-orchestrator.yml)
 
 A secure, production-ready Home Assistant integration for OpenWrt devices. Monitor system resources, track connected devices, manage WiFi radios, execute commands, and natively update firmware directly from Home Assistant.

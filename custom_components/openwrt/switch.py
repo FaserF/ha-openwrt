@@ -50,18 +50,15 @@ async def async_setup_entry(
         perms = coordinator.data.permissions
         pkgs = coordinator.data.packages
 
-    ent_reg = er.async_get(hass)
-    tracked_keys = {
-        ent.unique_id.split(f"{entry.entry_id}_")[-1]
-        for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
-        if ent.domain == "switch"
-    }
+    tracked_keys: set[str] = set()
 
     def _async_add_new_entities() -> None:
         """Add new entities when devices are discovered."""
-        if coordinator.data is None:
+        if not coordinator.data:
             return
 
+        perms = coordinator.data.permissions
+        pkgs = coordinator.data.packages
         new_entities: list[SwitchEntity] = []
 
         if perms.write_wireless:

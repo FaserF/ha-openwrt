@@ -117,12 +117,7 @@ async def async_setup_entry(
         entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
     )
 
-    ent_reg = er.async_get(hass)
-    tracked_macs = {
-        ent.unique_id.split("_tracker_")[-1].lower()
-        for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id)
-        if ent.domain == "device_tracker" and "_tracker_" in ent.unique_id
-    }
+    tracked_macs: set[str] = set()
 
     @callback
     def _async_add_new_devices() -> None:
