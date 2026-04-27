@@ -278,11 +278,35 @@ class UbusClient(OpenWrtClient):
             return []
 
         result = data.get("result")
-        if not isinstance(result, dict):
+        if not result or not isinstance(result, list):
             return []
 
-        # Result is a dict where keys are object names
-        return list(result.keys())
+        # On success, result is a list with one dict: [{"object1": {...}, "object2": {...}}]
+        return list(result[0].keys())
+
+    async def _get_object_methods(self, object_name: str) -> dict[str, Any]:
+        """Get methods for a specific ubus object."""
+        session = await self._ensure_session()
+        token = self._session_id
+        payload = self._build_request(
+            "list",
+            [token, object_name],
+            request_id=UBUS_ID_CALL,
+        )
+        try:
+            async with session.post(
+                self._base_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                result = data.get("result")
+                if result and isinstance(result, list) and len(result) > 0:
+                    return result[0].get(object_name, {})
+        except Exception:
+            pass
+        return {}
 
     async def connect(self) -> bool:
         """Authenticate with the ubus RPC endpoint."""
@@ -855,42 +879,45 @@ class UbusClient(OpenWrtClient):
         iface_names: set[str] = set()
 
         # 1. Primary source: network.wireless status
-        try:
-            wireless_data = await self._call("network.wireless", "status")
-            if wireless_data and isinstance(wireless_data, dict):
-                for radio_name, radio_data in wireless_data.items():
-                    if not isinstance(radio_data, dict):
-                        continue
-
-                    radio_interfaces = radio_data.get("interfaces", [])
-                    for iface in radio_interfaces:
-                        iface_name = (
-                            iface.get("section")
-                            or iface.get("ifname")
-                            or iface.get("device", "")
-                        )
-                        if not iface_name:
+        if self.packages.wireless is not False:
+            try:
+                wireless_data = await self._call("network.wireless", "status")
+                if wireless_data and isinstance(wireless_data, dict):
+                    for radio_name, radio_data in wireless_data.items():
+                        if not isinstance(radio_data, dict):
                             continue
 
-                        iface_config = iface.get("config", {})
-                        wifi = WirelessInterface(
-                            name=iface_name,
-                            ssid=iface_config.get("ssid", ""),
-                            mode=iface_config.get("mode", ""),
-                            encryption=iface_config.get("encryption", ""),
-                            enabled=not radio_data.get("disabled", False),
-                            up=radio_data.get("up", False),
-                            radio=radio_name,
-                            htmode=radio_data.get("config", {}).get("htmode", ""),
-                            hwmode=radio_data.get("config", {}).get("hwmode", ""),
-                            txpower=radio_data.get("config", {}).get("txpower", 0),
-                            mesh_id=iface_config.get("mesh_id", ""),
-                            mesh_fwding=iface_config.get("mesh_fwding", False),
-                        )
-                        interfaces.append(wifi)
-                        iface_names.add(iface_name)
-        except UbusError:
-            _LOGGER.debug("network.wireless status call failed, trying UCI fallback")
+                        radio_interfaces = radio_data.get("interfaces", [])
+                        for iface in radio_interfaces:
+                            iface_name = (
+                                iface.get("section")
+                                or iface.get("ifname")
+                                or iface.get("device", "")
+                            )
+                            if not iface_name:
+                                continue
+
+                            iface_config = iface.get("config", {})
+                            wifi = WirelessInterface(
+                                name=iface_name,
+                                ssid=iface_config.get("ssid", ""),
+                                mode=iface_config.get("mode", ""),
+                                encryption=iface_config.get("encryption", ""),
+                                enabled=not radio_data.get("disabled", False),
+                                up=radio_data.get("up", False),
+                                radio=radio_name,
+                                htmode=radio_data.get("config", {}).get("htmode", ""),
+                                hwmode=radio_data.get("config", {}).get("hwmode", ""),
+                                txpower=radio_data.get("config", {}).get("txpower", 0),
+                                mesh_id=iface_config.get("mesh_id", ""),
+                                mesh_fwding=iface_config.get("mesh_fwding", False),
+                            )
+                            interfaces.append(wifi)
+                            iface_names.add(iface_name)
+            except UbusError:
+                _LOGGER.debug(
+                    "network.wireless status call failed, trying UCI fallback"
+                )
             try:
                 uci_wireless = await self._call("uci", "get", {"config": "wireless"})
                 if (
@@ -1082,10 +1109,10 @@ class UbusClient(OpenWrtClient):
             if not isinstance(status, dict):
                 return interfaces
 
-            wg_ifaces = []
+            wg_ifaces: dict[str, bool] = {}
             for iface_data in status.get("interface", []):
                 if iface_data.get("proto") == "wireguard":
-                    wg_ifaces.append(iface_data.get("interface"))
+                    wg_ifaces[iface_data.get("interface")] = bool(iface_data.get("up"))
 
             if not wg_ifaces:
                 return interfaces
@@ -1109,6 +1136,7 @@ class UbusClient(OpenWrtClient):
                         continue
                     iface = WireGuardInterface(
                         name=ifname,
+                        enabled=wg_ifaces[ifname],
                         public_key=parts[1],
                         listen_port=int(parts[2]) if parts[2].isdigit() else 0,
                         fwmark=int(parts[3]) if parts[3].isdigit() else 0,
@@ -1225,8 +1253,9 @@ class UbusClient(OpenWrtClient):
 
         # 2. Get wireless status for iwinfo and hostapd processing
         wireless_data: dict[str, Any] = {}
-        with contextlib.suppress(UbusError):
-            wireless_data = await self._call("network.wireless", "status")
+        if self.packages.wireless is not False:
+            with contextlib.suppress(UbusError):
+                wireless_data = await self._call("network.wireless", "status")
 
         # 3. Process wireless associations (iwinfo)
         if wireless_data:
@@ -1239,7 +1268,7 @@ class UbusClient(OpenWrtClient):
         await self._merge_neighbor_data(devices)
 
         # 5. Process wireless client details (hostapd)
-        if wireless_data:
+        if wireless_data and self.packages.wireless is not False:
             await self._process_hostapd_clients(devices, wireless_data)
 
         # 6. Supplemental source: Bridge FDB (Forwarding Database)
@@ -1247,7 +1276,8 @@ class UbusClient(OpenWrtClient):
         await self._process_bridge_fdb(devices)
 
         # Always run fallback to ensure we catch any manually added or mesh interfaces
-        await self._process_hostapd_fallback(devices)
+        if self.packages.wireless is not False:
+            await self._process_hostapd_fallback(devices)
 
         # Final cleanup/standardization
         for dev in devices.values():
@@ -1670,6 +1700,22 @@ class UbusClient(OpenWrtClient):
                 packages.pbr = True
             if "led" in objects:
                 packages.rpcd_mod_led = True
+            if "dhcp" in objects:
+                # Specifically check for ipv4leases method to avoid "Not found" on some setups
+                try:
+                    dhcp_methods = await self._get_object_methods("dhcp")
+                    if "ipv4leases" in dhcp_methods:
+                        packages.dhcp = True
+                    else:
+                        packages.dhcp = False
+                except Exception:
+                    packages.dhcp = (
+                        True  # Fallback to True if check fails but object exists
+                    )
+            if "network.wireless" in objects:
+                packages.wireless = True
+            if "lldp" in objects:
+                packages.lldp = True
 
             # Step 2: Try executing a small script for remaining/all (fastest for root)
             try:
@@ -1995,7 +2041,7 @@ class UbusClient(OpenWrtClient):
         leases: list[DhcpLease] = []
 
         # Try odhcpd via ubus
-        if self.dhcp_software in ("auto", "odhcpd"):
+        if self.dhcp_software in ("auto", "odhcpd") and self.packages.dhcp is not False:
             try:
                 # IPv4 leases
                 result = await self._call("dhcp", "ipv4leases")
@@ -2100,6 +2146,9 @@ class UbusClient(OpenWrtClient):
 
     async def get_wps_status(self) -> WpsStatus:
         """Get WPS status from the first wireless interface."""
+        if self.packages.wireless is False:
+            return WpsStatus()
+
         try:
             wireless_data = await self._call("network.wireless", "status")
             for radio_data in wireless_data.values():
@@ -2986,6 +3035,9 @@ class UbusClient(OpenWrtClient):
         from .base import LldpNeighbor
 
         neighbors: list[LldpNeighbor] = []
+        if self.packages.lldp is False:
+            return neighbors
+
         try:
             # ubus call lldp show
             data = await self._call("lldp", "show")

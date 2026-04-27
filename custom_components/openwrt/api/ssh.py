@@ -705,6 +705,8 @@ class SshClient(OpenWrtClient):
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
         """Get wireless interfaces via ubus iwinfo."""
         interfaces: list[WirelessInterface] = []
+        if self.packages.wireless is False:
+            return interfaces
         iface_names: set[str] = set()
 
         # 1. Primary source: network.wireless status
@@ -882,10 +884,10 @@ class SshClient(OpenWrtClient):
                 return interfaces
 
             status = json.loads(status_str)
-            wg_ifaces = []
+            wg_ifaces: dict[str, bool] = {}
             for iface_data in status.get("interface", []):
                 if iface_data.get("proto") == "wireguard":
-                    wg_ifaces.append(iface_data.get("interface"))
+                    wg_ifaces[iface_data.get("interface")] = bool(iface_data.get("up"))
 
             if not wg_ifaces:
                 return interfaces
@@ -904,6 +906,7 @@ class SshClient(OpenWrtClient):
                         continue
                     iface = WireGuardInterface(
                         name=ifname,
+                        enabled=wg_ifaces[ifname],
                         public_key=parts[1],
                         listen_port=int(parts[2]) if parts[2].isdigit() else 0,
                         fwmark=int(parts[3]) if parts[3].isdigit() else 0,
@@ -1225,6 +1228,8 @@ class SshClient(OpenWrtClient):
         self, devices: dict[str, ConnectedDevice]
     ) -> None:
         """Add or update wireless devices via iwinfo ubus calls."""
+        if self.packages.wireless is False:
+            return
         try:
             # Use get_wireless_interfaces to find active interfaces
             wireless_ifaces = await self.get_wireless_interfaces()
@@ -1271,6 +1276,8 @@ class SshClient(OpenWrtClient):
         self, devices: dict[str, ConnectedDevice]
     ) -> None:
         """Add or update wireless devices via ubus hostapd."""
+        if self.packages.wireless is False:
+            return
         try:
             cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
             stdout = await self._exec(cmd)
@@ -1502,7 +1509,7 @@ class SshClient(OpenWrtClient):
             "/usr/share/luci/menu.d/luci-mod-rpc.json "
             "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
             "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
-            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm; do "
+            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm /etc/init.d/odhcpd /etc/init.d/lldpd; do "
             "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._exec(cmd)
@@ -1528,6 +1535,22 @@ class SshClient(OpenWrtClient):
         packages.adguardhome = detect(16)
         packages.unbound = detect(17)
         packages.rpcd_mod_led = detect(18)
+        packages.dhcp = detect(20)
+        if packages.dhcp:
+            # Specifically check for ipv4leases method
+            dhcp_check = await self._exec("ubus list dhcp")
+            if "ipv4leases" not in dhcp_check:
+                packages.dhcp = False
+        packages.lldp = detect(21)
+
+        # Detect wireless via presence of iwinfo or ubus network.wireless
+        if packages.iwinfo:
+            packages.wireless = True
+        else:
+            # Last ditch check for wireless
+            wifi_check = await self._exec("ubus list network.wireless")
+            if wifi_check and "network.wireless" in wifi_check:
+                packages.wireless = True
 
     async def _check_packages_from_opkg(self, packages: OpenWrtPackages) -> None:
         """Identify packages by checking the full installed package list."""
@@ -1548,6 +1571,9 @@ class SshClient(OpenWrtClient):
             "simple_adblock": "simple-adblock",
             "ban_ip": "ban-ip",
             "rpcd_mod_led": "rpcd-mod-led",
+            "dhcp": "odhcpd",
+            "lldp": "lldpd",
+            "wireless": "iwinfo",
         }
         for attr, pkg_name in mapping.items():
             if getattr(packages, attr) is not True:
@@ -1816,13 +1842,16 @@ class SshClient(OpenWrtClient):
         leases: list[DhcpLease] = []
 
         # 1. Try odhcpd via ubus
-        if self.dhcp_software in ("auto", "odhcpd"):
+        if self.dhcp_software in ("auto", "odhcpd") and self.packages.dhcp is not False:
             await self._get_leases_odhcpd(leases)
             if leases and self.dhcp_software == "odhcpd":
                 return leases
 
         # 2. Try dnsmasq via file
-        if self.dhcp_software in ("auto", "dnsmasq"):
+        if (
+            self.dhcp_software in ("auto", "dnsmasq")
+            and self.packages.dhcp is not False
+        ):
             await self._get_leases_dnsmasq(leases)
 
         return leases
@@ -2267,6 +2296,8 @@ class SshClient(OpenWrtClient):
 
     async def _get_lldp_from_ubus(self, neighbors: list[LldpNeighbor]) -> None:
         """Fetch LLDP neighbors from 'lldp show' ubus call via SSH."""
+        if self.packages.lldp is False:
+            return
         with contextlib.suppress(Exception):
             stdout = await self._exec("ubus call lldp show 2>/dev/null")
             if stdout and stdout.strip().startswith("{"):

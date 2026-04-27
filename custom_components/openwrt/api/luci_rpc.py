@@ -642,6 +642,20 @@ class LuciRpcClient(OpenWrtClient):
                     packages.pbr = True
                 if "led" in objects:
                     packages.rpcd_mod_led = True
+                if "dhcp" in objects:
+                    # Specifically check for ipv4leases method
+                    try:
+                        dhcp_info = await self.execute_command("ubus list dhcp")
+                        if "ipv4leases" in dhcp_info:
+                            packages.dhcp = True
+                        else:
+                            packages.dhcp = False
+                    except Exception:
+                        packages.dhcp = True
+                if "network.wireless" in objects:
+                    packages.wireless = True
+                if "lldp" in objects:
+                    packages.lldp = True
             except Exception:
                 pass
 
@@ -662,7 +676,9 @@ class LuciRpcClient(OpenWrtClient):
                 "/etc/init.d/pbr "
                 "/etc/init.d/adguardhome "
                 "/etc/init.d/unbound "
-                "/usr/lib/rpcd/led.so; do "
+                "/usr/lib/rpcd/led.so "
+                "/etc/init.d/odhcpd "
+                "/etc/init.d/lldpd; do "
                 "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
             )
             out = await self._rpc_call("sys", "exec", [cmd])
@@ -688,13 +704,18 @@ class LuciRpcClient(OpenWrtClient):
                 packages.adblock = detect_status(10)
                 packages.simple_adblock = detect_status(11)
                 packages.ban_ip = detect_status(12)
-                packages.rpcd_mod_led = detect_status(18)
+                packages.adguardhome = detect_status(16)
+                packages.unbound = detect_status(17)
+                if packages.rpcd_mod_led is not True:
+                    packages.rpcd_mod_led = detect_status(18)
+                if packages.dhcp is not True:
+                    packages.dhcp = detect_status(19)
+                if packages.lldp is not True:
+                    packages.lldp = detect_status(20)
 
                 packages.miniupnpd = detect_status(13)
                 packages.nlbwmon = detect_status(14)
                 packages.pbr = detect_status(15)
-                packages.adguardhome = detect_status(16)
-                packages.unbound = detect_status(17)
 
             # Step 3: Check UCI configs for remaining packages (very robust fallback)
             if packages.sqm_scripts is not True:
@@ -1036,112 +1057,114 @@ class LuciRpcClient(OpenWrtClient):
         iface_names: set[str] = set()
 
         # 1. Primary source: network.wireless status (UCI state)
-        try:
-            wireless_data = await self.execute_command(
-                "ubus call network.wireless status"
-            )
-            if wireless_data and wireless_data.strip().startswith("{"):
-                data = json.loads(wireless_data)
-                for radio_name, radio_data in data.items():
-                    if not isinstance(radio_data, dict):
-                        continue
-                    for iface in radio_data.get("interfaces", []):
-                        iface_name = (
-                            iface.get("section")
-                            or iface.get("ifname")
-                            or iface.get("device", "")
-                        )
-                        if not iface_name or iface_name in iface_names:
-                            continue
-
-                        iface_config = iface.get("config", {})
-                        # Prefer system ifname (e.g. phy1-ap0) over section name (e.g. default_radio1)
-                        # because iwinfo info only works with system ifnames.
-                        system_ifname = iface.get("ifname")
-
-                        final_name = system_ifname or iface_name
-
-                        # Deduplicate based on final name or SSID on this radio
-                        dedup_key = f"{radio_name}_{iface_config.get('ssid', '')}"
-                        if final_name in iface_names or dedup_key in iface_names:
-                            continue
-
-                        wifi = WirelessInterface(
-                            name=final_name,
-                            ssid=iface_config.get("ssid", ""),
-                            mode=iface_config.get("mode", ""),
-                            encryption=iface_config.get("encryption", ""),
-                            enabled=not radio_data.get("disabled", False),
-                            up=radio_data.get("up", False),
-                            radio=radio_name,
-                            hwmode=radio_data.get("config", {}).get("hwmode", ""),
-                        )
-                        interfaces.append(wifi)
-                        iface_names.add(final_name)
-                        iface_names.add(dedup_key)
-        except Exception as err:
-            _LOGGER.debug(
-                "network.wireless status failed via LuCI, trying UCI: %s", err
-            )
+        if self.packages.wireless is not False:
             try:
-                uci_wireless_str = await self.execute_command("uci export wireless")
-                if uci_wireless_str:
-                    sections: dict[str, dict[str, str]] = {}
-                    current_section = ""
-                    for line in uci_wireless_str.splitlines():
-                        line = line.strip()
-                        if line.startswith("config"):
-                            parts = line.split()
-                            if len(parts) >= 3:
-                                current_section = parts[2].strip("'\"")
-                                sections[current_section] = {".type": parts[1]}
-                        elif line.startswith("option") and current_section:
-                            parts = line.split(None, 2)
-                            if len(parts) >= 3:
-                                sections[current_section][parts[1]] = parts[2].strip(
-                                    "'\""
-                                )
-
-                    for sect_name, sect_data in sections.items():
-                        if sect_data.get(".type") != "wifi-iface":
+                wireless_data = await self.execute_command(
+                    "ubus call network.wireless status"
+                )
+                if wireless_data and wireless_data.strip().startswith("{"):
+                    data = json.loads(wireless_data)
+                    for radio_name, radio_data in data.items():
+                        if not isinstance(radio_data, dict):
                             continue
+                        for iface in radio_data.get("interfaces", []):
+                            iface_name = (
+                                iface.get("section")
+                                or iface.get("ifname")
+                                or iface.get("device", "")
+                            )
+                            if not iface_name or iface_name in iface_names:
+                                continue
 
-                        iface_name = sect_data.get("ifname") or sect_name
-                        radio_name = sect_data.get("device", "")
-                        radio_disabled = (
-                            sections.get(radio_name, {}).get("disabled", "0") == "1"
-                        )
-                        iface_disabled = sect_data.get("disabled", "0") == "1"
+                            iface_config = iface.get("config", {})
+                            # Prefer system ifname (e.g. phy1-ap0) over section name (e.g. default_radio1)
+                            # because iwinfo info only works with system ifnames.
+                            system_ifname = iface.get("ifname")
 
-                        wifi = WirelessInterface(
-                            name=iface_name,
-                            ssid=sect_data.get("ssid", ""),
-                            mode=sect_data.get("mode", ""),
-                            encryption=sect_data.get("encryption", ""),
-                            enabled=not (radio_disabled or iface_disabled),
-                            up=not (radio_disabled or iface_disabled),
-                            radio=radio_name,
-                            hwmode=sections.get(radio_name, {}).get("hwmode", ""),
-                            section=sect_name,
-                        )
-                        interfaces.append(wifi)
-                        iface_names.add(iface_name)
-            except Exception as e:
-                _LOGGER.debug("UCI wireless fallback failed via LuCI: %s", e)
+                            final_name = system_ifname or iface_name
+
+                            # Deduplicate based on final name or SSID on this radio
+                            dedup_key = f"{radio_name}_{iface_config.get('ssid', '')}"
+                            if final_name in iface_names or dedup_key in iface_names:
+                                continue
+
+                            wifi = WirelessInterface(
+                                name=final_name,
+                                ssid=iface_config.get("ssid", ""),
+                                mode=iface_config.get("mode", ""),
+                                encryption=iface_config.get("encryption", ""),
+                                enabled=not radio_data.get("disabled", False),
+                                up=radio_data.get("up", False),
+                                radio=radio_name,
+                                hwmode=radio_data.get("config", {}).get("hwmode", ""),
+                            )
+                            interfaces.append(wifi)
+                            iface_names.add(final_name)
+                            iface_names.add(dedup_key)
+            except Exception as err:
+                _LOGGER.debug(
+                    "network.wireless status failed via LuCI, trying UCI: %s", err
+                )
+                try:
+                    uci_wireless_str = await self.execute_command("uci export wireless")
+                    if uci_wireless_str:
+                        sections: dict[str, dict[str, str]] = {}
+                        current_section = ""
+                        for line in uci_wireless_str.splitlines():
+                            line = line.strip()
+                            if line.startswith("config"):
+                                parts = line.split()
+                                if len(parts) >= 3:
+                                    current_section = parts[2].strip("'\"")
+                                    sections[current_section] = {".type": parts[1]}
+                            elif line.startswith("option") and current_section:
+                                parts = line.split(None, 2)
+                                if len(parts) >= 3:
+                                    sections[current_section][parts[1]] = parts[
+                                        2
+                                    ].strip("'\"")
+
+                        for sect_name, sect_data in sections.items():
+                            if sect_data.get(".type") != "wifi-iface":
+                                continue
+
+                            iface_name = sect_data.get("ifname") or sect_name
+                            radio_name = sect_data.get("device", "")
+                            radio_disabled = (
+                                sections.get(radio_name, {}).get("disabled", "0") == "1"
+                            )
+                            iface_disabled = sect_data.get("disabled", "0") == "1"
+
+                            wifi = WirelessInterface(
+                                name=iface_name,
+                                ssid=sect_data.get("ssid", ""),
+                                mode=sect_data.get("mode", ""),
+                                encryption=sect_data.get("encryption", ""),
+                                enabled=not (radio_disabled or iface_disabled),
+                                up=not (radio_disabled or iface_disabled),
+                                radio=radio_name,
+                                hwmode=sections.get(radio_name, {}).get("hwmode", ""),
+                                section=sect_name,
+                            )
+                            interfaces.append(wifi)
+                            iface_names.add(iface_name)
+                except Exception as e:
+                    _LOGGER.debug("UCI wireless fallback failed via LuCI: %s", e)
 
         # 2. Supplement/Fallback: iwinfo devices
         iw_devs = set()
-        try:
-            iw_devs_str = await self.execute_command("ubus call iwinfo devices")
-            if iw_devs_str and iw_devs_str.strip().startswith("{"):
-                iw_devs = set(json.loads(iw_devs_str).get("devices", []))
+        if self.packages.wireless is not False:
+            try:
+                iw_devs_str = await self.execute_command("ubus call iwinfo devices")
+                if iw_devs_str and iw_devs_str.strip().startswith("{"):
+                    iw_devs = set(json.loads(iw_devs_str).get("devices", []))
                 for name in iw_devs:
                     if name not in iface_names:
                         wifi = WirelessInterface(name=name, enabled=True, up=True)
                         interfaces.append(wifi)
                         iface_names.add(name)
-        except Exception:
-            pass
+            except Exception:
+                pass
 
         # 3. Populate metrics via ubus iwinfo info in parallel
         async def _fetch_metrics(wifi: WirelessInterface) -> None:
@@ -1282,6 +1305,9 @@ class LuciRpcClient(OpenWrtClient):
     async def get_upnp_mappings(self) -> list[UpnpMapping]:
         """Get active UPnP/NAT-PMP port mappings via LuCI RPC."""
         mappings: list[UpnpMapping] = []
+        if self.packages.miniupnpd is False:
+            return mappings
+
         try:
             stdout = await self.execute_command(
                 "ubus call upnp get_mappings 2>/dev/null"
@@ -1321,10 +1347,10 @@ class LuciRpcClient(OpenWrtClient):
                 return interfaces
 
             status = json.loads(status_str)
-            wg_ifaces = []
+            wg_ifaces: dict[str, bool] = {}
             for iface_data in status.get("interface", []):
                 if iface_data.get("proto") == "wireguard":
-                    wg_ifaces.append(iface_data.get("interface"))
+                    wg_ifaces[iface_data.get("interface")] = bool(iface_data.get("up"))
 
             if not wg_ifaces:
                 return interfaces
@@ -1343,6 +1369,7 @@ class LuciRpcClient(OpenWrtClient):
                         continue
                     iface = WireGuardInterface(
                         name=ifname,
+                        enabled=wg_ifaces[ifname],
                         public_key=parts[1],
                         listen_port=int(parts[2]) if parts[2].isdigit() else 0,
                         fwmark=int(parts[3]) if parts[3].isdigit() else 0,
@@ -1542,8 +1569,9 @@ class LuciRpcClient(OpenWrtClient):
             pass
 
         # 4. Fallback: Discovery of all hostapd objects
-        cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
-        stdout = await self.execute_command(cmd)
+        if self.packages.wireless is not False:
+            cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
+            stdout = await self.execute_command(cmd)
         if stdout:
             for line in stdout.splitlines():
                 if not line.strip():
@@ -1718,7 +1746,7 @@ class LuciRpcClient(OpenWrtClient):
         leases: list[DhcpLease] = []
 
         # Try odhcpd via ubus call over sys.exec if enabled
-        if self.dhcp_software in ("auto", "odhcpd"):
+        if self.dhcp_software in ("auto", "odhcpd") and self.packages.dhcp is not False:
             try:
                 stdout = await self._rpc_call(
                     "sys",
@@ -1747,7 +1775,10 @@ class LuciRpcClient(OpenWrtClient):
                     return []
 
         # Parse dnsmasq leases from /tmp/dhcp.leases
-        if self.dhcp_software in ("auto", "dnsmasq"):
+        if (
+            self.dhcp_software in ("auto", "dnsmasq")
+            and self.packages.dhcp is not False
+        ):
             try:
                 leases_str = await self._rpc_call(
                     "sys",
@@ -2105,6 +2136,8 @@ class LuciRpcClient(OpenWrtClient):
 
     async def get_wps_status(self) -> WpsStatus:
         """Get WPS status via LuCI RPC."""
+        if self.packages.wireless is False:
+            return WpsStatus()
         try:
             # We check if hostapd is running and has wps enabled
             # This is hard via RPC, but we can check wireless config

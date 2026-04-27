@@ -515,6 +515,7 @@ class WireGuardInterface:
     """WireGuard VPN interface information."""
 
     name: str = ""
+    enabled: bool = True
     public_key: str = ""
     listen_port: int = 0
     fwmark: int = 0
@@ -761,6 +762,9 @@ class OpenWrtPackages:
     adguardhome: bool | None = None
     unbound: bool | None = None
     rpcd_mod_led: bool | None = None
+    dhcp: bool | None = None
+    wireless: bool | None = None
+    lldp: bool | None = None
 
 
 @dataclass
@@ -853,6 +857,7 @@ class OpenWrtClient(abc.ABC):
         self._cached_slow_data: dict[str, Any] = {}
         self._last_cpu_stats: tuple[int, int] | None = None
         self._logread_flag: str | None = None
+        self.packages = OpenWrtPackages()
 
     async def _get_logread_command(self, count: int) -> str:
         """Resolve the correct logread command (detecting -n vs -l)."""
@@ -1725,92 +1730,89 @@ class OpenWrtClient(abc.ABC):
                 data.device_info.mac_address = best_iface.mac_address.upper()
 
         # Always-fresh optional data (changes every cycle)
-        fast_optional_tasks = [
-            self.get_wireless_interfaces(),
-            self.get_dhcp_leases(),
-            self.get_ip_neighbors(),
-            self.get_mwan_status(),
-            self.get_wps_status(),
-            self.get_qmodem_info(),
-            self.get_vpn_status(),
-            self.get_latency(),
-            self.get_external_ip(),
-            self.get_gateway_mac(),
-            self.get_lldp_neighbors(),
-            self.get_wireguard_interfaces(),
-            self.get_upnp_mappings(),
-            self.get_wifi_credentials(),
-        ]
+        tasks = {
+            "ip_neighbors": self.get_ip_neighbors(),
+            "mwan": self.get_mwan_status(),
+            "qmodem": self.get_qmodem_info(),
+            "vpn": self.get_vpn_status(),
+            "latency": self.get_latency(),
+            "external_ip": self.get_external_ip(),
+            "gateway_mac": self.get_gateway_mac(),
+            "wireguard": self.get_wireguard_interfaces(),
+            "wifi_credentials": self.get_wifi_credentials(),
+        }
+
+        # Dynamically add tasks based on detected capabilities
+        if data.packages.wireless is not False:
+            tasks["wireless"] = self.get_wireless_interfaces()
+            tasks["wps"] = self.get_wps_status()
+
+        if data.packages.dhcp is not False:
+            tasks["dhcp"] = self.get_dhcp_leases()
+
+        if data.packages.lldp is not False:
+            tasks["lldp"] = self.get_lldp_neighbors()
+
+        if data.packages.miniupnpd is not False:
+            tasks["upnp"] = self.get_upnp_mappings()
 
         # Dynamically add adblock-related tasks if packages are present
-        extra_tasks_map = {}
         if data.packages.adblock:
-            extra_tasks_map["adblock"] = len(fast_optional_tasks)
-            fast_optional_tasks.append(self.get_adblock_status())
+            tasks["adblock"] = self.get_adblock_status()
         if data.packages.adblock_fast:
-            extra_tasks_map["adblock_fast"] = len(fast_optional_tasks)
-            fast_optional_tasks.append(self.get_adblock_fast_status())
+            tasks["adblock_fast"] = self.get_adblock_fast_status()
         if data.packages.simple_adblock:
-            extra_tasks_map["simple_adblock"] = len(fast_optional_tasks)
-            fast_optional_tasks.append(self.get_simple_adblock_status())
+            tasks["simple_adblock"] = self.get_simple_adblock_status()
         if data.packages.ban_ip:
-            extra_tasks_map["ban_ip"] = len(fast_optional_tasks)
-            fast_optional_tasks.append(self.get_banip_status())
+            tasks["ban_ip"] = self.get_banip_status()
         if data.packages.nlbwmon:
-            extra_tasks_map["nlbwmon"] = len(fast_optional_tasks)
-            fast_optional_tasks.append(self.get_nlbwmon_data())
+            tasks["nlbwmon"] = self.get_nlbwmon_data()
 
-        fast_results = await asyncio.gather(
-            *fast_optional_tasks,
-            return_exceptions=True,
-        )
+        # Execute all tasks in parallel
+        task_names = list(tasks.keys())
+        task_futures = [tasks[name] for name in task_names]
+        results = await asyncio.gather(*task_futures, return_exceptions=True)
+        fast_results = dict(zip(task_names, results, strict=True))
 
-        data.wireless_interfaces = get_val(fast_results[0], [], "wireless")
-        data.dhcp_leases = get_val(fast_results[1], [], "DHCP leases")
-        data.ip_neighbors = get_val(fast_results[2], [], "IP neighbors")
-        data.mwan_status = get_val(fast_results[3], [], "MWAN")
-        data.wps_status = get_val(fast_results[4], WpsStatus(), "WPS")
-        data.qmodem_info = get_val(fast_results[5], QModemInfo(), "QModem")
-        data.vpn_interfaces = get_val(fast_results[6], [], "VPN status")
-        data.latency = get_val(fast_results[7], LatencyResult(), "latency")
-        data.external_ip = get_val(fast_results[8], None, "external IP")
-        data.device_info.gateway_mac = get_val(fast_results[9], None, "gateway MAC")
-        data.lldp_neighbors = get_val(fast_results[10], [], "LLDP neighbors")
-        data.wireguard_interfaces = get_val(fast_results[11], [], "WireGuard")
-        data.upnp_mappings = get_val(fast_results[12], [], "UPnP")
-        data.wifi_credentials = get_val(fast_results[13], [], "wifi_credentials")
+        def get_task_val(name: str, default: Any) -> Any:
+            res = fast_results.get(name)
+            if res is None:
+                return default
+            return get_val(res, default, name)
 
-        # Handle adblock-related results
-        if "adblock" in extra_tasks_map:
-            data.adblock = get_val(
-                fast_results[extra_tasks_map["adblock"]],
-                AdBlockStatus(),
-                "adblock",
-            )
-        if "adblock_fast" in extra_tasks_map:
-            data.adblock_fast = get_val(
-                fast_results[extra_tasks_map["adblock_fast"]],
-                SimpleAdBlockStatus(),
-                "adblock-fast",
-            )
-        if "simple_adblock" in extra_tasks_map:
-            data.simple_adblock = get_val(
-                fast_results[extra_tasks_map["simple_adblock"]],
-                SimpleAdBlockStatus(),
-                "simple-adblock",
-            )
-        if "ban_ip" in extra_tasks_map:
-            data.ban_ip = get_val(
-                fast_results[extra_tasks_map["ban_ip"]],
-                BanIpStatus(),
-                "ban-ip",
-            )
-        if "nlbwmon" in extra_tasks_map:
-            data.nlbwmon_traffic = get_val(
-                fast_results[extra_tasks_map["nlbwmon"]],
-                {},
-                "nlbwmon",
-            )
+        data.ip_neighbors = get_task_val("ip_neighbors", [])
+        data.mwan_status = get_task_val("mwan", [])
+        data.qmodem_info = get_task_val("qmodem", QModemInfo())
+        data.vpn_interfaces = get_task_val("vpn", [])
+        data.latency = get_task_val("latency", LatencyResult())
+        data.external_ip = get_task_val("external_ip", None)
+        data.device_info.gateway_mac = get_task_val("gateway_mac", None)
+        data.wireguard_interfaces = get_task_val("wireguard", [])
+        data.wifi_credentials = get_task_val("wifi_credentials", [])
+
+        # Capability-based assignments
+        if "wireless" in fast_results:
+            data.wireless_interfaces = get_task_val("wireless", [])
+        if "wps" in fast_results:
+            data.wps_status = get_task_val("wps", WpsStatus())
+        if "dhcp" in fast_results:
+            data.dhcp_leases = get_task_val("dhcp", [])
+        if "lldp" in fast_results:
+            data.lldp_neighbors = get_task_val("lldp", [])
+        if "upnp" in fast_results:
+            data.upnp_mappings = get_task_val("upnp", [])
+
+        # Adblock-related assignments
+        if "adblock" in fast_results:
+            data.adblock = get_task_val("adblock", AdBlockStatus())
+        if "adblock_fast" in fast_results:
+            data.adblock_fast = get_task_val("adblock_fast", SimpleAdBlockStatus())
+        if "simple_adblock" in fast_results:
+            data.simple_adblock = get_task_val("simple_adblock", SimpleAdBlockStatus())
+        if "ban_ip" in fast_results:
+            data.ban_ip = get_task_val("ban_ip", BanIpStatus())
+        if "nlbwmon" in fast_results:
+            data.nlbwmon_traffic = get_task_val("nlbwmon", {})
 
         # Slow-changing optional data (services, LEDs, firewall, access control, packages, permissions)
         if is_full_poll:
