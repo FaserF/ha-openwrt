@@ -115,11 +115,7 @@ def create_client(config: dict[str, Any]) -> OpenWrtClient:
     verify_ssl = config.get(CONF_VERIFY_SSL, False)
     dhcp_software = config.get(CONF_DHCP_SOFTWARE, "auto")
 
-    _LOGGER.debug("Creating client for %s (type: %s)", host, connection_type)
-    _LOGGER.debug(
-        "Config data: %s",
-        {k: (v if k != CONF_PASSWORD else "********") for k, v in config.items()},
-    )
+    _LOGGER.debug("Creating client for router (type: %s)", connection_type)
 
     if connection_type == CONNECTION_TYPE_SSH:
         port = config.get(CONF_PORT, DEFAULT_PORT_SSH)
@@ -221,8 +217,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         for attempt in range(1, 4):
             try:
                 _LOGGER.debug(
-                    "Connecting to OpenWrt device %s (attempt %s/3)",
-                    self.name,
+                    "Connecting to OpenWrt device (attempt %s/3)",
                     attempt,
                 )
                 if not self.client.connected:
@@ -236,21 +231,19 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         or self.data.device_info.release_version
                     )
                 self.last_update_success = True
-                _LOGGER.info("Successfully connected to %s", self.name)
+                _LOGGER.info("Successfully connected to OpenWrt device")
                 break
             except Exception as err:
                 if attempt < 3:
                     _LOGGER.warning(
-                        "Initial connection/fetch failed for %s, retrying in 5s: %s",
-                        self.name,
+                        "Initial connection/fetch failed, retrying in 5s: %s",
                         err,
                     )
                     await asyncio.sleep(5)
                 else:
                     _LOGGER.warning(
-                        "Initial connection/fetch failed for %s after 3 attempts: %s. "
+                        "Initial connection/fetch failed after 3 attempts: %s. "
                         "Integration will retry in the background.",
-                        self.name,
                         err,
                     )
                     self.last_update_success = False
@@ -300,8 +293,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             except Exception as err:
                 if self.data:
                     _LOGGER.info(
-                        "Reconnection failed for %s, using stale data: %s",
-                        self.name,
+                        "Reconnection failed, using stale data: %s",
                         err,
                     )
                     return self.data
@@ -335,9 +327,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 await self.client.connect()
                 return await self.client.get_all_data()
             except Exception as retry_err:
-                _LOGGER.warning("Updating data failed for %s: %s", self.name, retry_err)
+                _LOGGER.warning("Updating data failed: %s", retry_err)
                 if self.data:
-                    _LOGGER.info("Using stale data for %s", self.name)
+                    _LOGGER.info("Using stale data")
                     return self.data
                 self.client._connected = False
                 async_create_connection_lost_repair(self.hass, self.config_entry)
@@ -579,9 +571,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             mac_id = device_info.mac_address.lower()
             if router_id != mac_id:
                 _LOGGER.debug(
-                    "Switching router identity for cleanup from %s to %s",
-                    router_id,
-                    mac_id,
+                    "Updating router identity for registry cleanup",
                 )
                 router_id = mac_id
                 # Update config entry unique_id if it's missing or an IP
@@ -593,8 +583,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     )
 
         _LOGGER.debug(
-            "Updating device registry for %s: model=%s",
-            router_id,
+            "Updating device registry entry for router: model=%s",
             device_info.model,
         )
 
@@ -656,8 +645,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             active_identifiers.add((DOMAIN, format_ap_device_id(router_id, stable_id)))
 
         _LOGGER.debug(
-            "Starting deep device registry cleanup. Active identifiers: %s",
-            active_identifiers,
+            "Starting deep device registry cleanup for %s active identifiers",
+            len(active_identifiers),
         )
 
         devices_to_remove = []
