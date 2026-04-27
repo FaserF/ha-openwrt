@@ -307,7 +307,7 @@ class OpenWrtBinarySensorEntity(
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        if not super().available:
+        if not self.coordinator.last_update_success:
             return False
         if self.entity_description.available_fn and self.coordinator.data:
             return self.entity_description.available_fn(self.coordinator.data)

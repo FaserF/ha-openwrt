@@ -46,10 +46,6 @@ async def async_setup_entry(
     ]
     client: OpenWrtClient = hass.data[DOMAIN][entry.entry_id][DATA_CLIENT]
 
-    if coordinator.data:
-        perms = coordinator.data.permissions
-        pkgs = coordinator.data.packages
-
     tracked_keys: set[str] = set()
 
     def _async_add_new_entities() -> None:

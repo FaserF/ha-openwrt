@@ -1424,11 +1424,15 @@ class SshClient(OpenWrtClient):
 
         return leds
 
-    async def set_led(self, name: str, enabled: bool) -> bool:
+    async def set_led(self, name: str, brightness: int) -> bool:
         """Set LED via SSH."""
         try:
-            val = 255 if enabled else 0
-            await self._exec(f"echo {val} > /sys/class/leds/{name}/brightness")
+            # First ensure trigger is set to none to allow manual control
+            await self._exec(f"echo none > /sys/class/leds/{name}/trigger 2>/dev/null")
+            # Write brightness
+            await self._exec(
+                f"echo {int(brightness)} > /sys/class/leds/{name}/brightness"
+            )
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set LED %s: %s", name, err)

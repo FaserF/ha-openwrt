@@ -3230,10 +3230,14 @@ class UbusClient(OpenWrtClient):
                 )
                 return False
 
-    async def set_led(self, name: str, enabled: bool) -> bool:
+    async def set_led(self, name: str, brightness: int) -> bool:
         """Enable or disable an LED via ubus."""
         try:
-            val = "255" if enabled else "0"
+            val = str(int(brightness))
+            # First ensure trigger is set to none
+            await self.execute_command(
+                f"echo none > /sys/class/leds/{name}/trigger 2>/dev/null"
+            )
             # Try file.write
             await self._call(
                 "file",

@@ -225,20 +225,37 @@ class LuciRpcClient(OpenWrtClient):
         return data.get("result")
 
     async def execute_command(self, command: str) -> str:
-        """Execute a command via LuCI RPC sys.exec."""
+        """Execute a command via LuCI RPC sys.exec with fallback to ubus file.exec."""
+        # 1. Try sys.exec
         try:
-            # Wrap in /bin/sh -c to handle operators like && or >
-            # We escape single quotes correctly for the shell.
             escaped_cmd = command.replace("'", "'\\''")
-            return (
-                await self._rpc_call(
-                    "sys", "exec", [f"/bin/sh -c '{escaped_cmd}' 2>&1"]
-                )
-                or ""
+            out = await self._rpc_call(
+                "sys", "exec", [f"/bin/sh -c '{escaped_cmd}' 2>&1"]
             )
-        except LuciRpcError as err:
-            _LOGGER.debug("Command failed via LuCI RPC sys.exec: %s", err)
-            return ""
+            if out and out.strip():
+                return out
+        except Exception as err:
+            _LOGGER.debug("Command failed via LuCI RPC sys.exec: %s. Trying fallback.", err)
+
+        # 2. Fallback to LuCI RPC ubus call -> file:exec
+        try:
+            res = await self._rpc_call(
+                "ubus",
+                "call",
+                [
+                    "file",
+                    "exec",
+                    {"command": "/bin/sh", "params": ["-c", command.strip()]},
+                ],
+            )
+            if isinstance(res, dict):
+                stdout = str(res.get("stdout") or "").strip()
+                stderr = str(res.get("stderr") or "").strip()
+                return stdout or stderr
+        except Exception as err:
+            _LOGGER.debug("Command failed via LuCI RPC ubus file.exec fallback: %s", err)
+
+        return ""
 
     async def user_exists(self, username: str) -> bool:
         """Check if a system user exists on the device."""
@@ -2566,12 +2583,20 @@ class LuciRpcClient(OpenWrtClient):
             )
             return False
 
-    async def set_led(self, name: str, enabled: bool) -> bool:
-        """Enable or disable an LED via LuCI RPC."""
+    async def set_led(self, name: str, brightness: int) -> bool:
+        """Set LED brightness via LuCI RPC.
+
+        This method sets the trigger to 'none' before writing the brightness
+        to ensure manual control is respected by the kernel.
+        """
         try:
-            val = 255 if enabled else 0
+            # First ensure trigger is set to none to allow manual control
             await self.execute_command(
-                f"echo {val} > /sys/class/leds/{name}/brightness"
+                f"echo none > /sys/class/leds/{name}/trigger 2>/dev/null"
+            )
+            # Write brightness
+            await self.execute_command(
+                f"echo {int(brightness)} > /sys/class/leds/{name}/brightness"
             )
             return True
         except Exception as err:

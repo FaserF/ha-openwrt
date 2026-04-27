@@ -1221,8 +1221,8 @@ class OpenWrtClient(abc.ABC):
         """Trigger WPS push button on a specific wireless interface."""
         return False
 
-    async def set_led(self, name: str, enabled: bool) -> bool:
-        """Enable or disable an LED."""
+    async def set_led(self, name: str, brightness: int) -> bool:
+        """Set LED brightness (0-255)."""
         return False
 
     async def get_system_logs(self, count: int = 10) -> list[str]:

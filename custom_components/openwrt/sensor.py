@@ -6,6 +6,7 @@ All entities are grouped under the router device.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
@@ -50,6 +51,8 @@ from .const import (
 )
 from .coordinator import OpenWrtDataCoordinator
 from .helpers import format_ap_device_id, format_ap_name, is_random_mac
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -105,7 +108,7 @@ class OpenWrtSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        if not super().available:
+        if not self.coordinator.last_update_success:
             return False
         if self.entity_description.available_fn and self.coordinator.data:
             return self.entity_description.available_fn(self.coordinator.data)
@@ -221,7 +224,7 @@ class OpenWrtQModemSensorEntity(OpenWrtSensorEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        if not super().available:
+        if not self.coordinator.last_update_success:
             return False
         return not (
             self.coordinator.data and not self.coordinator.data.qmodem_info.enabled
@@ -304,7 +307,7 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        if not super().available:
+        if not self.coordinator.last_update_success:
             return False
         if self._available_fn and self.coordinator.data:
             return self._available_fn(self.coordinator.data)
@@ -1133,6 +1136,7 @@ def _async_setup_wireguard_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
     entities: list[SensorEntity],
+    tracked_keys: set[str],
 ) -> None:
     """Set up WireGuard sensors."""
     if not coordinator.data:
@@ -1140,38 +1144,44 @@ def _async_setup_wireguard_sensors(
 
     for wg in coordinator.data.wireguard_interfaces:
         # Interface level: Peer count
-        entities.append(
-            OpenWrtSensorEntity(
-                coordinator,
-                entry,
-                OpenWrtSensorDescription(
-                    key=f"wireguard_{wg.name}_peer_count",
-                    name=f"WireGuard {wg.name} Peer Count",
-                    icon="mdi:account-group",
-                    entity_category=EntityCategory.DIAGNOSTIC,
-                    entity_registry_enabled_default=False,
-                    value_fn=lambda data, n=wg.name: next(
-                        (
-                            len(w.peers)
-                            for w in data.wireguard_interfaces
-                            if w.name == n
+        key = f"wireguard_{wg.name}_peer_count"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            entities.append(
+                OpenWrtSensorEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtSensorDescription(
+                        key=key,
+                        name=f"WireGuard {wg.name} Peer Count",
+                        icon="mdi:account-group",
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        entity_registry_enabled_default=False,
+                        value_fn=lambda data, n=wg.name: next(
+                            (
+                                len(w.peers)
+                                for w in data.wireguard_interfaces
+                                if w.name == n
+                            ),
+                            0,
                         ),
-                        0,
                     ),
-                ),
+                )
             )
-        )
 
         # Peer level: Data usage
         for peer in wg.peers:
-            entities.append(
-                OpenWrtWireGuardPeerSensor(
-                    coordinator,
-                    entry,
-                    wg.name,
-                    peer.public_key,
+            peer_key = f"wg_{wg.name}_{peer.public_key}"
+            if peer_key not in tracked_keys:
+                tracked_keys.add(peer_key)
+                entities.append(
+                    OpenWrtWireGuardPeerSensor(
+                        coordinator,
+                        entry,
+                        wg.name,
+                        peer.public_key,
+                    )
                 )
-            )
 
 
 class OpenWrtWireGuardPeerSensor(
@@ -1255,48 +1265,39 @@ def _async_setup_system_sensors(
         else:
             _LOGGER.debug("System sensor already tracked: %s", description.key)
 
-    # Package-specific system sensors
-    if pkgs.temp:
-        key = "temperature"
-        if key not in tracked_keys:
-            tracked_keys.add(key)
-            entities.append(
-                OpenWrtSensorEntity(
-                    coordinator,
-                    entry,
-                    OpenWrtSensorDescription(
-                        key=key,
-                        name="Temperature",
-                        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-                        device_class=SensorDeviceClass.TEMPERATURE,
-                        state_class=SensorStateClass.MEASUREMENT,
-                        entity_category=EntityCategory.DIAGNOSTIC,
-                        value_fn=lambda data: data.system_resources.temperature,
-                        available_fn=lambda data: data.system_resources.temperature > 0,
-                    ),
-                )
-            )
+
     if coordinator.data and coordinator.data.system_resources.temperatures:
         for zone_name in coordinator.data.system_resources.temperatures:
             if zone_name.lower() == "system":
                 continue
-            entities.append(OpenWrtTemperatureSensor(coordinator, entry, zone_name))
+            key = f"temperature_{zone_name}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.append(OpenWrtTemperatureSensor(coordinator, entry, zone_name))
 
     if pkgs.adblock:
         for description in _get_adblock_sensors():
-            entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+            if description.key not in tracked_keys:
+                tracked_keys.add(description.key)
+                entities.append(OpenWrtSensorEntity(coordinator, entry, description))
 
     if pkgs.simple_adblock:
         for description in _get_simple_adblock_sensors():
-            entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+            if description.key not in tracked_keys:
+                tracked_keys.add(description.key)
+                entities.append(OpenWrtSensorEntity(coordinator, entry, description))
 
     if pkgs.ban_ip:
         for description in _get_banip_sensors():
-            entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+            if description.key not in tracked_keys:
+                tracked_keys.add(description.key)
+                entities.append(OpenWrtSensorEntity(coordinator, entry, description))
 
     if pkgs.miniupnpd:
         for description in _get_upnp_sensors():
-            entities.append(OpenWrtSensorEntity(coordinator, entry, description))
+            if description.key not in tracked_keys:
+                tracked_keys.add(description.key)
+                entities.append(OpenWrtSensorEntity(coordinator, entry, description))
 
 
 def _async_setup_storage_sensors(
@@ -1493,7 +1494,7 @@ def _async_setup_specialized_sensors(
     if coordinator.data.lldp_neighbors:
         for neighbor in coordinator.data.lldp_neighbors:
             if neighbor.local_interface:
-                key = f"lldp_{neighbor.local_interface}_{neighbor.chassis_id}"
+                key = f"lldp_{neighbor.local_interface}_{neighbor.neighbor_chassis}"
                 if key not in tracked_keys:
                     tracked_keys.add(key)
                     entities.extend(
