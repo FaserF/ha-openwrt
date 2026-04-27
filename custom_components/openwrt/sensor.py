@@ -893,9 +893,7 @@ async def async_setup_entry(
         _async_setup_system_sensors(
             coordinator, entry, new_entities, pkgs, tracked_keys
         )
-        _async_setup_storage_sensors(
-            coordinator, entry, new_entities, tracked_keys
-        )
+        _async_setup_storage_sensors(coordinator, entry, new_entities, tracked_keys)
 
         # 2. VPN Sensors
         if perms.read_vpn and pkgs.wireguard is not False:
@@ -910,9 +908,7 @@ async def async_setup_entry(
             )
 
         # 4. Network Sensors
-        _async_setup_network_sensors(
-            coordinator, entry, new_entities, tracked_keys
-        )
+        _async_setup_network_sensors(coordinator, entry, new_entities, tracked_keys)
 
         # 5. Specialized Sensors
         _async_setup_specialized_sensors(
@@ -1265,7 +1261,6 @@ def _async_setup_system_sensors(
         else:
             _LOGGER.debug("System sensor already tracked: %s", description.key)
 
-
     if coordinator.data and coordinator.data.system_resources.temperatures:
         for zone_name in coordinator.data.system_resources.temperatures:
             if zone_name.lower() == "system":
@@ -1365,7 +1360,9 @@ def _async_setup_storage_sensors(
             if key not in tracked_keys:
                 tracked_keys.add(key)
                 entities.append(
-                    OpenWrtStorageSensor(coordinator, entry, description, usage.mount_point)
+                    OpenWrtStorageSensor(
+                        coordinator, entry, description, usage.mount_point
+                    )
                 )
 
 
@@ -1415,7 +1412,9 @@ def _async_setup_network_sensors(
             if key not in tracked_keys:
                 tracked_keys.add(key)
                 entities.append(
-                    OpenWrtMwanMetricSensor(coordinator, entry, mwan.interface_name, metric)
+                    OpenWrtMwanMetricSensor(
+                        coordinator, entry, mwan.interface_name, metric
+                    )
                 )
 
     # DHCP Lease Count
@@ -1466,7 +1465,9 @@ def _async_setup_specialized_sensors(
         if key not in tracked_keys:
             tracked_keys.add(key)
             for description in _get_qmodem_sensors():
-                entities.append(OpenWrtQModemSensorEntity(coordinator, entry, description))
+                entities.append(
+                    OpenWrtQModemSensorEntity(coordinator, entry, description)
+                )
 
     if perms.read_sqm and pkgs.sqm_scripts is not False:
         for sqm in coordinator.data.sqm:
@@ -1475,7 +1476,9 @@ def _async_setup_specialized_sensors(
                 if key not in tracked_keys:
                     tracked_keys.add(key)
                     entities.extend(
-                        _create_sqm_sensors(coordinator, entry, sqm.section_id, sqm.name)
+                        _create_sqm_sensors(
+                            coordinator, entry, sqm.section_id, sqm.name
+                        )
                     )
 
     if perms.read_vpn:
@@ -1489,7 +1492,9 @@ def _async_setup_specialized_sensors(
             key = f"vpn_{vpn.name}_traffic"
             if key not in tracked_keys:
                 tracked_keys.add(key)
-                entities.extend(_create_vpn_sensors(coordinator, entry, vpn.name, vpn.type))
+                entities.extend(
+                    _create_vpn_sensors(coordinator, entry, vpn.name, vpn.type)
+                )
 
     if coordinator.data.lldp_neighbors:
         for neighbor in coordinator.data.lldp_neighbors:
@@ -1498,7 +1503,9 @@ def _async_setup_specialized_sensors(
                 if key not in tracked_keys:
                     tracked_keys.add(key)
                     entities.extend(
-                        _create_lldp_sensors(coordinator, entry, neighbor.local_interface)
+                        _create_lldp_sensors(
+                            coordinator, entry, neighbor.local_interface
+                        )
                     )
 
     # WAN Latency

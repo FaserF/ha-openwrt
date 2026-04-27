@@ -235,7 +235,9 @@ class LuciRpcClient(OpenWrtClient):
             if out and out.strip():
                 return out
         except Exception as err:
-            _LOGGER.debug("Command failed via LuCI RPC sys.exec: %s. Trying fallback.", err)
+            _LOGGER.debug(
+                "Command failed via LuCI RPC sys.exec: %s. Trying fallback.", err
+            )
 
         # 2. Fallback to LuCI RPC ubus call -> file:exec
         try:
@@ -253,7 +255,9 @@ class LuciRpcClient(OpenWrtClient):
                 stderr = str(res.get("stderr") or "").strip()
                 return stdout or stderr
         except Exception as err:
-            _LOGGER.debug("Command failed via LuCI RPC ubus file.exec fallback: %s", err)
+            _LOGGER.debug(
+                "Command failed via LuCI RPC ubus file.exec fallback: %s", err
+            )
 
         return ""
 

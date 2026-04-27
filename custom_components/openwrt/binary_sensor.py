@@ -100,19 +100,19 @@ async def async_setup_entry(
         if key not in tracked_keys:
             tracked_keys.add(key)
             entities.append(
-                    OpenWrtBinarySensorEntity(
-                        coordinator,
-                        entry,
-                        OpenWrtBinarySensorDescription(
-                            key=key,
-                            name="WPS Session Active",
-                            icon="mdi:wifi-sync",
-                            entity_category=EntityCategory.DIAGNOSTIC,
-                            entity_registry_enabled_default=False,
-                            is_on_fn=lambda data: data.wps_status.enabled,
-                        ),
-                    )
+                OpenWrtBinarySensorEntity(
+                    coordinator,
+                    entry,
+                    OpenWrtBinarySensorDescription(
+                        key=key,
+                        name="WPS Session Active",
+                        icon="mdi:wifi-sync",
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                        entity_registry_enabled_default=False,
+                        is_on_fn=lambda data: data.wps_status.enabled,
+                    ),
                 )
+            )
 
         if perms.read_services:
             _async_setup_service_binary_sensors(
