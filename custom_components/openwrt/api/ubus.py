@@ -1020,6 +1020,23 @@ class UbusClient(OpenWrtClient):
                 assoc = await self._call("iwinfo", "assoclist", {"device": wifi.name})
                 if assoc:
                     wifi.clients_count = len(assoc.get("results", []))
+
+                if not wifi.clients_count:
+                    with contextlib.suppress(Exception):
+                        hostapd_clients = await self._call(
+                            f"hostapd.{wifi.name}", "get_clients"
+                        )
+                        if hostapd_clients and isinstance(hostapd_clients, dict):
+                            clients = hostapd_clients.get("clients", {})
+                            count = sum(
+                                1
+                                for c in clients.values()
+                                if isinstance(c, dict)
+                                and c.get("authorized", True)
+                            )
+                            if count > 0:
+                                wifi.clients_count = count
+
             except UbusError:
                 _LOGGER.debug(
                     "Failed to fetch detailed info for wifi interface %s", wifi.name
@@ -1673,7 +1690,7 @@ class UbusClient(OpenWrtClient):
         perms.read_vpn = perms.read_network
         perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"})
         perms.read_devices = await can_call("dhcp", "ipv4leases") or perms.read_network
-        perms.write_devices = await can_call("file", "exec", {"command": "id"})
+        perms.write_devices = await can_call("file", "exec", {"command": "/usr/bin/id"}) or await can_call("file", "exec", {"command": "/bin/sh"})
         perms.write_access_control = perms.write_firewall
         perms.read_services = await can_call("service", "list")
         perms.write_services = await can_call("service", "list")
@@ -1978,12 +1995,7 @@ class UbusClient(OpenWrtClient):
         """Fetch neighbors using 'ip neigh show' via file.exec."""
         existing_macs = {n.mac.lower() for n in neighbors}
         with contextlib.suppress(Exception):
-            result = await self._call(
-                "file",
-                "exec",
-                {"command": "ip", "params": ["neigh", "show"]},
-            )
-            content = result.get("stdout", "")
+            content = await self.execute_command("ip neigh show")
             if content:
                 for line in content.strip().split("\n"):
                     neigh = self._parse_ip_neigh_line(line)
@@ -2283,7 +2295,7 @@ class UbusClient(OpenWrtClient):
             cmd = (
                 "if command -v apk >/dev/null 2>&1; then APK=apk; "
                 "elif [ -x /sbin/apk ]; then APK=/sbin/apk; fi; "
-                'if [ -n "$APK" ]; then $APK info -q 2>/dev/null; '
+                'if [ -n "$APK" ]; then $APK info 2>/dev/null; '
                 "else "
                 "  if command -v opkg >/dev/null 2>&1; then OPKG=opkg; "
                 "  elif [ -x /bin/opkg ]; then OPKG=/bin/opkg; fi; "
@@ -2753,9 +2765,7 @@ class UbusClient(OpenWrtClient):
 
             # 3. Clean up (best-effort)
             with contextlib.suppress(Exception):
-                await self._call(
-                    "file", "exec", {"command": "rm", "params": ["-f", tmp_path]}
-                )
+                await self.execute_command(f"rm -f {tmp_path}")
 
             return output or ""
         except Exception as err:

@@ -1208,6 +1208,15 @@ class LuciRpcClient(OpenWrtClient):
                     if assoc_str and assoc_str.strip().startswith("{"):
                         assoc = json.loads(assoc_str).get("results", [])
                         wifi.clients_count = len(assoc)
+
+                    if not wifi.clients_count:
+                        with contextlib.suppress(Exception):
+                            clients_str = await self.execute_command(
+                                f"ubus call hostapd.{iface_name} get_clients"
+                            )
+                            if clients_str and clients_str.strip().startswith("{"):
+                                hc = json.loads(clients_str).get("clients", {})
+                                wifi.clients_count = len(hc)
             except Exception as err:
                 _LOGGER.debug("Failed to get iwinfo for %s: %s", iface_name, err)
 
@@ -2005,7 +2014,7 @@ class LuciRpcClient(OpenWrtClient):
         try:
             cmd = (
                 "if command -v apk >/dev/null 2>&1; then "
-                "  apk info -q 2>/dev/null; "
+                "  apk info 2>/dev/null; "
                 "else "
                 "  opkg list-installed 2>/dev/null | cut -d' ' -f1; "
                 "fi"

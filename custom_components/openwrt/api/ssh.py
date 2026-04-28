@@ -211,7 +211,7 @@ class SshClient(OpenWrtClient):
         try:
             cmd = (
                 "if command -v apk >/dev/null 2>&1; then "
-                "  apk info -q 2>/dev/null; "
+                "  apk info 2>/dev/null; "
                 "else "
                 "  opkg list-installed 2>/dev/null | cut -d' ' -f1; "
                 "fi"
@@ -837,6 +837,15 @@ class SshClient(OpenWrtClient):
                     if assoc_str and assoc_str.strip().startswith("{"):
                         assoc = json.loads(assoc_str).get("results", [])
                         wifi.clients_count = len(assoc)
+
+                    if not wifi.clients_count:
+                        with contextlib.suppress(Exception):
+                            hostapd_clients = await self._exec(
+                                f"ubus call hostapd.{iface_name} get_clients 2>/dev/null"
+                            )
+                            if hostapd_clients and hostapd_clients.strip().startswith("{"):
+                                hc = json.loads(hostapd_clients).get("clients", {})
+                                wifi.clients_count = len(hc)
             except Exception as err:
                 _LOGGER.debug(
                     "Failed to get iwinfo for %s via SSH: %s", iface_name, err
