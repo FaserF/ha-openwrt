@@ -870,13 +870,12 @@ class OpenWrtClient(abc.ABC):
                 if help_out:
                     # Look for -l (modern BusyBox/OpenWrt 25+)
                     # Use a flexible regex to handle tabs, spaces, and different placeholders
-                    if re.search(r"-l\b.*\bcount\b", help_out, re.IGNORECASE):
+                    if "-l" in help_out:
                         self._logread_flag = "-l"
                         _LOGGER.debug(
                             "Detected logread -l support (modern OpenWrt/BusyBox)"
                         )
-                    # Explicitly check for -n to confirm legacy
-                    elif re.search(r"-n\b.*\bcount\b", help_out, re.IGNORECASE):
+                    elif "-n" in help_out:
                         self._logread_flag = "-n"
                         _LOGGER.debug("Confirmed logread -n support (standard OpenWrt)")
                     else:

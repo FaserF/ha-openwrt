@@ -843,7 +843,9 @@ class SshClient(OpenWrtClient):
                             hostapd_clients = await self._exec(
                                 f"ubus call hostapd.{iface_name} get_clients 2>/dev/null"
                             )
-                            if hostapd_clients and hostapd_clients.strip().startswith("{"):
+                            if hostapd_clients and hostapd_clients.strip().startswith(
+                                "{"
+                            ):
                                 hc = json.loads(hostapd_clients).get("clients", {})
                                 wifi.clients_count = len(hc)
             except Exception as err:

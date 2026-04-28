@@ -2404,27 +2404,10 @@ class LuciRpcClient(OpenWrtClient):
             return False
 
     async def get_system_logs(self, count: int = 10) -> list[str]:
-        """Get recent system log entries via LuCI RPC."""
+        """Get recent system log entries via execute_command (logread)."""
         try:
-            # 1. Try via direct ubus call (More robust, avoids flag detection issues)
-            try:
-                # In LuCI RPC, ubus call is just another RPC call to 'ubus' endpoint
-                res = await self._rpc_call(
-                    "ubus", "call", ["log", "read", {"lines": int(count or 10)}]
-                )
-                if res and isinstance(res, dict) and "log" in res:
-                    return [
-                        entry.get("msg", "").strip()
-                        for entry in res.get("log", [])
-                        if entry.get("msg")
-                    ]
-            except Exception as err:
-                _LOGGER.debug(
-                    "Direct ubus log read via LuCI RPC failed, falling back to logread: %s",
-                    err,
-                )
-
-            # 2. Fallback to via execute_command (sys.exec)
+            # Directly use execute_command (sys.exec) with logread
+            # Calling direct ubus log.read via LuCI RPC causes uhttpd spam on certain devices
             cmd = await self._get_logread_command(count)
             output = await self.execute_command(cmd)
             if output:

@@ -1031,8 +1031,7 @@ class UbusClient(OpenWrtClient):
                             count = sum(
                                 1
                                 for c in clients.values()
-                                if isinstance(c, dict)
-                                and c.get("authorized", True)
+                                if isinstance(c, dict) and c.get("authorized", True)
                             )
                             if count > 0:
                                 wifi.clients_count = count
@@ -1690,7 +1689,9 @@ class UbusClient(OpenWrtClient):
         perms.read_vpn = perms.read_network
         perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"})
         perms.read_devices = await can_call("dhcp", "ipv4leases") or perms.read_network
-        perms.write_devices = await can_call("file", "exec", {"command": "/usr/bin/id"}) or await can_call("file", "exec", {"command": "/bin/sh"})
+        perms.write_devices = await can_call(
+            "file", "exec", {"command": "/usr/bin/id"}
+        ) or await can_call("file", "exec", {"command": "/bin/sh"})
         perms.write_access_control = perms.write_firewall
         perms.read_services = await can_call("service", "list")
         perms.write_services = await can_call("service", "list")
@@ -2203,23 +2204,10 @@ class UbusClient(OpenWrtClient):
         return False
 
     async def get_system_logs(self, count: int = 10) -> list[str]:
-        """Get recent system log entries via logread or direct ubus call."""
+        """Get recent system log entries via execute_command (logread)."""
         try:
-            # 1. Try via direct ubus call (More robust, avoids flag detection issues)
-            try:
-                res = await self._call("log", "read", {"lines": int(count or 10)})
-                if res and isinstance(res, dict) and "log" in res:
-                    return [
-                        entry.get("msg", "").strip()
-                        for entry in res.get("log", [])
-                        if entry.get("msg")
-                    ]
-            except Exception as err:
-                _LOGGER.debug(
-                    "Direct ubus log read failed, falling back to logread: %s", err
-                )
-
-            # 2. Fallback to via execute_command (file.exec)
+            # Directly use execute_command (file.exec) with logread
+            # Calling direct ubus log.read via JSON-RPC causes uhttpd spam on certain devices
             cmd = await self._get_logread_command(count)
             output = await self.execute_command(cmd)
             if output:
