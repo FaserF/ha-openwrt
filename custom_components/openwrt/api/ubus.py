@@ -2355,11 +2355,22 @@ class UbusClient(OpenWrtClient):
                 if section_data.get(".type") != "rule":
                     continue
 
+                display_id = section_id
+                if section_id.startswith("cfg"):
+                    rule_sects = [
+                        k for k, v in values.items() if v.get(".type") == "rule"
+                    ]
+                    try:
+                        idx = rule_sects.index(section_id)
+                        display_id = f"@rule[{idx}]"
+                    except ValueError:
+                        pass
+
                 rules.append(
                     FirewallRule(
-                        name=section_data.get("name", section_id),
+                        name=section_data.get("name", display_id),
                         enabled=str(section_data.get("enabled", "1")) == "1",
-                        section_id=section_id,
+                        section_id=display_id,
                         target=section_data.get("target", ""),
                         src=section_data.get("src", ""),
                         dest=section_data.get("dest", ""),

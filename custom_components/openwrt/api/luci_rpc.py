@@ -2055,14 +2055,25 @@ class LuciRpcClient(OpenWrtClient):
 
             for section_id, val in data.items():
                 if isinstance(val, dict) and val.get(".type") == "rule":
+                    display_id = section_id
+                    if section_id.startswith("cfg"):
+                        rule_sects = [
+                            k for k, v in data.items() if isinstance(v, dict) and v.get(".type") == "rule"
+                        ]
+                        try:
+                            idx = rule_sects.index(section_id)
+                            display_id = f"@rule[{idx}]"
+                        except ValueError:
+                            pass
+
                     try:
                         enabled = bool(int(val.get("enabled", "1")))
-                    except ValueError, TypeError:
+                    except (ValueError, TypeError):
                         enabled = True
                     rules.append(
                         FirewallRule(
-                            section_id=section_id,
-                            name=str(val.get("name") or section_id),
+                            section_id=display_id,
+                            name=str(val.get("name") or display_id),
                             enabled=enabled,
                             src=val.get("src", ""),
                             dest=val.get("dest", ""),
@@ -2095,10 +2106,21 @@ class LuciRpcClient(OpenWrtClient):
 
             for section_id, val in data.items():
                 if isinstance(val, dict) and val.get(".type") == "redirect":
+                    display_id = section_id
+                    if section_id.startswith("cfg"):
+                        redirect_sects = [
+                            k for k, v in data.items() if isinstance(v, dict) and v.get(".type") == "redirect"
+                        ]
+                        try:
+                            idx = redirect_sects.index(section_id)
+                            display_id = f"@redirect[{idx}]"
+                        except ValueError:
+                            pass
+
                     redirects.append(
                         FirewallRedirect(
-                            section_id=section_id,
-                            name=str(val.get("name") or section_id),
+                            section_id=display_id,
+                            name=str(val.get("name") or display_id),
                             enabled=str(val.get("enabled", "1")) == "1",
                             external_port=val.get("src_dport", ""),
                             target_ip=val.get("dest_ip", ""),

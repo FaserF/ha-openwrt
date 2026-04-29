@@ -73,8 +73,29 @@ def is_random_mac(mac: str) -> bool:
         clean_mac = mac.replace(":", "").replace("-", "").replace(".", "")
         if len(clean_mac) < 2:
             return False
-        first_byte = int(clean_mac[:2], 16)
         # Check the 'locally administered' bit (bit 1 of first byte)
+        first_byte = int(clean_mac[:2], 16)
         return bool(first_byte & 0x02)
-    except ValueError, IndexError:
+    except (ValueError, IndexError):
         return False
+
+
+def parse_uci_bool(value: Any, default: bool = False) -> bool:
+    """Parse truthy/falsy UCI values robustly.
+
+    Handles strings ('1', 'yes', 'on', 'true', 'enabled' as True),
+    integers, booleans, and None.
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        val = value.lower().strip()
+        if val in ("1", "yes", "on", "true", "enabled"):
+            return True
+        if val in ("0", "no", "off", "false", "disabled"):
+            return False
+    return default

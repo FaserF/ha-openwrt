@@ -220,3 +220,40 @@ async def test_ubus_provision_user(ubus_client: UbusClient):
         assert "$UCI set rpcd.$SECTION=login" in script
         assert '$UCI set rpcd.$SECTION.password="\\$p\\$$USER"' in script
         assert "/etc/init.d/rpcd restart" in script
+
+
+@pytest.mark.asyncio
+async def test_ubus_get_firewall_rules_anonymous(ubus_client: UbusClient):
+    """Test fetching firewall rules with anonymous sections."""
+    ubus_client._session_id = "test_token"
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "values": {
+                "cfg012345": {
+                    ".type": "rule",
+                    "name": "Allow-DHCP-Renew",
+                    "enabled": "1",
+                    "src": "wan",
+                    "dest": "lan",
+                    "target": "ACCEPT",
+                },
+                "cfg067890": {
+                    ".type": "rule",
+                    "enabled": "0",
+                    "src": "lan",
+                    "dest": "wan",
+                    "target": "REJECT",
+                },
+            }
+        }
+
+        rules = await ubus_client.get_firewall_rules()
+        assert len(rules) == 2
+
+        assert rules[0].section_id == "@rule[0]"
+        assert rules[0].name == "Allow-DHCP-Renew"
+        assert rules[0].enabled is True
+
+        assert rules[1].section_id == "@rule[1]"
+        assert rules[1].name == "@rule[1]"
+        assert rules[1].enabled is False

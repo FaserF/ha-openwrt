@@ -177,3 +177,38 @@ async def test_luci_check_permissions(luci_client: LuciRpcClient):
         assert perms.read_network is True
         assert perms.read_firewall is True
         assert perms.write_services is True
+
+
+@pytest.mark.asyncio
+async def test_luci_get_firewall_rules_anonymous(luci_client: LuciRpcClient):
+    """Test fetching firewall rules with anonymous sections via LuCI RPC."""
+    luci_client._auth_token = "luci_test_token"
+    with patch.object(luci_client, "_rpc_call", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "cfg012345": {
+                ".type": "rule",
+                "name": "Allow-DHCP-Renew",
+                "enabled": "1",
+                "src": "wan",
+                "dest": "lan",
+                "target": "ACCEPT",
+            },
+            "cfg067890": {
+                ".type": "rule",
+                "enabled": "0",
+                "src": "lan",
+                "dest": "wan",
+                "target": "REJECT",
+            },
+        }
+
+        rules = await luci_client.get_firewall_rules()
+        assert len(rules) == 2
+
+        assert rules[0].section_id == "@rule[0]"
+        assert rules[0].name == "Allow-DHCP-Renew"
+        assert rules[0].enabled is True
+
+        assert rules[1].section_id == "@rule[1]"
+        assert rules[1].name == "@rule[1]"
+        assert rules[1].enabled is False
