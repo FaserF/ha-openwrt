@@ -110,28 +110,39 @@ class OpenWrtLedLight(CoordinatorEntity[OpenWrtDataCoordinator], LightEntity):
         """Turn the LED on."""
         client = self.hass.data[DOMAIN][self._entry.entry_id][DATA_CLIENT]
         brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
+        
+        # Action
         if self.coordinator.data:
             for led in self.coordinator.data.leds:
                 if led.name == self._led_name:
                     hw_brightness = int(brightness / 255 * led.max_brightness)
                     try:
                         await client.set_led(self._led_name, hw_brightness)
+                        # Optimistic update
+                        led.brightness = hw_brightness
+                        self.async_write_ha_state()
                     except Exception as err:
                         msg = f"Failed to set LED {self._led_name}: {err}"
-                        raise HomeAssistantError(
-                            msg,
-                        ) from err
+                        raise HomeAssistantError(msg) from err
                     break
-        await self.coordinator.async_request_refresh()
+        
+        # Trigger background refresh but don't block the UI update
+        self.hass.async_create_task(self.coordinator.async_request_refresh())
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the LED off."""
         client = self.hass.data[DOMAIN][self._entry.entry_id][DATA_CLIENT]
         try:
             await client.set_led(self._led_name, 0)
+            # Optimistic update
+            if self.coordinator.data:
+                for led in self.coordinator.data.leds:
+                    if led.name == self._led_name:
+                        led.brightness = 0
+            self.async_write_ha_state()
         except Exception as err:
             msg = f"Failed to turn off LED {self._led_name}: {err}"
-            raise HomeAssistantError(
-                msg,
-            ) from err
-        await self.coordinator.async_request_refresh()
+            raise HomeAssistantError(msg) from err
+            
+        # Trigger background refresh but don't block the UI update
+        self.hass.async_create_task(self.coordinator.async_request_refresh())

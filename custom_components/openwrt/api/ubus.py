@@ -110,6 +110,7 @@ class UbusClient(OpenWrtClient):
         self._ubus_path = ubus_path
         self._session_id: str = "00000000000000000000000000000000"
         self._session: aiohttp.ClientSession | None = None
+        self._semaphore = asyncio.Semaphore(5)  # Limit concurrent RPC calls to avoid overloading uhttpd
 
     @property
     def _base_url(self) -> str:
@@ -158,14 +159,38 @@ class UbusClient(OpenWrtClient):
             [self._session_id, ubus_object, ubus_method, params or {}],
         )
 
+        reauth_needed = False
+        data: dict[str, Any] = {}
         try:
-            async with session.post(
-                self._base_url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            ) as response:
-                response.raise_for_status()
-                data = await response.json()
+            async with self._semaphore:
+                async with session.post(
+                    self._base_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+                    # Check for session expiration in ubus response
+                    if (
+                        data.get("result")
+                        and isinstance(data["result"], list)
+                        and len(data["result"]) > 0
+                        and data["result"][0] == 6  # Permission denied/Session expired
+                    ):
+                        reauth_needed = True
+
+            if reauth_needed and not reauthenticated:
+                _LOGGER.debug("Ubus session expired, re-authenticating...")
+                self._session_id = "00000000000000000000000000000000"
+                await self.connect()
+                return await self._call(
+                    ubus_object,
+                    ubus_method,
+                    params,
+                    reauthenticated=True,
+                )
+
         except TimeoutError as err:
             msg = f"Timeout communicating with {self.host}"
             raise UbusTimeoutError(msg) from err
@@ -200,9 +225,7 @@ class UbusClient(OpenWrtClient):
                     "Ubus connection error (%s), retrying after session reset",
                     err,
                 )
-                if self._session and not self._session.closed:
-                    await self._session.close()
-                self._session = None
+                await self.disconnect()
                 return await self._call(
                     ubus_object,
                     ubus_method,
@@ -210,7 +233,12 @@ class UbusClient(OpenWrtClient):
                     reauthenticated=True,
                 )
             self._connected = False
-            msg = f"Communication error with {self.host}: {err}"
+            msg = f"Communication error: {err}"
+            raise UbusError(msg) from err
+        except Exception as err:
+            if isinstance(err, (UbusError, asyncio.CancelledError)):
+                raise
+            msg = f"Unexpected error communicating with {self.host}: {err}"
             raise UbusError(msg) from err
 
         if "result" not in data:
@@ -221,34 +249,18 @@ class UbusClient(OpenWrtClient):
 
         if isinstance(result, list):
             code = result[0] if result else -1
-            if code == 6 and not reauthenticated:
-                await self.connect()
-                return await self._call(
-                    ubus_object,
-                    ubus_method,
-                    params,
-                    reauthenticated=True,
-                )
-            if code != 0:
-                if code == 2:
-                    msg = (
-                        f"RPC Error ({code}): Invalid command or object '{ubus_object}'"
-                    )
-                    raise UbusError(
-                        msg,
-                    )
-                if code in (3, 6):
-                    msg = f"RPC Error ({code}): Access denied to '{ubus_object}.{ubus_method}'. Consider switching to LuCI RPC."
-                    raise UbusPermissionError(
-                        msg,
-                    )
-                msg = f"ubus error code {code} for {ubus_object}.{ubus_method}"
-                raise UbusError(
-                    msg,
-                )
-            return result[1] if len(result) > 1 else {}
+            if code == 6:  # Permission denied / Session expired
+                # This should have been handled by the reauth logic above,
+                # but if we get here, it's a real permission issue
+                msg = f"Access denied to ubus on {self.host} (code 6)"
+                raise UbusPermissionError(msg)
+            if code == 0:
+                return result[1] if len(result) > 1 else {}
+            msg = f"Ubus call failed with code {code}"
+            raise UbusError(msg)
 
         return result
+
 
     async def _list_objects(self) -> list[str]:
         """List available ubus objects."""
@@ -860,17 +872,14 @@ class UbusClient(OpenWrtClient):
                 break
 
     async def get_external_ip(self) -> str | None:
-        """Get public/external IP address by checking the WAN interface."""
-        try:
-            status = await self._call("network.interface", "dump")
-            for iface_data in status.get("interface", []):
-                iface_name = iface_data.get("interface", "").lower()
-                if iface_name in ["wan", "wan6", "wwan", "modem"]:
-                    ipv4_addrs = iface_data.get("ipv4-address", [])
-                    if ipv4_addrs:
-                        return ipv4_addrs[0].get("address")
-        except UbusError:
-            pass
+        """Get the external IP address from the WAN interface."""
+        status = await self._call("network.interface", "dump")
+        for iface_data in status.get("interface", []):
+            iface_name = iface_data.get("interface", "").lower()
+            if iface_name in ["wan", "wan6", "wwan", "modem"]:
+                ipv4_addrs = iface_data.get("ipv4-address", [])
+                if ipv4_addrs:
+                    return ipv4_addrs[0].get("address")
         return None
 
     async def get_wireless_interfaces(self) -> list[WirelessInterface]:
@@ -2219,21 +2228,15 @@ class UbusClient(OpenWrtClient):
     async def get_services(self) -> list[ServiceInfo]:
         """Get init.d services via the rc ubus interface."""
         services: list[ServiceInfo] = []
-        try:
-            result = await self._call("rc", "list")
-            for name, data in result.items():
-                services.append(
-                    ServiceInfo(
-                        name=name,
-                        enabled=data.get("enabled", False),
-                        running=data.get("running", False),
-                    ),
-                )
-        except UbusError:
-            _LOGGER.debug(
-                "Cannot list services via rc ubus (missing permissions or package)",
+        result = await self._call("rc", "list")
+        for name, data in result.items():
+            services.append(
+                ServiceInfo(
+                    name=name,
+                    enabled=data.get("enabled", False),
+                    running=data.get("running", False),
+                ),
             )
-
         return services
 
     async def manage_service(self, name: str, action: str) -> bool:
@@ -2352,77 +2355,71 @@ class UbusClient(OpenWrtClient):
     async def get_firewall_rules(self) -> list[FirewallRule]:
         """Get general firewall rules via UCI."""
         rules: list[FirewallRule] = []
-        try:
-            config = await self._call("uci", "get", {"config": "firewall"})
-            values = config.get("values", {})
+        config = await self._call("uci", "get", {"config": "firewall"})
+        values = config.get("values", {})
 
-            for section_id, section_data in values.items():
-                if section_data.get(".type") != "rule":
-                    continue
+        for section_id, section_data in values.items():
+            if section_data.get(".type") != "rule":
+                continue
 
-                display_id = section_id
-                if section_id.startswith("cfg"):
-                    rule_sects = [
-                        k for k, v in values.items() if v.get(".type") == "rule"
-                    ]
-                    try:
-                        idx = rule_sects.index(section_id)
-                        display_id = f"@rule[{idx}]"
-                    except ValueError:
-                        pass
+            display_id = section_id
+            if section_id.startswith("cfg"):
+                rule_sects = [
+                    k for k, v in values.items() if v.get(".type") == "rule"
+                ]
+                try:
+                    idx = rule_sects.index(section_id)
+                    display_id = f"@rule[{idx}]"
+                except ValueError:
+                    pass
 
-                rules.append(
-                    FirewallRule(
-                        name=section_data.get("name", display_id),
-                        enabled=str(section_data.get("enabled", "1")) == "1",
-                        section_id=display_id,
-                        target=section_data.get("target", ""),
-                        src=section_data.get("src", ""),
-                        dest=section_data.get("dest", ""),
-                    ),
-                )
-        except UbusError:
-            pass
+            rules.append(
+                FirewallRule(
+                    name=section_data.get("name", display_id),
+                    enabled=str(section_data.get("enabled", "1")) == "1",
+                    section_id=display_id,
+                    target=section_data.get("target", ""),
+                    src=section_data.get("src", ""),
+                    dest=section_data.get("dest", ""),
+                ),
+            )
         return rules
 
     async def get_firewall_redirects(self) -> list[FirewallRedirect]:
         """Get firewall port forwarding redirects via UCI."""
         redirects: list[FirewallRedirect] = []
-        try:
-            config = await self._call("uci", "get", {"config": "firewall"})
-            vals = config.get("values", {})
+        config = await self._call("uci", "get", {"config": "firewall"})
+        vals = config.get("values", {})
 
-            for section_id, redirect in vals.items():
-                if redirect.get(".type") != "redirect":
-                    continue
+        for section_id, redirect in vals.items():
+            if redirect.get(".type") != "redirect":
+                continue
 
-                # Standardize section ID: Prefer named sections, fallback to anonymous index
-                # if it looks like cfgXXXXXX
-                display_id = section_id
-                if section_id.startswith("cfg"):
-                    # Find the index of this redirect among all redirects
-                    redirect_sects = [
-                        k for k, v in vals.items() if v.get(".type") == "redirect"
-                    ]
-                    try:
-                        idx = redirect_sects.index(section_id)
-                        display_id = f"@redirect[{idx}]"
-                    except ValueError:
-                        pass
+            # Standardize section ID: Prefer named sections, fallback to anonymous index
+            # if it looks like cfgXXXXXX
+            display_id = section_id
+            if section_id.startswith("cfg"):
+                # Find the index of this redirect among all redirects
+                redirect_sects = [
+                    k for k, v in vals.items() if v.get(".type") == "redirect"
+                ]
+                try:
+                    idx = redirect_sects.index(section_id)
+                    display_id = f"@redirect[{idx}]"
+                except ValueError:
+                    pass
 
-                redirects.append(
-                    FirewallRedirect(
-                        name=redirect.get("name", "Unnamed Redirect"),
-                        target_ip=redirect.get("dest_ip", ""),
-                        target_port=redirect.get("dest_port", ""),
-                        external_port=redirect.get("src_dport", ""),
-                        protocol=redirect.get("proto", "tcp"),
-                        enabled=redirect.get("enabled", "1") == "1",
-                        section_id=display_id,
-                    )
+            redirects.append(
+                FirewallRedirect(
+                    name=redirect.get("name", "Unnamed Redirect"),
+                    target_ip=redirect.get("dest_ip", ""),
+                    target_port=redirect.get("dest_port", ""),
+                    external_port=redirect.get("src_dport", ""),
+                    protocol=redirect.get("proto", "tcp"),
+                    enabled=redirect.get("enabled", "1") == "1",
+                    section_id=display_id,
                 )
-        except UbusError:
-            pass
+            )
         return redirects
 
     async def set_firewall_redirect_enabled(
@@ -2452,31 +2449,28 @@ class UbusClient(OpenWrtClient):
     async def get_access_control(self) -> list[AccessControl]:
         """Get list of access control rules via UCI firewall rules."""
         rules: list[AccessControl] = []
-        try:
-            config = await self._call("uci", "get", {"config": "firewall"})
-            values = config.get("values", {})
+        config = await self._call("uci", "get", {"config": "firewall"})
+        values = config.get("values", {})
 
-            for section_id, section_data in values.items():
-                if section_data.get(".type") != "rule":
-                    continue
+        for section_id, section_data in values.items():
+            if section_data.get(".type") != "rule":
+                continue
 
-                name = section_data.get("name", "")
-                if not name.startswith("ha_acl_"):
-                    continue
+            name = section_data.get("name", "")
+            if not name.startswith("ha_acl_"):
+                continue
 
-                mac = section_data.get("src_mac", "").upper()
-                if mac:
-                    rules.append(
-                        AccessControl(
-                            mac=mac,
-                            name=name.replace("ha_acl_", ""),
-                            blocked=str(section_data.get("enabled", "1")) == "1"
-                            and section_data.get("target") in ("REJECT", "DROP"),
-                            section_id=section_id,
-                        ),
-                    )
-        except UbusError:
-            pass
+            mac = section_data.get("src_mac", "").upper()
+            if mac:
+                rules.append(
+                    AccessControl(
+                        mac=mac,
+                        name=name.replace("ha_acl_", ""),
+                        blocked=str(section_data.get("enabled", "1")) == "1"
+                        and section_data.get("target") in ("REJECT", "DROP"),
+                        section_id=section_id,
+                    ),
+                )
         return rules
 
     async def set_access_control_blocked(self, mac: str, blocked: bool) -> bool:
@@ -2549,43 +2543,39 @@ class UbusClient(OpenWrtClient):
         from .base import LedInfo
 
         leds: list[LedInfo] = []
-        try:
-            result = await self._call(
-                "file",
-                "exec",
-                {
-                    "command": "/bin/sh",
-                    "params": [
-                        "-c",
-                        "for led in /sys/class/leds/*/; do "
-                        'name=$(basename "$led"); '
-                        'brightness=$(cat "$led/brightness" 2>/dev/null || echo 0); '
-                        'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
-                        'trigger=$(cat "$led/trigger" 2>/dev/null | tr " " "\\n" | grep "^\\[" | tr -d "[]" || echo none); '
-                        'echo "$name|$brightness|$max|$trigger"; '
-                        "done",
-                    ],
-                    "env": {},
-                },
-            )
-            stdout = result.get("stdout", "")
-            for line in stdout.strip().splitlines():
-                parts = line.strip().split("|")
-                if len(parts) >= 4:
-                    brightness = int(parts[1]) if parts[1].isdigit() else 0
-                    max_b = int(parts[2]) if parts[2].isdigit() else 255
-                    leds.append(
-                        LedInfo(
-                            name=parts[0],
-                            brightness=brightness,
-                            max_brightness=max_b,
-                            trigger=parts[3],
-                            active=brightness > 0,
-                        ),
-                    )
-        except UbusError:
-            _LOGGER.debug("Cannot list LEDs (missing file exec permission)")
-
+        result = await self._call(
+            "file",
+            "exec",
+            {
+                "command": "/bin/sh",
+                "params": [
+                    "-c",
+                    "for led in /sys/class/leds/*/; do "
+                    'name=$(basename "$led"); '
+                    'brightness=$(cat "$led/brightness" 2>/dev/null || echo 0); '
+                    'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
+                    'trigger=$(cat "$led/trigger" 2>/dev/null | tr " " "\\n" | grep "^\\[" | tr -d "[]" || echo none); '
+                    'echo "$name|$brightness|$max|$trigger"; '
+                    "done",
+                ],
+                "env": {},
+            },
+        )
+        stdout = result.get("stdout", "")
+        for line in stdout.strip().splitlines():
+            parts = line.strip().split("|")
+            if len(parts) >= 4:
+                brightness = int(parts[1]) if parts[1].isdigit() else 0
+                max_b = int(parts[2]) if parts[2].isdigit() else 255
+                leds.append(
+                    LedInfo(
+                        name=parts[0],
+                        brightness=brightness,
+                        max_brightness=max_b,
+                        trigger=parts[3],
+                        active=brightness > 0,
+                    ),
+                )
         return leds
 
     async def reboot(self) -> bool:
@@ -3233,24 +3223,20 @@ class UbusClient(OpenWrtClient):
 
     async def get_nlbwmon_data(self) -> dict[str, NlbwmonTraffic]:
         """Get bandwidth usage per MAC from nlbwmon."""
-        try:
-            result = await self._call("nlbwmon", "get_data", {"group_by": "mac"})
-            if not result or "data" not in result:
-                return {}
-
-            traffic = {}
-            for mac, data in result["data"].items():
-                mac_upper = mac.upper()
-                traffic[mac_upper] = NlbwmonTraffic(
-                    mac=mac_upper,
-                    rx_bytes=data.get("rx", 0),
-                    tx_bytes=data.get("tx", 0),
-                    rx_packets=data.get("rx_packets", 0),
-                )
-            return traffic
-        except Exception as err:
-            _LOGGER.debug("Failed to get nlbwmon data via ubus: %s", err)
+        result = await self._call("nlbwmon", "get_data", {"group_by": "mac"})
+        if not result or "data" not in result:
             return {}
+
+        traffic = {}
+        for mac, data in result["data"].items():
+            mac_upper = mac.upper()
+            traffic[mac_upper] = NlbwmonTraffic(
+                mac=mac_upper,
+                rx_bytes=data.get("rx", 0),
+                tx_bytes=data.get("tx", 0),
+                rx_packets=data.get("rx_packets", 0),
+            )
+        return traffic
 
     async def get_wifi_credentials(self) -> list[WifiCredentials]:
         """Get wifi credentials via UCI."""

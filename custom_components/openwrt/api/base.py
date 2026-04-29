@@ -858,6 +858,7 @@ class OpenWrtClient(abc.ABC):
         self._last_cpu_stats: tuple[int, int] | None = None
         self._logread_flag: str | None = None
         self.packages = OpenWrtPackages()
+        self.coordinator: Any = None
 
     async def _get_logread_command(self, count: int) -> str:
         """Resolve the correct logread command (detecting -n vs -l)."""
@@ -1603,133 +1604,89 @@ class OpenWrtClient(abc.ABC):
 
         return info
 
-    async def get_all_data(self) -> OpenWrtData:
-        """Get all data in one call.
+    async def get_all_data(self, is_full_poll: bool = False) -> OpenWrtData:
+        """Fetch all data from OpenWrt in parallel blocks with robust fallbacks."""
+        # Force full poll every 30 cycles or if we have no cached device info yet
+        if self._cached_device_info is None or self._poll_count % 30 == 0:
+            is_full_poll = True
 
-        Core data (device_info, system_resources, network_interfaces, connected_devices)
-        must succeed or raise an exception to trigger UpdateFailed in coordinator.
-        Optional modules may fail gracefully.
+        self._poll_count += 1
+        data = self.coordinator.data or OpenWrtData()
 
-        Slow-changing data (device_info, services, LEDs, firewall rules/redirects,
-        access_control) is only fetched every SLOW_POLL_INTERVAL polls to reduce
-        router load.
-        """
-        SLOW_DATA_TTL = 300  # Fetch slow data every 5 minutes (300 seconds)
-
-        data = OpenWrtData()
-        self._poll_count = getattr(self, "_poll_count", 0) + 1
-
-        # Pre-populate with cached slow-changing data to ensure availability during poll
-        cached = getattr(self, "_cached_slow_data", {})
-        data.services = cached.get("services", [])
-        data.leds = cached.get("leds", [])
-        data.firewall_redirects = cached.get("firewall_redirects", [])
-        data.firewall_rules = cached.get("firewall_rules", [])
-        data.access_control = cached.get("access_control", [])
-        data.sqm = cached.get("sqm", [])
-        data.packages = cached.get("packages", OpenWrtPackages())
-        data.permissions = cached.get("permissions", OpenWrtPermissions())
-        data.reboot_required = cached.get("reboot_required", False)
-        data.system_logs = cached.get("system_logs", [])
-
-        current_time = time.time()
-        last_full_poll = getattr(self, "_last_full_poll", 0)
-        is_full_poll = (current_time - last_full_poll) >= SLOW_DATA_TTL
-
-        def get_val(res: Any, default: Any, name: str) -> Any:
-            """Safely get value from gather result."""
+        def get_val(res: Any, default: Any, name: str = "") -> Any:
+            """Safely get value from gather result, keeping previous data on failure."""
             if isinstance(res, Exception):
-                _LOGGER.debug("Fetch of %s failed: %s", name, res)
+                if name:
+                    _LOGGER.debug("Fetch of %s failed: %s", name, res)
                 return default
-            return res
+            return res if res is not None else default
 
+        # 1. Core data (Fast block) - Essential for basic functionality and trackers
+        core_tasks = [
+            self.get_system_resources(),
+            self.get_network_interfaces(),
+            self.get_connected_devices(),
+            self.get_local_macs(),
+            self.get_local_ips(),
+        ]
+        core_results = await asyncio.gather(*core_tasks, return_exceptions=True)
+
+        data.system_resources = get_val(core_results[0], data.system_resources, "system_resources")
+        data.network_interfaces = get_val(core_results[1], data.network_interfaces, "network_interfaces")
+        data.connected_devices = get_val(core_results[2], data.connected_devices, "connected_devices")
+        data.local_macs = get_val(core_results[3], data.local_macs, "local_macs")
+        data.local_ips = get_val(core_results[4], data.local_ips, "local_ips")
+
+        # 2. Slow-changing optional data (Full Poll) - Reduces router load
         if is_full_poll:
-            # Full poll: fetch device_info fresh
-            core_results = await asyncio.gather(
-                self.get_device_info(),
-                self.get_system_resources(),
-                self.get_network_interfaces(),
-                self.get_connected_devices(),
-                self.get_local_macs(),
-                self.get_local_ips(),
-                self.is_reboot_required(),
-                self.get_system_logs(count=10),
-                return_exceptions=True,
+            slow_optional_tasks = {
+                "device_info": self.get_device_info(),
+                "services": self.get_services(),
+                "leds": self.get_leds(),
+                "firewall_redirects": self.get_firewall_redirects(),
+                "firewall_rules": self.get_firewall_rules(),
+                "access_control": self.get_access_control(),
+                "sqm": self.get_sqm_status(),
+                "wireguard": self.get_wireguard_interfaces(),
+                "packages": self.check_packages(),
+                "permissions": self.check_permissions(),
+                "reboot_required": self.is_reboot_required(),
+                "system_logs": self.get_system_logs(count=10),
+            }
+
+            keys = list(slow_optional_tasks.keys())
+            slow_results = await asyncio.gather(
+                *[slow_optional_tasks[k] for k in keys], return_exceptions=True
             )
-            data.device_info = get_val(core_results[0], data.device_info, "device_info")
-            data.system_resources = get_val(
-                core_results[1], data.system_resources, "system_resources"
-            )
-            data.network_interfaces = get_val(core_results[2], [], "network_interfaces")
-            data.connected_devices = get_val(core_results[3], [], "connected_devices")
-            data.local_macs = get_val(core_results[4], set(), "local_macs")
-            data.local_ips = get_val(core_results[5], set(), "local_ips")
-            data.reboot_required = get_val(core_results[6], False, "reboot_required")
-            data.system_logs = get_val(core_results[7], [], "system_logs")
+            slow_map = dict(zip(keys, slow_results))
+
+            data.device_info = get_val(slow_map["device_info"], data.device_info, "device_info")
+            data.services = get_val(slow_map["services"], data.services, "services")
+            data.leds = get_val(slow_map["leds"], data.leds, "LEDs")
+            data.firewall_redirects = get_val(slow_map["firewall_redirects"], data.firewall_redirects, "firewall redirects")
+            data.firewall_rules = get_val(slow_map["firewall_rules"], data.firewall_rules, "firewall rules")
+            data.access_control = get_val(slow_map["access_control"], data.access_control, "access control")
+            data.sqm = get_val(slow_map["sqm"], data.sqm, "SQM")
+            data.wireguard_interfaces = get_val(slow_map["wireguard"], data.wireguard_interfaces, "wireguard")
+            data.packages = get_val(slow_map["packages"], data.packages, "packages")
+            data.permissions = get_val(slow_map["permissions"], data.permissions, "permissions")
+            data.reboot_required = get_val(slow_map["reboot_required"], data.reboot_required, "reboot required")
+            data.system_logs = get_val(slow_map["system_logs"], data.system_logs, "system logs")
 
             self._cached_device_info = data.device_info
-            self._cached_local_macs = data.local_macs
-            self._cached_local_ips = data.local_ips
+            self._cached_slow_data = {k: data.__dict__.get(k) for k in ["services", "leds", "firewall_redirects", "firewall_rules", "access_control", "sqm", "wireguard_interfaces", "packages", "permissions", "reboot_required", "system_logs"]}
         else:
-            # Fast poll: reuse cached device_info, fetch dynamic core data
-            core_results_fast = await asyncio.gather(
-                self.get_system_resources(),
-                self.get_network_interfaces(),
-                self.get_connected_devices(),
-                self.get_local_macs(),
-                self.get_local_ips(),
-                return_exceptions=True,
-            )
-            data.system_resources = get_val(
-                core_results_fast[0], data.system_resources, "system_resources"
-            )
-            data.network_interfaces = get_val(
-                core_results_fast[1], [], "network_interfaces"
-            )
-            data.connected_devices = get_val(
-                core_results_fast[2], [], "connected_devices"
-            )
-            data.local_macs = get_val(core_results_fast[3], set(), "local_macs")
-            data.local_ips = get_val(core_results_fast[4], set(), "local_ips")
-
-            data.device_info = getattr(self, "_cached_device_info", data.device_info)
-
-            # Reuse cached slow-changing data
+            # Reuse cached data on fast polls
+            if self._cached_device_info:
+                data.device_info = self._cached_device_info
+            
             cached = getattr(self, "_cached_slow_data", {})
-            data.services = cached.get("services", [])
-            data.leds = cached.get("leds", [])
-            data.firewall_redirects = cached.get("firewall_redirects", [])
-            data.firewall_rules = cached.get("firewall_rules", [])
-            data.access_control = cached.get("access_control", [])
-            data.sqm = cached.get("sqm", [])
-            data.packages = cached.get("packages", OpenWrtPackages())
-            data.permissions = cached.get("permissions", OpenWrtPermissions())
-            data.reboot_required = cached.get("reboot_required", False)
-            data.system_logs = cached.get("system_logs", [])
+            for k, v in cached.items():
+                if hasattr(data, k) and v is not None:
+                    setattr(data, k, v)
 
-        # Ensure router MAC address is populated from interfaces if missing
-        if data.device_info and not data.device_info.mac_address:
-            # Try to find a suitable MAC address (br-lan, lan, eth0, or first non-loopback)
-            iface_map = {iface.name: iface for iface in data.network_interfaces}
-            best_iface = (
-                iface_map.get("br-lan")
-                or iface_map.get("lan")
-                or iface_map.get("eth0")
-                or iface_map.get("eth1")
-            )
-
-            if not best_iface:
-                # Fallback: first interface with a MAC that isn't loopback
-                for iface in data.network_interfaces:
-                    if iface.mac_address and iface.name != "lo":
-                        best_iface = iface
-                        break
-
-            if best_iface and best_iface.mac_address:
-                data.device_info.mac_address = best_iface.mac_address.upper()
-
-        # Always-fresh optional data (changes every cycle)
-        tasks = {
+        # 3. Dynamic always-fresh data (Dynamic block)
+        dynamic_tasks = {
             "ip_neighbors": self.get_ip_neighbors(),
             "mwan": self.get_mwan_status(),
             "qmodem": self.get_qmodem_info(),
@@ -1737,162 +1694,56 @@ class OpenWrtClient(abc.ABC):
             "latency": self.get_latency(),
             "external_ip": self.get_external_ip(),
             "gateway_mac": self.get_gateway_mac(),
-            "wireguard": self.get_wireguard_interfaces(),
             "wifi_credentials": self.get_wifi_credentials(),
         }
 
-        # Dynamically add tasks based on detected capabilities
         if data.packages.wireless is not False:
-            tasks["wireless"] = self.get_wireless_interfaces()
-            tasks["wps"] = self.get_wps_status()
-
+            dynamic_tasks["wireless"] = self.get_wireless_interfaces()
+            dynamic_tasks["wps"] = self.get_wps_status()
         if data.packages.dhcp is not False:
-            tasks["dhcp"] = self.get_dhcp_leases()
-
+            dynamic_tasks["dhcp"] = self.get_dhcp_leases()
         if data.packages.lldp is not False:
-            tasks["lldp"] = self.get_lldp_neighbors()
-
+            dynamic_tasks["lldp"] = self.get_lldp_neighbors()
         if data.packages.miniupnpd is not False:
-            tasks["upnp"] = self.get_upnp_mappings()
-
-        # Dynamically add adblock-related tasks if packages are present
+            dynamic_tasks["upnp"] = self.get_upnp_mappings()
         if data.packages.adblock:
-            tasks["adblock"] = self.get_adblock_status()
-        if data.packages.adblock_fast:
-            tasks["adblock_fast"] = self.get_adblock_fast_status()
+            dynamic_tasks["adblock"] = self.get_adblock_status()
         if data.packages.simple_adblock:
-            tasks["simple_adblock"] = self.get_simple_adblock_status()
+            dynamic_tasks["simple_adblock"] = self.get_simple_adblock_status()
         if data.packages.ban_ip:
-            tasks["ban_ip"] = self.get_banip_status()
-        if data.packages.nlbwmon:
-            tasks["nlbwmon"] = self.get_nlbwmon_data()
+            dynamic_tasks["ban_ip"] = self.get_banip_status()
 
-        # Execute all tasks in parallel
-        task_names = list(tasks.keys())
-        task_futures = [tasks[name] for name in task_names]
-        results = await asyncio.gather(*task_futures, return_exceptions=True)
-        fast_results = dict(zip(task_names, results, strict=True))
+        dyn_keys = list(dynamic_tasks.keys())
+        dyn_results = await asyncio.gather(
+            *[dynamic_tasks[k] for k in dyn_keys], return_exceptions=True
+        )
+        dyn_map = dict(zip(dyn_keys, dyn_results))
 
-        def get_task_val(name: str, default: Any) -> Any:
-            res = fast_results.get(name)
-            if res is None:
-                return default
-            return get_val(res, default, name)
+        data.ip_neighbors = get_val(dyn_map.get("ip_neighbors"), data.ip_neighbors, "IP neighbors")
+        data.mwan_status = get_val(dyn_map.get("mwan"), data.mwan_status, "MWAN")
+        data.qmodem_info = get_val(dyn_map.get("qmodem"), data.qmodem_info, "modem")
+        data.vpn_interfaces = get_val(dyn_map.get("vpn"), data.vpn_interfaces, "VPN")
+        data.latency = get_val(dyn_map.get("latency"), data.latency, "latency")
+        data.external_ip = get_val(dyn_map.get("external_ip"), data.external_ip, "external IP")
+        if data.device_info:
+            data.device_info.gateway_mac = get_val(dyn_map.get("gateway_mac"), data.device_info.gateway_mac, "gateway MAC")
+        data.wifi_credentials = get_val(dyn_map.get("wifi_credentials"), data.wifi_credentials, "WiFi credentials")
 
-        data.ip_neighbors = get_task_val("ip_neighbors", [])
-        data.mwan_status = get_task_val("mwan", [])
-        data.qmodem_info = get_task_val("qmodem", QModemInfo())
-        data.vpn_interfaces = get_task_val("vpn", [])
-        data.latency = get_task_val("latency", LatencyResult())
-        data.external_ip = get_task_val("external_ip", None)
-        data.device_info.gateway_mac = get_task_val("gateway_mac", None)
-        data.wireguard_interfaces = get_task_val("wireguard", [])
-        data.wifi_credentials = get_task_val("wifi_credentials", [])
-
-        # Capability-based assignments
-        if "wireless" in fast_results:
-            data.wireless_interfaces = get_task_val("wireless", [])
-        if "wps" in fast_results:
-            data.wps_status = get_task_val("wps", WpsStatus())
-        if "dhcp" in fast_results:
-            data.dhcp_leases = get_task_val("dhcp", [])
-        if "lldp" in fast_results:
-            data.lldp_neighbors = get_task_val("lldp", [])
-        if "upnp" in fast_results:
-            data.upnp_mappings = get_task_val("upnp", [])
-
-        # Adblock-related assignments
-        if "adblock" in fast_results:
-            data.adblock = get_task_val("adblock", AdBlockStatus())
-        if "adblock_fast" in fast_results:
-            data.adblock_fast = get_task_val("adblock_fast", SimpleAdBlockStatus())
-        if "simple_adblock" in fast_results:
-            data.simple_adblock = get_task_val("simple_adblock", SimpleAdBlockStatus())
-        if "ban_ip" in fast_results:
-            data.ban_ip = get_task_val("ban_ip", BanIpStatus())
-        if "nlbwmon" in fast_results:
-            data.nlbwmon_traffic = get_task_val("nlbwmon", {})
-
-        # Slow-changing optional data (services, LEDs, firewall, access control, packages, permissions)
-        if is_full_poll:
-            slow_optional_tasks = [
-                self.get_services(),
-                self.get_leds(),
-                self.get_firewall_redirects(),
-                self.get_firewall_rules(),
-                self.get_access_control(),
-                self.get_sqm_status(),
-                self.check_packages(),
-                self.check_permissions(),
-                self.is_reboot_required(),
-                self.get_system_logs(count=10),
-            ]
-            slow_results = await asyncio.gather(
-                *slow_optional_tasks,
-                return_exceptions=True,
-            )
-
-            data.services = get_val(
-                slow_results[0], cached.get("services", []), "services"
-            )
-            data.leds = get_val(slow_results[1], cached.get("leds", []), "LEDs")
-            data.firewall_redirects = get_val(
-                slow_results[2],
-                cached.get("firewall_redirects", []),
-                "firewall redirects",
-            )
-            data.firewall_rules = get_val(
-                slow_results[3], cached.get("firewall_rules", []), "firewall rules"
-            )
-            data.access_control = get_val(
-                slow_results[4], cached.get("access_control", []), "access control"
-            )
-            data.sqm = get_val(slow_results[5], cached.get("sqm", []), "SQM")
-            data.packages = get_val(
-                slow_results[6], cached.get("packages", OpenWrtPackages()), "packages"
-            )
-            data.permissions = get_val(
-                slow_results[7],
-                cached.get("permissions", OpenWrtPermissions()),
-                "permissions",
-            )
-            data.reboot_required = get_val(
-                slow_results[8], cached.get("reboot_required", False), "reboot required"
-            )
-            data.system_logs = get_val(
-                slow_results[9], cached.get("system_logs", []), "system logs"
-            )
-
-            # Cache slow results
-            self._cached_slow_data = {
-                "services": data.services,
-                "leds": data.leds,
-                "firewall_redirects": data.firewall_redirects,
-                "firewall_rules": data.firewall_rules,
-                "access_control": data.access_control,
-                "sqm": data.sqm,
-                "packages": data.packages,
-                "permissions": data.permissions,
-                "reboot_required": data.reboot_required,
-                "system_logs": data.system_logs,
-            }
-            self._last_full_poll = current_time
-            _LOGGER.debug(
-                "Full poll cycle %d: refreshed slow-changing data",
-                self._poll_count,
-            )
-        else:
-            # Reuse cached slow-changing data
-            cached = getattr(self, "_cached_slow_data", {})
-            data.services = cached.get("services", [])
-            data.leds = cached.get("leds", [])
-            data.firewall_redirects = cached.get("firewall_redirects", [])
-            data.firewall_rules = cached.get("firewall_rules", [])
-            data.access_control = cached.get("access_control", [])
-            data.sqm = cached.get("sqm", [])
-            data.packages = cached.get("packages", OpenWrtPackages())
-            data.permissions = cached.get("permissions", OpenWrtPermissions())
-            data.reboot_required = cached.get("reboot_required", False)
-            data.system_logs = cached.get("system_logs", [])
+        if "wireless" in dyn_map:
+            data.wireless_interfaces = get_val(dyn_map["wireless"], data.wireless_interfaces, "wireless")
+        if "wps" in dyn_map:
+            data.wps_status = get_val(dyn_map["wps"], data.wps_status, "WPS")
+        if "dhcp" in dyn_map:
+            data.dhcp_leases = get_val(dyn_map["dhcp"], data.dhcp_leases, "DHCP")
+        if "lldp" in dyn_map:
+            data.lldp_neighbors = get_val(dyn_map["lldp"], data.lldp_neighbors, "LLDP")
+        if "upnp" in dyn_map:
+            data.upnp_mappings = get_val(dyn_map["upnp"], data.upnp_mappings, "UPnP")
+        if "adblock" in dyn_map:
+            data.adblock = get_val(dyn_map["adblock"], data.adblock, "adblock")
+        if "simple_adblock" in dyn_map:
+            data.simple_adblock = get_val(dyn_map["simple_adblock"], data.simple_adblock, "simple adblock")
+        if "ban_ip" in dyn_map:
+            data.ban_ip = get_val(dyn_map["ban_ip"], data.ban_ip, "ban-ip")
 
         return data

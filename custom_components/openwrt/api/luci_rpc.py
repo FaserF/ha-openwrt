@@ -103,6 +103,7 @@ class LuciRpcClient(OpenWrtClient):
         self._auth_token: str = ""
         self._session: aiohttp.ClientSession | None = None
         self._rpc_id: int = 0
+        self._semaphore = asyncio.Semaphore(5)  # Limit concurrent RPC calls to avoid overloading uhttpd
 
     @property
     def _base_url(self) -> str:
@@ -144,67 +145,59 @@ class LuciRpcClient(OpenWrtClient):
             "params": params or [],
         }
 
+        reauth_needed = False
+        data: dict[str, Any] = {}
         try:
-            async with session.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            ) as response:
-                if response.status == 403:
-                    if self._auth_token and not reauthenticated:
-                        self._auth_token = ""
-                        await self.connect()
-                        return await self._rpc_call(
-                            endpoint,
-                            method,
-                            params,
-                            reauthenticated=True,
-                        )
-                    msg = f"Access denied to LuCI RPC on {self.host}"
-                    raise LuciRpcError(msg)
+            async with self._semaphore:
+                async with session.post(
+                    url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                ) as response:
+                    if response.status == 403:
+                        if self._auth_token and not reauthenticated:
+                            reauth_needed = True
+                        else:
+                            msg = f"Access denied to LuCI RPC on {self.host}"
+                            raise LuciRpcError(msg)
+                    else:
+                        response.raise_for_status()
 
-                if response.status == 404:
-                    msg = f"LuCI RPC endpoint not found on {self.host}. Is 'luci-mod-rpc' installed?"
-                    raise LuciRpcPackageMissingError(
-                        msg,
-                    )
+                        # Check content type to ensure it's JSON
+                        content_type = response.headers.get("Content-Type", "").lower()
+                        if "application/json" not in content_type:
+                            text = await response.text()
+                            if "<html" in text.lower():
+                                _LOGGER.debug(
+                                    "Received HTML instead of JSON from LuCI RPC: %s",
+                                    text[:200],
+                                )
+                                msg = "LuCI RPC returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
+                                raise LuciRpcPackageMissingError(msg)
+                            msg = f"Unexpected content type from LuCI RPC: {content_type}"
+                            raise LuciRpcError(msg)
 
-                response.raise_for_status()
+                        data = await response.json()
 
-                # Check content type to ensure it's JSON
-                content_type = response.headers.get("Content-Type", "").lower()
-                if "application/json" not in content_type:
-                    text = await response.text()
-                    if "<html" in text.lower():
-                        _LOGGER.debug(
-                            "Received HTML instead of JSON from LuCI RPC: %s",
-                            text[:200],
-                        )
-                        msg = "LuCI RPC returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
-                        raise LuciRpcPackageMissingError(
-                            msg,
-                        )
-                    msg = f"Unexpected content type from LuCI RPC: {content_type}"
-                    raise LuciRpcError(
-                        msg,
-                    )
+            if reauth_needed:
+                self._auth_token = ""
+                await self.connect()
+                return await self._rpc_call(
+                    endpoint,
+                    method,
+                    params,
+                    reauthenticated=True,
+                )
 
-                data = await response.json()
         except TimeoutError as err:
             msg = f"Timeout communicating with LuCI on {self.host}"
-            raise LuciRpcTimeoutError(
-                msg,
-            ) from err
+            raise LuciRpcTimeoutError(msg) from err
         except aiohttp.ClientConnectorError as err:
             msg = f"Cannot connect to LuCI on {self.host}: {err}"
-            raise LuciRpcConnectionError(
-                msg,
-            ) from err
+            raise LuciRpcConnectionError(msg) from err
         except aiohttp.ClientSSLError as err:
             msg = f"SSL error connecting to LuCI on {self.host}: {err}"
-            raise LuciRpcSslError(
-                msg,
-            ) from err
+            raise LuciRpcSslError(msg) from err
         except aiohttp.ClientError as err:
             if not reauthenticated:
                 _LOGGER.debug(
@@ -622,196 +615,186 @@ class LuciRpcClient(OpenWrtClient):
     async def check_packages(self) -> OpenWrtPackages:
         """Check installed packages with multiple fallbacks."""
         packages = OpenWrtPackages()
+        # Step 1: Check via ubus call (if ubus is available via sys.exec)
         try:
-            # Step 1: Check via ubus call (if ubus is available via sys.exec)
-            try:
-                ubus_list = await self.execute_command("ubus list")
-                objects = ubus_list.splitlines() if ubus_list else []
+            ubus_list = await self.execute_command("ubus list")
+            objects = ubus_list.splitlines() if ubus_list else []
 
-                if "sqm" in objects:
-                    packages.sqm_scripts = True
-                if "mwan3" in objects:
-                    packages.mwan3 = True
-                if "luci" in objects or "luci-rpc" in objects:
-                    packages.luci_mod_rpc = True
-                if "upnp" in objects:
-                    packages.miniupnpd = True
-                if "nlbwmon" in objects:
-                    packages.nlbwmon = True
-                if "pbr" in objects:
-                    packages.pbr = True
-                if "led" in objects:
-                    packages.rpcd_mod_led = True
-                if "dhcp" in objects:
-                    # Specifically check for ipv4leases method
-                    try:
-                        dhcp_info = await self.execute_command("ubus list dhcp")
-                        if "ipv4leases" in dhcp_info:
-                            packages.dhcp = True
-                        else:
-                            packages.dhcp = False
-                    except Exception:
+            if "sqm" in objects:
+                packages.sqm_scripts = True
+            if "mwan3" in objects:
+                packages.mwan3 = True
+            if "luci" in objects or "luci-rpc" in objects:
+                packages.luci_mod_rpc = True
+            if "upnp" in objects:
+                packages.miniupnpd = True
+            if "nlbwmon" in objects:
+                packages.nlbwmon = True
+            if "pbr" in objects:
+                packages.pbr = True
+            if "led" in objects:
+                packages.rpcd_mod_led = True
+            if "dhcp" in objects:
+                # Specifically check for ipv4leases method
+                try:
+                    dhcp_info = await self.execute_command("ubus list dhcp")
+                    if "ipv4leases" in dhcp_info:
                         packages.dhcp = True
-                if "network.wireless" in objects:
-                    packages.wireless = True
-                if "lldp" in objects:
-                    packages.lldp = True
+                    else:
+                        packages.dhcp = False
+                except Exception:
+                    packages.dhcp = True
+            if "network.wireless" in objects:
+                packages.wireless = True
+            if "lldp" in objects:
+                packages.lldp = True
+        except Exception:
+            pass
+
+        # Step 2: Check via file existence (sys.exec)
+        cmd = (
+            "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
+            "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
+            "/usr/lib/lua/luci/controller/rpc.lua "
+            "/usr/share/luci/menu.d/luci-mod-rpc.json "
+            "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
+            "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
+            "/etc/init.d/adblock "
+            "/etc/init.d/simple-adblock "
+            "/etc/init.d/ban-ip "
+            "/etc/init.d/ban-ip "
+            "/etc/init.d/miniupnpd "
+            "/etc/init.d/nlbwmon "
+            "/etc/init.d/pbr "
+            "/etc/init.d/adguardhome "
+            "/etc/init.d/unbound "
+            "/usr/lib/rpcd/led.so "
+            "/etc/init.d/odhcpd "
+            "/etc/init.d/lldpd; do "
+            "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
+        )
+        out = await self._rpc_call("sys", "exec", [cmd])
+        if out:
+            results = out.strip().splitlines()
+
+            def detect_status(idx: int) -> bool:
+                return len(results) > idx and results[idx].strip() == "1"
+
+            if packages.sqm_scripts is not True:
+                packages.sqm_scripts = detect_status(0)
+            if packages.mwan3 is not True:
+                packages.mwan3 = detect_status(1)
+            packages.iwinfo = detect_status(2)
+            packages.etherwake = detect_status(3)
+            packages.wireguard = detect_status(4)
+            packages.openvpn = detect_status(5)
+            if packages.luci_mod_rpc is not True:
+                packages.luci_mod_rpc = (
+                    detect_status(6) or detect_status(7) or (len(objects) > 0)
+                )
+            packages.asu = detect_status(8) or detect_status(9)
+            packages.adblock = detect_status(10)
+            packages.simple_adblock = detect_status(11)
+            packages.ban_ip = detect_status(12)
+            packages.adguardhome = detect_status(16)
+            packages.unbound = detect_status(17)
+            if packages.rpcd_mod_led is not True:
+                packages.rpcd_mod_led = detect_status(18)
+            if packages.dhcp is not True:
+                packages.dhcp = detect_status(19)
+            if packages.lldp is not True:
+                packages.lldp = detect_status(20)
+
+            packages.miniupnpd = detect_status(13)
+            packages.nlbwmon = detect_status(14)
+            packages.pbr = detect_status(15)
+
+        # Step 3: Check UCI configs for remaining packages (very robust fallback)
+        if packages.sqm_scripts is not True:
+            try:
+                res = await self._rpc_call("uci", "get_all", ["sqm"])
+                if res and isinstance(res, dict):
+                    packages.sqm_scripts = True
             except Exception:
                 pass
 
-            # Step 2: Check via file existence (sys.exec)
-            cmd = (
-                "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
-                "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
-                "/usr/lib/lua/luci/controller/rpc.lua "
-                "/usr/share/luci/menu.d/luci-mod-rpc.json "
-                "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
-                "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
-                "/etc/init.d/adblock "
-                "/etc/init.d/simple-adblock "
-                "/etc/init.d/ban-ip "
-                "/etc/init.d/ban-ip "
-                "/etc/init.d/miniupnpd "
-                "/etc/init.d/nlbwmon "
-                "/etc/init.d/pbr "
-                "/etc/init.d/adguardhome "
-                "/etc/init.d/unbound "
-                "/usr/lib/rpcd/led.so "
-                "/etc/init.d/odhcpd "
-                "/etc/init.d/lldpd; do "
-                "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
-            )
-            out = await self._rpc_call("sys", "exec", [cmd])
-            if out:
-                results = out.strip().splitlines()
+        if packages.mwan3 is not True:
+            try:
+                res = await self._rpc_call("uci", "get_all", ["mwan3"])
+                if res and isinstance(res, dict):
+                    packages.mwan3 = True
+            except Exception:
+                pass
 
-                def detect_status(idx: int) -> bool:
-                    return len(results) > idx and results[idx].strip() == "1"
+        if packages.openvpn is not True:
+            try:
+                res = await self._rpc_call("uci", "get_all", ["openvpn"])
+                if res and isinstance(res, dict):
+                    packages.openvpn = True
+            except Exception:
+                pass
 
-                if packages.sqm_scripts is not True:
-                    packages.sqm_scripts = detect_status(0)
-                if packages.mwan3 is not True:
-                    packages.mwan3 = detect_status(1)
-                packages.iwinfo = detect_status(2)
-                packages.etherwake = detect_status(3)
-                packages.wireguard = detect_status(4)
-                packages.openvpn = detect_status(5)
-                if packages.luci_mod_rpc is not True:
-                    packages.luci_mod_rpc = (
-                        detect_status(6) or detect_status(7) or (len(objects) > 0)
+        if packages.wireguard is not True:
+            try:
+                res = await self._rpc_call("uci", "get_all", ["network"])
+                if (
+                    res
+                    and isinstance(res, dict)
+                    and any(
+                        v.get("proto") == "wireguard"
+                        for v in res.values()
+                        if isinstance(v, dict)
                     )
-                packages.asu = detect_status(8) or detect_status(9)
-                packages.adblock = detect_status(10)
-                packages.simple_adblock = detect_status(11)
-                packages.ban_ip = detect_status(12)
-                packages.adguardhome = detect_status(16)
-                packages.unbound = detect_status(17)
-                if packages.rpcd_mod_led is not True:
-                    packages.rpcd_mod_led = detect_status(18)
-                if packages.dhcp is not True:
-                    packages.dhcp = detect_status(19)
-                if packages.lldp is not True:
-                    packages.lldp = detect_status(20)
+                ):
+                    packages.wireguard = True
+            except Exception:
+                pass
 
-                packages.miniupnpd = detect_status(13)
-                packages.nlbwmon = detect_status(14)
-                packages.pbr = detect_status(15)
-
-            # Step 3: Check UCI configs for remaining packages (very robust fallback)
-            if packages.sqm_scripts is not True:
-                try:
-                    res = await self._rpc_call("uci", "get_all", ["sqm"])
-                    if res and isinstance(res, dict):
-                        packages.sqm_scripts = True
-                except Exception:
-                    pass
-
-            if packages.mwan3 is not True:
-                try:
-                    res = await self._rpc_call("uci", "get_all", ["mwan3"])
-                    if res and isinstance(res, dict):
-                        packages.mwan3 = True
-                except Exception:
-                    pass
-
-            if packages.openvpn is not True:
-                try:
-                    res = await self._rpc_call("uci", "get_all", ["openvpn"])
-                    if res and isinstance(res, dict):
-                        packages.openvpn = True
-                except Exception:
-                    pass
-
-            if packages.wireguard is not True:
-                try:
-                    res = await self._rpc_call("uci", "get_all", ["network"])
-                    if (
-                        res
-                        and isinstance(res, dict)
-                        and any(
-                            v.get("proto") == "wireguard"
-                            for v in res.values()
-                            if isinstance(v, dict)
+        # Step 4: Fallback to get_installed_packages (full list check)
+        installed = await self.get_installed_packages()
+        if installed:
+            mapping = {
+                "sqm_scripts": "sqm-scripts",
+                "mwan3": "mwan3",
+                "iwinfo": "iwinfo",
+                "etherwake": "etherwake",
+                "wireguard": "wireguard",
+                "openvpn": "openvpn",
+                "luci_mod_rpc": "luci-mod-rpc",
+                "asu": "luci-app-attendedsysupgrade",
+                "adblock": "adblock",
+                "simple_adblock": "simple-adblock",
+                "ban_ip": "ban-ip",
+            }
+            for attr, pkg in mapping.items():
+                if getattr(packages, attr) is not True:
+                    if pkg in ["wireguard", "openvpn"]:
+                        setattr(
+                            packages,
+                            attr,
+                            any(pkg in p for p in installed),
                         )
-                    ):
-                        packages.wireguard = True
-                except Exception:
-                    pass
+                    elif attr == "asu":
+                        setattr(
+                            packages,
+                            attr,
+                            any(
+                                p in installed
+                                for p in [
+                                    "luci-app-attendedsysupgrade",
+                                    "attendedsysupgrade-common",
+                                ]
+                            ),
+                        )
+                    else:
+                        setattr(packages, attr, pkg in installed)
 
-            # Step 4: Fallback to get_installed_packages (full list check)
-            installed = await self.get_installed_packages()
-            if installed:
-                mapping = {
-                    "sqm_scripts": "sqm-scripts",
-                    "mwan3": "mwan3",
-                    "iwinfo": "iwinfo",
-                    "etherwake": "etherwake",
-                    "wireguard": "wireguard",
-                    "openvpn": "openvpn",
-                    "luci_mod_rpc": "luci-mod-rpc",
-                    "asu": "luci-app-attendedsysupgrade",
-                    "adblock": "adblock",
-                    "simple_adblock": "simple-adblock",
-                    "ban_ip": "ban-ip",
-                }
-                for attr, pkg in mapping.items():
-                    if getattr(packages, attr) is not True:
-                        if pkg in ["wireguard", "openvpn"]:
-                            setattr(
-                                packages,
-                                attr,
-                                any(pkg in p for p in installed),
-                            )
-                        elif attr == "asu":
-                            setattr(
-                                packages,
-                                attr,
-                                any(
-                                    p in installed
-                                    for p in [
-                                        "luci-app-attendedsysupgrade",
-                                        "attendedsysupgrade-common",
-                                    ]
-                                ),
-                            )
-                        else:
-                            setattr(packages, attr, pkg in installed)
+        # Final pass: Initialize remaining to False (to avoid staying at None)
+        import dataclasses
 
-            # Final pass: Initialize remaining to False (to avoid staying at None)
-            import dataclasses
-
-            for field in dataclasses.fields(packages):
-                if getattr(packages, field.name) is None:
-                    setattr(packages, field.name, False)
-
-        except Exception as err:
-            _LOGGER.exception("Failed to check packages via LuCI RPC: %s", err)
-            # Ensure no None values are returned
-            import dataclasses
-
-            for field in dataclasses.fields(packages):
-                if getattr(packages, field.name) is None:
-                    setattr(packages, field.name, False)
+        for field in dataclasses.fields(packages):
+            if getattr(packages, field.name) is None:
+                setattr(packages, field.name, False)
 
         return packages
 
@@ -1169,9 +1152,9 @@ class LuciRpcClient(OpenWrtClient):
         # 3. Populate metrics via ubus iwinfo info in parallel
         async def _fetch_metrics(wifi: WirelessInterface) -> None:
             iface_name = wifi.name
-            # Only call iwinfo if the device is known to iwinfo to avoid slow timeouts/errors
+            # Only call iwinfo if the device is known to iwinfo or looks like a wireless device
             if iface_name not in iw_devs and not iface_name.startswith(
-                ("wlan", "ath", "ra", "wl")
+                ("wlan", "ath", "ra", "wl", "phy", "ap", "radio")
             ):
                 return
 
@@ -1347,64 +1330,60 @@ class LuciRpcClient(OpenWrtClient):
     async def get_wireguard_interfaces(self) -> list[WireGuardInterface]:
         """Get WireGuard VPN interface and peer information via LuCI RPC."""
         interfaces: list[WireGuardInterface] = []
-        try:
-            # 1. Discover WG interfaces via ubus call
-            status_str = await self.execute_command(
-                "ubus call network.interface dump 2>/dev/null"
-            )
-            if not status_str or not status_str.strip().startswith("{"):
-                return interfaces
+        # 1. Discover WG interfaces via ubus call
+        status_str = await self.execute_command(
+            "ubus call network.interface dump 2>/dev/null"
+        )
+        if not status_str or not status_str.strip().startswith("{"):
+            return interfaces
 
-            status = json.loads(status_str)
-            wg_ifaces: dict[str, bool] = {}
-            for iface_data in status.get("interface", []):
-                if iface_data.get("proto") == "wireguard":
-                    wg_ifaces[iface_data.get("interface")] = bool(iface_data.get("up"))
+        status = json.loads(status_str)
+        wg_ifaces: dict[str, bool] = {}
+        for iface_data in status.get("interface", []):
+            if iface_data.get("proto") == "wireguard":
+                wg_ifaces[iface_data.get("interface")] = bool(iface_data.get("up"))
 
-            if not wg_ifaces:
-                return interfaces
+        if not wg_ifaces:
+            return interfaces
 
-            # 2. Fetch peer info via wg show all dump
-            stdout = await self.execute_command("wg show all dump 2>/dev/null")
-            if not stdout:
-                return interfaces
+        # 2. Fetch peer info via wg show all dump
+        stdout = await self.execute_command("wg show all dump 2>/dev/null")
+        if not stdout:
+            return interfaces
 
-            iface_map: dict[str, WireGuardInterface] = {}
-            for line in stdout.splitlines():
-                parts = line.split("\t")
-                if len(parts) == 4:
-                    ifname = parts[0]
-                    if ifname not in wg_ifaces:
-                        continue
-                    iface = WireGuardInterface(
-                        name=ifname,
-                        enabled=wg_ifaces[ifname],
+        iface_map: dict[str, WireGuardInterface] = {}
+        for line in stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) == 4:
+                ifname = parts[0]
+                if ifname not in wg_ifaces:
+                    continue
+                iface = WireGuardInterface(
+                    name=ifname,
+                    enabled=wg_ifaces[ifname],
+                    public_key=parts[1],
+                    listen_port=int(parts[2]) if parts[2].isdigit() else 0,
+                    fwmark=int(parts[3]) if parts[3].isdigit() else 0,
+                )
+                iface_map[ifname] = iface
+                interfaces.append(iface)
+            elif len(parts) >= 8:
+                ifname = parts[0]
+                if ifname in iface_map:
+                    peer = WireGuardPeer(
                         public_key=parts[1],
-                        listen_port=int(parts[2]) if parts[2].isdigit() else 0,
-                        fwmark=int(parts[3]) if parts[3].isdigit() else 0,
+                        endpoint=parts[3] if parts[3] != "(none)" else "",
+                        allowed_ips=parts[4].split(",")
+                        if parts[4] != "(none)"
+                        else [],
+                        latest_handshake=int(parts[5]) if parts[5].isdigit() else 0,
+                        transfer_rx=int(parts[6]) if parts[6].isdigit() else 0,
+                        transfer_tx=int(parts[7]) if parts[7].isdigit() else 0,
+                        persistent_keepalive=int(parts[8])
+                        if len(parts) > 8 and parts[8].isdigit()
+                        else 0,
                     )
-                    iface_map[ifname] = iface
-                    interfaces.append(iface)
-                elif len(parts) >= 8:
-                    ifname = parts[0]
-                    if ifname in iface_map:
-                        peer = WireGuardPeer(
-                            public_key=parts[1],
-                            endpoint=parts[3] if parts[3] != "(none)" else "",
-                            allowed_ips=parts[4].split(",")
-                            if parts[4] != "(none)"
-                            else [],
-                            latest_handshake=int(parts[5]) if parts[5].isdigit() else 0,
-                            transfer_rx=int(parts[6]) if parts[6].isdigit() else 0,
-                            transfer_tx=int(parts[7]) if parts[7].isdigit() else 0,
-                            persistent_keepalive=int(parts[8])
-                            if len(parts) > 8 and parts[8].isdigit()
-                            else 0,
-                        )
-                        iface_map[ifname].peers.append(peer)
-        except Exception as err:
-            _LOGGER.debug("Failed to fetch WireGuard interfaces via LuCI RPC: %s", err)
-
+                    iface_map[ifname].peers.append(peer)
         return interfaces
 
     async def get_network_interfaces(self) -> list[NetworkInterface]:
@@ -1543,7 +1522,7 @@ class LuciRpcClient(OpenWrtClient):
                                     dev = ConnectedDevice(mac=mac, connected=False)
                                     devices[mac] = dev
 
-                                    dev.connected = True  # Wireless association
+                                dev.connected = True  # Wireless association
 
                                 dev.is_wireless = True
                                 if (
@@ -1819,35 +1798,31 @@ class LuciRpcClient(OpenWrtClient):
         from .base import LedInfo
 
         leds: list[LedInfo] = []
-        try:
-            cmd = (
-                "for led in /sys/class/leds/*/; do "
-                'name=$(basename "$led"); '
-                'brightness=$(cat "$led/brightness" 2>/dev/null || echo 0); '
-                'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
-                'trigger=$(cat "$led/trigger" 2>/dev/null | tr " " "\\n" | grep "^\\[" | tr -d "[]" || echo none); '
-                'echo "$name|$brightness|$max|$trigger"; '
-                "done"
-            )
-            output = await self._rpc_call("sys", "exec", [cmd])
-            if output:
-                for line in output.strip().splitlines():
-                    parts = line.strip().split("|")
-                    if len(parts) >= 4:
-                        brightness = int(parts[1]) if parts[1].isdigit() else 0
-                        max_b = int(parts[2]) if parts[2].isdigit() else 255
-                        leds.append(
-                            LedInfo(
-                                name=parts[0],
-                                brightness=brightness,
-                                max_brightness=max_b,
-                                trigger=parts[3],
-                                active=brightness > 0,
-                            ),
-                        )
-        except LuciRpcError:
-            _LOGGER.debug("Cannot list LEDs via LuCI RPC")
-
+        cmd = (
+            "for led in /sys/class/leds/*/; do "
+            'name=$(basename "$led"); '
+            'brightness=$(cat "$led/brightness" 2>/dev/null || echo 0); '
+            'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
+            'trigger=$(cat "$led/trigger" 2>/dev/null | tr " " "\\n" | grep "^\\[" | tr -d "[]" || echo none); '
+            'echo "$name|$brightness|$max|$trigger"; '
+            "done"
+        )
+        output = await self._rpc_call("sys", "exec", [cmd])
+        if output:
+            for line in output.strip().splitlines():
+                parts = line.strip().split("|")
+                if len(parts) >= 4:
+                    brightness = int(parts[1]) if parts[1].isdigit() else 0
+                    max_b = int(parts[2]) if parts[2].isdigit() else 255
+                    leds.append(
+                        LedInfo(
+                            name=parts[0],
+                            brightness=brightness,
+                            max_brightness=max_b,
+                            trigger=parts[3],
+                            active=brightness > 0,
+                        ),
+                    )
         return leds
 
     async def get_local_macs(self) -> set[str]:
@@ -2049,44 +2024,41 @@ class LuciRpcClient(OpenWrtClient):
     async def get_firewall_rules(self) -> list[FirewallRule]:
         """Get firewall rules via LuCI RPC UCI."""
         rules: list[FirewallRule] = []
-        try:
-            data = await self._rpc_call("uci", "get_all", ["firewall"])
-            if not isinstance(data, dict):
-                return []
-
-            for section_id, val in data.items():
-                if isinstance(val, dict) and val.get(".type") == "rule":
-                    display_id = section_id
-                    if section_id.startswith("cfg"):
-                        rule_sects = [
-                            k
-                            for k, v in data.items()
-                            if isinstance(v, dict) and v.get(".type") == "rule"
-                        ]
-                        try:
-                            idx = rule_sects.index(section_id)
-                            display_id = f"@rule[{idx}]"
-                        except ValueError:
-                            pass
-
-                    try:
-                        enabled = bool(int(val.get("enabled", "1")))
-                    except ValueError, TypeError:
-                        enabled = True
-                    rules.append(
-                        FirewallRule(
-                            section_id=display_id,
-                            name=str(val.get("name") or display_id),
-                            enabled=enabled,
-                            src=val.get("src", ""),
-                            dest=val.get("dest", ""),
-                            target=val.get("target", "REJECT"),
-                        )
-                    )
-            return rules
-        except Exception as err:
-            _LOGGER.debug("Failed to get firewall rules via luci_rpc: %s", err)
+        data = await self._rpc_call("uci", "get_all", ["firewall"])
+        if not isinstance(data, dict):
             return []
+
+        for section_id, val in data.items():
+            if isinstance(val, dict) and val.get(".type") == "rule":
+                display_id = section_id
+                if section_id.startswith("cfg"):
+                    rule_sects = [
+                        k
+                        for k, v in data.items()
+                        if isinstance(v, dict) and v.get(".type") == "rule"
+                    ]
+                    try:
+                        idx = rule_sects.index(section_id)
+                        display_id = f"@rule[{idx}]"
+                    except ValueError:
+                        pass
+
+                try:
+                    enabled = bool(int(val.get("enabled", "1")))
+                except ValueError, TypeError:
+                    enabled = True
+                rules.append(
+                    FirewallRule(
+                        section_id=display_id,
+                        name=str(val.get("name") or display_id),
+                        enabled=enabled,
+                        src=val.get("src", ""),
+                        dest=val.get("dest", ""),
+                        target=val.get("target", "REJECT"),
+                    )
+                )
+        return rules
+        return rules
 
     async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
         """Enable or disable a firewall rule via UCI over LuCI RPC."""
@@ -2103,41 +2075,38 @@ class LuciRpcClient(OpenWrtClient):
     async def get_firewall_redirects(self) -> list[FirewallRedirect]:
         """Get firewall port forwarding redirects via LuCI RPC UCI."""
         redirects: list[FirewallRedirect] = []
-        try:
-            data = await self._rpc_call("uci", "get_all", ["firewall"])
-            if not isinstance(data, dict):
-                return []
-
-            for section_id, val in data.items():
-                if isinstance(val, dict) and val.get(".type") == "redirect":
-                    display_id = section_id
-                    if section_id.startswith("cfg"):
-                        redirect_sects = [
-                            k
-                            for k, v in data.items()
-                            if isinstance(v, dict) and v.get(".type") == "redirect"
-                        ]
-                        try:
-                            idx = redirect_sects.index(section_id)
-                            display_id = f"@redirect[{idx}]"
-                        except ValueError:
-                            pass
-
-                    redirects.append(
-                        FirewallRedirect(
-                            section_id=display_id,
-                            name=str(val.get("name") or display_id),
-                            enabled=str(val.get("enabled", "1")) == "1",
-                            external_port=val.get("src_dport", ""),
-                            target_ip=val.get("dest_ip", ""),
-                            target_port=val.get("dest_port", ""),
-                            protocol=val.get("proto", "tcp"),
-                        )
-                    )
-            return redirects
-        except Exception as err:
-            _LOGGER.debug("Failed to get firewall redirects via luci_rpc: %s", err)
+        data = await self._rpc_call("uci", "get_all", ["firewall"])
+        if not isinstance(data, dict):
             return []
+
+        for section_id, val in data.items():
+            if isinstance(val, dict) and val.get(".type") == "redirect":
+                display_id = section_id
+                if section_id.startswith("cfg"):
+                    redirect_sects = [
+                        k
+                        for k, v in data.items()
+                        if isinstance(v, dict) and v.get(".type") == "redirect"
+                    ]
+                    try:
+                        idx = redirect_sects.index(section_id)
+                        display_id = f"@redirect[{idx}]"
+                    except ValueError:
+                        pass
+
+                redirects.append(
+                    FirewallRedirect(
+                        section_id=display_id,
+                        name=str(val.get("name") or display_id),
+                        enabled=str(val.get("enabled", "1")) == "1",
+                        external_port=val.get("src_dport", ""),
+                        target_ip=val.get("dest_ip", ""),
+                        target_port=val.get("dest_port", ""),
+                        protocol=val.get("proto", "tcp"),
+                    )
+                )
+        return redirects
+        return redirects
 
     async def get_firewall_rules_uci_not_used(self) -> list[FirewallRule]:
         """Deprecated."""
@@ -2146,30 +2115,27 @@ class LuciRpcClient(OpenWrtClient):
     async def get_access_control(self) -> list[AccessControl]:
         """Get access control rules via LuCI RPC UCI."""
         rules: list[AccessControl] = []
-        try:
-            # OpenWrt Parental Control usually uses firewall rules with ha_acl_ prefix
-            data = await self._rpc_call("uci", "get_all", ["firewall"])
-            if not isinstance(data, dict):
-                return []
-
-            for _section_id, val in data.items():
-                if (
-                    isinstance(val, dict)
-                    and val.get(".type") == "rule"
-                    and val.get("name", "").startswith("ha_acl_")
-                ):
-                    rules.append(
-                        AccessControl(
-                            mac=val.get("src_mac", "").upper(),
-                            name=val.get("name", "").replace("ha_acl_", ""),
-                            blocked=(val.get("target") == "REJECT"),
-                            section_id=_section_id,
-                        )
-                    )
-            return rules
-        except Exception as err:
-            _LOGGER.debug("Failed to get access control via luci_rpc: %s", err)
+        # OpenWrt Parental Control usually uses firewall rules with ha_acl_ prefix
+        data = await self._rpc_call("uci", "get_all", ["firewall"])
+        if not isinstance(data, dict):
             return []
+
+        for _section_id, val in data.items():
+            if (
+                isinstance(val, dict)
+                and val.get(".type") == "rule"
+                and val.get("name", "").startswith("ha_acl_")
+            ):
+                rules.append(
+                    AccessControl(
+                        mac=val.get("src_mac", "").upper(),
+                        name=val.get("name", "").replace("ha_acl_", ""),
+                        blocked=(val.get("target") == "REJECT"),
+                        section_id=_section_id,
+                    )
+                )
+        return rules
+        return rules
 
     async def get_wps_status(self) -> WpsStatus:
         """Get WPS status via LuCI RPC."""
@@ -2366,59 +2332,56 @@ class LuciRpcClient(OpenWrtClient):
         from .base import SqmStatus
 
         sqm_instances: list[SqmStatus] = []
-        try:
-            resp = await self._rpc_call("uci", "get_all", ["sqm"])
-            # Fallback to shell if permission denied or failed
-            if not resp or (
-                isinstance(resp, list)
-                and len(resp) > 1
-                and resp[1] == "Permission denied"
-            ):
-                try:
-                    shell_out = await self.execute_command("uci show sqm 2>/dev/null")
-                    if shell_out:
-                        # Parse uci output
-                        sections: dict[str, dict[str, Any]] = {}
-                        for line in shell_out.strip().split("\n"):
-                            if "=" not in line:
-                                continue
-                            key, val = line.split("=", 1)
-                            parts = key.split(".")
-                            if len(parts) >= 2:
-                                section = parts[1]
-                                if section not in sections:
-                                    sections[section] = {}
-                                if len(parts) == 2:
-                                    sections[section][".type"] = val.strip("'")
-                                elif len(parts) == 3:
-                                    sections[section][parts[2]] = val.strip("'")
-                        values_dict = sections
-                    else:
-                        values_dict = {}
-                except Exception:
+        resp = await self._rpc_call("uci", "get_all", ["sqm"])
+        # Fallback to shell if permission denied or failed
+        if not resp or (
+            isinstance(resp, list)
+            and len(resp) > 1
+            and resp[1] == "Permission denied"
+        ):
+            try:
+                shell_out = await self.execute_command("uci show sqm 2>/dev/null")
+                if shell_out:
+                    # Parse uci output
+                    sections: dict[str, dict[str, Any]] = {}
+                    for line in shell_out.strip().split("\n"):
+                        if "=" not in line:
+                            continue
+                        key, val = line.split("=", 1)
+                        parts = key.split(".")
+                        if len(parts) >= 2:
+                            section = parts[1]
+                            if section not in sections:
+                                sections[section] = {}
+                            if len(parts) == 2:
+                                sections[section][".type"] = val.strip("'")
+                            elif len(parts) == 3:
+                                sections[section][parts[2]] = val.strip("'")
+                    values_dict = sections
+                else:
                     values_dict = {}
-            else:
-                values_dict = resp.get("values", resp) if isinstance(resp, dict) else {}
+            except Exception:
+                values_dict = {}
+        else:
+            values_dict = resp.get("values", resp) if isinstance(resp, dict) else {}
 
-            if not isinstance(values_dict, dict):
-                return sqm_instances
+        if not isinstance(values_dict, dict):
+            return sqm_instances
 
-            for section_id, values in values_dict.items():
-                if isinstance(values, dict) and values.get(".type") == "queue":
-                    sqm_instances.append(
-                        SqmStatus(
-                            section_id=section_id,
-                            name=values.get("name", section_id),
-                            enabled=values.get("enabled") == "1",
-                            interface=values.get("interface", ""),
-                            download=int(values.get("download", "0")),
-                            upload=int(values.get("upload", "0")),
-                            qdisc=values.get("qdisc", ""),
-                            script=values.get("script", ""),
-                        ),
-                    )
-        except Exception:
-            pass
+        for section_id, values in values_dict.items():
+            if isinstance(values, dict) and values.get(".type") == "queue":
+                sqm_instances.append(
+                    SqmStatus(
+                        section_id=section_id,
+                        name=values.get("name", section_id),
+                        enabled=values.get("enabled") == "1",
+                        interface=values.get("interface", ""),
+                        download=int(values.get("download", "0")),
+                        upload=int(values.get("upload", "0")),
+                        qdisc=values.get("qdisc", ""),
+                        script=values.get("script", ""),
+                    ),
+                )
         return sqm_instances
 
     async def set_sqm_config(self, section_id: str, **kwargs: Any) -> bool:
@@ -2670,55 +2633,51 @@ class LuciRpcClient(OpenWrtClient):
     async def get_services(self) -> list[ServiceInfo]:
         """Get list of system services via ubus rc list."""
         services: list[ServiceInfo] = []
-        try:
-            # 'rc list' is more reliable as it shows both enabled and running state
-            stdout = await self.execute_command("ubus call rc list 2>/dev/null")
+        # 'rc list' is more reliable as it shows both enabled and running state
+        stdout = await self.execute_command("ubus call rc list 2>/dev/null")
+        if stdout:
+            # Find the first { and last } to extract JSON
+            start = stdout.find("{")
+            end = stdout.rfind("}")
+            if start != -1 and end != -1:
+                try:
+                    data = json.loads(stdout[start : end + 1])
+                    for name, val in data.items():
+                        if isinstance(val, dict):
+                            services.append(
+                                ServiceInfo(
+                                    name=name,
+                                    enabled=val.get("enabled", False),
+                                    running=val.get("running", False),
+                                )
+                            )
+                except json.JSONDecodeError:
+                    pass
+
+        # Fallback to 'service list' if 'rc list' was empty
+        if not services:
+            stdout = await self.execute_command(
+                "ubus call service list 2>/dev/null"
+            )
             if stdout:
-                # Find the first { and last } to extract JSON
                 start = stdout.find("{")
                 end = stdout.rfind("}")
                 if start != -1 and end != -1:
                     try:
                         data = json.loads(stdout[start : end + 1])
                         for name, val in data.items():
-                            if isinstance(val, dict):
+                            if isinstance(val, dict) and "instances" in val:
+                                running = any(
+                                    inst.get("running", False)
+                                    for inst in val.get("instances", {}).values()
+                                )
                                 services.append(
-                                    ServiceInfo(
-                                        name=name,
-                                        enabled=val.get("enabled", False),
-                                        running=val.get("running", False),
-                                    )
+                                    ServiceInfo(name=name, running=running)
                                 )
                     except json.JSONDecodeError:
                         pass
 
-            # Fallback to 'service list' if 'rc list' was empty
-            if not services:
-                stdout = await self.execute_command(
-                    "ubus call service list 2>/dev/null"
-                )
-                if stdout:
-                    start = stdout.find("{")
-                    end = stdout.rfind("}")
-                    if start != -1 and end != -1:
-                        try:
-                            data = json.loads(stdout[start : end + 1])
-                            for name, val in data.items():
-                                if isinstance(val, dict) and "instances" in val:
-                                    running = any(
-                                        inst.get("running", False)
-                                        for inst in val.get("instances", {}).values()
-                                    )
-                                    services.append(
-                                        ServiceInfo(name=name, running=running)
-                                    )
-                        except json.JSONDecodeError:
-                            pass
-
-            return services
-        except Exception as err:
-            _LOGGER.debug("Failed to get services via luci_rpc: %s", err)
-            return []
+        return services
 
     async def is_reboot_required(self) -> bool:
         """Check if reboot is required via LuCI RPC."""

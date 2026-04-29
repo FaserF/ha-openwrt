@@ -172,6 +172,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     ) -> None:
         """Initialize the coordinator."""
         self.client = client
+        self.client.coordinator = self
         self.hass = hass
         self.config_entry = config_entry
         self._firmware_checked = False
@@ -225,7 +226,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
                 # Also try an initial data fetch to populate the coordinator
                 self.data = await self.client.get_all_data()
-                if self.data:
+                if self.data and self.data.device_info:
                     self.data.firmware_current_version = (
                         self.data.device_info.firmware_version
                         or self.data.device_info.release_version
@@ -340,6 +341,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     def _async_sync_firmware_state(self, data: OpenWrtData) -> None:
         """Sync firmware metadata from previous data if revision is unchanged."""
+        if not data.device_info:
+            return
+
         # Always initialize current version from device info
         data.firmware_current_version = (
             data.device_info.firmware_version or data.device_info.release_version

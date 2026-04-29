@@ -94,10 +94,10 @@ class SshClient(OpenWrtClient):
         )
         self._ssh_key = ssh_key
         self._client: Any = None
+        self._semaphore = asyncio.Semaphore(2)  # Limit concurrent SSH commands
 
     async def _exec(self, command: str, retry: bool = True) -> str:
         """Execute a command via SSH and return stdout."""
-
         loop = asyncio.get_event_loop()
 
         def _run() -> str:
@@ -122,7 +122,8 @@ class SshClient(OpenWrtClient):
             return output
 
         try:
-            return await loop.run_in_executor(None, _run)
+            async with self._semaphore:
+                return await loop.run_in_executor(None, _run)
         except Exception as err:
             _LOGGER.debug("SSH command failed, marking as disconnected: %s", err)
             self._connected = False
@@ -1360,31 +1361,27 @@ class SshClient(OpenWrtClient):
         """Get init.d services."""
         services: list[ServiceInfo] = []
 
-        try:
-            ls_output = await self._exec("ls /etc/init.d/ 2>/dev/null")
-            for svc_name in ls_output.strip().split("\n"):
-                svc_name = svc_name.strip()
-                if not svc_name:
-                    continue
-                enabled = False
-                running = False
-                try:
-                    enabled_check = await self._exec(
-                        f"/etc/init.d/{svc_name} enabled && echo yes || echo no",
-                    )
-                    enabled = "yes" in enabled_check
-                    running_check = await self._exec(
-                        f"/etc/init.d/{svc_name} running && echo yes || echo no",
-                    )
-                    running = "yes" in running_check
-                except Exception:  # noqa: BLE001
-                    pass
-                services.append(
-                    ServiceInfo(name=svc_name, enabled=enabled, running=running),
+        ls_output = await self._exec("ls /etc/init.d/ 2>/dev/null")
+        for svc_name in ls_output.strip().split("\n"):
+            svc_name = svc_name.strip()
+            if not svc_name:
+                continue
+            enabled = False
+            running = False
+            try:
+                enabled_check = await self._exec(
+                    f"/etc/init.d/{svc_name} enabled && echo yes || echo no",
                 )
-        except Exception:  # noqa: BLE001
-            pass
-
+                enabled = "yes" in enabled_check
+                running_check = await self._exec(
+                    f"/etc/init.d/{svc_name} running && echo yes || echo no",
+                )
+                running = "yes" in running_check
+            except Exception:  # noqa: BLE001
+                pass
+            services.append(
+                ServiceInfo(name=svc_name, enabled=enabled, running=running),
+            )
         return services
 
     async def reboot(self) -> bool:
@@ -1414,33 +1411,29 @@ class SshClient(OpenWrtClient):
         from .base import LedInfo
 
         leds: list[LedInfo] = []
-        try:
-            output = await self._exec(
-                "for led in /sys/class/leds/*/; do "
-                'name=$(basename "$led"); '
-                'brightness=$(cat "$led/brightness" 2>/dev/null || echo 0); '
-                'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
-                'trigger=$(cat "$led/trigger" 2>/dev/null | tr " " "\\n" | grep "^\\[" | tr -d "[]" || echo none); '
-                'echo "$name|$brightness|$max|$trigger"; '
-                "done",
-            )
-            for line in output.strip().splitlines():
-                parts = line.strip().split("|")
-                if len(parts) >= 4:
-                    brightness = int(parts[1]) if parts[1].isdigit() else 0
-                    max_b = int(parts[2]) if parts[2].isdigit() else 255
-                    leds.append(
-                        LedInfo(
-                            name=parts[0],
-                            brightness=brightness,
-                            max_brightness=max_b,
-                            trigger=parts[3],
-                            active=brightness > 0,
-                        ),
-                    )
-        except Exception:  # noqa: BLE001
-            _LOGGER.debug("Cannot list LEDs via SSH")
-
+        output = await self._exec(
+            "for led in /sys/class/leds/*/; do "
+            'name=$(basename "$led"); '
+            'brightness=$(cat "$led/brightness" 2>/dev/null || echo 0); '
+            'max=$(cat "$led/max_brightness" 2>/dev/null || echo 255); '
+            'trigger=$(cat "$led/trigger" 2>/dev/null | tr " " "\\n" | grep "^\\[" | tr -d "[]" || echo none); '
+            'echo "$name|$brightness|$max|$trigger"; '
+            "done",
+        )
+        for line in output.strip().splitlines():
+            parts = line.strip().split("|")
+            if len(parts) >= 4:
+                brightness = int(parts[1]) if parts[1].isdigit() else 0
+                max_b = int(parts[2]) if parts[2].isdigit() else 255
+                leds.append(
+                    LedInfo(
+                        name=parts[0],
+                        brightness=brightness,
+                        max_brightness=max_b,
+                        trigger=parts[3],
+                        active=brightness > 0,
+                    ),
+                )
         return leds
 
     async def set_led(self, name: str, brightness: int) -> bool:
@@ -1608,39 +1601,36 @@ class SshClient(OpenWrtClient):
         from .base import FirewallRule
 
         rules: list[FirewallRule] = []
-        try:
-            output = await self._exec("uci show firewall")
-            sections: dict[str, dict[str, str]] = {}
-            for line in output.splitlines():
-                if "=" not in line:
-                    continue
-                key, val = line.split("=", 1)
-                parts = key.split(".")
-                if len(parts) == 2:
-                    section = parts[1]
-                    if section not in sections:
-                        sections[section] = {}
-                    sections[section][".type"] = val.strip("'")
-                elif len(parts) >= 3:
-                    section = parts[1]
-                    if section not in sections:
-                        sections[section] = {}
-                    sections[section][parts[2]] = val.strip("'")
+        output = await self._exec("uci show firewall")
+        sections: dict[str, dict[str, str]] = {}
+        for line in output.splitlines():
+            if "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            parts = key.split(".")
+            if len(parts) == 2:
+                section = parts[1]
+                if section not in sections:
+                    sections[section] = {}
+                sections[section][".type"] = val.strip("'")
+            elif len(parts) >= 3:
+                section = parts[1]
+                if section not in sections:
+                    sections[section] = {}
+                sections[section][parts[2]] = val.strip("'")
 
-            for section_id, data in sections.items():
-                if data.get(".type") == "rule":
-                    rules.append(
-                        FirewallRule(
-                            name=data.get("name", section_id),
-                            enabled=data.get("enabled", "1") == "1",
-                            section_id=section_id,
-                            target=data.get("target", ""),
-                            src=data.get("src", ""),
-                            dest=data.get("dest", ""),
-                        ),
-                    )
-        except Exception as err:
-            _LOGGER.exception("Failed to get firewall rules via SSH: %s", err)
+        for section_id, data in sections.items():
+            if data.get(".type") == "rule":
+                rules.append(
+                    FirewallRule(
+                        name=data.get("name", section_id),
+                        enabled=data.get("enabled", "1") == "1",
+                        section_id=section_id,
+                        target=data.get("target", ""),
+                        src=data.get("src", ""),
+                        dest=data.get("dest", ""),
+                    ),
+                )
         return rules
 
     async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
@@ -1659,40 +1649,37 @@ class SshClient(OpenWrtClient):
     async def get_firewall_redirects(self) -> list[FirewallRedirect]:
         """Get firewall port forwarding redirects via UCI over SSH."""
         redirects: list[FirewallRedirect] = []
-        try:
-            output = await self._exec("uci show firewall")
-            sections: dict[str, dict[str, str]] = {}
-            for line in output.splitlines():
-                if "=" not in line:
-                    continue
-                key, val = line.split("=", 1)
-                parts = key.split(".")
-                if len(parts) == 2:
-                    section = parts[1]
-                    if section not in sections:
-                        sections[section] = {}
-                    sections[section][".type"] = val.strip("'")
-                elif len(parts) >= 3:
-                    section = parts[1]
-                    if section not in sections:
-                        sections[section] = {}
-                    sections[section][parts[2]] = val.strip("'")
+        output = await self._exec("uci show firewall")
+        sections: dict[str, dict[str, str]] = {}
+        for line in output.splitlines():
+            if "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            parts = key.split(".")
+            if len(parts) == 2:
+                section = parts[1]
+                if section not in sections:
+                    sections[section] = {}
+                sections[section][".type"] = val.strip("'")
+            elif len(parts) >= 3:
+                section = parts[1]
+                if section not in sections:
+                    sections[section] = {}
+                sections[section][parts[2]] = val.strip("'")
 
-            for section_id, data in sections.items():
-                if data.get(".type") == "redirect":
-                    redirects.append(
-                        FirewallRedirect(
-                            name=data.get("name", section_id),
-                            target_ip=data.get("dest_ip", ""),
-                            target_port=data.get("dest_port", ""),
-                            external_port=data.get("src_dport", ""),
-                            protocol=data.get("proto", "tcp"),
-                            enabled=data.get("enabled", "1") == "1",
-                            section_id=section_id,
-                        ),
-                    )
-        except Exception as err:
-            _LOGGER.exception("Failed to get firewall redirects via SSH: %s", err)
+        for section_id, data in sections.items():
+            if data.get(".type") == "redirect":
+                redirects.append(
+                    FirewallRedirect(
+                        name=data.get("name", section_id),
+                        target_ip=data.get("dest_ip", ""),
+                        target_port=data.get("dest_port", ""),
+                        external_port=data.get("src_dport", ""),
+                        protocol=data.get("proto", "tcp"),
+                        enabled=data.get("enabled", "1") == "1",
+                        section_id=section_id,
+                    ),
+                )
         return redirects
 
     async def set_firewall_redirect_enabled(
@@ -1715,41 +1702,38 @@ class SshClient(OpenWrtClient):
     async def get_access_control(self) -> list[AccessControl]:
         """Get access control rules via UCI firewall rules over SSH."""
         rules: list[AccessControl] = []
-        try:
-            output = await self._exec("uci show firewall")
-            sections: dict[str, dict[str, str]] = {}
-            for line in output.splitlines():
-                if "=" not in line:
-                    continue
-                key, val = line.split("=", 1)
-                parts = key.split(".")
-                if len(parts) >= 2:
-                    section = parts[1]
-                    if section not in sections:
-                        sections[section] = {}
-                    if len(parts) >= 3:
-                        sections[section][parts[2]] = val.strip("'")
+        output = await self._exec("uci show firewall")
+        sections: dict[str, dict[str, str]] = {}
+        for line in output.splitlines():
+            if "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            parts = key.split(".")
+            if len(parts) >= 2:
+                section = parts[1]
+                if section not in sections:
+                    sections[section] = {}
+                if len(parts) >= 3:
+                    sections[section][parts[2]] = val.strip("'")
 
-            for section_id, data in sections.items():
-                if data.get(".type") != "rule":
-                    continue
-                name = data.get("name", "")
-                if not name.startswith("ha_acl_"):
-                    continue
+        for section_id, data in sections.items():
+            if data.get(".type") != "rule":
+                continue
+            name = data.get("name", "")
+            if not name.startswith("ha_acl_"):
+                continue
 
-                mac = data.get("src_mac", "").upper()
-                if mac:
-                    rules.append(
-                        AccessControl(
-                            mac=mac,
-                            name=name.replace("ha_acl_", ""),
-                            blocked=data.get("enabled", "1") == "1"
-                            and data.get("target") in ("REJECT", "DROP"),
-                            section_id=section_id,
-                        ),
-                    )
-        except Exception as err:
-            _LOGGER.exception("Failed to get access control via SSH: %s", err)
+            mac = data.get("src_mac", "").upper()
+            if mac:
+                rules.append(
+                    AccessControl(
+                        mac=mac,
+                        name=name.replace("ha_acl_", ""),
+                        blocked=data.get("enabled", "1") == "1"
+                        and data.get("target") in ("REJECT", "DROP"),
+                        section_id=section_id,
+                    ),
+                )
         return rules
 
     async def set_access_control_blocked(self, mac: str, blocked: bool) -> bool:

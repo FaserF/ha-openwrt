@@ -1311,7 +1311,7 @@ def _async_setup_storage_sensors(
         OpenWrtStorageSensorDescription(
             key="storage_total",
             translation_key="mount_storage_total",
-            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+            native_unit_of_measurement=UnitOfInformation.BYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -1321,7 +1321,7 @@ def _async_setup_storage_sensors(
         OpenWrtStorageSensorDescription(
             key="storage_used",
             translation_key="mount_storage_used",
-            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+            native_unit_of_measurement=UnitOfInformation.BYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -1331,7 +1331,7 @@ def _async_setup_storage_sensors(
         OpenWrtStorageSensorDescription(
             key="storage_free",
             translation_key="mount_storage_free",
-            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+            native_unit_of_measurement=UnitOfInformation.BYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,

@@ -72,14 +72,16 @@ class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEnti
         self._attr_device_info = {
             "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         }
-        self._known_macs: set[str] = set()
+        # mac -> last_seen_connected_timestamp
+        self._connected_macs: dict[str, float] = {}
         self._initialized = False
 
-        # Populate initial known MACs from current data
+        # Populate initial connected MACs
         if coordinator.data:
+            current_time = coordinator.hass.loop.time()
             for device in coordinator.data.connected_devices:
-                if device.mac:
-                    self._known_macs.add(device.mac)
+                if device.mac and device.connected:
+                    self._connected_macs[device.mac] = current_time
             self._initialized = True
 
     @callback
@@ -89,26 +91,31 @@ class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEnti
             super()._handle_coordinator_update()
             return
 
-        current_macs: set[str] = set()
+        current_time = self.coordinator.hass.loop.time()
+        current_connected: set[str] = set()
         for device in self.coordinator.data.connected_devices:
             if device.mac and device.connected:
-                current_macs.add(device.mac)
+                current_connected.add(device.mac)
+                
+        if not self._initialized:
+            for mac in current_connected:
+                self._connected_macs[mac] = current_time
+            self._initialized = True
+            super()._handle_coordinator_update()
+            return
 
-        if self._initialized:
-            # Check for new devices
-            new_macs = current_macs - self._known_macs
-            for mac in new_macs:
+        # 1. New connections
+        for mac in current_connected:
+            if mac not in self._connected_macs:
                 device_info = next(
-                    (
-                        d
-                        for d in self.coordinator.data.connected_devices
-                        if d.mac == mac
-                    ),
+                    (d for d in self.coordinator.data.connected_devices if d.mac == mac),
                     None,
                 )
                 if device_info:
-                    # Determine if it's truly new (never seen before)
-                    event_type = "new_device_connected"
+                    # Determine if it's truly new or just reconnected
+                    is_truly_new = mac not in self.coordinator._device_history
+                    event_type = "new_device_connected" if is_truly_new else "device_connected"
+                    
                     self._trigger_event(
                         event_type,
                         {
@@ -121,19 +128,29 @@ class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEnti
                         },
                     )
                     _LOGGER.debug(
-                        "New device event: %s (%s) connected",
+                        "%s event: %s (%s) connected",
+                        event_type.replace("_", " ").title(),
                         device_info.hostname,
                         mac,
                     )
+            
+            # Update last seen timestamp
+            self._connected_macs[mac] = current_time
 
-            # Check for disconnected devices
-            gone_macs = self._known_macs - current_macs
-            for mac in gone_macs:
-                self._trigger_event(
-                    "device_disconnected",
-                    {"mac": mac},
-                )
+        # 2. Disconnections (with 60s grace period to handle polling glitches)
+        disconnection_threshold = 60
+        gone_macs = [
+            mac
+            for mac, last_seen in self._connected_macs.items()
+            if mac not in current_connected and (current_time - last_seen) > disconnection_threshold
+        ]
+        
+        for mac in gone_macs:
+            self._trigger_event(
+                "device_disconnected",
+                {"mac": mac},
+            )
+            _LOGGER.debug("Device disconnected event: %s", mac)
+            del self._connected_macs[mac]
 
-        self._known_macs = current_macs
-        self._initialized = True
         super()._handle_coordinator_update()
