@@ -1403,6 +1403,7 @@ class SshClient(OpenWrtClient):
             await self._exec(f"uci set wireless.{interface}.disabled='{action}'")
             await self._exec("uci commit wireless")
             await self._exec("wifi reload")
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set wireless %s: %s", interface, err)
@@ -1451,6 +1452,7 @@ class SshClient(OpenWrtClient):
             await self._exec(
                 f"echo {int(brightness)} > /sys/class/leds/{name}/brightness"
             )
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set LED %s: %s", name, err)
@@ -1648,6 +1650,7 @@ class SshClient(OpenWrtClient):
             await self._exec(f"uci set firewall.{section_id}.enabled='{val}'")
             await self._exec("uci commit firewall")
             await self._exec("/etc/init.d/firewall reload")
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set firewall rule via SSH: %s", err)
@@ -1703,6 +1706,7 @@ class SshClient(OpenWrtClient):
             await self._exec(f"uci set firewall.{section_id}.enabled='{val}'")
             await self._exec("uci commit firewall")
             await self._exec("/etc/init.d/firewall reload")
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set firewall redirect via SSH: %s", err)
@@ -1778,6 +1782,7 @@ class SshClient(OpenWrtClient):
 
             await self._exec("uci commit firewall")
             await self._exec("/etc/init.d/firewall reload")
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set access control via SSH: %s", err)
@@ -2018,6 +2023,7 @@ class SshClient(OpenWrtClient):
             )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/adblock-fast {action}")
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2026,6 +2032,7 @@ class SshClient(OpenWrtClient):
         """Manage a system service (start/stop/restart/enable/disable) via SSH."""
         try:
             await self._exec(f"/etc/init.d/{name} {action}")
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception(
@@ -2045,6 +2052,7 @@ class SshClient(OpenWrtClient):
             )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/adblock {action}")
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2074,6 +2082,7 @@ class SshClient(OpenWrtClient):
             )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/simple-adblock {action}")
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2100,6 +2109,7 @@ class SshClient(OpenWrtClient):
             )
             action = "start" if enabled else "stop"
             await self._exec(f"/etc/init.d/ban-ip {action}")
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2154,6 +2164,7 @@ class SshClient(OpenWrtClient):
                 await self._exec(f"uci set sqm.{section_id}.{key}='{val_str}'")
             await self._exec("uci commit sqm")
             await self._exec("/etc/init.d/sqm reload")
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set SQM config via SSH: %s", err)

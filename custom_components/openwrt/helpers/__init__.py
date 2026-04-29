@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..const import CONF_HOST
 
@@ -76,7 +76,7 @@ def is_random_mac(mac: str) -> bool:
         # Check the 'locally administered' bit (bit 1 of first byte)
         first_byte = int(clean_mac[:2], 16)
         return bool(first_byte & 0x02)
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return False
 
 

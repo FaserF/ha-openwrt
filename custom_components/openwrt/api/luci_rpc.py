@@ -1932,6 +1932,7 @@ class LuciRpcClient(OpenWrtClient):
                 "wifi reload"
             )
             await self.execute_command(cmd)
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2058,7 +2059,9 @@ class LuciRpcClient(OpenWrtClient):
                     display_id = section_id
                     if section_id.startswith("cfg"):
                         rule_sects = [
-                            k for k, v in data.items() if isinstance(v, dict) and v.get(".type") == "rule"
+                            k
+                            for k, v in data.items()
+                            if isinstance(v, dict) and v.get(".type") == "rule"
                         ]
                         try:
                             idx = rule_sects.index(section_id)
@@ -2068,7 +2071,7 @@ class LuciRpcClient(OpenWrtClient):
 
                     try:
                         enabled = bool(int(val.get("enabled", "1")))
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         enabled = True
                     rules.append(
                         FirewallRule(
@@ -2091,6 +2094,7 @@ class LuciRpcClient(OpenWrtClient):
             val = "1" if enabled else "0"
             cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
             await self.execute_command(cmd)
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set firewall rule via LuCI RPC: %s", err)
@@ -2109,7 +2113,9 @@ class LuciRpcClient(OpenWrtClient):
                     display_id = section_id
                     if section_id.startswith("cfg"):
                         redirect_sects = [
-                            k for k, v in data.items() if isinstance(v, dict) and v.get(".type") == "redirect"
+                            k
+                            for k, v in data.items()
+                            if isinstance(v, dict) and v.get(".type") == "redirect"
                         ]
                         try:
                             idx = redirect_sects.index(section_id)
@@ -2201,6 +2207,7 @@ class LuciRpcClient(OpenWrtClient):
             val = "1" if enabled else "0"
             cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
             await self.execute_command(cmd)
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set firewall redirect via LuCI RPC: %s", err)
@@ -2248,6 +2255,7 @@ class LuciRpcClient(OpenWrtClient):
         """Manage a system service (start/stop/restart/enable/disable) via LuCI RPC."""
         try:
             await self._rpc_call("sys", "exec", [f"/etc/init.d/{name} {action}"])
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception(
@@ -2269,6 +2277,7 @@ class LuciRpcClient(OpenWrtClient):
             )
             action = "start" if enabled else "stop"
             await self._rpc_call("sys", "exec", [f"/etc/init.d/adblock {action}"])
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2314,6 +2323,7 @@ class LuciRpcClient(OpenWrtClient):
                 "exec",
                 [f"/etc/init.d/simple-adblock {action}"],
             )
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2346,6 +2356,7 @@ class LuciRpcClient(OpenWrtClient):
             )
             action = "start" if enabled else "stop"
             await self._rpc_call("sys", "exec", [f"/etc/init.d/ban-ip {action}"])
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2420,6 +2431,7 @@ class LuciRpcClient(OpenWrtClient):
                 await self._rpc_call("uci", "set", ["sqm", section_id, key, val_str])
             await self._rpc_call("uci", "commit", ["sqm"])
             await self._rpc_call("sys", "exec", ["/etc/init.d/sqm reload"])
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set SQM config via LuCI RPC: %s", err)
@@ -2649,6 +2661,7 @@ class LuciRpcClient(OpenWrtClient):
             await self.execute_command(
                 f"echo {int(brightness)} > /sys/class/leds/{name}/brightness"
             )
+            self._last_full_poll = 0
             return True
         except Exception as err:
             _LOGGER.debug("Failed to set LED %s via luci_rpc: %s", name, err)

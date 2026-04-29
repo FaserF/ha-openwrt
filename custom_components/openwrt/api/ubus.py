@@ -2241,6 +2241,7 @@ class UbusClient(OpenWrtClient):
         try:
             # 1. Try standard ubus rc.init (best practice)
             await self._call("rc", "init", {"name": name, "action": action})
+            self._last_full_poll = 0
             return True
         except (
             UbusPermissionError,
@@ -2253,11 +2254,13 @@ class UbusClient(OpenWrtClient):
                     "exec",
                     {"command": f"/etc/init.d/{name}", "params": [action]},
                 )
+                self._last_full_poll = 0
                 return True
             except Exception:
                 # 3. Final fallback to shell execute_command
                 try:
                     await self.execute_command(f"/etc/init.d/{name} {action}")
+                    self._last_full_poll = 0
                     return True
                 except Exception as err:
                     _LOGGER.debug(
@@ -2321,6 +2324,7 @@ class UbusClient(OpenWrtClient):
             )
             await self._call("uci", "commit", {"config": "wireless"})
             await self._call("network.wireless", "notify")
+            self._last_full_poll = 0
             return True
         except UbusError:
             return False
@@ -2340,6 +2344,7 @@ class UbusClient(OpenWrtClient):
             )
             await self._call("uci", "commit", {"config": "firewall"})
             await self.execute_command("/etc/init.d/firewall reload")
+            self._last_full_poll = 0
             return True
         except UbusError:
             return False
@@ -2439,6 +2444,7 @@ class UbusClient(OpenWrtClient):
             )
             await self._call("uci", "commit", {"config": "firewall"})
             await self._call("service", "reloading", {"service": "firewall"})
+            self._last_full_poll = 0
             return True
         except UbusError:
             return False
@@ -2533,6 +2539,7 @@ class UbusClient(OpenWrtClient):
 
             await self._call("uci", "commit", {"config": "firewall"})
             await self._call("service", "reloading", {"service": "firewall"})
+            self._last_full_poll = 0
             return True
         except UbusError:
             return False
@@ -2861,6 +2868,7 @@ class UbusClient(OpenWrtClient):
             )
             action = "start" if enabled else "stop"
             await self.execute_command(f"/etc/init.d/adblock {action}")
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2893,6 +2901,7 @@ class UbusClient(OpenWrtClient):
             )
             action = "start" if enabled else "stop"
             await self.execute_command(f"/etc/init.d/simple-adblock {action}")
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2919,6 +2928,7 @@ class UbusClient(OpenWrtClient):
             )
             action = "start" if enabled else "stop"
             await self.execute_command(f"/etc/init.d/ban-ip {action}")
+            self._last_full_poll = 0
             return True
         except Exception:
             return False
@@ -2976,6 +2986,7 @@ class UbusClient(OpenWrtClient):
                 "exec",
                 {"command": "/etc/init.d/sqm", "params": ["reload"]},
             )
+            self._last_full_poll = 0
             return True
         except UbusPermissionError as err:
             _LOGGER.debug("SQM config via ubus denied (permissions): %s", err)
@@ -3305,6 +3316,7 @@ class UbusClient(OpenWrtClient):
                 "write",
                 {"path": f"/sys/class/leds/{name}/brightness", "data": val},
             )
+            self._last_full_poll = 0
             return True
         except Exception:
             try:
@@ -3312,6 +3324,7 @@ class UbusClient(OpenWrtClient):
                 await self.execute_command(
                     f"echo {val} > /sys/class/leds/{name}/brightness"
                 )
+                self._last_full_poll = 0
                 return True
             except Exception as err:
                 _LOGGER.debug("Failed to set LED %s via ubus: %s", name, err)
