@@ -232,7 +232,9 @@ class OpenWrtWireGuardSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEn
         except Exception as err:
             msg = f"Failed to enable WireGuard interface {self._iface_name}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the WireGuard interface."""
@@ -248,7 +250,9 @@ class OpenWrtWireGuardSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEn
         except Exception as err:
             msg = f"Failed to disable WireGuard interface {self._iface_name}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 def _add_wireless_switches(
@@ -496,7 +500,9 @@ class OpenWrtAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         except Exception as err:
             msg = f"Failed to enable AdBlock: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable AdBlock."""
@@ -509,7 +515,9 @@ class OpenWrtAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         except Exception as err:
             msg = f"Failed to disable AdBlock: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtSimpleAdBlockSwitch(
@@ -556,7 +564,9 @@ class OpenWrtSimpleAdBlockSwitch(
         except Exception as err:
             msg = f"Failed to enable Simple AdBlock: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable Simple AdBlock."""
@@ -569,7 +579,9 @@ class OpenWrtSimpleAdBlockSwitch(
         except Exception as err:
             msg = f"Failed to disable Simple AdBlock: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtBanIpSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
@@ -613,7 +625,9 @@ class OpenWrtBanIpSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
         except Exception as err:
             msg = f"Failed to enable Ban-IP: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable Ban-IP."""
@@ -626,7 +640,9 @@ class OpenWrtBanIpSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
         except Exception as err:
             msg = f"Failed to disable Ban-IP: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
@@ -670,7 +686,9 @@ class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         except Exception as err:
             msg = f"Failed to enable WPS: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable WPS."""
@@ -683,7 +701,9 @@ class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         except Exception as err:
             msg = f"Failed to disable WPS: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
@@ -766,7 +786,9 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         except Exception as err:
             msg = f"Failed to enable wireless interface {self._iface_name}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the wireless interface."""
@@ -781,7 +803,9 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         except Exception as err:
             msg = f"Failed to disable wireless interface {self._iface_name}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
@@ -847,7 +871,9 @@ class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         except Exception as err:
             msg = f"Failed to start service {self._service_name}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop the service."""
@@ -862,7 +888,9 @@ class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         except Exception as err:
             msg = f"Failed to stop service {self._service_name}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
@@ -931,7 +959,9 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         except Exception as err:
             msg = f"Failed to enable firewall redirect {self._section_id}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the firewall redirect."""
@@ -946,7 +976,9 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         except Exception as err:
             msg = f"Failed to disable firewall redirect {self._section_id}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtAccessControlSwitch(
@@ -1016,7 +1048,9 @@ class OpenWrtAccessControlSwitch(
         except Exception as err:
             msg = f"Failed to unblock device {self._mac}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Block the device (Restrict access)."""
@@ -1037,7 +1071,9 @@ class OpenWrtAccessControlSwitch(
         except Exception as err:
             msg = f"Failed to block device {self._mac}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtFirewallRuleSwitch(
@@ -1108,7 +1144,9 @@ class OpenWrtFirewallRuleSwitch(
         except Exception as err:
             msg = f"Failed to enable firewall rule {self._section_id}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the firewall rule."""
@@ -1123,7 +1161,9 @@ class OpenWrtFirewallRuleSwitch(
         except Exception as err:
             msg = f"Failed to disable firewall rule {self._section_id}: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
@@ -1191,7 +1231,9 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         except Exception as err:
             msg = f"Failed to enable SQM: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable SQM."""
@@ -1206,7 +1248,9 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         except Exception as err:
             msg = f"Failed to disable SQM: {err}"
             raise HomeAssistantError(msg) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
 
 class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
@@ -1256,8 +1300,12 @@ class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
                         led.active = True
             self.async_write_ha_state()
         except Exception as err:
-            raise HomeAssistantError(f"Failed to turn on LED {self._name}: {err}") from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+            raise HomeAssistantError(
+                f"Failed to turn on LED {self._name}: {err}"
+            ) from err
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the LED off."""
@@ -1270,5 +1318,7 @@ class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
                         led.active = False
             self.async_write_ha_state()
         except Exception as err:
-            raise HomeAssistantError(f"Failed to turn off LED {self._name}: {err}") from err
+            raise HomeAssistantError(
+                f"Failed to turn off LED {self._name}: {err}"
+            ) from err
         self.hass.async_create_task(self.coordinator.async_request_refresh())

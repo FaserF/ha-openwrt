@@ -190,7 +190,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             if data.firmware_install_url:
                 notes += f"**Firmware File:** [{data.firmware_install_url}]({data.firmware_install_url})\n\n"
             notes += (
-                "This firmware update is retrieved from your configured "
+                "This OpenWrt update is retrieved from your configured "
                 "custom repository.\n\n"
             )
         else:

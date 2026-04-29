@@ -110,7 +110,7 @@ class OpenWrtLedLight(CoordinatorEntity[OpenWrtDataCoordinator], LightEntity):
         """Turn the LED on."""
         client = self.hass.data[DOMAIN][self._entry.entry_id][DATA_CLIENT]
         brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
-        
+
         # Action
         if self.coordinator.data:
             for led in self.coordinator.data.leds:
@@ -125,7 +125,7 @@ class OpenWrtLedLight(CoordinatorEntity[OpenWrtDataCoordinator], LightEntity):
                         msg = f"Failed to set LED {self._led_name}: {err}"
                         raise HomeAssistantError(msg) from err
                     break
-        
+
         # Trigger background refresh but don't block the UI update
         self.hass.async_create_task(self.coordinator.async_request_refresh())
 
@@ -143,6 +143,6 @@ class OpenWrtLedLight(CoordinatorEntity[OpenWrtDataCoordinator], LightEntity):
         except Exception as err:
             msg = f"Failed to turn off LED {self._led_name}: {err}"
             raise HomeAssistantError(msg) from err
-            
+
         # Trigger background refresh but don't block the UI update
         self.hass.async_create_task(self.coordinator.async_request_refresh())

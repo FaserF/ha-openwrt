@@ -103,7 +103,9 @@ class LuciRpcClient(OpenWrtClient):
         self._auth_token: str = ""
         self._session: aiohttp.ClientSession | None = None
         self._rpc_id: int = 0
-        self._semaphore = asyncio.Semaphore(5)  # Limit concurrent RPC calls to avoid overloading uhttpd
+        self._semaphore = asyncio.Semaphore(
+            5
+        )  # Limit concurrent RPC calls to avoid overloading uhttpd
 
     @property
     def _base_url(self) -> str:
@@ -174,7 +176,9 @@ class LuciRpcClient(OpenWrtClient):
                                 )
                                 msg = "LuCI RPC returned HTML instead of JSON. Is 'luci-mod-rpc' installed?"
                                 raise LuciRpcPackageMissingError(msg)
-                            msg = f"Unexpected content type from LuCI RPC: {content_type}"
+                            msg = (
+                                f"Unexpected content type from LuCI RPC: {content_type}"
+                            )
                             raise LuciRpcError(msg)
 
                         data = await response.json()
@@ -1373,9 +1377,7 @@ class LuciRpcClient(OpenWrtClient):
                     peer = WireGuardPeer(
                         public_key=parts[1],
                         endpoint=parts[3] if parts[3] != "(none)" else "",
-                        allowed_ips=parts[4].split(",")
-                        if parts[4] != "(none)"
-                        else [],
+                        allowed_ips=parts[4].split(",") if parts[4] != "(none)" else [],
                         latest_handshake=int(parts[5]) if parts[5].isdigit() else 0,
                         transfer_rx=int(parts[6]) if parts[6].isdigit() else 0,
                         transfer_tx=int(parts[7]) if parts[7].isdigit() else 0,
@@ -2331,9 +2333,7 @@ class LuciRpcClient(OpenWrtClient):
         resp = await self._rpc_call("uci", "get_all", ["sqm"])
         # Fallback to shell if permission denied or failed
         if not resp or (
-            isinstance(resp, list)
-            and len(resp) > 1
-            and resp[1] == "Permission denied"
+            isinstance(resp, list) and len(resp) > 1 and resp[1] == "Permission denied"
         ):
             try:
                 shell_out = await self.execute_command("uci show sqm 2>/dev/null")
@@ -2652,9 +2652,7 @@ class LuciRpcClient(OpenWrtClient):
 
         # Fallback to 'service list' if 'rc list' was empty
         if not services:
-            stdout = await self.execute_command(
-                "ubus call service list 2>/dev/null"
-            )
+            stdout = await self.execute_command("ubus call service list 2>/dev/null")
             if stdout:
                 start = stdout.find("{")
                 end = stdout.rfind("}")
@@ -2667,9 +2665,7 @@ class LuciRpcClient(OpenWrtClient):
                                     inst.get("running", False)
                                     for inst in val.get("instances", {}).values()
                                 )
-                                services.append(
-                                    ServiceInfo(name=name, running=running)
-                                )
+                                services.append(ServiceInfo(name=name, running=running))
                     except json.JSONDecodeError:
                         pass
 

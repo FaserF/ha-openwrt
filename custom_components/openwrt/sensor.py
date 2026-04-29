@@ -1687,7 +1687,11 @@ def _create_wifi_base_sensors(
                     for d in data.connected_devices
                     if d.is_wireless
                     and d.connected
-                    and (d.interface == n or (s and d.interface == s) or (i and d.interface == i))
+                    and (
+                        d.interface == n
+                        or (s and d.interface == s)
+                        or (i and d.interface == i)
+                    )
                 ),
             ),
             iface_name,

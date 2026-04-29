@@ -96,7 +96,7 @@ class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEnti
         for device in self.coordinator.data.connected_devices:
             if device.mac and device.connected:
                 current_connected.add(device.mac)
-                
+
         if not self._initialized:
             for mac in current_connected:
                 self._connected_macs[mac] = current_time
@@ -108,14 +108,20 @@ class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEnti
         for mac in current_connected:
             if mac not in self._connected_macs:
                 device_info = next(
-                    (d for d in self.coordinator.data.connected_devices if d.mac == mac),
+                    (
+                        d
+                        for d in self.coordinator.data.connected_devices
+                        if d.mac == mac
+                    ),
                     None,
                 )
                 if device_info:
                     # Determine if it's truly new or just reconnected
                     is_truly_new = mac not in self.coordinator._device_history
-                    event_type = "new_device_connected" if is_truly_new else "device_connected"
-                    
+                    event_type = (
+                        "new_device_connected" if is_truly_new else "device_connected"
+                    )
+
                     self._trigger_event(
                         event_type,
                         {
@@ -133,7 +139,7 @@ class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEnti
                         device_info.hostname,
                         mac,
                     )
-            
+
             # Update last seen timestamp
             self._connected_macs[mac] = current_time
 
@@ -142,9 +148,10 @@ class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEnti
         gone_macs = [
             mac
             for mac, last_seen in self._connected_macs.items()
-            if mac not in current_connected and (current_time - last_seen) > disconnection_threshold
+            if mac not in current_connected
+            and (current_time - last_seen) > disconnection_threshold
         ]
-        
+
         for mac in gone_macs:
             self._trigger_event(
                 "device_disconnected",

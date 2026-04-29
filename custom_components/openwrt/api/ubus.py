@@ -110,7 +110,9 @@ class UbusClient(OpenWrtClient):
         self._ubus_path = ubus_path
         self._session_id: str = "00000000000000000000000000000000"
         self._session: aiohttp.ClientSession | None = None
-        self._semaphore = asyncio.Semaphore(5)  # Limit concurrent RPC calls to avoid overloading uhttpd
+        self._semaphore = asyncio.Semaphore(
+            5
+        )  # Limit concurrent RPC calls to avoid overloading uhttpd
 
     @property
     def _base_url(self) -> str:
@@ -260,7 +262,6 @@ class UbusClient(OpenWrtClient):
             raise UbusError(msg)
 
         return result
-
 
     async def _list_objects(self) -> list[str]:
         """List available ubus objects."""
@@ -2364,9 +2365,7 @@ class UbusClient(OpenWrtClient):
 
             display_id = section_id
             if section_id.startswith("cfg"):
-                rule_sects = [
-                    k for k, v in values.items() if v.get(".type") == "rule"
-                ]
+                rule_sects = [k for k, v in values.items() if v.get(".type") == "rule"]
                 try:
                     idx = rule_sects.index(section_id)
                     display_id = f"@rule[{idx}]"

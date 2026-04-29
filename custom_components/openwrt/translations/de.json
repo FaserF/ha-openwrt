@@ -622,7 +622,7 @@
     },
     "update": {
       "firmware_update": {
-        "name": "Firmware"
+        "name": "OpenWrt"
       },
       "custom_firmware_update": {
         "name": "Benutzerdefinierte Firmware"

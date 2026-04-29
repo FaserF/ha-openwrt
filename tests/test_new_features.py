@@ -106,7 +106,7 @@ class TestLatencyResult:
         assert result.target == ""
         assert result.latency_ms is None
         assert result.packet_loss == 0.0
-        assert result.available is False
+        assert result.available is True
 
     def test_successful_ping(self) -> None:
         """Test successful latency measurement."""
@@ -146,7 +146,7 @@ class TestOpenWrtDataNewFields:
         data = OpenWrtData()
         assert data.latency.target == ""
         assert data.latency.latency_ms is None
-        assert data.latency.available is False
+        assert data.latency.available is True
 
     def test_vpn_populated(self) -> None:
         """Test VPN interfaces populated."""

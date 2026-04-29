@@ -7,7 +7,6 @@ import asyncio
 import json
 import logging
 import re
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -700,7 +699,7 @@ class LatencyResult:
     target: str = ""
     latency_ms: float | None = None
     packet_loss: float = 0.0  # percentage
-    available: bool = False
+    available: bool = True
 
 
 @dataclass
@@ -1465,7 +1464,7 @@ class OpenWrtClient(abc.ABC):
         """Measure network latency via ping."""
         result = LatencyResult(target=target)
         try:
-            output = await self.execute_command(f"ping -c 3 -W 2 {target} 2>/dev/null")
+            output = await self.execute_command(f"ping -c 3 -W 2 {target}")
             if output:
                 result.available = True
                 # Parse avg from "min/avg/max/mdev = x/y/z/w ms"
@@ -1611,7 +1610,7 @@ class OpenWrtClient(abc.ABC):
             is_full_poll = True
 
         self._poll_count += 1
-        data = self.coordinator.data or OpenWrtData()
+        data = (self.coordinator.data if self.coordinator else None) or OpenWrtData()
 
         def get_val(res: Any, default: Any, name: str = "") -> Any:
             """Safely get value from gather result, keeping previous data on failure."""
@@ -1631,9 +1630,15 @@ class OpenWrtClient(abc.ABC):
         ]
         core_results = await asyncio.gather(*core_tasks, return_exceptions=True)
 
-        data.system_resources = get_val(core_results[0], data.system_resources, "system_resources")
-        data.network_interfaces = get_val(core_results[1], data.network_interfaces, "network_interfaces")
-        data.connected_devices = get_val(core_results[2], data.connected_devices, "connected_devices")
+        data.system_resources = get_val(
+            core_results[0], data.system_resources, "system_resources"
+        )
+        data.network_interfaces = get_val(
+            core_results[1], data.network_interfaces, "network_interfaces"
+        )
+        data.connected_devices = get_val(
+            core_results[2], data.connected_devices, "connected_devices"
+        )
         data.local_macs = get_val(core_results[3], data.local_macs, "local_macs")
         data.local_ips = get_val(core_results[4], data.local_ips, "local_ips")
 
@@ -1658,28 +1663,61 @@ class OpenWrtClient(abc.ABC):
             slow_results = await asyncio.gather(
                 *[slow_optional_tasks[k] for k in keys], return_exceptions=True
             )
-            slow_map = dict(zip(keys, slow_results))
+            slow_map = dict(zip(keys, slow_results, strict=False))
 
-            data.device_info = get_val(slow_map["device_info"], data.device_info, "device_info")
+            data.device_info = get_val(
+                slow_map["device_info"], data.device_info, "device_info"
+            )
             data.services = get_val(slow_map["services"], data.services, "services")
             data.leds = get_val(slow_map["leds"], data.leds, "LEDs")
-            data.firewall_redirects = get_val(slow_map["firewall_redirects"], data.firewall_redirects, "firewall redirects")
-            data.firewall_rules = get_val(slow_map["firewall_rules"], data.firewall_rules, "firewall rules")
-            data.access_control = get_val(slow_map["access_control"], data.access_control, "access control")
+            data.firewall_redirects = get_val(
+                slow_map["firewall_redirects"],
+                data.firewall_redirects,
+                "firewall redirects",
+            )
+            data.firewall_rules = get_val(
+                slow_map["firewall_rules"], data.firewall_rules, "firewall rules"
+            )
+            data.access_control = get_val(
+                slow_map["access_control"], data.access_control, "access control"
+            )
             data.sqm = get_val(slow_map["sqm"], data.sqm, "SQM")
-            data.wireguard_interfaces = get_val(slow_map["wireguard"], data.wireguard_interfaces, "wireguard")
+            data.wireguard_interfaces = get_val(
+                slow_map["wireguard"], data.wireguard_interfaces, "wireguard"
+            )
             data.packages = get_val(slow_map["packages"], data.packages, "packages")
-            data.permissions = get_val(slow_map["permissions"], data.permissions, "permissions")
-            data.reboot_required = get_val(slow_map["reboot_required"], data.reboot_required, "reboot required")
-            data.system_logs = get_val(slow_map["system_logs"], data.system_logs, "system logs")
+            data.permissions = get_val(
+                slow_map["permissions"], data.permissions, "permissions"
+            )
+            data.reboot_required = get_val(
+                slow_map["reboot_required"], data.reboot_required, "reboot required"
+            )
+            data.system_logs = get_val(
+                slow_map["system_logs"], data.system_logs, "system logs"
+            )
 
             self._cached_device_info = data.device_info
-            self._cached_slow_data = {k: data.__dict__.get(k) for k in ["services", "leds", "firewall_redirects", "firewall_rules", "access_control", "sqm", "wireguard_interfaces", "packages", "permissions", "reboot_required", "system_logs"]}
+            self._cached_slow_data = {
+                k: data.__dict__.get(k)
+                for k in [
+                    "services",
+                    "leds",
+                    "firewall_redirects",
+                    "firewall_rules",
+                    "access_control",
+                    "sqm",
+                    "wireguard_interfaces",
+                    "packages",
+                    "permissions",
+                    "reboot_required",
+                    "system_logs",
+                ]
+            }
         else:
             # Reuse cached data on fast polls
             if self._cached_device_info:
                 data.device_info = self._cached_device_info
-            
+
             cached = getattr(self, "_cached_slow_data", {})
             for k, v in cached.items():
                 if hasattr(data, k) and v is not None:
@@ -1717,20 +1755,30 @@ class OpenWrtClient(abc.ABC):
         dyn_results = await asyncio.gather(
             *[dynamic_tasks[k] for k in dyn_keys], return_exceptions=True
         )
-        dyn_map = dict(zip(dyn_keys, dyn_results))
+        dyn_map = dict(zip(dyn_keys, dyn_results, strict=False))
 
-        data.ip_neighbors = get_val(dyn_map.get("ip_neighbors"), data.ip_neighbors, "IP neighbors")
+        data.ip_neighbors = get_val(
+            dyn_map.get("ip_neighbors"), data.ip_neighbors, "IP neighbors"
+        )
         data.mwan_status = get_val(dyn_map.get("mwan"), data.mwan_status, "MWAN")
         data.qmodem_info = get_val(dyn_map.get("qmodem"), data.qmodem_info, "modem")
         data.vpn_interfaces = get_val(dyn_map.get("vpn"), data.vpn_interfaces, "VPN")
         data.latency = get_val(dyn_map.get("latency"), data.latency, "latency")
-        data.external_ip = get_val(dyn_map.get("external_ip"), data.external_ip, "external IP")
+        data.external_ip = get_val(
+            dyn_map.get("external_ip"), data.external_ip, "external IP"
+        )
         if data.device_info:
-            data.device_info.gateway_mac = get_val(dyn_map.get("gateway_mac"), data.device_info.gateway_mac, "gateway MAC")
-        data.wifi_credentials = get_val(dyn_map.get("wifi_credentials"), data.wifi_credentials, "WiFi credentials")
+            data.device_info.gateway_mac = get_val(
+                dyn_map.get("gateway_mac"), data.device_info.gateway_mac, "gateway MAC"
+            )
+        data.wifi_credentials = get_val(
+            dyn_map.get("wifi_credentials"), data.wifi_credentials, "WiFi credentials"
+        )
 
         if "wireless" in dyn_map:
-            data.wireless_interfaces = get_val(dyn_map["wireless"], data.wireless_interfaces, "wireless")
+            data.wireless_interfaces = get_val(
+                dyn_map["wireless"], data.wireless_interfaces, "wireless"
+            )
         if "wps" in dyn_map:
             data.wps_status = get_val(dyn_map["wps"], data.wps_status, "WPS")
         if "dhcp" in dyn_map:
@@ -1742,8 +1790,26 @@ class OpenWrtClient(abc.ABC):
         if "adblock" in dyn_map:
             data.adblock = get_val(dyn_map["adblock"], data.adblock, "adblock")
         if "simple_adblock" in dyn_map:
-            data.simple_adblock = get_val(dyn_map["simple_adblock"], data.simple_adblock, "simple adblock")
+            data.simple_adblock = get_val(
+                dyn_map["simple_adblock"], data.simple_adblock, "simple adblock"
+            )
         if "ban_ip" in dyn_map:
             data.ban_ip = get_val(dyn_map["ban_ip"], data.ban_ip, "ban-ip")
+
+        # Populate MAC address for device info if missing
+        if data.device_info and not data.device_info.mac_address:
+            # Try br-lan first, then eth0, then anything with a valid MAC
+            mac_map = {
+                iface.name: iface.mac_address
+                for iface in data.network_interfaces
+                if iface.mac_address and iface.mac_address != "00:00:00:00:00:00"
+            }
+            if "br-lan" in mac_map:
+                data.device_info.mac_address = mac_map["br-lan"]
+            elif "eth0" in mac_map:
+                data.device_info.mac_address = mac_map["eth0"]
+            elif mac_map:
+                # Pick the first non-zero MAC
+                data.device_info.mac_address = next(iter(mac_map.values()))
 
         return data
