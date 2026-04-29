@@ -1391,6 +1391,7 @@ def _async_setup_wireless_sensors(
                     wifi.mode,
                     wifi.frequency,
                     wifi.section,
+                    wifi.ifname,
                 )
             )
 
@@ -1639,13 +1640,14 @@ def _create_wifi_sensors(
     mode: str,
     frequency: str = "",
     section_id: str | None = None,
+    ifname: str | None = None,
 ) -> list[OpenWrtWifiSensorEntity]:
     """Create sensors for a wireless interface."""
     sensors: list[OpenWrtWifiSensorEntity] = []
 
     # 1. Base configuration sensors
     _create_wifi_base_sensors(
-        coordinator, entry, iface_name, ssid, frequency, section_id, sensors
+        coordinator, entry, iface_name, ssid, frequency, section_id, ifname, sensors
     )
 
     # 2. Station-specific quality sensors (STA/Mesh/etc)
@@ -1664,6 +1666,7 @@ def _create_wifi_base_sensors(
     ssid: str,
     frequency: str,
     section_id: str | None,
+    ifname: str | None,
     sensors: list[OpenWrtWifiSensorEntity],
 ) -> None:
     """Create basic WiFi sensors (Clients, Channel, Power, etc.)."""
@@ -1679,10 +1682,12 @@ def _create_wifi_base_sensors(
                 translation_key="wifi_clients",
                 name=f"{label} Clients",
                 state_class=SensorStateClass.MEASUREMENT,
-                value_fn=lambda data, n=iface_name: sum(
+                value_fn=lambda data, n=iface_name, s=section_id, i=ifname: sum(
                     1
                     for d in data.connected_devices
-                    if d.is_wireless and d.connected and d.interface == n
+                    if d.is_wireless
+                    and d.connected
+                    and (d.interface == n or (s and d.interface == s) or (i and d.interface == i))
                 ),
             ),
             iface_name,

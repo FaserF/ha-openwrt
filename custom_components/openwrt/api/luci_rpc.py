@@ -1535,11 +1535,7 @@ class LuciRpcClient(OpenWrtClient):
                                         dev.connection_type = "2.4GHz"
                                     else:
                                         dev.connection_type = "wireless"
-                                # Map system interface name to UCI section if possible
-                                dev.interface = getattr(self, "_sys_to_uci", {}).get(
-                                    iface,
-                                    iface,
-                                )
+                                dev.interface = iface
                                 if len(parts) >= 2:
                                     dev.signal = (
                                         int(parts[1])
