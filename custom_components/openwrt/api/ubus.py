@@ -1738,7 +1738,10 @@ class UbusClient(OpenWrtClient):
                     packages.dhcp = (
                         True  # Fallback to True if check fails but object exists
                     )
-            if "network.wireless" in objects:
+            if "network.wireless" in objects or "iwinfo" in objects:
+                packages.wireless = True
+            # Check for hostapd objects as proof of wireless capability
+            if any(obj.startswith("hostapd.") for obj in objects):
                 packages.wireless = True
             if "lldp" in objects:
                 packages.lldp = True
@@ -1946,6 +1949,10 @@ class UbusClient(OpenWrtClient):
     def _ensure_all_packages_initialized(self, packages: OpenWrtPackages) -> None:
         """Ensure no package attributes remain as None (default to False)."""
         import dataclasses
+
+        # Infer wireless support if iwinfo is present (crucial fallback for restricted ubus)
+        if packages.wireless is None and packages.iwinfo:
+            packages.wireless = True
 
         for field in dataclasses.fields(packages):
             if getattr(packages, field.name) is None:

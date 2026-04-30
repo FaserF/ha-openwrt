@@ -646,7 +646,10 @@ class LuciRpcClient(OpenWrtClient):
                         packages.dhcp = False
                 except Exception:
                     packages.dhcp = True
-            if "network.wireless" in objects:
+            if "network.wireless" in objects or "iwinfo" in objects:
+                packages.wireless = True
+            # Check for hostapd objects as proof of wireless capability
+            if any(obj.startswith("hostapd.") for obj in objects):
                 packages.wireless = True
             if "lldp" in objects:
                 packages.lldp = True
@@ -822,6 +825,10 @@ class LuciRpcClient(OpenWrtClient):
 
         # Final pass: Initialize remaining to False (to avoid staying at None)
         import dataclasses
+
+        # Infer wireless support if iwinfo is present (crucial fallback for restricted rpc)
+        if packages.wireless is None and packages.iwinfo:
+            packages.wireless = True
 
         for field in dataclasses.fields(packages):
             if getattr(packages, field.name) is None:
