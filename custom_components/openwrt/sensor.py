@@ -133,8 +133,8 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
 
         name_label = format_ap_name(ssid or iface_name, frequency)
 
-        # Use section ID as stable identifier if available
-        stable_id = section_id if section_id else iface_name
+        # Ensure stable_id is always the physical interface name
+        stable_id = iface_name
         router_id = cast(str, entry.unique_id or entry.data[CONF_HOST])
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, format_ap_device_id(router_id, stable_id))},
