@@ -139,6 +139,11 @@ async def async_setup_entry(
         interface_regex = (
             r"^(wlan|eth|lan|wan|br-|radio|phy|veth|lo|bond|team)[0-9]*([.-].*)?$"
         )
+        active_interfaces = (
+            {wifi.name for wifi in coordinator.data.wireless_interfaces if wifi.name}
+            if coordinator.data
+            else set()
+        )
 
         for ent in entries:
             if ent.domain != "button":
@@ -184,6 +189,18 @@ async def async_setup_entry(
                     if coordinator._device_history[mac].get("is_wireless"):
                         _LOGGER.debug(
                             "Removing WoL button for wireless device: %s", ent.entity_id
+                        )
+                        ent_reg.async_remove(ent.entity_id)
+                        continue
+
+                # NEW cleanup: Kick buttons with legacy interface names
+                if "_kick_" in unique_id:
+                    iface = unique_id.split("_kick_")[-1]
+                    if iface and active_interfaces and iface not in active_interfaces:
+                        _LOGGER.debug(
+                            "Removing legacy kick button with old interface name '%s': %s",
+                            iface,
+                            ent.entity_id,
                         )
                         ent_reg.async_remove(ent.entity_id)
                         continue
@@ -743,7 +760,7 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
                     break
 
         return DeviceInfo(
-            connections={("mac", self._mac)},
+            connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
             name=self._initial_name,
             via_device=via_device,
         )
