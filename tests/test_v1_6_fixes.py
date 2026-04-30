@@ -121,7 +121,7 @@ async def test_packages_wireless_inference_from_full_list() -> None:
     assert packages.wireless is True
 
 
-async def test_ap_stable_id_consistency(hass) -> None:
+def test_ap_stable_id_consistency(hass) -> None:
     """Test that AP devices use iface_name as stable_id consistently."""
     from custom_components.openwrt.sensor import OpenWrtWifiSensorEntity
 
