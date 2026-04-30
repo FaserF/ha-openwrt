@@ -247,8 +247,7 @@ def _generate_package_table(
         f"| **wireguard-tools** | {to_icon(packages.wireguard)} | {get_missing(packages.wireguard, 'WireGuard Sensors', 'wireguard')} |\n"
         f"| **openvpn** | {to_icon(packages.openvpn)} | {get_missing(packages.openvpn, 'OpenVPN Sensors', 'openvpn')} |\n"
         f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, 'luci_mod_rpc', required=luci_required)} |\n"
-        f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)', 'asu')} |\n"
-        f"| **rpcd-mod-led** | {to_icon(packages.rpcd_mod_led)} | {get_missing(packages.rpcd_mod_led, 'LED Control (required for Ubus)', 'rpcd_mod_led')} |"
+        f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)', 'asu')} |"
     )
 
 

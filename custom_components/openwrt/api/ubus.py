@@ -1727,7 +1727,7 @@ class UbusClient(OpenWrtClient):
             if "pbr" in objects:
                 packages.pbr = True
             if "led" in objects:
-                packages.rpcd_mod_led = True
+
             if "dhcp" in objects:
                 # Specifically check for ipv4leases method to avoid "Not found" on some setups
                 try:
@@ -1811,8 +1811,7 @@ class UbusClient(OpenWrtClient):
                     packages.adguardhome = detect_status(16)
                 if packages.unbound is not True:
                     packages.unbound = detect_status(17)
-                if packages.rpcd_mod_led is not True:
-                    packages.rpcd_mod_led = detect_status(18)
+
             except Exception as err:
                 _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)
                 # Step 1: Re-use _list_objects() which uses the correct JSON-RPC

@@ -1540,7 +1540,7 @@ class SshClient(OpenWrtClient):
         packages.pbr = detect(15)
         packages.adguardhome = detect(16)
         packages.unbound = detect(17)
-        packages.rpcd_mod_led = detect(18)
+
         packages.dhcp = detect(20)
         if packages.dhcp:
             # Specifically check for ipv4leases method
@@ -1576,7 +1576,7 @@ class SshClient(OpenWrtClient):
             "adblock": "adblock",
             "simple_adblock": "simple-adblock",
             "ban_ip": "ban-ip",
-            "rpcd_mod_led": "rpcd-mod-led",
+
             "dhcp": "odhcpd",
             "lldp": "lldpd",
             "wireless": "iwinfo",

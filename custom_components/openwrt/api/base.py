@@ -760,7 +760,7 @@ class OpenWrtPackages:
     pbr: bool | None = None
     adguardhome: bool | None = None
     unbound: bool | None = None
-    rpcd_mod_led: bool | None = None
+
     dhcp: bool | None = None
     wireless: bool | None = None
     lldp: bool | None = None

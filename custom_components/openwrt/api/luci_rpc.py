@@ -637,7 +637,7 @@ class LuciRpcClient(OpenWrtClient):
             if "pbr" in objects:
                 packages.pbr = True
             if "led" in objects:
-                packages.rpcd_mod_led = True
+
             if "dhcp" in objects:
                 # Specifically check for ipv4leases method
                 try:
@@ -702,8 +702,7 @@ class LuciRpcClient(OpenWrtClient):
             packages.ban_ip = detect_status(12)
             packages.adguardhome = detect_status(16)
             packages.unbound = detect_status(17)
-            if packages.rpcd_mod_led is not True:
-                packages.rpcd_mod_led = detect_status(18)
+
             if packages.dhcp is not True:
                 packages.dhcp = detect_status(19)
             if packages.lldp is not True:

@@ -531,8 +531,7 @@
           "asu": "Firmware-Upgrade (ASU)",
           "adblock": "AdBlock",
           "simple_adblock": "Simple AdBlock",
-          "ban_ip": "Ban-IP",
-          "rpcd_mod_led": "LED-Steuerung (RPC-Modul)"
+          "ban_ip": "Ban-IP"
         }
       }
     },
