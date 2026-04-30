@@ -9,6 +9,7 @@ CONF_HOST = "host"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONNECTION_TYPE_UBUS = "ubus"
+CONF_MQTT_PRESENCE = "mqtt_presence"
 
 
 @pytest.fixture(autouse=True)
@@ -105,10 +106,15 @@ async def test_full_user_flow(hass) -> None:
         result = await flow.async_step_permissions({})
         assert result["step_id"] == "packages"
 
-        # 6. Packages -> Create Entry
+        # 6. Packages -> MQTT Presence
         result = await flow.async_step_packages({})
-        assert result["type"].lower() == "create_entry"
-        assert result["title"] == "OpenWrtTest"
+        assert result["step_id"] == "mqtt_presence"
+
+        # 7. MQTT Presence -> Create Entry
+        with patch.object(flow, "_create_entry", return_value={"type": "create_entry"}):
+            result = await flow.async_step_mqtt_presence({CONF_MQTT_PRESENCE: False})
+            assert result["type"].lower() == "create_entry"
+
         assert flow.unique_id == "aa:bb:cc:dd:ee:ff"
 
 
@@ -170,11 +176,17 @@ async def test_full_user_flow_with_check_errors(hass) -> None:
 
     assert result["step_id"] == "provision_user"
 
-    # 4. Provision -> Entry (skips permissions/packages because of errors)
+    # 4. Provision -> MQTT Presence (skips permissions/packages because of errors)
     with patch("custom_components.openwrt.config_flow.asyncio.sleep"):
         result = await flow.async_step_provision_user({"mode": "skip"})
 
-    assert result["type"].lower() == "create_entry"
+    assert result["step_id"] == "mqtt_presence"
+
+    # 5. MQTT Presence -> Create Entry
+    with patch.object(flow, "_create_entry", return_value={"type": "create_entry"}):
+        result = await flow.async_step_mqtt_presence({CONF_MQTT_PRESENCE: False})
+        assert result["type"].lower() == "create_entry"
+
     assert flow.unique_id == "aa:bb:cc:dd:ee:ff"
 
 

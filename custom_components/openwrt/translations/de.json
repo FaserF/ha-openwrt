@@ -135,6 +135,25 @@
         "data": {
           "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
         }
+      },
+      "mqtt_presence": {
+        "title": "MQTT-Anwesenheitserkennung (Optional)",
+        "description": "Aktiviere die MQTT-basierte Anwesenheitserkennung für höhere Zuverlässigkeit und geringere Latenz. Dies verwendet ein Drittanbieter-Skript von [f45tb00t/OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).\n\n**Hinweis:** Diese Funktionalität wird nicht von der Hauptintegration unterstützt. Bugs sollten im ursprünglichen Repository gemeldet werden.\n\n{warning}",
+        "data": {
+          "mqtt_presence": "MQTT-Anwesenheitserkennung aktivieren",
+          "mqtt_broker": "MQTT-Broker (vom Router aus erreichbar)",
+          "mqtt_port": "MQTT-Port",
+          "mqtt_username": "MQTT-Benutzername",
+          "mqtt_password": "MQTT-Passwort"
+        }
+      },
+      "deploy_mqtt_presence": {
+        "title": "Skripte werden bereitgestellt",
+        "description": "Die Skripte zur Anwesenheitserkennung werden heruntergeladen und auf deinem Router bereitgestellt. Dies kann einen Moment dauern..."
+      },
+      "deploy_failed": {
+        "title": "Bereitstellung fehlgeschlagen",
+        "description": "Die Bereitstellung der MQTT-Anwesenheitsskripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte überprüfe die Internetverbindung und den freien Speicherplatz deines Routers."
       }
     },
     "error": {
@@ -170,7 +189,9 @@
           "custom_firmware_repo": "Benutzerdefiniertes Firmware GitHub-Repo (Besitzer/Repo)",
           "asu_url": "Attended Sysupgrade Server URL",
           "target_override": "Ziel-Überschreibung (z. B. arch/subtarget)",
-          "skip_random_mac": "Geräte mit zufälliger MAC-Adresse ignorieren"
+          "skip_random_mac": "Geräte mit zufälliger MAC-Adresse ignorieren",
+          "mqtt_presence": "MQTT-Anwesenheitserkennung aktivieren",
+          "redeploy_mqtt": "MQTT-Präsenzskripte neu bereitstellen"
         },
         "description": "Konfiguriere die Optionen der OpenWrt-Integration."
       },

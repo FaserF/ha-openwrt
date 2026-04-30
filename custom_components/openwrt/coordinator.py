@@ -11,6 +11,7 @@ import contextlib
 import logging
 import re
 import time
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
 
@@ -105,7 +106,7 @@ SNAPSHOT_TARGET_MAP = {
 }
 
 
-def create_client(config: dict[str, Any]) -> OpenWrtClient:
+def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
     """Create the appropriate API client based on configuration."""
     connection_type = config.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_UBUS)
     host = config[CONF_HOST]
