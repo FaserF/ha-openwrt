@@ -93,7 +93,9 @@ async def test_config_flow_mqtt_steps(hass: HomeAssistant) -> None:
         assert mock_create.called
 
 
-async def test_options_flow_mqtt_redeploy(hass: HomeAssistant, mock_config_entry) -> None:
+async def test_options_flow_mqtt_redeploy(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
     """Test the MQTT presence re-deployment in options flow."""
     from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
 
@@ -118,7 +120,9 @@ async def test_options_flow_mqtt_redeploy(hass: HomeAssistant, mock_config_entry
             "custom_components.openwrt.config_flow.create_client",
             return_value=AsyncMock(),
         ),
-        patch.object(flow, "async_step_options_permissions", return_value=AsyncMock()) as mock_perms,
+        patch.object(
+            flow, "async_step_options_permissions", return_value=AsyncMock()
+        ) as mock_perms,
     ):
         result = await flow.async_step_init(user_input)
 
@@ -154,10 +158,12 @@ async def test_deploy_helper_success(hass: HomeAssistant) -> None:
         mock_session = mock_session_func.return_value
         mock_resp = AsyncMock()
         mock_resp.status = 200
-        mock_resp.text.return_value = "file content with BROKER=\"192.168.1.10\""
+        mock_resp.text.return_value = 'file content with BROKER="192.168.1.10"'
         mock_session.get.return_value.__aenter__.return_value = mock_resp
 
-        success, error = await async_deploy_mqtt_presence(hass, mock_client, mqtt_config)
+        success, error = await async_deploy_mqtt_presence(
+            hass, mock_client, mqtt_config
+        )
 
         assert success is True
         assert error is None

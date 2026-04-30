@@ -1821,12 +1821,18 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if user_input is not None:
             _LOGGER.debug("Options init submitted: %s", user_input)
             self._options = {**self._config_entry.options, **user_input}
-            if (user_input.get(CONF_MQTT_PRESENCE) and not self._config_entry.options.get(CONF_MQTT_PRESENCE)) or user_input.get(CONF_REDEPLOY_MQTT):
+            if (
+                user_input.get(CONF_MQTT_PRESENCE)
+                and not self._config_entry.options.get(CONF_MQTT_PRESENCE)
+            ) or user_input.get(CONF_REDEPLOY_MQTT):
                 return await self.async_step_options_mqtt_presence()
 
             # Check if we are disabling MQTT
-            if not user_input.get(CONF_MQTT_PRESENCE) and self._config_entry.options.get(CONF_MQTT_PRESENCE):
+            if not user_input.get(
+                CONF_MQTT_PRESENCE
+            ) and self._config_entry.options.get(CONF_MQTT_PRESENCE):
                 from .helpers.mqtt_presence import async_remove_mqtt_presence
+
                 client = create_client(self._config_entry.data)
                 try:
                     await client.connect()

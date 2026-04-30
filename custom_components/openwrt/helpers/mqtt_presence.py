@@ -55,16 +55,19 @@ async def async_deploy_mqtt_presence(
             # Apply MQTT config to etc/presence/presence_mqtt.conf
             if file_path == "etc/presence/presence_mqtt.conf":
                 content = content.replace(
-                    'BROKER="192.168.1.10"', f'BROKER="{escape_shell_value(mqtt_config["broker"])}"'
+                    'BROKER="192.168.1.10"',
+                    f'BROKER="{escape_shell_value(mqtt_config["broker"])}"',
                 )
                 content = content.replace(
                     'PORT="1883"', f'PORT="{escape_shell_value(mqtt_config["port"])}"'
                 )
                 content = content.replace(
-                    'USER="presence"', f'USER="{escape_shell_value(mqtt_config["username"])}"'
+                    'USER="presence"',
+                    f'USER="{escape_shell_value(mqtt_config["username"])}"',
                 )
                 content = content.replace(
-                    'PASS="change_me"', f'PASS="{escape_shell_value(mqtt_config["password"])}"'
+                    'PASS="change_me"',
+                    f'PASS="{escape_shell_value(mqtt_config["password"])}"',
                 )
 
             # Write file to router via heredoc for robustness
@@ -73,7 +76,9 @@ async def async_deploy_mqtt_presence(
             await client.execute_command(cmd)
 
         # 3. Set permissions
-        await client.execute_command("chmod +x /etc/presence/*.sh /etc/init.d/presence_hostapd")
+        await client.execute_command(
+            "chmod +x /etc/presence/*.sh /etc/init.d/presence_hostapd"
+        )
         await client.execute_command("chmod 600 /etc/presence/presence_mqtt.conf")
 
         # 4. Run install script
