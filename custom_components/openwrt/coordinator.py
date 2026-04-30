@@ -182,7 +182,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self._prev_network_stats: dict[str, dict[str, int]] = {}
         # Interface name to stable identifier mapping (for AP devices)
         self.interface_to_stable_id: dict[str, str] = {}
-        self.router_id = self.config_entry.unique_id or self.config_entry.data[CONF_HOST]
+        self.router_id = (
+            self.config_entry.unique_id or self.config_entry.data[CONF_HOST]
+        )
         self._store: storage.Store = storage.Store(
             hass,
             1,
@@ -574,13 +576,20 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # Prefer MAC address for router identity to ensure consistency with legacy devices
         if device_info.mac_address:
             mac_id = dr.format_mac(device_info.mac_address)
-            if self.router_id != mac_id and self.router_id.replace(":", "").lower() != mac_id.replace(":", "").lower():
+            if (
+                self.router_id != mac_id
+                and self.router_id.replace(":", "").lower()
+                != mac_id.replace(":", "").lower()
+            ):
                 _LOGGER.debug(
                     "Updating router identity for registry cleanup",
                 )
                 self.router_id = mac_id
                 # Update config entry unique_id if it's missing or differs from normalized mac_id
-                if not self.config_entry.unique_id or self.config_entry.unique_id != mac_id:
+                if (
+                    not self.config_entry.unique_id
+                    or self.config_entry.unique_id != mac_id
+                ):
                     self.hass.config_entries.async_update_entry(
                         self.config_entry, unique_id=mac_id
                     )
@@ -596,7 +605,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         if self.router_id != self.config_entry.data[CONF_HOST]:
             identifiers.add((DOMAIN, self.config_entry.data[CONF_HOST]))
         # Ensure we always add the original unique_id to prevent duplicate unmapped devices
-        if self.config_entry.unique_id and self.config_entry.unique_id != self.router_id:
+        if (
+            self.config_entry.unique_id
+            and self.config_entry.unique_id != self.router_id
+        ):
             identifiers.add((DOMAIN, self.config_entry.unique_id))
 
         device_registry.async_get_or_create(
@@ -648,7 +660,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # but are no longer active. This catches ghosts from previous installations.
         active_identifiers = {(DOMAIN, self.router_id)}
         for _, stable_id in ap_info.values():
-            active_identifiers.add((DOMAIN, format_ap_device_id(self.router_id, stable_id)))
+            active_identifiers.add(
+                (DOMAIN, format_ap_device_id(self.router_id, stable_id))
+            )
 
         _LOGGER.debug(
             "Starting deep device registry cleanup for %s active identifiers",
@@ -718,7 +732,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 devices_to_remove.append(dev.id)
 
         # Get the ID of our main router device to use as a fallback for orphans
-        router_dev = device_registry.async_get_device(identifiers={(DOMAIN, self.router_id)})
+        router_dev = device_registry.async_get_device(
+            identifiers={(DOMAIN, self.router_id)}
+        )
         router_dev_id = router_dev.id if router_dev else None
 
         # Build a mapping of via_device_id to find children efficiently without nested loops

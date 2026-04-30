@@ -1576,7 +1576,6 @@ class SshClient(OpenWrtClient):
             "adblock": "adblock",
             "simple_adblock": "simple-adblock",
             "ban_ip": "ban-ip",
-
             "dhcp": "odhcpd",
             "lldp": "lldpd",
             "wireless": "iwinfo",
