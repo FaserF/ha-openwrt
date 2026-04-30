@@ -1726,8 +1726,6 @@ class UbusClient(OpenWrtClient):
                 packages.nlbwmon = True
             if "pbr" in objects:
                 packages.pbr = True
-            if "led" in objects:
-
             if "dhcp" in objects:
                 # Specifically check for ipv4leases method to avoid "Not found" on some setups
                 try:
@@ -1746,6 +1744,26 @@ class UbusClient(OpenWrtClient):
                 packages.lldp = True
 
             # Step 2: Try executing a small script for remaining/all (fastest for root)
+            # Index map (0-based):
+            #  0: /etc/init.d/sqm          -> sqm_scripts
+            #  1: /etc/init.d/mwan3        -> mwan3
+            #  2: /usr/bin/iwinfo          -> iwinfo
+            #  3: /usr/bin/etherwake       -> etherwake
+            #  4: /usr/bin/wg              -> wireguard
+            #  5: /usr/sbin/openvpn        -> openvpn
+            #  6: luci-mod-rpc (lua)       -> luci_mod_rpc
+            #  7: luci-mod-rpc (menu.d)    -> luci_mod_rpc
+            #  8: asu (lua)                -> asu
+            #  9: asu (menu.d)             -> asu
+            # 10: /etc/init.d/adblock      -> adblock
+            # 11: /etc/init.d/simple-adblock -> simple_adblock
+            # 12: /etc/init.d/ban-ip       -> ban_ip
+            # 13: /etc/init.d/miniupnpd   -> miniupnpd
+            # 14: /etc/init.d/nlbwmon     -> nlbwmon
+            # 15: /etc/init.d/pbr         -> pbr
+            # 16: /etc/init.d/adguardhome -> adguardhome
+            # 17: /etc/init.d/unbound     -> unbound
+            # 18: /etc/config/sqm         -> sqm_scripts (fallback)
             try:
                 cmd = (
                     "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
@@ -1762,7 +1780,6 @@ class UbusClient(OpenWrtClient):
                     "/etc/init.d/pbr "
                     "/etc/init.d/adguardhome "
                     "/etc/init.d/unbound "
-                    "/usr/lib/rpcd/led.so "
                     "/etc/config/sqm; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
@@ -1778,7 +1795,7 @@ class UbusClient(OpenWrtClient):
                     return len(results) > idx and results[idx].strip() == "1"
 
                 if packages.sqm_scripts is not True:
-                    packages.sqm_scripts = detect_status(0) or detect_status(15)
+                    packages.sqm_scripts = detect_status(0) or detect_status(18)
                 if packages.mwan3 is not True:
                     packages.mwan3 = detect_status(1)
                 if packages.iwinfo is not True:

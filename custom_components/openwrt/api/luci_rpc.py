@@ -636,8 +636,6 @@ class LuciRpcClient(OpenWrtClient):
                 packages.nlbwmon = True
             if "pbr" in objects:
                 packages.pbr = True
-            if "led" in objects:
-
             if "dhcp" in objects:
                 # Specifically check for ipv4leases method
                 try:
@@ -656,6 +654,27 @@ class LuciRpcClient(OpenWrtClient):
             pass
 
         # Step 2: Check via file existence (sys.exec)
+        # Index map (0-based):
+        #  0: /etc/init.d/sqm             -> sqm_scripts
+        #  1: /etc/init.d/mwan3           -> mwan3
+        #  2: /usr/bin/iwinfo             -> iwinfo
+        #  3: /usr/bin/etherwake          -> etherwake
+        #  4: /usr/bin/wg                 -> wireguard
+        #  5: /usr/sbin/openvpn           -> openvpn
+        #  6: luci-mod-rpc (lua)          -> luci_mod_rpc
+        #  7: luci-mod-rpc (menu.d)       -> luci_mod_rpc
+        #  8: asu (lua)                   -> asu
+        #  9: asu (menu.d)                -> asu
+        # 10: /etc/init.d/adblock         -> adblock
+        # 11: /etc/init.d/simple-adblock  -> simple_adblock
+        # 12: /etc/init.d/ban-ip          -> ban_ip
+        # 13: /etc/init.d/miniupnpd      -> miniupnpd
+        # 14: /etc/init.d/nlbwmon        -> nlbwmon
+        # 15: /etc/init.d/pbr            -> pbr
+        # 16: /etc/init.d/adguardhome   -> adguardhome
+        # 17: /etc/init.d/unbound       -> unbound
+        # 18: /etc/init.d/odhcpd        -> dhcp (fallback)
+        # 19: /etc/init.d/lldpd         -> lldp
         cmd = (
             "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
             "/usr/bin/etherwake /usr/bin/wg /usr/sbin/openvpn "
@@ -666,13 +685,11 @@ class LuciRpcClient(OpenWrtClient):
             "/etc/init.d/adblock "
             "/etc/init.d/simple-adblock "
             "/etc/init.d/ban-ip "
-            "/etc/init.d/ban-ip "
             "/etc/init.d/miniupnpd "
             "/etc/init.d/nlbwmon "
             "/etc/init.d/pbr "
             "/etc/init.d/adguardhome "
             "/etc/init.d/unbound "
-            "/usr/lib/rpcd/led.so "
             "/etc/init.d/odhcpd "
             "/etc/init.d/lldpd; do "
             "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
@@ -688,29 +705,40 @@ class LuciRpcClient(OpenWrtClient):
                 packages.sqm_scripts = detect_status(0)
             if packages.mwan3 is not True:
                 packages.mwan3 = detect_status(1)
-            packages.iwinfo = detect_status(2)
-            packages.etherwake = detect_status(3)
-            packages.wireguard = detect_status(4)
-            packages.openvpn = detect_status(5)
+            if packages.iwinfo is not True:
+                packages.iwinfo = detect_status(2)
+            if packages.etherwake is not True:
+                packages.etherwake = detect_status(3)
+            if packages.wireguard is not True:
+                packages.wireguard = detect_status(4)
+            if packages.openvpn is not True:
+                packages.openvpn = detect_status(5)
             if packages.luci_mod_rpc is not True:
                 packages.luci_mod_rpc = (
                     detect_status(6) or detect_status(7) or (len(objects) > 0)
                 )
-            packages.asu = detect_status(8) or detect_status(9)
-            packages.adblock = detect_status(10)
-            packages.simple_adblock = detect_status(11)
-            packages.ban_ip = detect_status(12)
-            packages.adguardhome = detect_status(16)
-            packages.unbound = detect_status(17)
-
+            if packages.asu is not True:
+                packages.asu = detect_status(8) or detect_status(9)
+            if packages.adblock is not True:
+                packages.adblock = detect_status(10)
+            if packages.simple_adblock is not True:
+                packages.simple_adblock = detect_status(11)
+            if packages.ban_ip is not True:
+                packages.ban_ip = detect_status(12)
+            if packages.miniupnpd is not True:
+                packages.miniupnpd = detect_status(13)
+            if packages.nlbwmon is not True:
+                packages.nlbwmon = detect_status(14)
+            if packages.pbr is not True:
+                packages.pbr = detect_status(15)
+            if packages.adguardhome is not True:
+                packages.adguardhome = detect_status(16)
+            if packages.unbound is not True:
+                packages.unbound = detect_status(17)
             if packages.dhcp is not True:
-                packages.dhcp = detect_status(19)
+                packages.dhcp = detect_status(18)
             if packages.lldp is not True:
-                packages.lldp = detect_status(20)
-
-            packages.miniupnpd = detect_status(13)
-            packages.nlbwmon = detect_status(14)
-            packages.pbr = detect_status(15)
+                packages.lldp = detect_status(19)
 
         # Step 3: Check UCI configs for remaining packages (very robust fallback)
         if packages.sqm_scripts is not True:
