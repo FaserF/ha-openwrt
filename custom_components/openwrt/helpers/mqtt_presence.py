@@ -12,7 +12,10 @@ from ..api.base import OpenWrtClient
 
 _LOGGER = logging.getLogger(__name__)
 
-REPO_URL = "https://raw.githubusercontent.com/f45tb00t/OpenWRT_HA_Presence/main"
+# Pin to a specific commit for security (MIT Licensed scripts from f45tb00t/OpenWRT_HA_Presence)
+# Commit: 818d73bcef3a4f47754ff931243693c11c6a6cd0 (pinned on 2026-04-30)
+# renovate: datasource=github-commits depName=f45tb00t/OpenWRT_HA_Presence
+REPO_URL = "https://raw.githubusercontent.com/f45tb00t/OpenWRT_HA_Presence/818d73bcef3a4f47754ff931243693c11c6a6cd0"
 FILES_TO_DEPLOY = [
     "etc/presence/presence_event.sh",
     "etc/presence/presence.conf",
@@ -22,6 +25,11 @@ FILES_TO_DEPLOY = [
     "etc/presence/healthcheck.sh",
     "etc/init.d/presence_hostapd",
 ]
+
+
+def escape_shell_value(value: Any) -> str:
+    """Escape a value for use in a double-quoted shell string."""
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
 
 async def async_deploy_mqtt_presence(
@@ -47,11 +55,17 @@ async def async_deploy_mqtt_presence(
             # Apply MQTT config to etc/presence/presence_mqtt.conf
             if file_path == "etc/presence/presence_mqtt.conf":
                 content = content.replace(
-                    'BROKER="192.168.1.10"', f'BROKER="{mqtt_config["broker"]}"'
+                    'BROKER="192.168.1.10"', f'BROKER="{escape_shell_value(mqtt_config["broker"])}"'
                 )
-                content = content.replace('PORT="1883"', f'PORT="{mqtt_config["port"]}"')
-                content = content.replace('USER="presence"', f'USER="{mqtt_config["username"]}"')
-                content = content.replace('PASS="change_me"', f'PASS="{mqtt_config["password"]}"')
+                content = content.replace(
+                    'PORT="1883"', f'PORT="{escape_shell_value(mqtt_config["port"])}"'
+                )
+                content = content.replace(
+                    'USER="presence"', f'USER="{escape_shell_value(mqtt_config["username"])}"'
+                )
+                content = content.replace(
+                    'PASS="change_me"', f'PASS="{escape_shell_value(mqtt_config["password"])}"'
+                )
 
             # Write file to router via heredoc for robustness
             cmd = f"cat <<'EOF' > /{file_path}\n{content}\nEOF"
@@ -63,16 +77,14 @@ async def async_deploy_mqtt_presence(
         await client.execute_command("chmod 600 /etc/presence/presence_mqtt.conf")
 
         # 4. Run install script
-        # The install script in the repo installs deps like hostapd-utils, mosquitto-client-ssl, etc.
         install_output = await client.execute_command("sh /etc/presence/install.sh")
         _LOGGER.debug("MQTT Presence install output: %s", install_output)
 
         # 5. Verify healthcheck
         health_output = await client.execute_command("sh /etc/presence/healthcheck.sh")
         if "HEALTHCHECK SUCCESS" not in health_output and "OK" not in health_output:
-            # The healthcheck might have different output, let's assume if it doesn't fail miserably it's okay
-            # but we should check if the service is running
-            pass
+            _LOGGER.error("MQTT Presence healthcheck failed: %s", health_output)
+            return False, f"Healthcheck failed: {health_output}"
 
         # Start/Enable service
         await client.execute_command("/etc/init.d/presence_hostapd enable")

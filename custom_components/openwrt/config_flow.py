@@ -1636,8 +1636,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             if not user_input.get(CONF_MQTT_PRESENCE):
                 return await self._create_entry()
 
-            self._data.update(user_input)
-            return await self.async_step_do_deploy_mqtt_presence()
+            # Inline validation
+            broker = user_input.get(CONF_MQTT_BROKER, "")
+            port = user_input.get(CONF_MQTT_PORT)
+
+            if not broker:
+                errors[CONF_MQTT_BROKER] = "empty_broker"
+            if not port or not (1 <= port <= 65535):
+                errors[CONF_MQTT_PORT] = "invalid_port"
+
+            if not errors:
+                self._data.update(user_input)
+                return await self.async_step_do_deploy_mqtt_presence()
 
         return self.async_show_form(
             step_id="mqtt_presence",
@@ -1673,26 +1683,52 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         from .helpers.mqtt_presence import async_deploy_mqtt_presence
 
         client = create_client(self._data)
-        await client.connect()
+        try:
+            await client.connect()
 
-        mqtt_config = {
-            "broker": self._data.get(CONF_MQTT_BROKER, ""),
-            "port": self._data.get(CONF_MQTT_PORT, 1883),
-            "username": self._data.get(CONF_MQTT_USERNAME, ""),
-            "password": self._data.get(CONF_MQTT_PASSWORD, ""),
-        }
+            mqtt_config = {
+                "broker": self._data.get(CONF_MQTT_BROKER, ""),
+                "port": self._data.get(CONF_MQTT_PORT, 1883),
+                "username": self._data.get(CONF_MQTT_USERNAME, ""),
+                "password": self._data.get(CONF_MQTT_PASSWORD, ""),
+            }
 
-        success, error = await async_deploy_mqtt_presence(
-            self.hass, client, mqtt_config
-        )
-        await client.disconnect()
+            success, error = await async_deploy_mqtt_presence(
+                self.hass, client, mqtt_config
+            )
+            if success:
+                return await self._create_entry()
 
-        if success:
-            return await self._create_entry()
+            return self.async_show_form(
+                step_id="deploy_failed",
+                description_placeholders={"error": error or "Unknown error"},
+            )
+        except Exception as err:
+            _LOGGER.exception("Deployment failed")
+            return self.async_show_form(
+                step_id="deploy_failed",
+                description_placeholders={"error": str(err)},
+            )
+        finally:
+            await client.disconnect()
+
+    async def async_step_deploy_failed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle deployment failure."""
+        if user_input is not None:
+            # Re-try the deployment or go back to settings
+            if user_input.get("action") == "retry":
+                return await self.async_step_do_deploy_mqtt_presence()
+            return await self.async_step_mqtt_presence()
 
         return self.async_show_form(
             step_id="deploy_failed",
-            description_placeholders={"error": error or "Unknown error"},
+            data_schema=vol.Schema(
+                {
+                    vol.Required("action", default="retry"): vol.In(["retry", "back"]),
+                }
+            ),
         )
 
     async def _async_set_unique_id_and_check(self) -> None:
@@ -1784,7 +1820,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Manage the options."""
         if user_input is not None:
             _LOGGER.debug("Options init submitted: %s", user_input)
-            self._options = user_input
+            self._options = {**self._config_entry.options, **user_input}
             if (user_input.get(CONF_MQTT_PRESENCE) and not self._config_entry.options.get(CONF_MQTT_PRESENCE)) or user_input.get(CONF_REDEPLOY_MQTT):
                 return await self.async_step_options_mqtt_presence()
 
@@ -1795,9 +1831,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 try:
                     await client.connect()
                     await async_remove_mqtt_presence(client)
-                    await client.disconnect()
                 except Exception:
                     _LOGGER.exception("Failed to clean up MQTT presence on router")
+                finally:
+                    await client.disconnect()
 
             return await self.async_step_options_permissions()
 
@@ -2062,24 +2099,50 @@ class OpenWrtOptionsFlow(OptionsFlow):
         from .helpers.mqtt_presence import async_deploy_mqtt_presence
 
         client = create_client({**self._config_entry.data, **self._options})
-        await client.connect()
+        try:
+            await client.connect()
 
-        mqtt_config = {
-            "broker": self._options.get(CONF_MQTT_BROKER, ""),
-            "port": self._options.get(CONF_MQTT_PORT, 1883),
-            "username": self._options.get(CONF_MQTT_USERNAME, ""),
-            "password": self._options.get(CONF_MQTT_PASSWORD, ""),
-        }
+            mqtt_config = {
+                "broker": self._options.get(CONF_MQTT_BROKER, ""),
+                "port": self._options.get(CONF_MQTT_PORT, 1883),
+                "username": self._options.get(CONF_MQTT_USERNAME, ""),
+                "password": self._options.get(CONF_MQTT_PASSWORD, ""),
+            }
 
-        success, error = await async_deploy_mqtt_presence(
-            self.hass, client, mqtt_config
-        )
-        await client.disconnect()
+            success, error = await async_deploy_mqtt_presence(
+                self.hass, client, mqtt_config
+            )
+            if success:
+                return await self.async_step_options_permissions()
 
-        if success:
-            return await self.async_step_options_permissions()
+            return self.async_show_form(
+                step_id="deploy_failed",
+                description_placeholders={"error": error or "Unknown error"},
+            )
+        except Exception as err:
+            _LOGGER.exception("Deployment failed")
+            return self.async_show_form(
+                step_id="deploy_failed",
+                description_placeholders={"error": str(err)},
+            )
+        finally:
+            await client.disconnect()
+
+    async def async_step_options_deploy_failed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle deployment failure in options flow."""
+        if user_input is not None:
+            # Re-try the deployment or go back to settings
+            if user_input.get("action") == "retry":
+                return await self.async_step_options_do_deploy_mqtt_presence()
+            return await self.async_step_options_mqtt_presence()
 
         return self.async_show_form(
             step_id="deploy_failed",
-            description_placeholders={"error": error or "Unknown error"},
+            data_schema=vol.Schema(
+                {
+                    vol.Required("action", default="retry"): vol.In(["retry", "back"]),
+                }
+            ),
         )

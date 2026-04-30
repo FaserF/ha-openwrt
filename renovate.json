@@ -19,5 +19,15 @@
   },
   "github-actions": {
     "enabled": true
-  }
+  },
+  "regexManagers": [
+    {
+      "fileMatch": [
+        "custom_components/openwrt/helpers/mqtt_presence.py"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+REPO_URL = \"https://raw.githubusercontent.com/[^/]+/[^/]+/(?<currentValue>[a-f0-9]+)\""
+      ]
+    }
+  ]
 }

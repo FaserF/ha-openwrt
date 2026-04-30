@@ -139,6 +139,7 @@ async def test_deploy_helper_success(hass: HomeAssistant) -> None:
     )
 
     mock_client = AsyncMock()
+    mock_client.execute_command.return_value = "OK"
     mqtt_config = {
         "broker": "127.0.0.1",
         "port": 1883,

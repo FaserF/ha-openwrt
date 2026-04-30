@@ -72,12 +72,14 @@ async def async_setup_entry(
             entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
         )
 
+        mqtt_enabled = entry.options.get(CONF_MQTT_PRESENCE, False)
+
         for ent in entries:
             if ent.domain != "device_tracker":
                 continue
 
-            # Remove ALL device trackers if disabled
-            if not track_devices:
+            # Remove ALL device trackers if disabled or MQTT presence is active
+            if not track_devices or mqtt_enabled:
                 ent_reg.async_remove(ent.entity_id)
                 continue
 
