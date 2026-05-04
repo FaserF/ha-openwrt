@@ -738,6 +738,10 @@ class SshClient(OpenWrtClient):
                             enabled=not radio_data.get("disabled", False),
                             up=radio_data.get("up", False),
                             radio=radio_name,
+                            band=WirelessInterface._band_from_raw(
+                                radio_data.get("config", {}).get("band", "")
+                                or radio_data.get("config", {}).get("hwmode", "")
+                            ),
                             hwmode=radio_data.get("config", {}).get("hwmode", ""),
                             section=iface.get("section"),
                             ifname=iface.get("ifname"),
@@ -829,6 +833,9 @@ class SshClient(OpenWrtClient):
                     wifi.mac_address = info.get("bssid", "").upper()
                     wifi.channel = info.get("channel", 0)
                     wifi.frequency = str(info.get("frequency", ""))
+                    # Re-resolve band from frequency if not already set
+                    if not wifi.band and wifi.frequency:
+                        wifi.band = WirelessInterface._band_from_raw(wifi.frequency)
                     wifi.signal = info.get("signal", 0)
                     wifi.noise = info.get("noise", 0)
                     wifi.bitrate = (

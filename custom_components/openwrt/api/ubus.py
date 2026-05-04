@@ -921,8 +921,12 @@ class UbusClient(OpenWrtClient):
                                 mode=iface_config.get("mode", ""),
                                 encryption=iface_config.get("encryption", ""),
                                 enabled=not radio_data.get("disabled", False),
-                                up=radio_data.get("up", False),
+                                up=not radio_data.get("disabled", False),
                                 radio=radio_name,
+                                band=WirelessInterface._band_from_raw(
+                                    radio_data.get("config", {}).get("band", "")
+                                    or radio_data.get("config", {}).get("hwmode", "")
+                                ),
                                 htmode=radio_data.get("config", {}).get("htmode", ""),
                                 hwmode=radio_data.get("config", {}).get("hwmode", ""),
                                 txpower=radio_data.get("config", {}).get("txpower", 0),
@@ -973,6 +977,11 @@ class UbusClient(OpenWrtClient):
                             enabled=not (radio_disabled or iface_disabled),
                             up=not (radio_disabled or iface_disabled),
                             radio=radio_name,
+                            band=WirelessInterface._band_from_raw(
+                                vals.get(radio_name, {}).get("band", "")
+                                or vals.get(radio_name, {}).get("hwmode", "")
+                            ),
+                            hwmode=vals.get(radio_name, {}).get("hwmode", ""),
                             section=sect_name,
                             ifname=sect_data.get("ifname"),
                         )
@@ -1016,6 +1025,9 @@ class UbusClient(OpenWrtClient):
                     wifi.mac_address = iwinfo.get("bssid", "").upper()
                     wifi.channel = iwinfo.get("channel", 0)
                     wifi.frequency = str(iwinfo.get("frequency", ""))
+                    # Re-resolve band from frequency if not already set
+                    if not wifi.band and wifi.frequency:
+                        wifi.band = WirelessInterface._band_from_raw(wifi.frequency)
 
                     # Fallback: Infer from channel if frequency is missing or empty
                     if (

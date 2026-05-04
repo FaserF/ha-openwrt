@@ -17,7 +17,7 @@ from typing import Any
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_MANUFACTURER, CONF_HOST
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
     device_registry as dr,
@@ -70,12 +70,14 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     OPENWRT_RELEASE_API,
+    ATTR_MANUFACTURER,
 )
 from .helpers import (
     format_ap_device_id,
     format_ap_name,
     is_random_mac,
 )
+from .helpers.mac_vendor import get_mac_vendor_info
 from .repairs import (
     async_create_auth_repair,
     async_create_connection_lost_repair,
@@ -661,7 +663,52 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 via_device=(DOMAIN, self.router_id),
             )
 
-        # 3. Cleanup orphaned devices
+        # 3. Retroactively update manufacturer/model for already-registered tracked devices.
+        # HA only writes manufacturer/model at first creation; subsequent coordinator polls
+        # are ignored unless we call async_update_device() explicitly. This loop fixes all
+        # devices that were registered before the OUI mapping was added or that were created
+        # with the generic "OpenWrt" / "Tracked device" defaults.
+        mac_pattern = re.compile(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", re.IGNORECASE)
+        for dev in device_registry.devices.values():
+            # Only touch devices that belong to our specific config entry
+            if self.config_entry.entry_id not in dev.config_entries:
+                continue
+            
+            for ident in dev.identifiers:
+                if ident[0] != DOMAIN:
+                    continue
+                ident_str = str(ident[1])
+                if not mac_pattern.match(ident_str):
+                    continue
+                
+                vendor_info = get_mac_vendor_info(ident_str)
+                if not vendor_info:
+                    break
+                
+                new_manufacturer, new_model = vendor_info
+                # Only write if the values differ from the current ones
+                if (
+                    dev.manufacturer in (None, "OpenWrt", "by OpenWrt", "manufacturer")
+                    or dev.model in (None, "Tracked device", "model")
+                    or dev.manufacturer != new_manufacturer
+                    or dev.model != new_model
+                ):
+                    _LOGGER.debug(
+                        "Updating tracked device %s: manufacturer %s -> %s, model %s -> %s",
+                        ident_str,
+                        dev.manufacturer,
+                        new_manufacturer,
+                        dev.model,
+                        new_model,
+                    )
+                    device_registry.async_update_device(
+                        dev.id,
+                        manufacturer=new_manufacturer,
+                        model=new_model,
+                    )
+                break
+
+        # 4. Cleanup orphaned devices
         # We scan the ENTIRE registry for devices that belong to this router
         # but are no longer active. This catches ghosts from previous installations.
         active_identifiers = {(DOMAIN, self.router_id)}

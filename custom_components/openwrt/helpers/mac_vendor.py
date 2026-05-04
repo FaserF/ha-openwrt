@@ -103,6 +103,7 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "E8:04:0B": ("Apple", "Apple Device"),
     "EC:35:86": ("Apple", "Apple Device"),
     "F4:0F:24": ("Apple", "Apple Device"),
+    "DC:B5:4F": ("Apple", "Apple Device"),
     # Samsung (Galaxy Phones/Tablets)
     "00:07:AB": ("Samsung", "Samsung Device"),
     "00:15:B9": ("Samsung", "Samsung Device"),
@@ -153,6 +154,8 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "D0:C5:F3": ("Samsung", "Samsung Device"),
     "E0:76:D0": ("Samsung", "Samsung Device"),
     "F4:F5:E8": ("Samsung", "Samsung Device"),
+    "4C:66:A6": ("Samsung", "Samsung Device"),
+    "8C:B8:4A": ("Samsung", "Samsung Device"),
     # Google (Pixel / Nest)
     "00:1A:11": ("Google", "Google Pixel"),
     "3C:5A:B4": ("Google", "Google Pixel"),
@@ -171,6 +174,7 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "94:EB:CD": ("Google", "Google Device"),
     "A4:77:33": ("Google", "Google Device"),
     "D8:24:BD": ("Google", "Google Device"),
+    "10:96:93": ("Amazon", "Amazon Device"),
     # Xiaomi Smartphone / IoT
     "00:9E:C8": ("Xiaomi", "Xiaomi Device"),
     "00:C3:0A": ("Xiaomi", "Xiaomi Device"),
@@ -194,6 +198,8 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "E4:FE:43": ("Xiaomi", "Xiaomi Device"),
     "EC:4D:3E": ("Xiaomi", "Mi Smart Fan"),
     "F4:8A:51": ("Xiaomi", "Xiaomi Device"),
+    "DC:ED:83": ("Xiaomi", "Xiaomi Device"),
+    "20:2B:20": ("Xiaomi/Foxconn", "Xiaomi Device"),
     # Huawei
     "00:18:82": ("Huawei", "Huawei Device"),
     "00:25:9E": ("Huawei", "Huawei Device"),
@@ -229,6 +235,7 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "4C:72:B9": ("HP", "HP Computer"),
     "78:E7:D1": ("HP", "HP Computer"),
     "B0:5A:DA": ("HP", "HP Computer"),
+    "BC:E9:2F": ("HP", "HP Computer"),
     # Lenovo
     "00:06:1B": ("Lenovo", "Lenovo Computer"),
     "00:12:FE": ("Lenovo", "Lenovo Computer"),
@@ -257,6 +264,7 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "C0:25:E9": ("AVM", "FRITZ! Device"),
     "DC:15:C8": ("AVM", "FRITZ! Device"),
     "E0:28:6D": ("AVM", "FRITZ! Device"),
+    "18:83:BF": ("Arcadyan", "Networking Device"),
     # Sonos
     "00:04:3C": ("Sonos", "Sonos Speaker"),
     "00:0E:58": ("Sonos", "Sonos Speaker"),
@@ -272,6 +280,7 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     # Bosch
     "00:01:31": ("Bosch", "Bosch Device"),
     "3C:D0:74": ("Bosch", "Bosch Smart Home"),
+    "00:60:34": ("Bosch", "Bosch Device"),
     # Miele
     "00:1D:63": ("Miele", "Miele Appliance"),
     # Siemens / BSH
@@ -280,6 +289,7 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "D8:E5:6D": ("BSH", "Home Connect Device"),
     # Netatmo
     "70:EE:50": ("Netatmo", "Netatmo Device"),
+    "F8:81:1A": ("Somfy", "Smart Home Device"),
     # Dyson
     "C8:FF:77": ("Dyson", "Dyson Device"),
     # Tuya (White Label)
@@ -298,6 +308,8 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "EC:FA:BC": ("Tuya", "Tuya IoT device"),
     "B8:4D:43": ("Dreame", "Vacuum Robot"),
     "FC:67:1F": ("Tuya", "Tuya IoT device"),
+    "00:33:7A": ("Tuya", "Tuya IoT device"),
+    "D4:AD:FC": ("Govee", "Smart IoT Device"),
     # --- TV & ENTERTAINMENT ---
     # Samsung TV
     "00:00:F0": ("Samsung", "Samsung Smart TV"),
@@ -328,6 +340,8 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "EC:60:62": ("TCL", "TCL Smart TV"),
     "F8:1E:DF": ("TCL", "TCL Smart TV"),
     "F8:24:41": ("TCL", "TCL Smart TV"),
+    "34:51:80": ("TCL", "TCL Smart TV"),
+    "18:65:71": ("Philips/AOC", "Smart TV/Monitor"),
     # --- INFRASTRUKTUR ---
     # Raspberry Pi
     "28:CD:C1": ("Raspberry Pi", "Raspberry Pi"),
@@ -369,6 +383,8 @@ MAC_VENDOR_MAP: dict[str, tuple[str, str]] = {
     "98:DE:D0": ("TP-Link", "Networking Device"),
     "B0:4E:26": ("TP-Link", "Networking Device"),
     "C0:4A:00": ("TP-Link", "Networking Device"),
+    "38:00:25": ("Intel", "Network/Computing Device"),
+    "1C:69:7A": ("Elitegroup", "Computing Device"),
     # --- OTHER ---
     # Amazon (Echo, FireTV)
     "00:BB:3A": ("Amazon", "Echo/FireTV Device"),

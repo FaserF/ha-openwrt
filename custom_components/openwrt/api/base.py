@@ -288,37 +288,69 @@ class WirelessInterface:
     width: str = ""  # 20 MHz, 40 MHz, 80 MHz, 160 MHz, 320 MHz
     standard: str = ""  # 802.11n/ac/ax/be
 
+    @staticmethod
+    def _band_from_raw(raw: str) -> str:
+        """Normalise raw band/frequency/hwmode strings to a human-readable band.
+
+        Handles:
+        - OpenWrt new-style short strings: '2g', '5g', '6g'
+        - Legacy hwmode strings: 'b', 'g', 'bg', 'a', 'ac', 'ax'
+        - Raw frequency values in MHz: '2412', '5180', '6135'
+        - Already normalised strings: '2.4 GHz', '5 GHz', '6 GHz'
+        """
+        if not raw:
+            return ""
+        s = str(raw).lower().strip()
+        # Already normalised
+        if "ghz" in s:
+            if "2.4" in s:
+                return "2.4 GHz"
+            if "6" in s:
+                return "6 GHz"
+            if "5" in s:
+                return "5 GHz"
+        # Short OpenWrt band keys: 2g, 5g, 6g
+        if s in ("2g", "2.4g"):
+            return "2.4 GHz"
+        if s == "5g":
+            return "5 GHz"
+        if s == "6g":
+            return "6 GHz"
+        # Legacy hwmode strings
+        if any(x in s for x in ("11b", "11g", "bg", "bgn")):
+            return "2.4 GHz"
+        if any(x in s for x in ("11a", "ac", "11ac")):
+            return "5 GHz"
+        if "11ax" in s or "ax" in s:
+            return ""  # ax is ambiguous without frequency
+        # Raw numeric frequency in MHz or GHz
+        digits = s.replace(".", "", 1)
+        if digits.isdigit():
+            freq = float(s)
+            if 2000 <= freq <= 3000:
+                return "2.4 GHz"
+            if 4900 <= freq <= 5900:
+                return "5 GHz"
+            if 5900 < freq <= 7200:
+                return "6 GHz"
+            # Frequency given in GHz (e.g. '2.412')
+            if 2.0 <= freq <= 3.0:
+                return "2.4 GHz"
+            if 4.9 <= freq <= 5.9:
+                return "5 GHz"
+            if 5.9 < freq <= 7.2:
+                return "6 GHz"
+        return ""
+
     def __post_init__(self) -> None:
         """Post-process wireless data."""
         if not self.band:
-            if self.frequency:
-                freq_str = str(self.frequency).lower()
-                if "2.4" in freq_str or (
-                    freq_str.replace(".", "").isdigit()
-                    and 2000 <= float(freq_str) <= 3000
-                ):
-                    self.band = "2.4 GHz"
-                elif "5" in freq_str or (
-                    freq_str.replace(".", "").isdigit()
-                    and 4900 <= float(freq_str) <= 5900
-                ):
-                    self.band = "5 GHz"
-                elif "6" in freq_str or (
-                    freq_str.replace(".", "").isdigit()
-                    and 5900 < float(freq_str) <= 7200
-                ):
-                    self.band = "6 GHz"
-
-            if not self.band and self.hwmode:
-                mode = self.hwmode.lower()
-                if any(x in mode for x in ["b", "g"]):
-                    self.band = "2.4 GHz"
-                elif any(x in mode for x in ["a", "ac"]):
-                    self.band = "5 GHz"
-                elif "ax" in mode:
-                    # ax can be both, but usually 5GHz on OpenWrt routers
-                    # unless it's specifically radio0/1 check
-                    pass
+            # Prefer frequency (most accurate), then hwmode, then the radio's band field
+            for raw in (self.frequency, self.hwmode):
+                resolved = self._band_from_raw(raw)
+                if resolved:
+                    self.band = resolved
+                    break
 
 
 @dataclass
