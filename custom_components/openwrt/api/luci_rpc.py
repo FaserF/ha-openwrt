@@ -460,7 +460,7 @@ class LuciRpcClient(OpenWrtClient):
 
         # Populate model and hardware info from system.board if available
         try:
-            board_out = await self.execute_command("ubus call system board")
+            board_out = await self.execute_command("ubus call system board 2>/dev/null")
             if board_out and board_out.strip().startswith("{"):
                 board_data = json.loads(board_out)
                 model = board_data.get("model")
@@ -1055,7 +1055,7 @@ class LuciRpcClient(OpenWrtClient):
     async def get_external_ip(self) -> str | None:
         """Get public/external IP address."""
         try:
-            status = await self.execute_command("ubus call network.interface dump")
+            status = await self.execute_command("ubus call network.interface dump 2>/dev/null")
             if status:
                 data = json.loads(status)
                 if data and isinstance(data, dict):
@@ -1081,7 +1081,7 @@ class LuciRpcClient(OpenWrtClient):
         if self.packages.wireless is not False:
             try:
                 wireless_data = await self.execute_command(
-                    "ubus call network.wireless status"
+                    "ubus call network.wireless status 2>/dev/null"
                 )
                 if wireless_data and wireless_data.strip().startswith("{"):
                     data = json.loads(wireless_data)
@@ -1176,7 +1176,7 @@ class LuciRpcClient(OpenWrtClient):
         iw_devs = set()
         if self.packages.wireless is not False:
             try:
-                iw_devs_str = await self.execute_command("ubus call iwinfo devices")
+                iw_devs_str = await self.execute_command("ubus call iwinfo devices 2>/dev/null")
                 if iw_devs_str and iw_devs_str.strip().startswith("{"):
                     iw_devs = set(json.loads(iw_devs_str).get("devices", []))
                 for name in iw_devs:
@@ -1198,11 +1198,11 @@ class LuciRpcClient(OpenWrtClient):
 
             try:
                 # Get basic info
-                info_str = await self.execute_command(
-                    f'ubus call iwinfo info \'{{"device":"{iface_name}"}}\''
+                iwinfo_str = await self.execute_command(
+                    f'ubus call iwinfo info \'{{"device":"{iface_name}"}}\' 2>/dev/null'
                 )
-                if info_str and info_str.strip().startswith("{"):
-                    info = json.loads(info_str)
+                if iwinfo_str and iwinfo_str.strip().startswith("{"):
+                    info = json.loads(iwinfo_str)
                     if not wifi.ssid:
                         wifi.ssid = info.get("ssid", "")
                     wifi.mac_address = info.get("bssid", "").upper()
@@ -1224,7 +1224,7 @@ class LuciRpcClient(OpenWrtClient):
 
                     # Association list for client count
                     assoc_str = await self.execute_command(
-                        f'ubus call iwinfo assoclist \'{{"device":"{iface_name}"}}\''
+                        f'ubus call iwinfo assoclist \'{{"device":"{iface_name}"}}\' 2>/dev/null'
                     )
                     if assoc_str and assoc_str.strip().startswith("{"):
                         assoc = json.loads(assoc_str).get("results", [])
@@ -1233,7 +1233,7 @@ class LuciRpcClient(OpenWrtClient):
                     if not wifi.clients_count:
                         with contextlib.suppress(Exception):
                             clients_str = await self.execute_command(
-                                f"ubus call hostapd.{iface_name} get_clients"
+                                f"ubus call hostapd.{iface_name} get_clients 2>/dev/null"
                             )
                             if clients_str and clients_str.strip().startswith("{"):
                                 hc = json.loads(clients_str).get("clients", {})
@@ -1590,7 +1590,7 @@ class LuciRpcClient(OpenWrtClient):
 
         # 4. Fallback: Discovery of all hostapd objects
         if self.packages.wireless is not False:
-            cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients)\"; done"
+            cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients 2>/dev/null)\"; done"
             stdout = await self.execute_command(cmd)
         if stdout:
             for line in stdout.splitlines():
@@ -1735,7 +1735,7 @@ class LuciRpcClient(OpenWrtClient):
                     hostapd_list = await self._rpc_call(
                         "sys",
                         "exec",
-                        ["ubus list 'hostapd.*'"],
+                        ["ubus list 'hostapd.*' 2>/dev/null"],
                     )
                     if hostapd_list:
                         for obj in hostapd_list.splitlines():
