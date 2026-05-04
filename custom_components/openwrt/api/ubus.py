@@ -1723,39 +1723,56 @@ class UbusClient(OpenWrtClient):
 
     async def _check_perms_from_probes(self, perms: OpenWrtPermissions) -> None:
         """Identify permissions by attempting to call various methods."""
-
-        async def can_call(obj: str, method: str, params: dict | None = None) -> bool:
+        async def can_call(obj: str, method: str, params: dict[str, Any] | None = None) -> bool:
             try:
-                await self._call(obj, method, params)
+                # We use a very light call to test permission
+                if obj == "uci" and method == "get":
+                    await self._call(obj, method, {"config": "system"})
+                elif obj == "file" and method == "list":
+                    await self._call(obj, method, {"path": "/etc/config"})
+                else:
+                    await self._call(obj, method, params or {})
                 return True
             except UbusPermissionError:
                 return False
             except Exception:
+                # If it's another error (e.g. 'Not found'), we might still have permission
+                # but the object or method is missing. For permission checking, we
+                # only care about explicit 'Permission denied' (Access denied).
                 return True
 
-        perms.read_system = await can_call("system", "board")
-        perms.write_system = await can_call("uci", "set", {"config": "system"})
-        perms.read_network = await can_call("network.interface", "dump")
+        # Root user override: If we are root, and the session list failed (handled in caller),
+        # we assume read permissions for core objects as a starting point.
+        is_root = self.username == "root"
+
+        perms.read_system = await can_call("system", "board") or is_root
+        perms.write_system = await can_call("uci", "set", {"config": "system"}) or is_root
+        perms.read_network = await can_call("network.interface", "dump") or is_root
         perms.write_network = await can_call(
             "network.interface", "up", {"interface": "loopback"}
-        )
-        perms.read_firewall = await can_call("uci", "get", {"config": "firewall"})
-        perms.write_firewall = await can_call("uci", "set", {"config": "firewall"})
-        perms.read_wireless = await can_call("network.wireless", "status")
-        perms.write_wireless = await can_call("uci", "set", {"config": "wireless"})
-        perms.read_sqm = await can_call("uci", "get", {"config": "sqm"})
-        perms.write_sqm = await can_call("uci", "set", {"config": "sqm"})
-        perms.read_led = await can_call("uci", "get", {"config": "system"})
-        perms.write_led = await can_call("uci", "set", {"config": "system"})
+        ) or is_root
+        perms.read_firewall = await can_call("uci", "get", {"config": "firewall"}) or is_root
+        perms.write_firewall = await can_call("uci", "set", {"config": "firewall"}) or is_root
+        perms.read_wireless = await can_call("network.wireless", "status") or is_root
+        perms.write_wireless = await can_call("uci", "set", {"config": "wireless"}) or is_root
+        perms.read_sqm = await can_call("uci", "get", {"config": "sqm"}) or is_root
+        perms.write_sqm = await can_call("uci", "set", {"config": "sqm"}) or is_root
+        
+        # LEDs often use the 'file' object to read /sys/class/leds
+        has_file_read = await can_call("file", "list", {"path": "/sys/class/leds"})
+        perms.read_led = (await can_call("uci", "get", {"config": "system"}) or has_file_read) or is_root
+        perms.write_led = (await can_call("uci", "set", {"config": "system"}) or has_file_read) or is_root
+        
         perms.read_vpn = perms.read_network
-        perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"})
+        perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"}) or is_root
         perms.read_devices = await can_call("dhcp", "ipv4leases") or perms.read_network
         perms.write_devices = await can_call(
             "file", "exec", {"command": "/usr/bin/id"}
-        ) or await can_call("file", "exec", {"command": "/bin/sh"})
+        ) or await can_call("file", "exec", {"command": "/bin/sh"}) or is_root
         perms.write_access_control = perms.write_firewall
-        perms.read_services = await can_call("service", "list")
-        perms.write_services = await can_call("service", "list")
+        perms.read_services = await can_call("service", "list") or is_root
+        perms.write_services = await can_call("service", "list") or is_root
+
 
     async def check_packages(self) -> OpenWrtPackages:
         """Check installed packages."""

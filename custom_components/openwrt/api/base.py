@@ -736,7 +736,7 @@ class LatencyResult:
     target: str = ""
     latency_ms: float | None = None
     packet_loss: float = 0.0  # percentage
-    available: bool = True
+    available: bool = False
 
 
 @dataclass
@@ -1503,20 +1503,31 @@ class OpenWrtClient(abc.ABC):
         try:
             output = await self.execute_command(f"ping -c 3 -W 2 {target}")
             if output:
-                # Only mark as available if we actually got output
+                # We got some output, so the command itself is available
                 result.available = True
-                # Parse avg from "min/avg/max/mdev = x/y/z/w ms"
-                for line in output.splitlines():
-                    if "min/avg/max" in line:
-                        stats = line.split("=")[-1].strip().split("/")
-                        if len(stats) >= 2:
-                            result.latency_ms = round(float(stats[1]), 1)
-                    if "packet loss" in line:
-                        match = re.search(r"(\d+)%", line)
-                        if match:
-                            result.packet_loss = float(match.group(1))
+                _LOGGER.debug("Ping output for %s: %s", target, output)
+
+                # Parse avg from "min/avg/max/mdev = x/y/z/w ms" or similar
+                # We use a regex that looks for the slash-separated numbers
+                stats_match = re.search(r"(\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+)", output)
+                if stats_match:
+                    # stats_match.group(2) is avg
+                    result.latency_ms = round(float(stats_match.group(2)), 1)
+                else:
+                    # Fallback for simpler ping versions: "round-trip min/avg/max = 1.2/3.4/5.6 ms"
+                    # or even "1 packets transmitted, 1 packets received, 0% packet loss"
+                    stats_match = re.search(r"=\s*([0-9.]+)/([0-9.]+)/([0-9.]+)", output)
+                    if stats_match:
+                        result.latency_ms = round(float(stats_match.group(2)), 1)
+
+                # Parse packet loss: "0% packet loss"
+                loss_match = re.search(r"(\d+)%\s*packet\s*loss", output, re.IGNORECASE)
+                if loss_match:
+                    result.packet_loss = float(loss_match.group(1))
+            else:
+                _LOGGER.debug("Ping command returned no output for %s", target)
         except Exception as err:
-            _LOGGER.debug("Latency check failed: %s", err)
+            _LOGGER.debug("Latency check failed for %s: %s", target, err)
         return result
 
     async def create_backup(self) -> str:

@@ -41,10 +41,33 @@ async def async_setup_entry(
         entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
     )
 
-    if coordinator.data and track_devices:
+    tracked_events: set[str] = set()
+
+    @callback
+    def _async_add_new_entities() -> None:
+        """Add new event entities when discovered."""
+        if not coordinator.data:
+            return
+
+        if not track_devices:
+            return
+
+        new_entities: list[OpenWrtNewDeviceEvent] = []
         perms = coordinator.data.permissions
+
+        # New Device event requires reading network/wireless to see connections
         if perms.read_network or perms.read_wireless:
-            async_add_entities([OpenWrtNewDeviceEvent(coordinator, entry)])
+            key = "new_device_event"
+            if key not in tracked_events:
+                tracked_events.add(key)
+                new_entities.append(OpenWrtNewDeviceEvent(coordinator, entry))
+
+        if new_entities:
+            async_add_entities(new_entities)
+
+    # Initial discovery and listener registration
+    _async_add_new_entities()
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
 
 
 class OpenWrtNewDeviceEvent(CoordinatorEntity[OpenWrtDataCoordinator], EventEntity):

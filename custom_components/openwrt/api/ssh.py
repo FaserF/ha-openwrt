@@ -1491,6 +1491,7 @@ class SshClient(OpenWrtClient):
         from .base import OpenWrtPermissions
 
         perms = OpenWrtPermissions()
+        is_root = self.username == "root"
 
         try:
             # Test uci read access
@@ -1506,19 +1507,24 @@ class SshClient(OpenWrtClient):
             perms.read_devices = True
             perms.read_services = True
 
-            # Test write access (we won't actually write, but SSH usually has full rights if it can read)
-            perms.write_system = True
-            perms.write_network = True
-            perms.write_firewall = True
-            perms.write_wireless = True
-            perms.write_sqm = True
-            perms.write_led = True
-            perms.write_devices = True
-            perms.write_services = True
-            perms.write_access_control = True
-            perms.write_vpn = True
+            # SSH usually has full rights if it can read and we are root
+            perms.write_system = is_root
+            perms.write_network = is_root
+            perms.write_firewall = is_root
+            perms.write_wireless = is_root
+            perms.write_sqm = is_root
+            perms.write_led = is_root
+            perms.write_devices = is_root
+            perms.write_services = is_root
+            perms.write_access_control = is_root
+            perms.write_vpn = is_root
         except Exception:
-            pass
+            if is_root:
+                # Fallback for root if even uci get fails (unlikely)
+                perms.read_system = True
+                perms.read_network = True
+                perms.write_system = True
+                perms.write_network = True
         return perms
 
     async def check_packages(self) -> OpenWrtPackages:
