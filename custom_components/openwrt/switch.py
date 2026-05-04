@@ -268,7 +268,7 @@ def _add_wireless_switches(
         entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
     for wifi in coordinator.data.wireless_interfaces:
         if wifi.name:
-            key = f"wireless_{wifi.name}"
+            key = f"wireless_{wifi.section or wifi.name}"
             if key not in tracked_keys:
                 tracked_keys.add(key)
                 entities.append(
@@ -727,9 +727,10 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         super().__init__(coordinator)
         self._client = client
         self._iface_name = iface_name
+        self._section_id = section_id
 
         # Build descriptive labels
-        self._attr_unique_id = f"{entry.entry_id}_wireless_{iface_name}"
+        self._attr_unique_id = f"{entry.entry_id}_wireless_{section_id or iface_name}"
         self._attr_translation_key = "wireless_radio"
 
         # Calculate band for placeholders

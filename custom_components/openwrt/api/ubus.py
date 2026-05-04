@@ -973,9 +973,15 @@ class UbusClient(OpenWrtClient):
                             enabled=not (radio_disabled or iface_disabled),
                             up=not (radio_disabled or iface_disabled),
                             radio=radio_name,
+                            section=sect_name,
+                            ifname=sect_data.get("ifname"),
                         )
                         interfaces.append(wifi)
                         iface_names.add(iface_name)
+                        if wifi.section and wifi.section != iface_name:
+                            iface_names.add(wifi.section)
+                        if wifi.ifname and wifi.ifname != iface_name:
+                            iface_names.add(wifi.ifname)
             except Exception as e:
                 _LOGGER.debug("UCI wireless fallback failed: %s", e)
 
@@ -2295,7 +2301,7 @@ class UbusClient(OpenWrtClient):
                     or (
                         data.get("running") is False
                         and data.get("exit_code") == 0
-                        and name in ("adblock", "simple-adblock")
+                        and name in ("adblock", "simple-adblock", "sysctl")
                     ),
                 ),
             )

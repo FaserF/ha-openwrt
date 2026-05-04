@@ -150,6 +150,8 @@ if ! cat <<EOF > "$ACL_FILE"
                 "/sbin/ip": ["read", "stat", "exec"],
                 "/usr/sbin/ip": ["read", "stat", "exec"],
                 "/bin/ubus": ["read", "stat", "exec"],
+                "/bin/ping": ["read", "stat", "exec"],
+                "/usr/bin/ping": ["read", "stat", "exec"],
                 "/usr/bin/uptime": ["read", "stat", "exec"],
                 "/proc/stat": ["read"],
                 "/proc/meminfo": ["read"],
@@ -1469,6 +1471,7 @@ class OpenWrtClient(abc.ABC):
         try:
             output = await self.execute_command(f"ping -c 3 -W 2 {target}")
             if output:
+                # Only mark as available if we actually got output
                 result.available = True
                 # Parse avg from "min/avg/max/mdev = x/y/z/w ms"
                 for line in output.splitlines():

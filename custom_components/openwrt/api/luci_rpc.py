@@ -2704,7 +2704,8 @@ class LuciRpcClient(OpenWrtClient):
                                     or (
                                         val.get("running") is False
                                         and val.get("exit_code") == 0
-                                        and name in ("adblock", "simple-adblock")
+                                        and name
+                                        in ("adblock", "simple-adblock", "sysctl")
                                     ),
                                 )
                             )
@@ -2727,7 +2728,8 @@ class LuciRpcClient(OpenWrtClient):
                                     or (
                                         inst.get("running") is False
                                         and inst.get("exit_code") == 0
-                                        and name in ("adblock", "simple-adblock")
+                                        and name
+                                        in ("adblock", "simple-adblock", "sysctl")
                                     )
                                     for inst in val.get("instances", {}).values()
                                 )

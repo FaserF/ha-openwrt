@@ -52,7 +52,7 @@ def test_sensor_english_names() -> None:
     assert memory_usage.name == "Memory Usage"
 
     load_sensor = next(d for d in system_sensors if d.key == "load_1min")
-    assert load_sensor.name == "Load (1m)"
+    assert load_sensor.name == "System Load (1m)"
 
     uptime_sensor = next(d for d in system_sensors if d.key == "uptime")
     assert uptime_sensor.name == "Uptime"

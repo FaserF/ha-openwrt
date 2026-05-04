@@ -316,13 +316,13 @@
         "name": "Swap-Auslastung"
       },
       "load_1min": {
-        "name": "Last (1 Min.)"
+        "name": "Systemlast (1 Min.)"
       },
       "load_5min": {
-        "name": "Last (5 Min.)"
+        "name": "Systemlast (5 Min.)"
       },
       "load_15min": {
-        "name": "Last (15 Min.)"
+        "name": "Systemlast (15 Min.)"
       },
       "uptime": {
         "name": "Laufzeit"

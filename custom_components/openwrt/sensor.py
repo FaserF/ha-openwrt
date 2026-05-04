@@ -447,7 +447,7 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
         ),
         OpenWrtSensorDescription(
             key="load_1min",
-            name="Load (1m)",
+            name="System Load (1m)",
             translation_key="load_1min",
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -456,7 +456,7 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
         ),
         OpenWrtSensorDescription(
             key="load_5min",
-            name="Load (5m)",
+            name="System Load (5m)",
             translation_key="load_5min",
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -466,7 +466,7 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
         ),
         OpenWrtSensorDescription(
             key="load_15min",
-            name="Load (15m)",
+            name="System Load (15m)",
             translation_key="load_15min",
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -1397,7 +1397,7 @@ def _async_setup_wireless_sensors(
         if not wifi.name:
             continue
         # Use signal as a representative key for the group of sensors created by _create_wifi_sensors
-        key = f"wifi_{wifi.name}_signal"
+        key = f"wifi_{wifi.section or wifi.name}_signal"
         if key not in tracked_keys:
             tracked_keys.add(key)
             entities.extend(
@@ -1696,7 +1696,7 @@ def _create_wifi_base_sensors(
             coordinator,
             entry,
             OpenWrtSensorDescription(
-                key=f"wifi_{iface_name}_clients",
+                key=f"wifi_{section_id or iface_name}_clients",
                 translation_key="wifi_clients",
                 name=f"{label} Clients",
                 state_class=SensorStateClass.MEASUREMENT,
@@ -1732,7 +1732,7 @@ def _create_wifi_base_sensors(
                 coordinator,
                 entry,
                 OpenWrtSensorDescription(
-                    key=f"wifi_{iface_name}_{key}",
+                    key=f"wifi_{section_id or iface_name}_{key}",
                     translation_key=tkey,
                     name=f"{label} {name}",
                     native_unit_of_measurement="dBm" if key == "txpower" else None,
@@ -1773,7 +1773,7 @@ def _create_wifi_station_sensors(
             coordinator,
             entry,
             OpenWrtSensorDescription(
-                key=f"wifi_{iface_name}_signal",
+                key=f"wifi_{section_id or iface_name}_signal",
                 translation_key="wifi_signal",
                 name=f"{label} Signal",
                 native_unit_of_measurement="dBm",

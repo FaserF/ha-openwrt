@@ -316,13 +316,13 @@
         "name": "Swap Usage"
       },
       "load_1min": {
-        "name": "Load (1m)"
+        "name": "System Load (1m)"
       },
       "load_5min": {
-        "name": "Load (5m)"
+        "name": "System Load (5m)"
       },
       "load_15min": {
-        "name": "Load (15m)"
+        "name": "System Load (15m)"
       },
       "uptime": {
         "name": "Uptime"

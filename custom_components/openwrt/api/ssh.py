@@ -723,8 +723,8 @@ class SshClient(OpenWrtClient):
                     for iface in radio_data.get("interfaces", []):
                         config = iface.get("config", {})
                         iface_name = (
-                            iface.get("section")
-                            or iface.get("ifname")
+                            iface.get("ifname")
+                            or iface.get("section")
                             or iface.get("device", "")
                         )
                         if not iface_name or iface_name in iface_names:
@@ -739,9 +739,15 @@ class SshClient(OpenWrtClient):
                             up=radio_data.get("up", False),
                             radio=radio_name,
                             hwmode=radio_data.get("config", {}).get("hwmode", ""),
+                            section=iface.get("section"),
+                            ifname=iface.get("ifname"),
                         )
                         interfaces.append(wifi)
                         iface_names.add(iface_name)
+                        if wifi.section and wifi.section != iface_name:
+                            iface_names.add(wifi.section)
+                        if wifi.ifname and wifi.ifname != iface_name:
+                            iface_names.add(wifi.ifname)
         except Exception as err:
             _LOGGER.debug("Failed to get network.wireless status via SSH: %s", err)
 
@@ -796,9 +802,15 @@ class SshClient(OpenWrtClient):
                             up=not (radio_disabled or iface_disabled),
                             radio=radio_name,
                             hwmode=sections.get(radio_name, {}).get("hwmode", ""),
+                            section=sect_name,
+                            ifname=ifname,
                         )
                         interfaces.append(wifi)
                         iface_names.add(iface_name)
+                        if sect_name and sect_name != iface_name:
+                            iface_names.add(sect_name)
+                        if ifname and ifname != iface_name:
+                            iface_names.add(ifname)
             except Exception as e:
                 _LOGGER.debug("UCI wireless fallback failed via SSH: %s", e)
 
@@ -1381,7 +1393,7 @@ class SshClient(OpenWrtClient):
                 # Special handling for one-shot services that might be active but not "running"
                 if (
                     not running
-                    and svc_name in ("adblock", "simple-adblock")
+                    and svc_name in ("adblock", "simple-adblock", "sysctl")
                     and enabled
                 ):
                     # For adblock, if ubus status says enabled, we consider it running
