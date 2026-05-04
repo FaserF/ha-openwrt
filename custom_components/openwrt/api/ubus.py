@@ -899,11 +899,18 @@ class UbusClient(OpenWrtClient):
 
                         radio_interfaces = radio_data.get("interfaces", [])
                         for iface in radio_interfaces:
-                            iface_name = (
-                                iface.get("section")
-                                or iface.get("ifname")
-                                or iface.get("device", "")
-                            )
+                            # Prefer the actual kernel interface name (ifname/device)
+                            # over the UCI section name. On devices like the Velop WHW03
+                            # that use phy*-ap* naming, the section field (e.g.
+                            # "default_radio0") differs from the actual device name
+                            # (e.g. "phy0-ap0"). Using section as the primary name
+                            # prevents the iwinfo step from recognising the real device
+                            # name as "already seen", causing duplicate entries.
+                            section = iface.get("section", "")
+                            ifname = iface.get("ifname") or iface.get("device", "")
+                            # Use the actual kernel name if available; fall back to
+                            # the UCI section name only when no kernel name exists.
+                            iface_name = ifname or section
                             if not iface_name:
                                 continue
 
@@ -921,9 +928,18 @@ class UbusClient(OpenWrtClient):
                                 txpower=radio_data.get("config", {}).get("txpower", 0),
                                 mesh_id=iface_config.get("mesh_id", ""),
                                 mesh_fwding=iface_config.get("mesh_fwding", False),
+                                section=section,
+                                ifname=ifname,
                             )
                             interfaces.append(wifi)
+                            # Track both the kernel name and the UCI section name so
+                            # the iwinfo step does not create a second entry for the
+                            # same physical interface under a different name.
                             iface_names.add(iface_name)
+                            if section and section != iface_name:
+                                iface_names.add(section)
+                            if ifname and ifname != iface_name:
+                                iface_names.add(ifname)
             except UbusError:
                 _LOGGER.debug(
                     "network.wireless status call failed, trying UCI fallback"
@@ -1494,9 +1510,26 @@ class UbusClient(OpenWrtClient):
                 elif obj in ("iwinfo", "network.wireless"):
                     continue
 
+            # Also try to discover candidates via iwinfo devices
+            with contextlib.suppress(UbusError):
+                iw_devs = await self._call("iwinfo", "devices")
+                if isinstance(iw_devs, list):
+                    candidates.update(iw_devs)
+                elif isinstance(iw_devs, dict) and "devices" in iw_devs:
+                    candidates.update(iw_devs["devices"])
+
             # Additional common names if nothing found
             if not candidates:
-                candidates = {"wlan0", "wlan1", "wlan0-1", "wlan1-1"}
+                candidates = {
+                    "wlan0",
+                    "wlan1",
+                    "wlan0-1",
+                    "wlan1-1",
+                    "ra0",
+                    "ra1",
+                    "rax0",
+                    "rax1",
+                }
 
             for ifname in candidates:
                 with contextlib.suppress(UbusError):
@@ -2258,7 +2291,12 @@ class UbusClient(OpenWrtClient):
                 ServiceInfo(
                     name=name,
                     enabled=data.get("enabled", False),
-                    running=data.get("running", False),
+                    running=data.get("running", False)
+                    or (
+                        data.get("running") is False
+                        and data.get("exit_code") == 0
+                        and name in ("adblock", "simple-adblock")
+                    ),
                 ),
             )
         return services
@@ -2852,23 +2890,34 @@ class UbusClient(OpenWrtClient):
         from .base import AdBlockStatus
 
         status = AdBlockStatus()
+        # 1. Try ubus first (provides more details)
         try:
-            # Try ubus first
             res = await self._call("adblock", "status")
-            if res:
+            if res and isinstance(res, dict) and res.get("adblock_status"):
                 status.enabled = res.get("adblock_status") == "enabled"
                 status.status = res.get("adblock_status", "disabled")
                 status.version = res.get("adblock_version")
-                status.blocked_domains = int(res.get("blocked_domains", 0))
+                # Handle formatted numbers like "57,861" or "57.861"
+                blocked = (
+                    str(res.get("blocked_domains", 0)).replace(",", "").replace(".", "")
+                )
+                try:
+                    status.blocked_domains = int(float(blocked))
+                except ValueError, TypeError:
+                    pass
                 status.last_update = res.get("last_run")
                 return status
+        except Exception as err:
+            _LOGGER.debug("AdBlock ubus status failed: %s", err)
 
-            # Fallback to uci
+        # 2. Fallback to uci (basic status)
+        try:
             enabled = await self.execute_command("uci -q get adblock.global.enabled")
-            status.enabled = enabled.strip() == "1"
+            status.enabled = (enabled or "").strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
-        except Exception:
-            pass
+        except Exception as err:
+            _LOGGER.debug("AdBlock UCI status failed: %s", err)
+
         return status
 
     async def set_adblock_enabled(self, enabled: bool) -> bool:

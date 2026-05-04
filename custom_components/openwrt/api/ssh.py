@@ -1377,6 +1377,18 @@ class SshClient(OpenWrtClient):
                     f"/etc/init.d/{svc_name} running && echo yes || echo no",
                 )
                 running = "yes" in running_check
+
+                # Special handling for one-shot services that might be active but not "running"
+                if (
+                    not running
+                    and svc_name in ("adblock", "simple-adblock")
+                    and enabled
+                ):
+                    # For adblock, if ubus status says enabled, we consider it running
+                    # but we don't want to duplicate too much logic here, so we just
+                    # trust the 'enabled' state for these specific one-shot services
+                    # if they are enabled at boot and it's a known one-shot service.
+                    running = True
             except Exception:  # noqa: BLE001
                 pass
             services.append(
@@ -1955,29 +1967,41 @@ class SshClient(OpenWrtClient):
         from .base import AdBlockStatus
 
         status = AdBlockStatus()
+        # 1. Try ubus first (provides more details)
         try:
-            # Try ubus over ssh first
             out = await self._exec("ubus call adblock status 2>/dev/null")
             if out:
-                import json
-
                 try:
                     res = json.loads(out)
-                    status.enabled = res.get("adblock_status") == "enabled"
-                    status.status = res.get("adblock_status", "disabled")
-                    status.version = res.get("adblock_version")
-                    status.blocked_domains = int(res.get("blocked_domains", 0))
-                    status.last_update = res.get("last_run")
-                    return status
+                    if res and isinstance(res, dict) and res.get("adblock_status"):
+                        status.enabled = res.get("adblock_status") == "enabled"
+                        status.status = res.get("adblock_status", "disabled")
+                        status.version = res.get("adblock_version")
+                        # Handle formatted numbers like "57,861" or "57.861"
+                        blocked = (
+                            str(res.get("blocked_domains", 0))
+                            .replace(",", "")
+                            .replace(".", "")
+                        )
+                        try:
+                            status.blocked_domains = int(float(blocked))
+                        except ValueError, TypeError:
+                            pass
+                        status.last_update = res.get("last_run")
+                        return status
                 except json.JSONDecodeError:
                     pass
+        except Exception as err:
+            _LOGGER.debug("AdBlock ubus status failed (SSH): %s", err)
 
-            # Fallback to uci
+        # 2. Fallback to uci (basic status)
+        try:
             enabled = await self._exec("uci -q get adblock.global.enabled")
-            status.enabled = enabled.strip() == "1"
+            status.enabled = (enabled or "").strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
-        except Exception:
-            pass
+        except Exception as err:
+            _LOGGER.debug("AdBlock UCI status failed (SSH): %s", err)
+
         return status
 
     async def get_adblock_fast_status(self) -> SimpleAdBlockStatus:

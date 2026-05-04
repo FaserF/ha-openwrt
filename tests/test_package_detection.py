@@ -1,4 +1,4 @@
-"""Extended tests for package detection in OpenWrt integration."""
+"""Tests for package and capability detection in OpenWrt integration."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -95,3 +95,40 @@ async def test_luci_rpc_package_detection_extended():
         assert packages.adblock is True
         assert packages.mwan3 is True
         assert packages.etherwake is True
+
+
+@pytest.mark.asyncio
+async def test_packages_wireless_inference_from_iwinfo() -> None:
+    """Test that packages.wireless is inferred from iwinfo if network.wireless is missing."""
+    client = UbusClient("192.168.1.1", "root", "pass")
+    client._list_objects = AsyncMock(return_value=["iwinfo", "system", "uci"])
+    client._get_object_methods = AsyncMock(return_value=["assoclist"])
+    client._call = AsyncMock(return_value={})
+
+    packages = await client.check_packages()
+    assert packages.iwinfo is True
+    assert packages.wireless is True
+
+
+@pytest.mark.asyncio
+async def test_packages_wireless_inference_from_hostapd() -> None:
+    """Test that packages.wireless is inferred from hostapd.* objects."""
+    client = UbusClient("192.168.1.1", "root", "pass")
+    client._list_objects = AsyncMock(return_value=["hostapd.wlan0", "system"])
+    client._call = AsyncMock(return_value={})
+
+    packages = await client.check_packages()
+    assert packages.wireless is True
+
+
+@pytest.mark.asyncio
+async def test_packages_wireless_inference_from_full_list() -> None:
+    """Test that packages.wireless is inferred if only the package name matches in step 4."""
+    client = UbusClient("192.168.1.1", "root", "pass")
+    client._list_objects = AsyncMock(return_value=[])
+    client._call = AsyncMock(return_value={})
+    client.get_installed_packages = AsyncMock(return_value=["iwinfo", "base-files"])
+
+    packages = await client.check_packages()
+    assert packages.iwinfo is True
+    assert packages.wireless is True

@@ -630,23 +630,28 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         )
 
         # 2. Register/Update AP devices for wireless interfaces
-        # Ensure stable_id is always the physical interface name (e.g. phy1-ap0)
-        # to avoid ghost devices from UCI section name changes.
-        ap_info: dict[str, tuple[str, str]] = {}
+        # Ensure stable_id is based on SSID and Band to prevent duplicates
+        # for mesh routers that spawn multiple virtual interfaces per radio.
+        ap_info: dict[str, str] = {}
 
         for wifi in data.wireless_interfaces:
             # Skip interfaces without name or SSID
             if not wifi.name or not wifi.ssid:
                 continue
 
-            label = format_ap_name(wifi.ssid, wifi.frequency)
+            # Use the normalised band string ("2.4 GHz", "5 GHz", "6 GHz") rather
+            # than the raw frequency in MHz. This groups all virtual interfaces on
+            # the same radio+SSID combination under one stable AP device, even
+            # when different channels are reported across updates.
+            band = wifi.band or wifi.frequency or wifi.radio or "unknown"
+            label = format_ap_name(wifi.ssid, band)
 
-            # Use physical interface name as stable identifier to prevent duplicates
-            stable_id = wifi.name
-            ap_info[wifi.name] = (label, stable_id)
+            # Use SSID and Band as stable identifier to group virtual interfaces
+            stable_id = f"{wifi.ssid}_{band}"
+            ap_info[stable_id] = label
             self.interface_to_stable_id[wifi.name] = stable_id
 
-        for _iface_name, (label, stable_id) in ap_info.items():
+        for stable_id, label in ap_info.items():
             device_registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
                 identifiers={(DOMAIN, format_ap_device_id(self.router_id, stable_id))},
@@ -660,7 +665,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # We scan the ENTIRE registry for devices that belong to this router
         # but are no longer active. This catches ghosts from previous installations.
         active_identifiers = {(DOMAIN, self.router_id)}
-        for _, stable_id in ap_info.values():
+        for stable_id in ap_info.keys():
             active_identifiers.add(
                 (DOMAIN, format_ap_device_id(self.router_id, stable_id))
             )

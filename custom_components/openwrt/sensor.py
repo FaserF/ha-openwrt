@@ -133,8 +133,26 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
 
         name_label = format_ap_name(ssid or iface_name, frequency)
 
-        # Ensure stable_id is always the physical interface name
-        stable_id = iface_name
+        # Ensure sensors are grouped under the correct AP device
+        stable_id = coordinator.interface_to_stable_id.get(iface_name, iface_name)
+
+        # If multiple virtual interfaces map to the same AP device (e.g. mesh nodes),
+        # append the interface name to disambiguate the sensor entities.
+        if (
+            sum(
+                1
+                for sid in coordinator.interface_to_stable_id.values()
+                if sid == stable_id
+            )
+            > 1
+        ):
+            name_label = f"{name_label} [{iface_name}]"
+            # We also need to update the description name so the entity name reflects this
+            if self._attr_name:
+                self._attr_name = f"{self._attr_name} [{iface_name}]"
+            elif description.name:
+                self._attr_name = f"{description.name} [{iface_name}]"
+
         router_id = cast(str, entry.unique_id or entry.data[CONF_HOST])
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, format_ap_device_id(router_id, stable_id))},
