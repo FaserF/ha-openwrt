@@ -42,7 +42,7 @@
           "ubus_path": "Ubus Path (e.g. /ubus)",
           "dhcp_software": "DHCP Software",
           "track_devices": "Track network clients (Device Tracker)",
-          "skip_random_mac": "Do not add randomized MAC address device trackers"
+          "skip_random_mac": "Ignore devices with randomized MAC addresses"
         }
       },
       "ssh": {
@@ -55,7 +55,7 @@
           "port": "Port",
           "dhcp_software": "DHCP Software",
           "track_devices": "Track network clients (Device Tracker)",
-          "skip_random_mac": "Do not add randomized MAC address device trackers"
+          "skip_random_mac": "Ignore devices with randomized MAC addresses"
         }
       },
       "reauth_confirm": {
@@ -76,7 +76,7 @@
           "port": "Port (Optional)",
           "dhcp_software": "DHCP Software",
           "track_devices": "Track network clients (Device Tracker)",
-          "skip_random_mac": "Do not add randomized MAC address device trackers"
+          "skip_random_mac": "Ignore devices with randomized MAC addresses"
         }
       },
       "permissions": {
@@ -189,7 +189,7 @@
           "custom_firmware_repo": "Custom Firmware GitHub Repo (owner/repo)",
           "asu_url": "Attended Sysupgrade Server URL",
           "target_override": "Target Override (e.g. arch/subtarget)",
-          "skip_random_mac": "Do not add randomized MAC address device trackers",
+          "skip_random_mac": "Ignore devices with randomized MAC addresses",
           "mqtt_presence": "Enable MQTT Presence Detection",
           "redeploy_mqtt": "Re-deploy MQTT Presence Scripts"
         },
@@ -222,6 +222,21 @@
         "data": {
           "acknowledge": "I have reviewed this information and want to proceed"
         }
+      },
+      "options_mqtt_presence": {
+        "title": "MQTT Presence Detection (Optional)",
+        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).\n\n**Note:** This functionality is not supported by the main integration. Bugs should be reported to the original repository.\n\n{warning}",
+        "data": {
+          "mqtt_presence": "Enable MQTT Presence Detection",
+          "mqtt_broker": "MQTT Broker (reachable from router)",
+          "mqtt_port": "MQTT Port",
+          "mqtt_username": "MQTT Username",
+          "mqtt_password": "MQTT Password"
+        }
+      },
+      "options_deploy_failed": {
+        "title": "Deployment Failed",
+        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's internet connection and free space."
       }
     }
   },
@@ -316,13 +331,13 @@
         "name": "Swap Usage"
       },
       "load_1min": {
-        "name": "System Load (1m)"
+        "name": "Load (1m)"
       },
       "load_5min": {
-        "name": "System Load (5m)"
+        "name": "Load (5m)"
       },
       "load_15min": {
-        "name": "System Load (15m)"
+        "name": "Load (15m)"
       },
       "uptime": {
         "name": "Uptime"
@@ -625,7 +640,7 @@
         "name": "Internet Access"
       },
       "firewall_rule": {
-        "name": "Firewall Rule"
+        "name": "Firewall Rule: {name}"
       },
       "sqm_enabled": {
         "name": "SQM Enabled"
@@ -699,6 +714,30 @@
     "firmware_outdated": {
       "title": "OpenWrt firmware is outdated on {host}",
       "description": "The OpenWrt router {host} is running version {current_version}, but version {latest_version} is available.\n\nIt is highly recommended to keep your router's firmware up to date for security reasons. You can download the latest release [here]({release_url})."
+    },
+    "stale_permissions": {
+      "title": "Stale permissions for '{username}' on {host}",
+      "description": "The dedicated user '{username}' on your OpenWrt router {host} seems to have outdated or insufficient ACL permissions. This often happens after firmware updates or when new features are added to the integration.\n\nTo fix this, the integration needs to temporarily connect with **root** privileges to refresh the ACL rules for your dedicated user.",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Refresh Permissions",
+            "description": "The permissions for user **{username}** on **{host}** need to be updated. You will be asked to provide the **root** password to perform this one-time maintenance task.\n\nNote: The root password is only used for this session and is not stored."
+          },
+          "root_login": {
+            "title": "Login as Root",
+            "description": "Please enter the **root** password for **{host}**.",
+            "data": {
+              "password": "Root Password"
+            }
+          }
+        },
+        "abort": {
+          "unknown_error": "An unknown error occurred.",
+          "cannot_connect": "Failed to connect to the router as root.",
+          "provision_failed": "Failed to update permissions for the dedicated user."
+        }
+      }
     }
   },
   "services": {

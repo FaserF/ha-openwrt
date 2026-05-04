@@ -1,7 +1,9 @@
 """Tests for MAC vendor information helper."""
 
 import pytest
+
 from custom_components.openwrt.helpers.mac_vendor import get_mac_vendor_info
+
 
 @pytest.mark.parametrize(
     "mac,expected",
@@ -28,6 +30,7 @@ def test_get_mac_vendor_info_new_mappings(mac, expected):
     """Test that new MAC OUI mappings return correct manufacturer and model."""
     assert get_mac_vendor_info(mac) == expected
 
+
 def test_get_mac_vendor_info_normalized():
     """Test that MAC addresses are correctly normalized before OUI lookup."""
     # Test lowercase
@@ -35,13 +38,26 @@ def test_get_mac_vendor_info_normalized():
     # Test dashes
     assert get_mac_vendor_info("D4-AD-FC-00-00-00") == ("Govee", "Smart IoT Device")
 
+
 def test_get_mac_vendor_info_randomized():
     """Test that randomized/private MAC addresses are identified."""
     # x2:xx...
-    assert get_mac_vendor_info("02:00:00:00:00:00") == ("Private MAC", "Randomized Address")
+    assert get_mac_vendor_info("02:00:00:00:00:00") == (
+        "Private MAC",
+        "Randomized Address",
+    )
     # x6:xx...
-    assert get_mac_vendor_info("46:00:00:00:00:00") == ("Private MAC", "Randomized Address")
+    assert get_mac_vendor_info("46:00:00:00:00:00") == (
+        "Private MAC",
+        "Randomized Address",
+    )
     # xA:xx...
-    assert get_mac_vendor_info("AA:00:00:00:00:00") == ("Private MAC", "Randomized Address")
+    assert get_mac_vendor_info("AA:00:00:00:00:00") == (
+        "Private MAC",
+        "Randomized Address",
+    )
     # xE:xx...
-    assert get_mac_vendor_info("EE:00:00:00:00:00") == ("Private MAC", "Randomized Address")
+    assert get_mac_vendor_info("EE:00:00:00:00:00") == (
+        "Private MAC",
+        "Randomized Address",
+    )

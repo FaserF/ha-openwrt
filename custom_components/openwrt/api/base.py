@@ -54,12 +54,15 @@ if ! id "$USER" >/dev/null 2>&1; then
     else
         # Manual fallback for minimal systems
         mkdir -p "/home/$USER"
-        if ! echo "$USER:x:1001:1001:HomeAssistant:/home/$USER:/bin/ash" >> /etc/passwd; then
+        # Use GID 0 (root) for better system access on some firmwares
+        if ! echo "$USER:x:1001:0:HomeAssistant:/home/$USER:/bin/ash" >> /etc/passwd; then
             echo "ANALYSIS: PASSWD_WRITE_FAILED"
             echo "LOG: FAIL: could not write to /etc/passwd"
             exit 1
         fi
         echo "$USER:x:1001:" >> /etc/group
+        # Ensure user is in root group
+        grep -q "^root:.*$USER" /etc/group || sed -i "s/^root:x:0:/root:x:0:$USER,/" /etc/group
     fi
 else
     # Update existing user to have valid shell
@@ -112,17 +115,18 @@ if ! cat <<EOF > "$ACL_FILE"
                 "system": ["info", "board", "logread", "upgrade"],
                 "log": ["read"],
                 "network": ["*"],
-                "network.interface": ["dump", "status"],
-                "network.device": ["status"],
-                "network.wireless": ["status"],
-                "iwinfo": ["info", "assoclist", "txpowerlist", "scan", "devices"],
-                "file": ["read", "stat", "list"],
-                "firewall": ["status"],
-                "rc": ["list"],
-                "service": ["list"],
-                "uci": ["get", "state"],
-                "session": ["list"],
-                "hostapd.*": ["get_clients"],
+                "network.*": ["*"],
+                "iwinfo": ["*"],
+                "file": ["*"],
+                "firewall": ["*"],
+                "rc": ["*"],
+                "service": ["*"],
+                "system": ["*"],
+                "uci": ["*"],
+                "session": ["*"],
+                "hostapd.*": ["*"],
+                "luci": ["*"],
+                "luci-rpc": ["*"],
                 "attendedsysupgrade": ["*"]
             }},
             "uci": ["*"],
@@ -736,7 +740,7 @@ class LatencyResult:
     target: str = ""
     latency_ms: float | None = None
     packet_loss: float = 0.0  # percentage
-    available: bool = False
+    available: bool = True
 
 
 @dataclass
@@ -1497,38 +1501,46 @@ class OpenWrtClient(abc.ABC):
         """Enable/disable the ban-ip service."""
         return False
 
-    async def get_latency(self, target: str = "8.8.8.8") -> LatencyResult:
+    async def get_latency(self, target: str = "8.8.8.8") -> LatencyResult | None:
         """Measure network latency via ping."""
-        result = LatencyResult(target=target)
         try:
             output = await self.execute_command(f"ping -c 3 -W 2 {target}")
-            if output:
-                # We got some output, so the command itself is available
-                result.available = True
-                _LOGGER.debug("Ping output for %s: %s", target, output)
-
-                # Parse avg from "min/avg/max/mdev = x/y/z/w ms" or similar
-                # We use a regex that looks for the slash-separated numbers
-                stats_match = re.search(r"(\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+)", output)
-                if stats_match:
-                    # stats_match.group(2) is avg
-                    result.latency_ms = round(float(stats_match.group(2)), 1)
-                else:
-                    # Fallback for simpler ping versions: "round-trip min/avg/max = 1.2/3.4/5.6 ms"
-                    # or even "1 packets transmitted, 1 packets received, 0% packet loss"
-                    stats_match = re.search(r"=\s*([0-9.]+)/([0-9.]+)/([0-9.]+)", output)
-                    if stats_match:
-                        result.latency_ms = round(float(stats_match.group(2)), 1)
-
-                # Parse packet loss: "0% packet loss"
-                loss_match = re.search(r"(\d+)%\s*packet\s*loss", output, re.IGNORECASE)
-                if loss_match:
-                    result.packet_loss = float(loss_match.group(1))
-            else:
+            if not output:
                 _LOGGER.debug("Ping command returned no output for %s", target)
+                return None
+
+            result = LatencyResult(target=target)
+            # We got some output, so the command itself is available
+            result.available = True
+            _LOGGER.debug("Ping output for %s: %s", target, output)
+
+            # Parse avg from "min/avg/max/mdev = x/y/z/w ms" or similar
+            # We use a regex that looks for the slash-separated numbers
+            stats_match = re.search(
+                r"(\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+)", output
+            )
+            if stats_match:
+                # stats_match.group(2) is avg
+                result.latency_ms = round(float(stats_match.group(2)), 1)
+            else:
+                # Fallback for simpler ping versions: "round-trip min/avg/max = 1.2/3.4/5.6 ms"
+                # or even "1 packets transmitted, 1 packets received, 0% packet loss"
+                stats_match = re.search(r"=\s*([0-9.]+)/([0-9.]+)/([0-9.]+)", output)
+                if stats_match:
+                    result.latency_ms = round(float(stats_match.group(2)), 1)
+
+            # Parse packet loss: "0% packet loss"
+            loss_match = re.search(r"(\d+)%\s*packet\s*loss", output, re.IGNORECASE)
+            if loss_match:
+                result.packet_loss = float(loss_match.group(1))
+
+            if result.latency_ms is None:
+                return None
+
+            return result
         except Exception as err:
             _LOGGER.debug("Latency check failed for %s: %s", target, err)
-        return result
+            return None
 
     async def create_backup(self) -> str:
         """Create a configuration backup on the router. Returns the backup file path on the router."""

@@ -932,6 +932,7 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         self._attr_unique_id = f"{entry.entry_id}_firewall_{section_id}"
         self._attr_name = f"Port Forward: {name}"
         self._attr_translation_key = "firewall_port_forward"
+        self._attr_translation_placeholders = {"name": name}
         if name.lower().startswith("allow"):
             self._attr_entity_registry_enabled_default = False
         self._attr_device_info = {
@@ -1118,6 +1119,7 @@ class OpenWrtFirewallRuleSwitch(
         self._attr_unique_id = f"{entry.entry_id}_firewall_rule_{section_id}"
         self._attr_name = f"Firewall Rule: {name}"
         self._attr_translation_key = "firewall_rule"
+        self._attr_translation_placeholders = {"name": name}
         if name.lower().startswith("allow"):
             self._attr_entity_registry_enabled_default = False
         self._attr_device_info = {

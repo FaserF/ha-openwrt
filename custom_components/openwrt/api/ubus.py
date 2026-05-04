@@ -960,6 +960,8 @@ class UbusClient(OpenWrtClient):
                         if sect_data.get(".type") != "wifi-iface":
                             continue
 
+                        # In some firmwares (like Xiaomi), ifname is not in UCI
+                        # But iwinfo might know the interface.
                         iface_name = sect_data.get("ifname") or sect_name
                         radio_name = sect_data.get("device", "")
 
@@ -995,7 +997,7 @@ class UbusClient(OpenWrtClient):
                 _LOGGER.debug("UCI wireless fallback failed: %s", e)
 
         # 2. Supplement/Fallback: iwinfo devices
-        # This is critical for devices like Velop where interfaces aren't always in network.wireless
+        # This is critical for devices where interfaces aren't in network.wireless or UCI names differ
         try:
             iw_devs = await self._call("iwinfo", "devices")
             candidates = []
@@ -1004,14 +1006,33 @@ class UbusClient(OpenWrtClient):
             elif isinstance(iw_devs, dict) and "devices" in iw_devs:
                 candidates = iw_devs["devices"]
 
-            for iface_name in candidates:
-                if iface_name in iface_names:
+            for name in candidates:
+                if name in iface_names:
                     continue
 
-                # Found a new interface not in UCI status
-                wifi = WirelessInterface(name=iface_name, enabled=True, up=True)
-                interfaces.append(wifi)
-                iface_names.add(iface_name)
+                # Check if any existing interface from UCI matches this physical device
+                found_match = False
+                try:
+                    info = await self._call("iwinfo", "info", {"device": name})
+                    if info and info.get("ssid"):
+                        # Try to match with a UCI section by SSID
+                        for wifi in interfaces:
+                            if (
+                                not wifi.ifname or wifi.ifname == wifi.section
+                            ) and wifi.ssid == info.get("ssid"):
+                                wifi.name = name
+                                wifi.ifname = name
+                                iface_names.add(name)
+                                found_match = True
+                                break
+                except Exception:
+                    pass
+
+                if not found_match:
+                    # Found a new interface not in UCI status
+                    wifi = WirelessInterface(name=name, enabled=True, up=True)
+                    interfaces.append(wifi)
+                    iface_names.add(name)
         except UbusError:
             _LOGGER.debug("iwinfo devices call failed")
 
@@ -1298,6 +1319,43 @@ class UbusClient(OpenWrtClient):
                     if iface.link_speed
                     else dev_status.get("speed", "")
                 )
+
+            interfaces.append(iface)
+
+        # 3. Add physical devices that are NOT logical interfaces (e.g. eth1, eth2)
+        # to ensure they are visible as sensors even if they don't have a protocol/IP.
+        seen_phys = {i.device for i in interfaces if i.device}
+        seen_phys.update({i.name for i in interfaces})
+
+        for dev_name, dev_status in device_stats.items():
+            if dev_name in seen_phys:
+                continue
+            # Skip virtual/internal interfaces to avoid clutter
+            if dev_name.startswith(("lo", "teql", "sit", "gre", "erspan")):
+                continue
+
+            iface = NetworkInterface(
+                name=dev_name,
+                device=dev_name,
+                up=dev_status.get("up", False),
+                is_link_up=dev_status.get("link", False),
+                link_speed=dev_status.get("speed", 0),
+                link_duplex="full" if dev_status.get("full_duplex") else "half",
+                mac_address=dev_status.get("macaddr", ""),
+            )
+
+            stats = dev_status.get("statistics", {})
+            iface.rx_bytes = stats.get("rx_bytes", 0)
+            iface.tx_bytes = stats.get("tx_bytes", 0)
+            iface.rx_packets = stats.get("rx_packets", 0)
+            iface.tx_packets = stats.get("tx_packets", 0)
+            iface.rx_errors = stats.get("rx_errors", 0)
+            iface.tx_errors = stats.get("tx_errors", 0)
+            iface.rx_dropped = stats.get("rx_dropped", 0)
+            iface.tx_dropped = stats.get("tx_dropped", 0)
+            iface.collisions = stats.get("collisions", 0)
+            iface.multicast = stats.get("multicast", 0)
+            iface.speed = str(iface.link_speed) if iface.link_speed else ""
 
             interfaces.append(iface)
 
@@ -1723,7 +1781,10 @@ class UbusClient(OpenWrtClient):
 
     async def _check_perms_from_probes(self, perms: OpenWrtPermissions) -> None:
         """Identify permissions by attempting to call various methods."""
-        async def can_call(obj: str, method: str, params: dict[str, Any] | None = None) -> bool:
+
+        async def can_call(
+            obj: str, method: str, params: dict[str, Any] | None = None
+        ) -> bool:
             try:
                 # We use a very light call to test permission
                 if obj == "uci" and method == "get":
@@ -1746,33 +1807,47 @@ class UbusClient(OpenWrtClient):
         is_root = self.username == "root"
 
         perms.read_system = await can_call("system", "board") or is_root
-        perms.write_system = await can_call("uci", "set", {"config": "system"}) or is_root
+        perms.write_system = (
+            await can_call("uci", "set", {"config": "system"}) or is_root
+        )
         perms.read_network = await can_call("network.interface", "dump") or is_root
-        perms.write_network = await can_call(
-            "network.interface", "up", {"interface": "loopback"}
-        ) or is_root
-        perms.read_firewall = await can_call("uci", "get", {"config": "firewall"}) or is_root
-        perms.write_firewall = await can_call("uci", "set", {"config": "firewall"}) or is_root
+        perms.write_network = (
+            await can_call("network.interface", "up", {"interface": "loopback"})
+            or is_root
+        )
+        perms.read_firewall = (
+            await can_call("uci", "get", {"config": "firewall"}) or is_root
+        )
+        perms.write_firewall = (
+            await can_call("uci", "set", {"config": "firewall"}) or is_root
+        )
         perms.read_wireless = await can_call("network.wireless", "status") or is_root
-        perms.write_wireless = await can_call("uci", "set", {"config": "wireless"}) or is_root
+        perms.write_wireless = (
+            await can_call("uci", "set", {"config": "wireless"}) or is_root
+        )
         perms.read_sqm = await can_call("uci", "get", {"config": "sqm"}) or is_root
         perms.write_sqm = await can_call("uci", "set", {"config": "sqm"}) or is_root
-        
+
         # LEDs often use the 'file' object to read /sys/class/leds
         has_file_read = await can_call("file", "list", {"path": "/sys/class/leds"})
-        perms.read_led = (await can_call("uci", "get", {"config": "system"}) or has_file_read) or is_root
-        perms.write_led = (await can_call("uci", "set", {"config": "system"}) or has_file_read) or is_root
-        
+        perms.read_led = (
+            await can_call("uci", "get", {"config": "system"}) or has_file_read
+        ) or is_root
+        perms.write_led = (
+            await can_call("uci", "set", {"config": "system"}) or has_file_read
+        ) or is_root
+
         perms.read_vpn = perms.read_network
         perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"}) or is_root
         perms.read_devices = await can_call("dhcp", "ipv4leases") or perms.read_network
-        perms.write_devices = await can_call(
-            "file", "exec", {"command": "/usr/bin/id"}
-        ) or await can_call("file", "exec", {"command": "/bin/sh"}) or is_root
+        perms.write_devices = (
+            await can_call("file", "exec", {"command": "/usr/bin/id"})
+            or await can_call("file", "exec", {"command": "/bin/sh"})
+            or is_root
+        )
         perms.write_access_control = perms.write_firewall
         perms.read_services = await can_call("service", "list") or is_root
         perms.write_services = await can_call("service", "list") or is_root
-
 
     async def check_packages(self) -> OpenWrtPackages:
         """Check installed packages."""

@@ -127,7 +127,7 @@ async def test_options_flow_mqtt_redeploy(
         result = await flow.async_step_init(user_input)
 
         # Should have gone to mqtt_presence form first to confirm/update details
-        assert result["step_id"] == "mqtt_presence"
+        assert result["step_id"] == "options_mqtt_presence"
 
         # Submit the details
         result = await flow.async_step_options_mqtt_presence(user_input)

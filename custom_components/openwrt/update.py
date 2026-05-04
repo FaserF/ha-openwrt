@@ -24,7 +24,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     CONF_AUTO_BACKUP,
     CONF_CONNECTION_TYPE,
-    CONF_HOST,
     CONNECTION_TYPE_LUCI_RPC,
     CONNECTION_TYPE_UBUS,
     DATA_COORDINATOR,

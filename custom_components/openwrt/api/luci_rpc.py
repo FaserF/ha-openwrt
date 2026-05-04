@@ -1487,6 +1487,46 @@ class LuciRpcClient(OpenWrtClient):
                             pass
                     interfaces.append(iface)
 
+        # 3. Add physical devices that are NOT logical interfaces (e.g. eth1, eth2)
+        try:
+            dev_status_str = await self.execute_command(
+                "ubus call network.device status 2>/dev/null"
+            )
+            if dev_status_str and dev_status_str.strip().startswith("{"):
+                device_stats = json.loads(dev_status_str)
+                seen_phys = {i.device for i in interfaces if i.device}
+                seen_phys.update({i.name for i in interfaces})
+
+                for dev_name, dev_status in device_stats.items():
+                    if dev_name in seen_phys:
+                        continue
+                    # Skip virtual/internal interfaces to avoid clutter
+                    if dev_name.startswith(("lo", "teql", "sit", "gre", "erspan")):
+                        continue
+
+                    iface = NetworkInterface(
+                        name=dev_name,
+                        device=dev_name,
+                        up=dev_status.get("up", False),
+                        is_link_up=dev_status.get("link", False),
+                        link_speed=dev_status.get("speed", 0),
+                        mac_address=dev_status.get("macaddr", ""),
+                    )
+
+                    stats = dev_status.get("statistics", {})
+                    iface.rx_bytes = stats.get("rx_bytes", 0)
+                    iface.tx_bytes = stats.get("tx_bytes", 0)
+                    iface.rx_packets = stats.get("rx_packets", 0)
+                    iface.tx_packets = stats.get("tx_packets", 0)
+                    iface.rx_errors = stats.get("rx_errors", 0)
+                    iface.tx_errors = stats.get("tx_errors", 0)
+                    iface.rx_dropped = stats.get("rx_dropped", 0)
+                    iface.tx_dropped = stats.get("tx_dropped", 0)
+
+                    interfaces.append(iface)
+        except Exception:  # noqa: BLE001
+            pass
+
         return interfaces
 
     async def get_connected_devices(self) -> list[ConnectedDevice]:

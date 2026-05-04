@@ -45,6 +45,7 @@ from .api.ubus import (
     UbusTimeoutError,
 )
 from .const import (
+    ATTR_MANUFACTURER,
     CONF_ASU_URL,
     CONF_CONNECTION_TYPE,
     CONF_CUSTOM_FIRMWARE_REPO,
@@ -70,7 +71,6 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     OPENWRT_RELEASE_API,
-    ATTR_MANUFACTURER,
 )
 from .helpers import (
     format_ap_device_id,
@@ -235,11 +235,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
                 # Also try an initial data fetch to populate the coordinator
                 self.data = await self.client.get_all_data()
-                if self.data and self.data.device_info:
-                    self.data.firmware_current_version = (
-                        self.data.device_info.firmware_version
-                        or self.data.device_info.release_version
-                    )
+                if self.data:
+                    if self.data.device_info:
+                        self.data.firmware_current_version = (
+                            self.data.device_info.firmware_version
+                            or self.data.device_info.release_version
+                        )
+                    # Crucial: Populate interface mappings and register devices BEFORE platforms load
+                    await self._async_update_device_registry(self.data)
+
                 self.last_update_success = True
                 _LOGGER.info("Successfully connected to OpenWrt device")
                 break
@@ -323,7 +327,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             stale = True
 
         if stale:
-            _LOGGER.debug("Detected stale permissions for 'homeassistant' user, creating repair issue")
+            _LOGGER.debug(
+                "Detected stale permissions for 'homeassistant' user, creating repair issue"
+            )
             async_create_stale_permissions_repair(self.hass, self.config_entry)
         else:
             async_delete_stale_permissions_repair(self.hass, self.config_entry)
@@ -708,18 +714,18 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # Only touch devices that belong to our specific config entry
             if self.config_entry.entry_id not in dev.config_entries:
                 continue
-            
+
             for ident in dev.identifiers:
                 if ident[0] != DOMAIN:
                     continue
                 ident_str = str(ident[1])
                 if not mac_pattern.match(ident_str):
                     continue
-                
+
                 vendor_info = get_mac_vendor_info(ident_str)
                 if not vendor_info:
                     break
-                
+
                 new_manufacturer, new_model = vendor_info
                 # Only write if the values differ from the current ones
                 if (

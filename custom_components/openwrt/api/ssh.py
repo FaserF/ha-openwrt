@@ -351,22 +351,29 @@ class SshClient(OpenWrtClient):
             "ubus call system board 2>/dev/null || cat /etc/board.json 2>/dev/null",
         )
         if board_json and board_json.strip() and board_json.strip().startswith("{"):
-            data = json.loads(board_json)
-            info.hostname = data.get("hostname", "")
-            model = data.get("model")
-            if isinstance(model, dict):
-                info.model = str(model.get("name", model.get("id", info.model)))
-            else:
-                info.model = str(model or data.get("board_name", ""))
-            info.board_name = data.get("board_name", "")
-            info.kernel_version = data.get("kernel", "")
-            info.architecture = data.get("system", "")
-            release = data.get("release", {})
-            info.release_distribution = release.get("distribution", "OpenWrt")
-            info.release_version = release.get("version", "")
-            info.release_revision = release.get("revision", "")
-            info.target = release.get("target", "")
-            info.firmware_version = f"{info.release_version} ({info.release_revision})"
+            try:
+                data = json.loads(board_json)
+                info.hostname = data.get("hostname", "")
+                model = data.get("model")
+                if isinstance(model, dict):
+                    info.model = str(model.get("name", model.get("id", info.model)))
+                else:
+                    info.model = str(model or data.get("board_name", ""))
+                info.board_name = data.get("board_name", "")
+                if not info.board_name and isinstance(model, dict):
+                    info.board_name = model.get("id", "")
+                info.kernel_version = data.get("kernel", "")
+                info.architecture = data.get("system", "")
+                release = data.get("release", {})
+                info.release_distribution = release.get("distribution", "OpenWrt")
+                info.release_version = release.get("version", "")
+                info.release_revision = release.get("revision", "")
+                info.target = release.get("target", "")
+                info.firmware_version = (
+                    f"{info.release_version} ({info.release_revision})"
+                )
+            except json.JSONDecodeError:
+                _LOGGER.debug("Failed to parse board info JSON via SSH")
 
         if not info.model:
             try:
@@ -766,9 +773,12 @@ class SshClient(OpenWrtClient):
                         interfaces.append(wifi)
                         iface_names.add(name)
         except Exception as err:
-            _LOGGER.debug("network.wireless status failed via SSH, trying UCI: %s", err)
+            _LOGGER.debug("network.wireless status failed via SSH: %s", err)
+
+        # 2. UCI fallback if no interfaces found via ubus
+        if not interfaces:
             try:
-                uci_wireless_str = await self._exec("uci export wireless")
+                uci_wireless_str = await self._exec("uci export wireless 2>/dev/null")
                 if uci_wireless_str:
                     sections: dict[str, dict[str, str]] = {}
                     current_section = ""
@@ -797,24 +807,29 @@ class SshClient(OpenWrtClient):
                         )
                         iface_disabled = sect_data.get("disabled", "0") == "1"
 
+                        ifname_val = sect_data.get("ifname")
+                        is_disabled = radio_disabled or iface_disabled
+
                         wifi = WirelessInterface(
                             name=iface_name,
                             ssid=sect_data.get("ssid", ""),
                             mode=sect_data.get("mode", ""),
                             encryption=sect_data.get("encryption", ""),
-                            enabled=not (radio_disabled or iface_disabled),
-                            up=not (radio_disabled or iface_disabled),
+                            enabled=not is_disabled,
+                            up=not is_disabled,
                             radio=radio_name,
                             hwmode=sections.get(radio_name, {}).get("hwmode", ""),
                             section=sect_name,
-                            ifname=ifname,
+                            ifname=ifname_val or "",
                         )
-                        interfaces.append(wifi)
-                        iface_names.add(iface_name)
-                        if sect_name and sect_name != iface_name:
-                            iface_names.add(sect_name)
-                        if ifname and ifname != iface_name:
-                            iface_names.add(ifname)
+                        # Only add if not explicitly disabled or if we have no other choice
+                        if not is_disabled:
+                            interfaces.append(wifi)
+                            iface_names.add(iface_name)
+                            if sect_name and sect_name != iface_name:
+                                iface_names.add(sect_name)
+                            if ifname_val and ifname_val != iface_name:
+                                iface_names.add(ifname_val)
             except Exception as e:
                 _LOGGER.debug("UCI wireless fallback failed via SSH: %s", e)
 
@@ -1494,33 +1509,82 @@ class SshClient(OpenWrtClient):
         is_root = self.username == "root"
 
         try:
-            # Test uci read access
-            await self._exec("uci get system.@system[0] 2>/dev/null")
-            perms.read_system = True
-            perms.read_network = True
-            perms.read_firewall = True
-            perms.read_wireless = True
-            perms.read_sqm = True
-            perms.read_led = True
-            perms.read_vpn = True
-            perms.read_mwan = True
-            perms.read_devices = True
-            perms.read_services = True
+            # Root always has full permissions
+            if is_root:
+                perms.read_system = True
+                perms.read_network = True
+                perms.read_firewall = True
+                perms.read_wireless = True
+                perms.read_sqm = True
+                perms.read_led = True
+                perms.read_vpn = True
+                perms.read_mwan = True
+                perms.read_devices = True
+                perms.read_services = True
+                perms.write_system = True
+                perms.write_network = True
+                perms.write_firewall = True
+                perms.write_wireless = True
+                perms.write_sqm = True
+                perms.write_led = True
+                perms.write_vpn = True
+                perms.write_access_control = True
+                perms.write_devices = True
+                perms.write_services = True
+                return perms
 
-            # SSH usually has full rights if it can read and we are root
-            perms.write_system = is_root
-            perms.write_network = is_root
-            perms.write_firewall = is_root
-            perms.write_wireless = is_root
-            perms.write_sqm = is_root
-            perms.write_led = is_root
-            perms.write_devices = is_root
-            perms.write_services = is_root
-            perms.write_access_control = is_root
-            perms.write_vpn = is_root
+            # 1. Check UCI read access (very common baseline for non-root)
+            uci_check = await self._exec("uci show system 2>/dev/null | head -n 1")
+            if uci_check.strip():
+                perms.read_system = True
+                perms.read_network = True
+                perms.read_firewall = True
+                perms.read_wireless = True
+                perms.read_sqm = True
+                perms.read_led = True
+                perms.read_vpn = True
+                perms.read_mwan = True
+                perms.read_devices = True
+                perms.read_services = True
+
+            # 2. Check UBUS access for critical features
+            ubus_list = await self._exec("ubus list 2>/dev/null")
+            if "network.wireless" in ubus_list or "iwinfo" in ubus_list:
+                perms.read_wireless = True
+            elif not perms.read_wireless:
+                # If UCI and UBUS both fail for wireless, we might still have iwinfo CLI
+                iwinfo_check = await self._exec("iwinfo 2>/dev/null")
+                if "ESSID" in iwinfo_check:
+                    perms.read_wireless = True
+
+            # 3. Write permissions
+            if is_root:
+                perms.write_system = True
+                perms.write_network = True
+                perms.write_firewall = True
+                perms.write_wireless = True
+                perms.write_sqm = True
+                perms.write_led = True
+                perms.write_devices = True
+                perms.write_services = True
+                perms.write_access_control = True
+                perms.write_vpn = True
+            else:
+                # Test write access with a dummy UCI change (without commit)
+                try:
+                    write_check = await self._exec(
+                        "uci set system.@system[0].ha_test='1' 2>/dev/null && echo 1"
+                    )
+                    if write_check.strip() == "1":
+                        perms.write_system = True
+                        # Assume others follow if system is writable
+                        perms.write_network = True
+                        perms.write_firewall = True
+                except Exception:
+                    pass
         except Exception:
             if is_root:
-                # Fallback for root if even uci get fails (unlikely)
+                # Fallback for root if probes fail
                 perms.read_system = True
                 perms.read_network = True
                 perms.write_system = True

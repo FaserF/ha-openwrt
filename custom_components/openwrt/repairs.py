@@ -14,6 +14,7 @@ from typing import Any
 
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import issue_registry as ir
@@ -247,11 +248,16 @@ class StalePermissionsRepairFlow(RepairsFlow):
         """Ask for root credentials."""
         import voluptuous as vol
         from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+
         from .coordinator import create_client
 
         errors: dict[str, str] = {}
         entry_id = self.data.get("entry_id") if self.data else None
+        if not entry_id:
+            return self.async_abort(reason="unknown_error")
         entry = self.hass.config_entries.async_get_entry(str(entry_id))
+        if not entry:
+            return self.async_abort(reason="unknown_error")
 
         if user_input is not None:
             root_data = dict(entry.data)
@@ -265,8 +271,11 @@ class StalePermissionsRepairFlow(RepairsFlow):
                 # We need the homeassistant user's current password if we want to 'reset' it,
                 # or we just generate a new one. Re-provisioning usually resets it.
                 import secrets
+
                 new_password = secrets.token_hex(16)
-                success, error = await client.provision_user("homeassistant", new_password)
+                success, error = await client.provision_user(
+                    "homeassistant", new_password
+                )
                 if success:
                     # Update the entry with the new password
                     self.hass.config_entries.async_update_entry(
@@ -276,7 +285,7 @@ class StalePermissionsRepairFlow(RepairsFlow):
                     await self.hass.config_entries.async_reload(entry.entry_id)
                     return self.async_create_entry(title="", data={})
                 errors["base"] = "provision_failed"
-            except Exception as err:
+            except Exception:
                 _LOGGER.exception("Failed to connect as root")
                 errors["base"] = "cannot_connect"
             finally:
@@ -286,5 +295,5 @@ class StalePermissionsRepairFlow(RepairsFlow):
             step_id="root_login",
             data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
             errors=errors,
-            description_placeholders={"host": entry.data.get("host", "unknown")},
+            description_placeholders={"host": entry.data.get(CONF_HOST, "unknown")},
         )

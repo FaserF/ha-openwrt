@@ -222,6 +222,21 @@
         "data": {
           "acknowledge": "I have reviewed this information and want to proceed"
         }
+      },
+      "options_mqtt_presence": {
+        "title": "MQTT Presence Detection (Optional)",
+        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).\n\n**Note:** This functionality is not supported by the main integration. Bugs should be reported to the original repository.\n\n{warning}",
+        "data": {
+          "mqtt_presence": "Enable MQTT Presence Detection",
+          "mqtt_broker": "MQTT Broker (reachable from router)",
+          "mqtt_port": "MQTT Port",
+          "mqtt_username": "MQTT Username",
+          "mqtt_password": "MQTT Password"
+        }
+      },
+      "options_deploy_failed": {
+        "title": "Deployment Failed",
+        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's internet connection and free space."
       }
     }
   },
@@ -622,10 +637,10 @@
         "name": "Service"
       },
       "firewall_port_forward": {
-        "name": "Port Forward"
+        "name": "Port Forward: {name}"
       },
       "firewall_rule": {
-        "name": "Firewall Rule"
+        "name": "Firewall Rule: {name}"
       },
       "sqm_enabled": {
         "name": "SQM Enabled"

@@ -11,7 +11,7 @@ from custom_components.openwrt.sensor import OpenWrtSensorEntity, _get_system_se
 
 
 def test_uptime_conversion() -> None:
-    """Test that uptime is converted from seconds to minutes."""
+    """Test that uptime uses seconds for HA duration formatting."""
     data = OpenWrtData(
         system_resources=SystemResources(
             uptime=120,
@@ -33,15 +33,11 @@ def test_uptime_conversion() -> None:
     uptime_desc = next(d for d in _get_system_sensors() if d.key == "uptime")
 
     # Check description
-    assert uptime_desc.native_unit_of_measurement == UnitOfTime.MINUTES
+    assert uptime_desc.native_unit_of_measurement == UnitOfTime.SECONDS
 
-    # Check value conversion via entity
+    # Check value via entity
     sensor = OpenWrtSensorEntity(coordinator, entry, uptime_desc)
-    assert sensor.native_value == 2.0  # 120 / 60
-
-    # Test decimal rounding
-    data.system_resources.uptime = 125
-    assert sensor.native_value == 2.1  # round(125/60, 1)
+    assert sensor.native_value == 120
 
 
 def test_sensor_english_names() -> None:

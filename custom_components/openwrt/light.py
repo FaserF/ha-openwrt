@@ -49,14 +49,14 @@ async def async_setup_entry(
 
         new_entities: list[OpenWrtLedLight] = []
         perms = coordinator.data.permissions
-        
+
         # We need write_led permission to control LEDs
         if perms.write_led and coordinator.data.leds:
             for led in coordinator.data.leds:
                 if led.name not in tracked_leds:
                     tracked_leds.add(led.name)
                     new_entities.append(OpenWrtLedLight(coordinator, entry, led.name))
-        
+
         if new_entities:
             async_add_entities(new_entities)
 

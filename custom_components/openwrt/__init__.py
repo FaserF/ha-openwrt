@@ -33,6 +33,7 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .api.luci_rpc import LuciRpcAuthError, LuciRpcError
 from .api.ssh import SshAuthError, SshError
@@ -102,7 +103,48 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> bool:
+def _async_migrate_entity_units(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clear stale unit_of_measurement overrides that came from old integration versions.
+
+    When native_unit_of_measurement changes in code, Home Assistant may have
+    the old unit cached as a registry override. Clearing these overrides forces
+    HA to re-read the current unit from the entity on the next state write.
+    """
+    ent_reg = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+
+    # Keys whose units we have deliberately changed between versions.
+    # Clearing the override (unit_of_measurement = None) makes HA use the
+    # integration's native_unit_of_measurement again.
+    stale_unit_keys = {
+        # Uptime: was UnitOfTime.MINUTES, now UnitOfTime.SECONDS
+        "_uptime",
+        # Storage: was raw bytes (no explicit unit), now UnitOfInformation.MEGABYTES
+        "_storage_free_",
+        "_storage_used_",
+        "_storage_total_",
+        "_filesystem_free",
+    }
+
+    for ent in entries:
+        if ent.domain != "sensor":
+            continue
+        uid = ent.unique_id or ""
+        if any(key in uid for key in stale_unit_keys):
+            # Only clear if there IS a stored override (unit_of_measurement != None)
+            if ent.unit_of_measurement is not None:
+                _LOGGER.debug(
+                    "Clearing stale unit override '%s' for entity %s",
+                    ent.unit_of_measurement,
+                    ent.entity_id,
+                )
+                ent_reg.async_update_entity(
+                    ent.entity_id,
+                    unit_of_measurement=None,
+                )
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up OpenWrt from a config entry."""
     client = create_client({**entry.data, **entry.options})
 
@@ -121,6 +163,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> b
 
     # Initialize coordinator data which also handles device registry updates
     await coordinator.async_config_entry_first_refresh()
+
+    # Clear any stale unit_of_measurement overrides from previous versions
+    _async_migrate_entity_units(hass, entry)
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {

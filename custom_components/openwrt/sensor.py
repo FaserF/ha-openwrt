@@ -479,11 +479,10 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             name="Uptime",
             translation_key="uptime",
             device_class=SensorDeviceClass.DURATION,
-            native_unit_of_measurement=UnitOfTime.MINUTES,
+            native_unit_of_measurement=UnitOfTime.SECONDS,
             state_class=SensorStateClass.TOTAL_INCREASING,
             entity_category=EntityCategory.DIAGNOSTIC,
-            suggested_display_precision=1,
-            value_fn=lambda data: round(data.system_resources.uptime / 60, 1),
+            value_fn=lambda data: data.system_resources.uptime,
             attrs_fn=lambda data: {
                 "days": data.system_resources.uptime // 86400,
                 "hours": (data.system_resources.uptime % 86400) // 3600,
@@ -526,6 +525,19 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
                 "used_mb": _bytes_to_mb(data.system_resources.filesystem_used),
                 "free_mb": _bytes_to_mb(data.system_resources.filesystem_free),
             },
+        ),
+        OpenWrtSensorDescription(
+            key="filesystem_free",
+            name="Filesystem Free",
+            translation_key="filesystem_free",
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+            device_class=SensorDeviceClass.DATA_SIZE,
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
+            suggested_display_precision=1,
+            value_fn=lambda data: _bytes_to_mb(data.system_resources.filesystem_free),
+            available_fn=lambda data: data.system_resources.filesystem_total > 0,
         ),
         OpenWrtSensorDescription(
             key="kernel_version",
@@ -1329,32 +1341,35 @@ def _async_setup_storage_sensors(
         OpenWrtStorageSensorDescription(
             key="storage_total",
             translation_key="mount_storage_total",
-            native_unit_of_measurement=UnitOfInformation.BYTES,
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
-            value_fn=lambda usage: usage.total,
+            suggested_display_precision=1,
+            value_fn=lambda usage: _bytes_to_mb(usage.total),
         ),
         OpenWrtStorageSensorDescription(
             key="storage_used",
             translation_key="mount_storage_used",
-            native_unit_of_measurement=UnitOfInformation.BYTES,
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
-            value_fn=lambda usage: usage.used,
+            suggested_display_precision=1,
+            value_fn=lambda usage: _bytes_to_mb(usage.used),
         ),
         OpenWrtStorageSensorDescription(
             key="storage_free",
             translation_key="mount_storage_free",
-            native_unit_of_measurement=UnitOfInformation.BYTES,
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
-            value_fn=lambda usage: usage.free,
+            suggested_display_precision=1,
+            value_fn=lambda usage: _bytes_to_mb(usage.free),
         ),
         OpenWrtStorageSensorDescription(
             key="storage_usage",
@@ -1363,6 +1378,7 @@ def _async_setup_storage_sensors(
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
+            suggested_display_precision=1,
             value_fn=lambda usage: usage.percent,
         ),
     ]
@@ -1455,6 +1471,12 @@ def _async_setup_network_sensors(
                 ),
             )
         )
+
+    # Interface Sensors
+    for iface in coordinator.data.network_interfaces:
+        if iface.name not in tracked_keys:
+            tracked_keys.add(iface.name)
+            entities.extend(_create_net_sensors(coordinator, entry, iface.name))
 
 
 def _async_setup_specialized_sensors(
@@ -2109,20 +2131,20 @@ def _create_net_status_sensors(
                 translation_key="net_uptime",
                 translation_placeholders={"interface": iface_name},
                 device_class=SensorDeviceClass.DURATION,
-                native_unit_of_measurement=UnitOfTime.MINUTES,
+                native_unit_of_measurement=UnitOfTime.SECONDS,
                 state_class=SensorStateClass.TOTAL_INCREASING,
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
                     (
-                        round(i.uptime / 60, 1)
+                        i.uptime
                         for i in data.network_interfaces
                         if i.name == n
                     ),
                     None,
                 ),
                 available_fn=lambda data, n=iface_name: any(
-                    i.name == n and i.uptime > 0 for i in data.network_interfaces
+                    i.name == n for i in data.network_interfaces
                 ),
             ),
         )
