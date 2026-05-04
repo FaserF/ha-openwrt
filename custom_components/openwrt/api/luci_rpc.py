@@ -1089,28 +1089,27 @@ class LuciRpcClient(OpenWrtClient):
                         if not isinstance(radio_data, dict):
                             continue
                         for iface in radio_data.get("interfaces", []):
-                            iface_name = (
-                                iface.get("section")
-                                or iface.get("ifname")
+                            # Prefer the actual kernel interface name (ifname/device)
+                            # over the UCI section name. On devices like the Velop WHW03
+                            # that use phy*-ap* naming, the section field (e.g.
+                            # "default_radio0") differs from the actual device name
+                            # (e.g. "phy0-ap0"). Using section as the primary name
+                            # prevents the iwinfo step from recognising the real device
+                            # name as "already seen", causing duplicate entries.
+                            section = iface.get("section", "")
+                            ifname = (
+                                iface.get("ifname")
                                 or iface.get("device", "")
                             )
-                            if not iface_name or iface_name in iface_names:
+                            # Use the actual kernel name if available; fall back to
+                            # the UCI section name only when no kernel name exists.
+                            iface_name = ifname or section
+                            if not iface_name:
                                 continue
 
                             iface_config = iface.get("config", {})
-                            # Prefer system ifname (e.g. phy1-ap0) over section name (e.g. default_radio1)
-                            # because iwinfo info only works with system ifnames.
-                            system_ifname = iface.get("ifname")
-
-                            final_name = system_ifname or iface_name
-
-                            # Deduplicate based on final name or SSID on this radio
-                            dedup_key = f"{radio_name}_{iface_config.get('ssid', '')}"
-                            if final_name in iface_names or dedup_key in iface_names:
-                                continue
-
                             wifi = WirelessInterface(
-                                name=final_name,
+                                name=iface_name,
                                 ssid=iface_config.get("ssid", ""),
                                 mode=iface_config.get("mode", ""),
                                 encryption=iface_config.get("encryption", ""),
@@ -1118,10 +1117,18 @@ class LuciRpcClient(OpenWrtClient):
                                 up=radio_data.get("up", False),
                                 radio=radio_name,
                                 hwmode=radio_data.get("config", {}).get("hwmode", ""),
+                                section=section,
+                                ifname=ifname,
                             )
                             interfaces.append(wifi)
-                            iface_names.add(final_name)
-                            iface_names.add(dedup_key)
+                            # Track both the kernel name and the UCI section name so
+                            # the iwinfo step does not create a second entry for the
+                            # same physical interface under a different name.
+                            iface_names.add(iface_name)
+                            if section and section != iface_name:
+                                iface_names.add(section)
+                            if ifname and ifname != iface_name:
+                                iface_names.add(ifname)
             except Exception as err:
                 _LOGGER.debug(
                     "network.wireless status failed via LuCI, trying UCI: %s", err

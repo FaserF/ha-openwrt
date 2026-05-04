@@ -638,10 +638,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if not wifi.name or not wifi.ssid:
                 continue
 
-            label = format_ap_name(wifi.ssid, wifi.frequency)
+            # Use the normalised band string ("2.4 GHz", "5 GHz", "6 GHz") rather
+            # than the raw frequency in MHz. This groups all virtual interfaces on
+            # the same radio+SSID combination under one stable AP device, even
+            # when different channels are reported across updates.
+            band = wifi.band or wifi.frequency or wifi.radio or "unknown"
+            label = format_ap_name(wifi.ssid, band)
 
-            # Use SSID and Frequency as stable identifier to group virtual interfaces
-            stable_id = f"{wifi.ssid}_{wifi.frequency or wifi.radio or 'unknown'}"
+            # Use SSID and Band as stable identifier to group virtual interfaces
+            stable_id = f"{wifi.ssid}_{band}"
             ap_info[stable_id] = label
             self.interface_to_stable_id[wifi.name] = stable_id
 
