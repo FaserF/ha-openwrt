@@ -2069,7 +2069,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
         current = self._config_entry.options
         return self.async_show_form(
-            step_id="mqtt_presence",
+            step_id="options_mqtt_presence",
             data_schema=vol.Schema(
                 {
                     vol.Required(
@@ -2122,13 +2122,13 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 return await self.async_step_options_permissions()
 
             return self.async_show_form(
-                step_id="deploy_failed",
+                step_id="options_deploy_failed",
                 description_placeholders={"error": error or "Unknown error"},
             )
         except Exception as err:
             _LOGGER.exception("Deployment failed")
             return self.async_show_form(
-                step_id="deploy_failed",
+                step_id="options_deploy_failed",
                 description_placeholders={"error": str(err)},
             )
         finally:
@@ -2145,7 +2145,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
             return await self.async_step_options_mqtt_presence()
 
         return self.async_show_form(
-            step_id="deploy_failed",
+            step_id="options_deploy_failed",
             data_schema=vol.Schema(
                 {
                     vol.Required("action", default="retry"): vol.In(["retry", "back"]),

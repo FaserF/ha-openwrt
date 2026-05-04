@@ -82,7 +82,9 @@ from .repairs import (
     async_create_auth_repair,
     async_create_connection_lost_repair,
     async_create_missing_packages_repair,
+    async_create_stale_permissions_repair,
     async_delete_connection_lost_repair,
+    async_delete_stale_permissions_repair,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -291,7 +293,40 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         except Exception as err:
             _LOGGER.warning("Could not save persistent history: %s", err)
 
+        # 8. Check for stale permissions
+        self._async_check_stale_permissions(data)
+
         return data
+
+    def _async_check_stale_permissions(self, data: OpenWrtData) -> None:
+        """Check if the homeassistant user has stale permissions."""
+        if self.config_entry.data.get(CONF_USERNAME) != "homeassistant":
+            return
+
+        # Identify missing but expected permissions based on detected packages
+        perms = data.permissions
+        packages = data.packages
+
+        stale = False
+        # We check for core features that indicate the 'homeassistant' user needs more rights
+        # than what were granted during its creation.
+        if packages.wireless and not perms.read_wireless:
+            stale = True
+        elif packages.mwan3 and not perms.read_mwan:
+            stale = True
+        elif packages.sqm_scripts and not perms.read_sqm:
+            stale = True
+        elif packages.adblock and not perms.read_services:
+            stale = True
+        elif packages.nlbwmon and not perms.read_network:
+            # nlbwmon needs network access
+            stale = True
+
+        if stale:
+            _LOGGER.debug("Detected stale permissions for 'homeassistant' user, creating repair issue")
+            async_create_stale_permissions_repair(self.hass, self.config_entry)
+        else:
+            async_delete_stale_permissions_repair(self.hass, self.config_entry)
 
     async def _async_fetch_all_data(self) -> OpenWrtData:
         """Fetch all data from the client with retry logic."""
