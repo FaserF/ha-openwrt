@@ -1494,9 +1494,17 @@ class UbusClient(OpenWrtClient):
                 elif obj in ("iwinfo", "network.wireless"):
                     continue
 
+            # Also try to discover candidates via iwinfo devices
+            with contextlib.suppress(UbusError):
+                iw_devs = await self._call("iwinfo", "devices")
+                if isinstance(iw_devs, list):
+                    candidates.update(iw_devs)
+                elif isinstance(iw_devs, dict) and "devices" in iw_devs:
+                    candidates.update(iw_devs["devices"])
+
             # Additional common names if nothing found
             if not candidates:
-                candidates = {"wlan0", "wlan1", "wlan0-1", "wlan1-1"}
+                candidates = {"wlan0", "wlan1", "wlan0-1", "wlan1-1", "ra0", "ra1", "rax0", "rax1"}
 
             for ifname in candidates:
                 with contextlib.suppress(UbusError):
