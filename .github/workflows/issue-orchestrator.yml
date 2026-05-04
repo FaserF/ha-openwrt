@@ -30,8 +30,11 @@ jobs:
             if (title.includes("documentation") || title.includes("docs") || body.includes("doku")) {
               labels.push("documentation");
             }
-            if (title.includes("ubus") || body.includes("ubus")) {
+            if (title.includes("ubus") || body.includes("ubus (http/https)")) {
               labels.push("ubus");
+            }
+            if (title.includes("luci") || body.includes("luci rpc")) {
+              labels.push("luci-rpc");
             }
             if (title.includes("ssh") || body.includes("ssh")) {
               labels.push("ssh");
@@ -65,8 +68,8 @@ jobs:
               body += "To help solve this faster, please check the following:\n";
               body += "- [ ] Is your Home Assistant version up to date?\n";
               body += "- [ ] Are you using the latest version of this integration?\n";
-              body += "- [ ] Have you checked the [documentation](https://faserf.github.io/ha-db_infoscreen/) for similar issues or configuration tips?\n";
-              body += "- [ ] If applicable: Did you enable debug logging (`custom_components.db_infoscreen: debug`) and provide relevant logs?\n\n";
+              body += "- [ ] Have you checked the [README](https://github.com/FaserF/ha-openwrt) for similar issues or configuration tips?\n";
+              body += "- [ ] If applicable: Did you provide a **Diagnostic Download** (Settings -> Devices & Services -> OpenWrt -> 3 Dots -> Download diagnostics)?\n\n";
               body += "I will investigate this as soon as possible!";
               body += maintainerNote;
             } else if (labels.includes('enhancement') || labels.includes('feature request')) {

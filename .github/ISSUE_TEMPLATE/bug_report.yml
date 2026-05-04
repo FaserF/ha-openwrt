@@ -23,6 +23,14 @@ body:
       placeholder: 25.12.0
     validations:
       required: true
+  - type: input
+    id: router_model
+    attributes:
+      label: Router Model (optional)
+      description: What is the model of your router?
+      placeholder: e.g. Linksys WRT3200ACM
+    validations:
+      required: false
   - type: dropdown
     id: auth_method
     attributes:
