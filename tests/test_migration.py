@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from homeassistant.core import HomeAssistant
 
 from custom_components.openwrt import async_migrate_entry
@@ -79,12 +78,13 @@ async def test_migration_v1_to_v2_exceptions(hass: HomeAssistant):
         assert await async_migrate_entry(hass, entry) is False
         assert mock_update.call_count == 0
 
+
 @pytest.mark.asyncio
 async def test_coordinator_unique_id_migration_and_aliasing(hass) -> None:
     """Test that unique_id is migrated from IP/legacy MAC and aliased in identifiers."""
-    from custom_components.openwrt.const import DOMAIN, CONF_HOST
-    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
     from custom_components.openwrt.api.base import DeviceInfo
+    from custom_components.openwrt.const import CONF_HOST, DOMAIN
+    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
 
     config_entry = MagicMock()
     config_entry.unique_id = "192.168.1.1"

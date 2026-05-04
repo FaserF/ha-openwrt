@@ -907,10 +907,7 @@ class UbusClient(OpenWrtClient):
                             # prevents the iwinfo step from recognising the real device
                             # name as "already seen", causing duplicate entries.
                             section = iface.get("section", "")
-                            ifname = (
-                                iface.get("ifname")
-                                or iface.get("device", "")
-                            )
+                            ifname = iface.get("ifname") or iface.get("device", "")
                             # Use the actual kernel name if available; fall back to
                             # the UCI section name only when no kernel name exists.
                             iface_name = ifname or section
@@ -1523,7 +1520,16 @@ class UbusClient(OpenWrtClient):
 
             # Additional common names if nothing found
             if not candidates:
-                candidates = {"wlan0", "wlan1", "wlan0-1", "wlan1-1", "ra0", "ra1", "rax0", "rax1"}
+                candidates = {
+                    "wlan0",
+                    "wlan1",
+                    "wlan0-1",
+                    "wlan1-1",
+                    "ra0",
+                    "ra1",
+                    "rax0",
+                    "rax1",
+                }
 
             for ifname in candidates:
                 with contextlib.suppress(UbusError):
@@ -2285,7 +2291,12 @@ class UbusClient(OpenWrtClient):
                 ServiceInfo(
                     name=name,
                     enabled=data.get("enabled", False),
-                    running=data.get("running", False),
+                    running=data.get("running", False)
+                    or (
+                        data.get("running") is False
+                        and data.get("exit_code") == 0
+                        and name in ("adblock", "simple-adblock")
+                    ),
                 ),
             )
         return services
@@ -2879,23 +2890,34 @@ class UbusClient(OpenWrtClient):
         from .base import AdBlockStatus
 
         status = AdBlockStatus()
+        # 1. Try ubus first (provides more details)
         try:
-            # Try ubus first
             res = await self._call("adblock", "status")
-            if res:
+            if res and isinstance(res, dict) and res.get("adblock_status"):
                 status.enabled = res.get("adblock_status") == "enabled"
                 status.status = res.get("adblock_status", "disabled")
                 status.version = res.get("adblock_version")
-                status.blocked_domains = int(res.get("blocked_domains", 0))
+                # Handle formatted numbers like "57,861" or "57.861"
+                blocked = (
+                    str(res.get("blocked_domains", 0)).replace(",", "").replace(".", "")
+                )
+                try:
+                    status.blocked_domains = int(float(blocked))
+                except ValueError, TypeError:
+                    pass
                 status.last_update = res.get("last_run")
                 return status
+        except Exception as err:
+            _LOGGER.debug("AdBlock ubus status failed: %s", err)
 
-            # Fallback to uci
+        # 2. Fallback to uci (basic status)
+        try:
             enabled = await self.execute_command("uci -q get adblock.global.enabled")
-            status.enabled = enabled.strip() == "1"
+            status.enabled = (enabled or "").strip() == "1"
             status.status = "enabled" if status.enabled else "disabled"
-        except Exception:
-            pass
+        except Exception as err:
+            _LOGGER.debug("AdBlock UCI status failed: %s", err)
+
         return status
 
     async def set_adblock_enabled(self, enabled: bool) -> bool:

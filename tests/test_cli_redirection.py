@@ -18,8 +18,9 @@ async def test_stderr_suppression_wireless(luci_client: LuciRpcClient):
     """Verify that wireless ubus commands use redirection in LuCI RPC."""
     luci_client._auth_token = "test_token"
     luci_client.packages.wireless = True
-    
+
     with patch.object(luci_client, "_rpc_call", new_callable=AsyncMock) as mock_call:
+
         def side_effect(*args, **kwargs):
             method = args[1]
             if method == "exec":
@@ -39,16 +40,15 @@ async def test_stderr_suppression_wireless(luci_client: LuciRpcClient):
         await luci_client.get_wireless_interfaces()
 
         executed_cmds = [
-            call.args[2][0] 
-            for call in mock_call.call_args_list 
+            call.args[2][0]
+            for call in mock_call.call_args_list
             if call.args[1] == "exec"
         ]
 
         wireless_cmds = [
-            cmd for cmd in executed_cmds 
-            if any(p in cmd for p in ["iwinfo", "hostapd"])
+            cmd for cmd in executed_cmds if any(p in cmd for p in ["iwinfo", "hostapd"])
         ]
-        
+
         assert len(wireless_cmds) > 0
         for cmd in wireless_cmds:
             assert "2>/dev/null" in cmd or "2>&1" in cmd
@@ -58,18 +58,18 @@ async def test_stderr_suppression_wireless(luci_client: LuciRpcClient):
 async def test_stderr_suppression_logread(luci_client: LuciRpcClient):
     """Verify that logread probes use redirection in LuCI RPC."""
     luci_client._auth_token = "test_token"
-    
+
     with patch.object(luci_client, "_rpc_call", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = "unrecognized option: n" # Simulated failure
-        
+        mock_call.return_value = "unrecognized option: n"  # Simulated failure
+
         await luci_client.get_system_logs()
-        
+
         executed_cmds = [
-            call.args[2][0] 
-            for call in mock_call.call_args_list 
+            call.args[2][0]
+            for call in mock_call.call_args_list
             if call.args[1] == "exec"
         ]
-        
+
         logread_probes = [cmd for cmd in executed_cmds if "logread" in cmd]
         assert len(logread_probes) > 0
         for cmd in logread_probes:

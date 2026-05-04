@@ -1,13 +1,12 @@
 """Tests for wireless interface discovery and Access Point device grouping."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from custom_components.openwrt.api.ubus import UbusClient
 from custom_components.openwrt.const import DOMAIN
 from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -81,11 +80,36 @@ VELOP_IWINFO_DEVICES = {
 }
 
 IWINFO_INFO = {
-    "phy0-ap0": {"ssid": "MyNet-Guest", "bssid": "AA:BB:CC:DD:EE:01", "channel": 149, "frequency": 5745},
-    "phy1-ap0": {"ssid": "MyNet",       "bssid": "AA:BB:CC:DD:EE:02", "channel": 11,  "frequency": 2462},
-    "phy1-ap1": {"ssid": "MyNet-Guest", "bssid": "AA:BB:CC:DD:EE:03", "channel": 11,  "frequency": 2462},
-    "phy1-ap2": {"ssid": "MyNet-IoT",   "bssid": "AA:BB:CC:DD:EE:04", "channel": 11,  "frequency": 2462},
-    "phy2-ap0": {"ssid": "MyNet",       "bssid": "AA:BB:CC:DD:EE:05", "channel": 36,  "frequency": 5180},
+    "phy0-ap0": {
+        "ssid": "MyNet-Guest",
+        "bssid": "AA:BB:CC:DD:EE:01",
+        "channel": 149,
+        "frequency": 5745,
+    },
+    "phy1-ap0": {
+        "ssid": "MyNet",
+        "bssid": "AA:BB:CC:DD:EE:02",
+        "channel": 11,
+        "frequency": 2462,
+    },
+    "phy1-ap1": {
+        "ssid": "MyNet-Guest",
+        "bssid": "AA:BB:CC:DD:EE:03",
+        "channel": 11,
+        "frequency": 2462,
+    },
+    "phy1-ap2": {
+        "ssid": "MyNet-IoT",
+        "bssid": "AA:BB:CC:DD:EE:04",
+        "channel": 11,
+        "frequency": 2462,
+    },
+    "phy2-ap0": {
+        "ssid": "MyNet",
+        "bssid": "AA:BB:CC:DD:EE:05",
+        "channel": 36,
+        "frequency": 5180,
+    },
 }
 
 
@@ -123,7 +147,13 @@ async def test_no_duplicate_interfaces_phy_ap_naming(ubus_client: UbusClient):
 
     assert len(names) == len(set(names))
 
-    section_names = {"default_radio0", "default_radio1", "default_radio2", "wifinet1", "wifinet2"}
+    section_names = {
+        "default_radio0",
+        "default_radio1",
+        "default_radio2",
+        "wifinet1",
+        "wifinet2",
+    }
     for name in names:
         assert name not in section_names
 
@@ -179,7 +209,7 @@ def test_ap_stable_id_consistency() -> None:
     coordinator = MagicMock()
     coordinator.router_id = "router_mac"
     coordinator.interface_to_stable_id = {"phy0-ap0": "SSID_2.4 GHz"}
-    
+
     entry = MagicMock()
     entry.unique_id = "router_mac"
     entry.entry_id = "entry_id"
@@ -200,6 +230,7 @@ def test_ap_stable_id_consistency() -> None:
 
     device_info = entity._attr_device_info
     from custom_components.openwrt.helpers import format_ap_device_id
+
     expected_id = format_ap_device_id("router_mac", "SSID_2.4 GHz")
     assert (DOMAIN, expected_id) in device_info["identifiers"]
 
@@ -210,13 +241,13 @@ async def test_ap_deduplication_and_naming() -> None:
     from custom_components.openwrt.api.base import WirelessInterface
     from custom_components.openwrt.sensor import OpenWrtWifiSensorEntity
     from custom_components.openwrt.switch import OpenWrtWirelessSwitch
-    
+
     config_entry = MagicMock()
     config_entry.options = {"update_interval": 60}
     config_entry.data = {"host": "192.168.1.1"}
     config_entry.entry_id = "test_entry"
     config_entry.unique_id = "test_router"
-    
+
     coordinator = OpenWrtDataCoordinator(MagicMock(), config_entry, MagicMock())
     coordinator.data = MagicMock()
     coordinator.data.wireless_interfaces = [
@@ -225,6 +256,7 @@ async def test_ap_deduplication_and_naming() -> None:
     ]
 
     from custom_components.openwrt.helpers import format_ap_name
+
     ap_info = {}
     coordinator.interface_to_stable_id = {}
     for wifi in coordinator.data.wireless_interfaces:
@@ -235,14 +267,24 @@ async def test_ap_deduplication_and_naming() -> None:
 
     assert len(ap_info) == 1
 
-    desc = MagicMock(); desc.key = "signal"; desc.name = "Signal"
-    s1 = OpenWrtWifiSensorEntity(coordinator, config_entry, desc, "phy1-ap1", "MyNet", "2.4 GHz")
-    s2 = OpenWrtWifiSensorEntity(coordinator, config_entry, desc, "phy1-ap2", "MyNet", "2.4 GHz")
+    desc = MagicMock()
+    desc.key = "signal"
+    desc.name = "Signal"
+    s1 = OpenWrtWifiSensorEntity(
+        coordinator, config_entry, desc, "phy1-ap1", "MyNet", "2.4 GHz"
+    )
+    s2 = OpenWrtWifiSensorEntity(
+        coordinator, config_entry, desc, "phy1-ap2", "MyNet", "2.4 GHz"
+    )
     assert "phy1-ap1" in s1._attr_name
     assert "phy1-ap2" in s2._attr_name
 
-    sw1 = OpenWrtWirelessSwitch(coordinator, config_entry, MagicMock(), "phy1-ap1", "MyNet", "2.4 GHz")
-    sw2 = OpenWrtWirelessSwitch(coordinator, config_entry, MagicMock(), "phy1-ap2", "MyNet", "2.4 GHz")
+    sw1 = OpenWrtWirelessSwitch(
+        coordinator, config_entry, MagicMock(), "phy1-ap1", "MyNet", "2.4 GHz"
+    )
+    sw2 = OpenWrtWirelessSwitch(
+        coordinator, config_entry, MagicMock(), "phy1-ap2", "MyNet", "2.4 GHz"
+    )
     assert "phy1-ap1" in sw1._attr_name
     assert "phy1-ap2" in sw2._attr_name
 
@@ -298,7 +340,7 @@ async def test_coordinator_orphan_cleanup_ghost_sections(hass):
     router_dev.id = "router_dev_id"
     router_dev.identifiers = {(DOMAIN, "router_mac")}
     device_registry.devices["router_dev_id"] = router_dev
-    
+
     device_registry.async_get_device.return_value = router_dev
 
     # 3. Setup coordinator data (no wireless interfaces to ensure cleanup)
@@ -307,8 +349,14 @@ async def test_coordinator_orphan_cleanup_ghost_sections(hass):
     data.wireless_interfaces = []
 
     with (
-        patch("homeassistant.helpers.device_registry.async_get", return_value=device_registry),
-        patch("custom_components.openwrt.coordinator.format_ap_device_id", side_effect=lambda r, s: f"{r}_ap_{s}"),
+        patch(
+            "homeassistant.helpers.device_registry.async_get",
+            return_value=device_registry,
+        ),
+        patch(
+            "custom_components.openwrt.coordinator.format_ap_device_id",
+            side_effect=lambda r, s: f"{r}_ap_{s}",
+        ),
     ):
         await coordinator._async_update_device_registry(data)
 
