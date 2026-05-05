@@ -45,16 +45,17 @@ async def async_deploy_mqtt_presence(
         await client.execute_command("mkdir -p /etc/presence")
 
         # Discover active wireless interfaces to configure presence.conf
-        ifaces_output = await client.execute_command("ls -1 /var/run/hostapd/ 2>/dev/null || true")
+        ifaces_output = await client.execute_command(
+            "ls -1 /var/run/hostapd/ 2>/dev/null || true"
+        )
         valid_ifaces = []
         if ifaces_output:
             for line in ifaces_output.splitlines():
                 line = line.strip()
                 if line and line != "global" and "No such file" not in line:
                     valid_ifaces.append(line)
-        
-        ifaces_str = " ".join(valid_ifaces) if valid_ifaces else "wl0-ap0 wl1-ap0"
 
+        ifaces_str = " ".join(valid_ifaces) if valid_ifaces else "wl0-ap0 wl1-ap0"
 
         # 2. Download and write each file
         for file_path in FILES_TO_DEPLOY:
@@ -84,7 +85,7 @@ async def async_deploy_mqtt_presence(
 
             # Apply IFACES config and enable DEBUG to etc/presence/presence.conf
             if file_path == "etc/presence/presence.conf":
-                content = content.replace('DEBUG=0', 'DEBUG=1')
+                content = content.replace("DEBUG=0", "DEBUG=1")
                 if valid_ifaces:
                     content = content.replace(
                         'IFACES="wl0-ap0 wl1-ap0"',
@@ -96,19 +97,17 @@ async def async_deploy_mqtt_presence(
                 # Auto-topic fallback
                 content = content.replace(
                     '[ -n "$TOPIC" ] || exit 0',
-                    'if [ -z "$TOPIC" ]; then SAFE_MAC=$(echo "$MAC" | tr ":" "_"); TOPIC="presence/${SAFE_MAC}"; fi'
+                    'if [ -z "$TOPIC" ]; then SAFE_MAC=$(echo "$MAC" | tr ":" "_"); TOPIC="presence/${SAFE_MAC}"; fi',
                 )
                 # Unique Client ID per interface to avoid "session taken over"
                 content = content.replace(
-                    '-i "ap-presence-$HOST_ID"',
-                    '-i "ap-presence-$HOST_ID-$IFACE"'
+                    '-i "ap-presence-$HOST_ID"', '-i "ap-presence-$HOST_ID-$IFACE"'
                 )
 
             # Patch init script to use unique instance names for multiple interfaces
             if file_path == "etc/init.d/presence_hostapd":
                 content = content.replace(
-                    'procd_open_instance',
-                    'procd_open_instance "$IFACE"'
+                    "procd_open_instance", 'procd_open_instance "$IFACE"'
                 )
 
             # Write file to router via heredoc for robustness

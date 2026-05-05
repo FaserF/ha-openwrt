@@ -315,11 +315,17 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     async def _async_fetch_mqtt_presence_data(self, data: OpenWrtData) -> None:
         """Fetch MQTT presence status and logs if enabled."""
         try:
-            status_output = await self.client.execute_command("/etc/init.d/presence_hostapd status 2>/dev/null")
-            data.mqtt_presence_status = status_output.strip() if status_output else "stopped"
+            status_output = await self.client.execute_command(
+                "/etc/init.d/presence_hostapd status 2>/dev/null"
+            )
+            data.mqtt_presence_status = (
+                status_output.strip() if status_output else "stopped"
+            )
 
             # Optimized log fetch: tail first, then grep
-            logs_output = await self.client.execute_command("logread | tail -n 100 | grep presence_event | tail -n 10")
+            logs_output = await self.client.execute_command(
+                "logread | tail -n 100 | grep presence_event | tail -n 10"
+            )
             data.mqtt_presence_logs = logs_output.splitlines() if logs_output else []
         except Exception as err:
             _LOGGER.debug("Failed to fetch MQTT presence data: %s", err)
@@ -632,14 +638,20 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             _LOGGER.warning("MQTT service not available after 60s, operation aborted")
             return
 
-        _LOGGER.debug("%s MQTT discovery for %d devices", "Cleaning up" if clean else "Starting", len(self._device_history))
+        _LOGGER.debug(
+            "%s MQTT discovery for %d devices",
+            "Cleaning up" if clean else "Starting",
+            len(self._device_history),
+        )
         for mac, hist_data in list(self._device_history.items()):
             # Always cleanup legacy topics to be sure
             await self._async_discovery_mqtt_device_cleanup(mac)
-            
+
             if not clean:
-                await self._async_discovery_mqtt_device(mac, hist_data.get("hostname") or mac)
-            
+                await self._async_discovery_mqtt_device(
+                    mac, hist_data.get("hostname") or mac
+                )
+
             # Small delay between discovery calls to avoid flooding
             await asyncio.sleep(0.05)
         _LOGGER.debug("MQTT discovery loop finished")
@@ -647,15 +659,14 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     async def _async_discovery_mqtt_device_cleanup(self, mac: str) -> None:
         """Remove legacy MQTT discovery messages for a device tracker."""
         mac_safe = mac.replace(":", "_")
-        router_id = self.router_id.replace(":", "")
-        
+
         # Cleanup all legacy patterns we might have used
         legacy_topics = [
             f"homeassistant/device_tracker/{self.router_id}_{mac_safe}/config",
             f"homeassistant/device_tracker/openwrt_{mac_safe}/config",
             f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config",
         ]
-        
+
         for topic in legacy_topics:
             try:
                 await self.hass.services.async_call(
@@ -669,7 +680,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 )
             except Exception:
                 pass
-        
+
         if mac in self._mqtt_discovered:
             self._mqtt_discovered.remove(mac)
 
@@ -678,10 +689,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         if mac in self._mqtt_discovered:
             return
 
-        router_id = self.router_id.replace(":", "")
         mac_safe = mac.replace(":", "_")
         discovery_topic = f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config"
-        _LOGGER.debug("Sending MQTT discovery for %s (%s) to %s", hostname, mac, discovery_topic)
+        _LOGGER.debug(
+            "Sending MQTT discovery for %s (%s) to %s", hostname, mac, discovery_topic
+        )
 
         payload = {
             "name": f"{hostname} MQTT",
@@ -695,7 +707,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 "identifiers": [f"openwrt_{mac}"],
                 "name": hostname,
                 "via_device": self.router_id,
-            }
+            },
         }
 
         try:
@@ -709,7 +721,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 },
             )
             self._mqtt_discovered.add(mac)
-            _LOGGER.info("Sent MQTT discovery for %s (%s) to %s", hostname, mac, discovery_topic)
+            _LOGGER.info(
+                "Sent MQTT discovery for %s (%s) to %s", hostname, mac, discovery_topic
+            )
         except Exception as err:
             _LOGGER.error("Failed to send MQTT discovery for %s: %s", mac, err)
 

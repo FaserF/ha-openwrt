@@ -40,10 +40,10 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtData, StorageUsage
 from .const import (
+    CONF_MQTT_PRESENCE,
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
-    CONF_MQTT_PRESENCE,
     DATA_COORDINATOR,
     DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
@@ -1485,7 +1485,11 @@ def _async_setup_network_sensors(
                     key=key,
                     translation_key="mqtt_presence_status",
                     value_fn=lambda data: data.mqtt_presence_status,
-                    attrs_fn=lambda data: {"logs": data.mqtt_presence_logs} if data.mqtt_presence_logs else {},
+                    attrs_fn=lambda data: (
+                        {"logs": data.mqtt_presence_logs}
+                        if data.mqtt_presence_logs
+                        else {}
+                    ),
                     available_fn=lambda data: data.mqtt_presence_status is not None,
                     entity_category=EntityCategory.DIAGNOSTIC,
                     icon="mdi:home-search",

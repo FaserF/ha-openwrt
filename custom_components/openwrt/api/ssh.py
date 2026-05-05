@@ -251,7 +251,7 @@ class SshClient(OpenWrtClient):
         def _connect() -> None:
             import io
 
-            import paramiko  # type: ignore[import-untyped]
+            import paramiko  # type: ignore
 
             client = paramiko.SSHClient()
             client.load_system_host_keys()
