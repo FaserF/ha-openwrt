@@ -8,6 +8,7 @@ from homeassistant.const import Platform
 
 DOMAIN: Final = "openwrt"
 DOCS_URL: Final = "https://github.com/FaserF/ha-openwrt"
+MQTT_PRESENCE_URL: Final = "https://github.com/f45tb00t/OpenWRT_HA_Presence"
 
 CONF_HOST: Final = "host"
 CONF_USERNAME: Final = "username"

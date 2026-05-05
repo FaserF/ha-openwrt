@@ -138,7 +138,7 @@
       },
       "mqtt_presence": {
         "title": "MQTT Presence Detection (Optional)",
-        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).\n\n**Note:** This functionality is not supported by the main integration. Bugs should be reported to the original repository.\n\n{warning}",
+        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n**Note:** This functionality is not supported by the main integration. Bugs should be reported to the original repository.\n\n{warning}",
         "data": {
           "mqtt_presence": "Enable MQTT Presence Detection",
           "mqtt_broker": "MQTT Broker (reachable from router)",
@@ -225,7 +225,7 @@
       },
       "options_mqtt_presence": {
         "title": "MQTT Presence Detection (Optional)",
-        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).\n\n**Note:** This functionality is not supported by the main integration. Bugs should be reported to the original repository.\n\n{warning}",
+        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n**Note:** This functionality is not supported by the main integration. Bugs should be reported to the original repository.\n\n{warning}",
         "data": {
           "mqtt_presence": "Enable MQTT Presence Detection",
           "mqtt_broker": "MQTT Broker (reachable from router)",
@@ -720,26 +720,28 @@
     },
     "stale_permissions": {
       "title": "Stale permissions for '{username}' on {host}",
-      "description": "The dedicated user '{username}' on your OpenWrt router {host} seems to have outdated or insufficient ACL permissions. This often happens after firmware updates or when new features are added to the integration.\n\nTo fix this, the integration needs to temporarily connect with **root** privileges to refresh the ACL rules for your dedicated user.",
-      "fix_flow": {
-        "step": {
-          "init": {
-            "title": "Refresh Permissions",
-            "description": "The permissions for user **{username}** on **{host}** need to be updated. You will be asked to provide the **root** password to perform this one-time maintenance task.\n\nNote: The root password is only used for this session and is not stored."
-          },
-          "root_login": {
-            "title": "Login as Root",
-            "description": "Please enter the **root** password for **{host}**.",
-            "data": {
-              "password": "Root Password"
-            }
-          }
+      "description": "The dedicated user '{username}' on your OpenWrt router {host} seems to have outdated or insufficient ACL permissions. This often happens after firmware updates or when new features are added to the integration.\n\nTo fix this, the integration needs to temporarily connect with **root** privileges to refresh the ACL rules for your dedicated user."
+    }
+  },
+  "repair_flow": {
+    "stale_permissions": {
+      "step": {
+        "init": {
+          "title": "Refresh Permissions",
+          "description": "The permissions for user **{username}** on **{host}** need to be updated. You will be asked to provide the **root** password to perform this one-time maintenance task.\n\nNote: The root password is only used for this session and is not stored."
         },
-        "abort": {
-          "unknown_error": "An unknown error occurred.",
-          "cannot_connect": "Failed to connect to the router as root.",
-          "provision_failed": "Failed to update permissions for the dedicated user."
+        "root_login": {
+          "title": "Login as Root",
+          "description": "Please enter the **root** password for **{host}**.",
+          "data": {
+            "password": "Root Password"
+          }
         }
+      },
+      "abort": {
+        "unknown_error": "An unknown error occurred.",
+        "cannot_connect": "Failed to connect to the router as root.",
+        "provision_failed": "Failed to update permissions for the dedicated user."
       }
     }
   },
@@ -805,46 +807,46 @@
       }
     },
     "uci_get": {
-      "name": "Get UCI Value",
-      "description": "Retrieve a UCI configuration value and return it as a service response.",
+      "name": "UCI Get",
+      "description": "Gets a UCI configuration value from the OpenWrt router.",
       "fields": {
         "entry_id": {
           "name": "Device",
-          "description": "The config entry ID of the OpenWrt router."
+          "description": "The OpenWrt router."
         },
         "config": {
           "name": "Config",
-          "description": "The UCI config name (e.g. firewall, wireless)."
+          "description": "UCI config file (e.g. network)."
         },
         "section": {
           "name": "Section",
-          "description": "The UCI section name."
+          "description": "UCI section (e.g. lan)."
         },
         "option": {
           "name": "Option",
-          "description": "The UCI option name."
+          "description": "UCI option (e.g. ipaddr)."
         }
       }
     },
     "uci_set": {
-      "name": "Set UCI Value",
-      "description": "Set a UCI configuration value and commit the changes.",
+      "name": "UCI Set",
+      "description": "Sets a UCI configuration value on the OpenWrt router and commits the changes.",
       "fields": {
         "entry_id": {
           "name": "Device",
-          "description": "The config entry ID of the OpenWrt router."
+          "description": "The OpenWrt router."
         },
         "config": {
           "name": "Config",
-          "description": "The UCI config name."
+          "description": "UCI config file (e.g. network)."
         },
         "section": {
           "name": "Section",
-          "description": "The UCI section name."
+          "description": "UCI section (e.g. lan)."
         },
         "option": {
           "name": "Option",
-          "description": "The UCI option name."
+          "description": "UCI option (e.g. ipaddr)."
         },
         "value": {
           "name": "Value",
@@ -854,11 +856,21 @@
     },
     "create_backup": {
       "name": "Create Backup",
-      "description": "Creates a configuration backup on the OpenWrt router.",
+      "description": "Generates a backup archive of the router configuration.",
       "fields": {
         "entry_id": {
           "name": "Device",
-          "description": "The config entry ID of the OpenWrt router."
+          "description": "The OpenWrt router."
+        }
+      }
+    },
+    "generate_report": {
+      "name": "Generate Report",
+      "description": "Generates a detailed system report in markdown format.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The OpenWrt router."
         }
       }
     }

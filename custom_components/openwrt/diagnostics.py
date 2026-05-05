@@ -153,9 +153,18 @@ async def async_get_config_entry_diagnostics(
                 for p in data.system_resources.top_processes[:5]
             ]
             if entry.options.get(CONF_MQTT_PRESENCE, False):
+                logs = data.mqtt_presence_logs or []
                 diag["mqtt_presence"] = {
                     "status": data.mqtt_presence_status,
-                    "logs": data.mqtt_presence_logs,
+                    "logs_summary": {
+                        "count": len(logs),
+                        "last_log_timestamp": (
+                            logs[-1].split(" - ")[0]
+                            if logs and " - " in logs[-1]
+                            else None
+                        ),
+                        "logs": "[REDACTED]",
+                    },
                 }
         except Exception as err:
             diag["data_error"] = str(err)

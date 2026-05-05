@@ -100,6 +100,7 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DOCS_URL,
     DOMAIN,
+    MQTT_PRESENCE_URL,
 )
 from .coordinator import create_client
 
@@ -1674,7 +1675,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
             description_placeholders={
-                "warning": "⚠️ This is a third-party feature. Support is not provided by this integration."
+                "warning": "⚠️ This is a third-party feature. Support is not provided by this integration.",
+                "presence_repo_url": MQTT_PRESENCE_URL,
             },
         )
 
@@ -2096,7 +2098,8 @@ class OpenWrtOptionsFlow(OptionsFlow):
             ),
             errors=errors,
             description_placeholders={
-                "warning": "⚠️ This is a third-party feature. Support is not provided by this integration."
+                "warning": "⚠️ This is a third-party feature. Support is not provided by this integration.",
+                "presence_repo_url": MQTT_PRESENCE_URL,
             },
         )
 

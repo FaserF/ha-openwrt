@@ -138,7 +138,7 @@
       },
       "mqtt_presence": {
         "title": "MQTT Präsenzerkennung (Optional)",
-        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz. Dies nutzt ein Drittanbieter-Skript von [f45tb00t/OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).\n\n**Hinweis:** Diese Funktionalität wird von der Haupt-Integration nicht offiziell unterstützt. Fehler sollten im ursprünglichen Repository gemeldet werden.\n\n{warning}",
+        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz. Dies nutzt ein Drittanbieter-Skript von [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n**Hinweis:** Diese Funktionalität wird von der Haupt-Integration nicht offiziell unterstützt. Fehler sollten im ursprünglichen Repository gemeldet werden.\n\n{warning}",
         "data": {
           "mqtt_presence": "MQTT Präsenzerkennung aktivieren",
           "mqtt_broker": "MQTT Broker (vom Router aus erreichbar)",
@@ -225,7 +225,7 @@
       },
       "options_mqtt_presence": {
         "title": "MQTT Präsenzerkennung (Optional)",
-        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz. Dies nutzt ein Drittanbieter-Skript von [f45tb00t/OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).\n\n**Hinweis:** Diese Funktionalität wird von der Haupt-Integration nicht offiziell unterstützt. Fehler sollten im ursprünglichen Repository gemeldet werden.\n\n{warning}",
+        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz. Dies nutzt ein Drittanbieter-Skript von [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n**Hinweis:** Diese Funktionalität wird von der Haupt-Integration nicht offiziell unterstützt. Fehler sollten im ursprünglichen Repository gemeldet werden.\n\n{warning}",
         "data": {
           "mqtt_presence": "MQTT Präsenzerkennung aktivieren",
           "mqtt_broker": "MQTT Broker (vom Router aus erreichbar)",
@@ -720,26 +720,28 @@
     },
     "stale_permissions": {
       "title": "Veraltete Berechtigungen für '{username}' auf {host}",
-      "description": "Der dedizierte Benutzer '{username}' auf deinem OpenWrt-Router {host} scheint veraltete oder unzureichende ACL-Berechtigungen zu haben. Dies passiert oft nach Firmware-Updates oder wenn neue Funktionen zur Integration hinzugefügt wurden.\n\nUm dies zu beheben, muss die Integration vorübergehend eine Verbindung mit **root**-Rechten herstellen, um die ACL-Regeln für deinen dedizierten Benutzer zu aktualisieren.",
-      "fix_flow": {
-        "step": {
-          "init": {
-            "title": "Berechtigungen aktualisieren",
-            "description": "Die Berechtigungen für Benutzer **{username}** auf **{host}** müssen aktualisiert werden. Du wirst aufgefordert, das **root**-Passwort einzugeben, um diese einmalige Wartungsaufgabe durchzuführen.\n\nHinweis: Das root-Passwort wird nur für diese Sitzung verwendet und nicht gespeichert."
-          },
-          "root_login": {
-            "title": "Login als Root",
-            "description": "Bitte gib das **root**-Passwort für **{host}** ein.",
-            "data": {
-              "password": "Root Passwort"
-            }
-          }
+      "description": "Der dedizierte Benutzer '{username}' auf deinem OpenWrt-Router {host} scheint veraltete oder unzureichende ACL-Berechtigungen zu haben. Dies passiert oft nach Firmware-Updates oder wenn neue Funktionen zur Integration hinzugefügt wurden.\n\nUm dies zu beheben, muss die Integration vorübergehend eine Verbindung mit **root**-Rechten herstellen, um die ACL-Regeln für deinen dedizierten Benutzer zu aktualisieren."
+    }
+  },
+  "repair_flow": {
+    "stale_permissions": {
+      "step": {
+        "init": {
+          "title": "Berechtigungen aktualisieren",
+          "description": "Die Berechtigungen für Benutzer **{username}** auf **{host}** müssen aktualisiert werden. Du wirst aufgefordert, das **root**-Passwort einzugeben, um diese einmalige Wartungsaufgabe durchzuführen.\n\nHinweis: Das root-Passwort wird nur für diese Sitzung verwendet und nicht gespeichert."
         },
-        "abort": {
-          "unknown_error": "Ein unbekannter Fehler ist aufgetreten.",
-          "cannot_connect": "Verbindung zum Router als root fehlgeschlagen.",
-          "provision_failed": "Aktualisierung der Berechtigungen für den dedizierten Benutzer fehlgeschlagen."
+        "root_login": {
+          "title": "Login als Root",
+          "description": "Bitte gib das **root**-Passwort für **{host}** ein.",
+          "data": {
+            "password": "Root Passwort"
+          }
         }
+      },
+      "abort": {
+        "unknown_error": "Ein unbekannter Fehler ist aufgetreten.",
+        "cannot_connect": "Verbindung zum Router als root fehlgeschlagen.",
+        "provision_failed": "Aktualisierung der Berechtigungen für den dedizierten Benutzer fehlgeschlagen."
       }
     }
   },
@@ -804,61 +806,71 @@
         }
       }
     },
-    "create_backup": {
-      "name": "Backup erstellen",
-      "description": "Erstellt eine Sicherungsdatei der Router-Konfiguration.",
-      "fields": {
-        "entry_id": {
-          "name": "Gerät",
-          "description": "Der OpenWrt-Router, von dem ein Backup erstellt werden soll."
-        }
-      }
-    },
     "uci_get": {
-      "name": "UCI Wert abfragen",
-      "description": "Ruft einen UCI-Konfigurationswert ab und gibt ihn als Service-Antwort zurück.",
+      "name": "UCI Get",
+      "description": "Liest einen UCI-Konfigurationswert vom OpenWrt-Router.",
       "fields": {
         "entry_id": {
           "name": "Gerät",
-          "description": "Die Config Entry ID des OpenWrt-Routers."
+          "description": "Der OpenWrt-Router."
         },
         "config": {
           "name": "Konfiguration",
-          "description": "Der UCI Config-Name (z.B. firewall, wireless)."
+          "description": "UCI Konfigurationsdatei (z.B. network)."
         },
         "section": {
           "name": "Sektion",
-          "description": "Der UCI Sektions-Name."
+          "description": "UCI Sektion (z.B. lan)."
         },
         "option": {
           "name": "Option",
-          "description": "Der UCI Options-Name."
+          "description": "UCI Option (z.B. ipaddr)."
         }
       }
     },
     "uci_set": {
-      "name": "UCI Wert setzen",
-      "description": "Setzt einen UCI-Konfigurationswert und übernimmt die Änderungen.",
+      "name": "UCI Set",
+      "description": "Setzt einen UCI-Konfigurationswert auf dem OpenWrt-Router und speichert die Änderungen.",
       "fields": {
         "entry_id": {
           "name": "Gerät",
-          "description": "Die Config Entry ID des OpenWrt-Routers."
+          "description": "Der OpenWrt-Router."
         },
         "config": {
           "name": "Konfiguration",
-          "description": "Der UCI Config-Name."
+          "description": "UCI Konfigurationsdatei (z.B. network)."
         },
         "section": {
           "name": "Sektion",
-          "description": "Der UCI Sektions-Name."
+          "description": "UCI Sektion (z.B. lan)."
         },
         "option": {
           "name": "Option",
-          "description": "Der UCI Options-Name."
+          "description": "UCI Option (z.B. ipaddr)."
         },
         "value": {
           "name": "Wert",
           "description": "Der zu setzende Wert."
+        }
+      }
+    },
+    "create_backup": {
+      "name": "Backup erstellen",
+      "description": "Erzeugt ein Backup-Archiv der Router-Konfiguration.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt-Router."
+        }
+      }
+    },
+    "generate_report": {
+      "name": "Bericht erstellen",
+      "description": "Erstellt einen detaillierten Systembericht im Markdown-Format.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt-Router."
         }
       }
     }

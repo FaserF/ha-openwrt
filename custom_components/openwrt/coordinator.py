@@ -862,6 +862,17 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if self.config_entry.entry_id not in dev.config_entries:
                 continue
 
+            # Skip the root router device itself and merged/auxiliary entries
+            if dev.via_device_id is None or dev.hidden_by is not None or dev.entry_type is not None:
+                continue
+
+            # Only proceed if the device still has placeholder manufacturer/model
+            if not (
+                dev.manufacturer in (None, "OpenWrt", "by OpenWrt", "manufacturer")
+                or dev.model in (None, "Tracked device", "model")
+            ):
+                continue
+
             for ident in dev.identifiers:
                 if ident[0] != DOMAIN:
                     continue
@@ -876,9 +887,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 new_manufacturer, new_model = vendor_info
                 # Only write if the values differ from the current ones
                 if (
-                    dev.manufacturer in (None, "OpenWrt", "by OpenWrt", "manufacturer")
-                    or dev.model in (None, "Tracked device", "model")
-                    or dev.manufacturer != new_manufacturer
+                    dev.manufacturer != new_manufacturer
                     or dev.model != new_model
                 ):
                     _LOGGER.debug(

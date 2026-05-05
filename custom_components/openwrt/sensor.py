@@ -1483,6 +1483,7 @@ def _async_setup_network_sensors(
                 entry,
                 OpenWrtSensorDescription(
                     key=key,
+                    name="MQTT Presence Status",
                     translation_key="mqtt_presence_status",
                     value_fn=lambda data: data.mqtt_presence_status,
                     attrs_fn=lambda data: (
@@ -1499,8 +1500,9 @@ def _async_setup_network_sensors(
 
     # Add network interface sensors
     for iface in coordinator.data.network_interfaces:
-        if iface.name not in tracked_keys:
-            tracked_keys.add(iface.name)
+        key = f"net_iface_{iface.name}"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
             entities.extend(_create_net_sensors(coordinator, entry, iface.name))
 
 
@@ -1871,7 +1873,7 @@ def _create_wifi_station_sensors(
                 coordinator,
                 entry,
                 OpenWrtSensorDescription(
-                    key=f"wifi_{iface_name}_{key}",
+                    key=f"wifi_{section_id or iface_name}_{key}",
                     translation_key=tkey,
                     name=f"{label} {name}",
                     native_unit_of_measurement=unit,
