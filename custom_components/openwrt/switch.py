@@ -1248,11 +1248,8 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
                         sqm.enabled = True
             self.async_write_ha_state()
         except Exception as err:
-            msg = f"Failed to enable SQM: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
+            raise HomeAssistantError(f"Failed to manage SQM: {err}") from err
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable SQM."""
@@ -1265,11 +1262,8 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
                         sqm.enabled = False
             self.async_write_ha_state()
         except Exception as err:
-            msg = f"Failed to disable SQM: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
+            raise HomeAssistantError(f"Failed to manage SQM: {err}") from err
+        await self.coordinator.async_request_refresh()
 
 
 class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):

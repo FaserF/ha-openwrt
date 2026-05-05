@@ -2136,11 +2136,7 @@ def _create_net_status_sensors(
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
-                    (
-                        i.uptime
-                        for i in data.network_interfaces
-                        if i.name == n
-                    ),
+                    (i.uptime for i in data.network_interfaces if i.name == n),
                     None,
                 ),
                 available_fn=lambda data, n=iface_name: any(

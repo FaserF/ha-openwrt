@@ -1,6 +1,6 @@
 """Tests for SQM (Smart Queue Management) features."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from homeassistant.const import CONF_HOST
@@ -52,9 +52,19 @@ async def test_sqm_switch() -> None:
     """Test SQM switch entity."""
     sqm = SqmStatus(section_id="eth0", name="eth0", enabled=True)
     coordinator = MagicMock()
-    coordinator.async_request_refresh = AsyncMock()
+
+    async def mock_refresh(*args, **kwargs):
+        pass
+
+    coordinator.async_request_refresh = MagicMock(side_effect=mock_refresh)
     coordinator.data = OpenWrtData(sqm=[sqm])
-    client = AsyncMock()
+
+    client = MagicMock()
+
+    async def mock_set_sqm(*args, **kwargs):
+        pass
+
+    client.set_sqm_config = MagicMock(side_effect=mock_set_sqm)
     coordinator.client = client
     entry = MagicMock()
     entry.entry_id = "test_entry"
@@ -88,9 +98,19 @@ async def test_sqm_numbers() -> None:
     """Test SQM number entities."""
     sqm = SqmStatus(section_id="eth0", name="eth0", download=100, upload=50)
     coordinator = MagicMock()
-    coordinator.async_request_refresh = AsyncMock()
+
+    async def mock_refresh(*args, **kwargs):
+        pass
+
+    coordinator.async_request_refresh = MagicMock(side_effect=mock_refresh)
     coordinator.data = OpenWrtData(sqm=[sqm])
-    client = AsyncMock()
+
+    client = MagicMock()
+
+    async def mock_set_sqm(*args, **kwargs):
+        pass
+
+    client.set_sqm_config = MagicMock(side_effect=mock_set_sqm)
     coordinator.client = client
     entry = MagicMock()
     entry.entry_id = "test_entry"
@@ -111,9 +131,11 @@ async def test_sqm_numbers() -> None:
     # Test set value
     await download_entity.async_set_native_value(200)
     client.set_sqm_config.assert_called_with("eth0", download=200)
+    coordinator.async_request_refresh.assert_called()
 
     await upload_entity.async_set_native_value(100)
     client.set_sqm_config.assert_called_with("eth0", upload=100)
+    coordinator.async_request_refresh.assert_called()
 
 
 def test_sqm_sensors() -> None:
