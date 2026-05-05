@@ -268,7 +268,7 @@ def _add_wireless_switches(
         entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
     for wifi in coordinator.data.wireless_interfaces:
         if wifi.name:
-            key = f"wireless_{wifi.name}"
+            key = f"wireless_{wifi.section or wifi.name}"
             if key not in tracked_keys:
                 tracked_keys.add(key)
                 entities.append(
@@ -727,9 +727,10 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         super().__init__(coordinator)
         self._client = client
         self._iface_name = iface_name
+        self._section_id = section_id
 
         # Build descriptive labels
-        self._attr_unique_id = f"{entry.entry_id}_wireless_{iface_name}"
+        self._attr_unique_id = f"{entry.entry_id}_wireless_{section_id or iface_name}"
         self._attr_translation_key = "wireless_radio"
 
         # Calculate band for placeholders
@@ -931,6 +932,7 @@ class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         self._attr_unique_id = f"{entry.entry_id}_firewall_{section_id}"
         self._attr_name = f"Port Forward: {name}"
         self._attr_translation_key = "firewall_port_forward"
+        self._attr_translation_placeholders = {"name": name}
         if name.lower().startswith("allow"):
             self._attr_entity_registry_enabled_default = False
         self._attr_device_info = {
@@ -1117,6 +1119,7 @@ class OpenWrtFirewallRuleSwitch(
         self._attr_unique_id = f"{entry.entry_id}_firewall_rule_{section_id}"
         self._attr_name = f"Firewall Rule: {name}"
         self._attr_translation_key = "firewall_rule"
+        self._attr_translation_placeholders = {"name": name}
         if name.lower().startswith("allow"):
             self._attr_entity_registry_enabled_default = False
         self._attr_device_info = {
@@ -1245,11 +1248,8 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
                         sqm.enabled = True
             self.async_write_ha_state()
         except Exception as err:
-            msg = f"Failed to enable SQM: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
+            raise HomeAssistantError(f"Failed to manage SQM: {err}") from err
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable SQM."""
@@ -1262,11 +1262,8 @@ class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
                         sqm.enabled = False
             self.async_write_ha_state()
         except Exception as err:
-            msg = f"Failed to disable SQM: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
+            raise HomeAssistantError(f"Failed to manage SQM: {err}") from err
+        await self.coordinator.async_request_refresh()
 
 
 class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):

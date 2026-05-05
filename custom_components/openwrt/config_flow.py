@@ -68,6 +68,12 @@ from .const import (
     CONF_CONSIDER_HOME,
     CONF_CUSTOM_FIRMWARE_REPO,
     CONF_DHCP_SOFTWARE,
+    CONF_MQTT_BROKER,
+    CONF_MQTT_PASSWORD,
+    CONF_MQTT_PORT,
+    CONF_MQTT_PRESENCE,
+    CONF_MQTT_USERNAME,
+    CONF_REDEPLOY_MQTT,
     CONF_SKIP_RANDOM_MAC,
     CONF_SSH_KEY,
     CONF_TARGET_OVERRIDE,
@@ -94,6 +100,7 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DOCS_URL,
     DOMAIN,
+    MQTT_PRESENCE_URL,
 )
 from .coordinator import create_client
 
@@ -1528,12 +1535,12 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if getattr(self, "_packages", None) is not None:
                 return await self.async_step_packages()
-            return await self._create_entry()
+            return await self.async_step_mqtt_presence()
 
         if self._permissions is None:
             if getattr(self, "_packages", None) is not None:
                 return await self.async_step_packages()
-            return await self._create_entry()
+            return await self.async_step_mqtt_presence()
 
         if self._ubus_restricted:
             return await self.async_step_ubus_restricted()
@@ -1589,10 +1596,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Show packages summary."""
         if user_input is not None:
-            return await self._create_entry()
+            return await self.async_step_mqtt_presence()
 
         if getattr(self, "_packages", None) is None:
-            return await self._create_entry()
+            return await self.async_step_mqtt_presence()
 
         # Get translations for package features
         translations = await translation.async_get_translations(
@@ -1618,6 +1625,112 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="packages",
             data_schema=vol.Schema({vol.Optional("acknowledge", default=True): bool}),
             description_placeholders={"packages_table": table},
+        )
+
+    async def async_step_mqtt_presence(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Handle MQTT presence step."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if not user_input.get(CONF_MQTT_PRESENCE):
+                return await self._create_entry()
+
+            # Inline validation
+            broker = user_input.get(CONF_MQTT_BROKER, "")
+            port = user_input.get(CONF_MQTT_PORT)
+
+            if not broker:
+                errors[CONF_MQTT_BROKER] = "empty_broker"
+            if not port or not (1 <= port <= 65535):
+                errors[CONF_MQTT_PORT] = "invalid_port"
+
+            if not errors:
+                self._data.update(user_input)
+                return await self.async_step_do_deploy_mqtt_presence()
+
+        return self.async_show_form(
+            step_id="mqtt_presence",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_MQTT_PRESENCE, default=False): bool,
+                    vol.Optional(
+                        CONF_MQTT_BROKER,
+                        default=self._data.get(CONF_MQTT_BROKER, ""),
+                    ): str,
+                    vol.Optional(
+                        CONF_MQTT_PORT,
+                        default=self._data.get(CONF_MQTT_PORT, 1883),
+                    ): int,
+                    vol.Optional(
+                        CONF_MQTT_USERNAME,
+                        default=self._data.get(CONF_MQTT_USERNAME, ""),
+                    ): str,
+                    vol.Optional(
+                        CONF_MQTT_PASSWORD,
+                        default=self._data.get(CONF_MQTT_PASSWORD, ""),
+                    ): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "warning": "⚠️ This is a third-party feature. Support is not provided by this integration.",
+                "presence_repo_url": MQTT_PRESENCE_URL,
+            },
+        )
+
+    async def async_step_do_deploy_mqtt_presence(self) -> ConfigFlowResult:
+        """Perform the actual deployment."""
+        from .helpers.mqtt_presence import async_deploy_mqtt_presence
+
+        client = create_client(self._data)
+        try:
+            await client.connect()
+
+            mqtt_config = {
+                "broker": self._data.get(CONF_MQTT_BROKER, ""),
+                "port": self._data.get(CONF_MQTT_PORT, 1883),
+                "username": self._data.get(CONF_MQTT_USERNAME, ""),
+                "password": self._data.get(CONF_MQTT_PASSWORD, ""),
+            }
+
+            success, error = await async_deploy_mqtt_presence(
+                self.hass, client, mqtt_config
+            )
+            if success:
+                return await self._create_entry()
+
+            return self.async_show_form(
+                step_id="deploy_failed",
+                description_placeholders={"error": error or "Unknown error"},
+            )
+        except Exception as err:
+            _LOGGER.exception("Deployment failed")
+            return self.async_show_form(
+                step_id="deploy_failed",
+                description_placeholders={"error": str(err)},
+            )
+        finally:
+            await client.disconnect()
+
+    async def async_step_deploy_failed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle deployment failure."""
+        if user_input is not None:
+            # Re-try the deployment or go back to settings
+            if user_input.get("action") == "retry":
+                return await self.async_step_do_deploy_mqtt_presence()
+            return await self.async_step_mqtt_presence()
+
+        return self.async_show_form(
+            step_id="deploy_failed",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("action", default="retry"): vol.In(["retry", "back"]),
+                }
+            ),
         )
 
     async def _async_set_unique_id_and_check(self) -> None:
@@ -1674,6 +1787,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_SKIP_RANDOM_MAC,
             CONF_CUSTOM_FIRMWARE_REPO,
             CONF_ASU_URL,
+            CONF_MQTT_PRESENCE,
+            CONF_MQTT_BROKER,
+            CONF_MQTT_PORT,
+            CONF_MQTT_USERNAME,
+            CONF_MQTT_PASSWORD,
         ]:
             if key in data:
                 options[key] = data.pop(key)
@@ -1704,7 +1822,28 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Manage the options."""
         if user_input is not None:
             _LOGGER.debug("Options init submitted: %s", user_input)
-            self._options = user_input
+            self._options = {**self._config_entry.options, **user_input}
+            if (
+                user_input.get(CONF_MQTT_PRESENCE)
+                and not self._config_entry.options.get(CONF_MQTT_PRESENCE)
+            ) or user_input.get(CONF_REDEPLOY_MQTT):
+                return await self.async_step_options_mqtt_presence()
+
+            # Check if we are disabling MQTT
+            if not user_input.get(
+                CONF_MQTT_PRESENCE
+            ) and self._config_entry.options.get(CONF_MQTT_PRESENCE):
+                from .helpers.mqtt_presence import async_remove_mqtt_presence
+
+                client = create_client(self._config_entry.data)
+                try:
+                    await client.connect()
+                    await async_remove_mqtt_presence(client)
+                except Exception:
+                    _LOGGER.exception("Failed to clean up MQTT presence on router")
+                finally:
+                    await client.disconnect()
+
             return await self.async_step_options_permissions()
 
         current = self._config_entry.options
@@ -1756,6 +1895,14 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_SKIP_RANDOM_MAC,
                     default=current.get(CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC),
+                ): bool,
+                vol.Optional(
+                    CONF_MQTT_PRESENCE,
+                    default=current.get(CONF_MQTT_PRESENCE, False),
+                ): bool,
+                vol.Optional(
+                    CONF_REDEPLOY_MQTT,
+                    default=False,
                 ): bool,
             },
         )
@@ -1906,4 +2053,105 @@ class OpenWrtOptionsFlow(OptionsFlow):
             step_id="options_packages",
             data_schema=vol.Schema({vol.Optional("acknowledge", default=True): bool}),
             description_placeholders={"packages_table": table},
+        )
+
+    async def async_step_options_mqtt_presence(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Handle MQTT presence step in options flow."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if not user_input.get(CONF_MQTT_PRESENCE):
+                self._options.update(user_input)
+                return await self.async_step_options_permissions()
+
+            self._options.update(user_input)
+            return await self.async_step_options_do_deploy_mqtt_presence()
+
+        current = self._config_entry.options
+        return self.async_show_form(
+            step_id="options_mqtt_presence",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MQTT_PRESENCE,
+                        default=True,
+                    ): bool,
+                    vol.Optional(
+                        CONF_MQTT_BROKER,
+                        default=current.get(CONF_MQTT_BROKER, ""),
+                    ): str,
+                    vol.Optional(
+                        CONF_MQTT_PORT,
+                        default=current.get(CONF_MQTT_PORT, 1883),
+                    ): int,
+                    vol.Optional(
+                        CONF_MQTT_USERNAME,
+                        default=current.get(CONF_MQTT_USERNAME, ""),
+                    ): str,
+                    vol.Optional(
+                        CONF_MQTT_PASSWORD,
+                        default=current.get(CONF_MQTT_PASSWORD, ""),
+                    ): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "warning": "⚠️ This is a third-party feature. Support is not provided by this integration.",
+                "presence_repo_url": MQTT_PRESENCE_URL,
+            },
+        )
+
+    async def async_step_options_do_deploy_mqtt_presence(self) -> ConfigFlowResult:
+        """Perform the actual deployment in options flow."""
+        from .helpers.mqtt_presence import async_deploy_mqtt_presence
+
+        client = create_client({**self._config_entry.data, **self._options})
+        try:
+            await client.connect()
+
+            mqtt_config = {
+                "broker": self._options.get(CONF_MQTT_BROKER, ""),
+                "port": self._options.get(CONF_MQTT_PORT, 1883),
+                "username": self._options.get(CONF_MQTT_USERNAME, ""),
+                "password": self._options.get(CONF_MQTT_PASSWORD, ""),
+            }
+
+            success, error = await async_deploy_mqtt_presence(
+                self.hass, client, mqtt_config
+            )
+            if success:
+                return await self.async_step_options_permissions()
+
+            return self.async_show_form(
+                step_id="options_deploy_failed",
+                description_placeholders={"error": error or "Unknown error"},
+            )
+        except Exception as err:
+            _LOGGER.exception("Deployment failed")
+            return self.async_show_form(
+                step_id="options_deploy_failed",
+                description_placeholders={"error": str(err)},
+            )
+        finally:
+            await client.disconnect()
+
+    async def async_step_options_deploy_failed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle deployment failure in options flow."""
+        if user_input is not None:
+            # Re-try the deployment or go back to settings
+            if user_input.get("action") == "retry":
+                return await self.async_step_options_do_deploy_mqtt_presence()
+            return await self.async_step_options_mqtt_presence()
+
+        return self.async_show_form(
+            step_id="options_deploy_failed",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("action", default="retry"): vol.In(["retry", "back"]),
+                }
+            ),
         )

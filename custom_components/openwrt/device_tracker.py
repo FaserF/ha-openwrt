@@ -29,6 +29,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     ATTR_MANUFACTURER,
     CONF_CONSIDER_HOME,
+    CONF_MQTT_PRESENCE,
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
@@ -71,12 +72,14 @@ async def async_setup_entry(
             entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
         )
 
+        mqtt_enabled = entry.options.get(CONF_MQTT_PRESENCE, False)
+
         for ent in entries:
             if ent.domain != "device_tracker":
                 continue
 
-            # Remove ALL device trackers if disabled
-            if not track_devices:
+            # Remove ALL device trackers if disabled or MQTT presence is active
+            if not track_devices or mqtt_enabled:
                 ent_reg.async_remove(ent.entity_id)
                 continue
 
@@ -109,7 +112,12 @@ async def async_setup_entry(
     if not entry.options.get(
         CONF_TRACK_DEVICES,
         entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
-    ):
+    ) or entry.options.get(CONF_MQTT_PRESENCE, False):
+        if entry.options.get(CONF_MQTT_PRESENCE, False):
+            _LOGGER.info(
+                "MQTT Presence Detection enabled, skipping standard device trackers for %s",
+                entry.data[CONF_HOST],
+            )
         return
 
     track_wired = entry.options.get(

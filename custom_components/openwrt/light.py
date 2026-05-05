@@ -18,7 +18,7 @@ from homeassistant.components.light import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -39,15 +39,30 @@ async def async_setup_entry(
         DATA_COORDINATOR
     ]
 
-    entities: list[OpenWrtLedLight] = []
+    tracked_leds: set[str] = set()
 
-    if coordinator.data:
+    @callback
+    def _async_add_new_entities() -> None:
+        """Add new LED entities when discovered."""
+        if not coordinator.data:
+            return
+
+        new_entities: list[OpenWrtLedLight] = []
         perms = coordinator.data.permissions
+
+        # We need write_led permission to control LEDs
         if perms.write_led and coordinator.data.leds:
             for led in coordinator.data.leds:
-                entities.append(OpenWrtLedLight(coordinator, entry, led.name))
+                if led.name not in tracked_leds:
+                    tracked_leds.add(led.name)
+                    new_entities.append(OpenWrtLedLight(coordinator, entry, led.name))
 
-    async_add_entities(entities)
+        if new_entities:
+            async_add_entities(new_entities)
+
+    # Initial discovery and listener registration
+    _async_add_new_entities()
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
 
 
 class OpenWrtLedLight(CoordinatorEntity[OpenWrtDataCoordinator], LightEntity):

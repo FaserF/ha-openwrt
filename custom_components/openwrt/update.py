@@ -24,7 +24,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     CONF_AUTO_BACKUP,
     CONF_CONNECTION_TYPE,
-    CONF_HOST,
     CONNECTION_TYPE_LUCI_RPC,
     CONNECTION_TYPE_UBUS,
     DATA_COORDINATOR,
@@ -69,7 +68,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_firmware_update"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
+            "identifiers": {(DOMAIN, coordinator.router_id)},
         }
 
     @property

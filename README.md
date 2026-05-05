@@ -43,12 +43,16 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
     - Diagnostic sensors for configured interface, qdisc, and setup script.
   - **Service Management**: Monitor, start, stop, and restart system services (e.g., AdGuard Home, OpenVPN, Samba).
   - **Security & Ad-Blocking**:
-    - **AdBlock/Simple-AdBlock**: Track status, blocked domain counts, and toggle filtering.
-    - **Ban-IP**: Monitor banned IP counts and service state.
-  - **Diagnostic Sensors**:
-    - **Reboot Required**: Alerts you when the router needs a restart (e.g., after kernel updates).
-    - **Process Monitoring**: Tracks top CPU and memory consuming processes for real-time performance troubleshooting.
-  - **Backup & Commands**: Trigger configuration backups or execute arbitrary shell commands directly from HA.
+  - **AdBlock/Simple-AdBlock**: Track status, blocked domain counts, and toggle filtering.
+  - **Ban-IP**: Monitor banned IP counts and service state.
+- **System Monitoring**:
+  - **Resource Usage**: Monitor CPU usage, Memory (Total/Used/Free/Cached/Buffered), and Swap.
+  - **Storage**: Track disk usage and free space for multiple mount points.
+  - **Process Monitoring**: Tracks top CPU and memory consuming processes for real-time performance troubleshooting.
+  - **System Logs**: Diagnostic sensor that monitors for critical system errors.
+  - **USB Devices**: Monitor connected hardware via USB ports.
+  - **Reboot Required**: Alerts you when the router needs a restart (e.g., after kernel updates).
+- **Backup & Commands**: Trigger configuration backups or execute arbitrary shell commands directly from HA.
 - **Parental Control & Device Management**:
   - **Internet Access Control**: Per-device "Internet Access" switches to block/allow traffic (Fritz!Box style).
   - **Wireless Management**: WPS control switches and buttons to kick (disconnect) specific wireless clients.
@@ -59,8 +63,14 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
   - **Topology Mapping**: Wireless clients are automatically linked to their respective Access Point via the `via_device` attribute.
   - **Infrastructure Filtering**: Automatically identifies and filters out the router's own network interfaces to prevent circular self-tracking.
   - **New Device Event**: Fires `openwrt_new_device` when previously unknown MAC addresses are discovered.
+- **MQTT Presence Detection (Optional)**: 
+  - Integration with the third-party [OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence) scripts.
+  - High-performance, low-latency tracking via MQTT events instead of polling.
+  - Automatic script deployment and configuration directly from the Home Assistant UI.
+  - > [!IMPORTANT]
+    > **Randomized MACs**: The "Ignore devices with randomized MAC addresses" option currently **only applies to native device tracking**. MQTT presence detection (via the third-party script) will still track and create entities for randomized MAC addresses if they connect to your WiFi.
 - **Advanced Diagnostics**:
-  - **Process Monitoring**: Tracks top CPU and memory consuming processes for real-time performance troubleshooting.
+  - **UPnP Mappings**: Track active UPnP and NAT-PMP port forwardings.
   - **Refined Naming**: Routers are primarily identified by their product model (e.g. "Xiaomi AX3600") for a premium dashboard look.
   - **LLDP Neighbors**: Discover and monitor physical port connections via the LLDP protocol (if available on the router).
 - **Optimized for Large Environments**: 
@@ -194,6 +204,9 @@ You can control how the integration handles network clients (PCs, phones, IoT de
 |:--- |:--- |:--- |
 | **Track network clients** | Creates individual `device_tracker` entities, signal sensors, and control switches (WoL, Internet Access) for every device. | **No individual device entities** are created. Recommended for large networks to prevent Home Assistant database bloat. |
 | **Include wired devices** | Tracks every device in the ARP/Neighbor table, including wired PCs and servers. | **Only WiFi clients** are tracked. Ideal if you only care about mobile presence detection. |
+
+> [!CAUTION]
+> **Random MAC Limitation**: The "Ignore devices with randomized MAC addresses" option only works for the native device tracking platform. If you enable **MQTT Presence Detection**, the third-party scripts on the router will continue to report all clients, including those with randomized MACs.
 
 > [!TIP]
 > **Summary Sensors stay active!** Even if you disable "Track network clients", the **Connected Clients** and **Wireless Clients** sensors will always show the correct total count of active devices on your network.
@@ -834,9 +847,10 @@ make check
 
 ## 💖 Credits & Acknowledgements
 
-This integration was built from the ground up to replace and modernize the deprecated community project, ensuring long-term maintainability and eliminating persistent edge-case bugs.
+- **Main Author**: [FaserF](https://github.com/FaserF)
+- **MQTT Presence Detection**: Special thanks to [f45tb00t](https://github.com/f45tb00t) for the excellent [OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence) scripts which are optionally integrated into this project.
+  - *Disclaimer*: The MQTT presence feature is a wrapper around third-party scripts. This functionality is provided "as-is" and is NOT officially supported by the main `ha-openwrt` integration. Bugs related to the MQTT scripts themselves should be reported to the original repository.
 
-A special thanks to:
 - **[kvj/hass_openwrt](https://github.com/kvj/hass_openwrt)**: The original repository which served as the inspiration and reference for OpenWrt integration concepts.
 - **[Home Assistant `fritz` Integration](https://github.com/home-assistant/core/tree/dev/homeassistant/components/fritz)**: The official Fritz!Box integration, which served as the gold standard for feature parity, particularly regarding the robust `device_tracker` scanner implementation and multi-platform architecture.
 

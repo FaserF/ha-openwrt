@@ -8,15 +8,17 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import re
 import time
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_MANUFACTURER, CONF_HOST
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
     device_registry as dr,
@@ -44,10 +46,12 @@ from .api.ubus import (
     UbusTimeoutError,
 )
 from .const import (
+    ATTR_MANUFACTURER,
     CONF_ASU_URL,
     CONF_CONNECTION_TYPE,
     CONF_CUSTOM_FIRMWARE_REPO,
     CONF_DHCP_SOFTWARE,
+    CONF_MQTT_PRESENCE,
     CONF_PASSWORD,
     CONF_PORT,
     CONF_SKIP_RANDOM_MAC,
@@ -75,11 +79,14 @@ from .helpers import (
     format_ap_name,
     is_random_mac,
 )
+from .helpers.mac_vendor import get_mac_vendor_info
 from .repairs import (
     async_create_auth_repair,
     async_create_connection_lost_repair,
     async_create_missing_packages_repair,
+    async_create_stale_permissions_repair,
     async_delete_connection_lost_repair,
+    async_delete_stale_permissions_repair,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -105,7 +112,7 @@ SNAPSHOT_TARGET_MAP = {
 }
 
 
-def create_client(config: dict[str, Any]) -> OpenWrtClient:
+def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
     """Create the appropriate API client based on configuration."""
     connection_type = config.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_UBUS)
     host = config[CONF_HOST]
@@ -176,10 +183,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self.hass = hass
         self.config_entry = config_entry
         self._firmware_checked = False
-        self._last_firmware_check: float = 0.0
+        self._last_firmware_check: float = -86400.0  # Force check on startup
         self._last_update_time: float = 0.0
         self._device_history: dict[str, dict[str, Any]] = {}
         self._prev_network_stats: dict[str, dict[str, int]] = {}
+        self._mqtt_discovered: set[str] = set()
         # Interface name to stable identifier mapping (for AP devices)
         self.interface_to_stable_id: dict[str, str] = {}
         self.router_id = (
@@ -230,11 +238,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
                 # Also try an initial data fetch to populate the coordinator
                 self.data = await self.client.get_all_data()
-                if self.data and self.data.device_info:
-                    self.data.firmware_current_version = (
-                        self.data.device_info.firmware_version
-                        or self.data.device_info.release_version
-                    )
+                if self.data:
+                    if self.data.device_info:
+                        self.data.firmware_current_version = (
+                            self.data.device_info.firmware_version
+                            or self.data.device_info.release_version
+                        )
+                    # Crucial: Populate interface mappings and register devices BEFORE platforms load
+                    await self._async_update_device_registry(self.data)
+
                 self.last_update_success = True
                 _LOGGER.info("Successfully connected to OpenWrt device")
                 break
@@ -288,7 +300,69 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         except Exception as err:
             _LOGGER.warning("Could not save persistent history: %s", err)
 
+        # 8. Check for stale permissions
+        self._async_check_stale_permissions(data)
+
+        # 9. Fetch MQTT presence status if enabled
+        if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+            try:
+                await self._async_fetch_mqtt_presence_data(data)
+            except Exception as err:
+                _LOGGER.debug("MQTT presence data fetch failed: %s", err)
+
         return data
+
+    async def _async_fetch_mqtt_presence_data(self, data: OpenWrtData) -> None:
+        """Fetch MQTT presence status and logs if enabled."""
+        try:
+            status_output = await self.client.execute_command(
+                "/etc/init.d/presence_hostapd status 2>/dev/null"
+            )
+            data.mqtt_presence_status = (
+                status_output.strip() if status_output else "stopped"
+            )
+
+            # Optimized log fetch: tail first, then grep
+            logs_output = await self.client.execute_command(
+                "logread | tail -n 100 | grep presence_event | tail -n 10"
+            )
+            data.mqtt_presence_logs = logs_output.splitlines() if logs_output else []
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch MQTT presence data: %s", err)
+            data.mqtt_presence_status = "error"
+            data.mqtt_presence_logs = [str(err)]
+
+    def _async_check_stale_permissions(self, data: OpenWrtData) -> None:
+        """Check if the homeassistant user has stale permissions."""
+        if self.config_entry.data.get(CONF_USERNAME) != "homeassistant":
+            return
+
+        # Identify missing but expected permissions based on detected packages
+        perms = data.permissions
+        packages = data.packages
+
+        stale = False
+        # We check for core features that indicate the 'homeassistant' user needs more rights
+        # than what were granted during its creation.
+        if packages.wireless and not perms.read_wireless:
+            stale = True
+        elif packages.mwan3 and not perms.read_mwan:
+            stale = True
+        elif packages.sqm_scripts and not perms.read_sqm:
+            stale = True
+        elif packages.adblock and not perms.read_services:
+            stale = True
+        elif packages.nlbwmon and not perms.read_network:
+            # nlbwmon needs network access
+            stale = True
+
+        if stale:
+            _LOGGER.debug(
+                "Detected stale permissions for 'homeassistant' user, creating repair issue"
+            )
+            async_create_stale_permissions_repair(self.hass, self.config_entry)
+        else:
+            async_delete_stale_permissions_repair(self.hass, self.config_entry)
 
     async def _async_fetch_all_data(self) -> OpenWrtData:
         """Fetch all data from the client with retry logic."""
@@ -456,6 +530,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             ):
                 continue
 
+            # 5. Handle MQTT Discovery if enabled
+            if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+                await self._async_discovery_mqtt_device(mac, device.hostname or mac)
+
             filtered_devices.append(device)
 
             _LOGGER.debug(
@@ -535,6 +613,119 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         if history_updated:
             await self._store.async_save(self._device_history)
+
+        # 6. Handle MQTT Discovery (Start or Cleanup)
+        is_mqtt_enabled = self.config_entry.options.get(CONF_MQTT_PRESENCE, False)
+        discovery_started = getattr(self, "_mqtt_discovery_started", False)
+
+        if is_mqtt_enabled and not discovery_started:
+            self._mqtt_discovery_started = True
+            self.hass.async_create_task(self._async_discovery_loop(clean=False))
+        elif not is_mqtt_enabled and discovery_started:
+            # If it was previously started but now disabled, cleanup
+            self._mqtt_discovery_started = False
+            self.hass.async_create_task(self._async_discovery_loop(clean=True))
+
+    async def _async_discovery_loop(self, clean: bool = False) -> None:
+        """Loop through history and discover or cleanup devices for MQTT."""
+        # Wait for MQTT service to be available (max 60s)
+        for _ in range(12):
+            if self.hass.services.has_service("mqtt", "publish"):
+                break
+            _LOGGER.debug("MQTT service not ready, waiting...")
+            await asyncio.sleep(5)
+        else:
+            _LOGGER.warning("MQTT service not available after 60s, operation aborted")
+            return
+
+        _LOGGER.debug(
+            "%s MQTT discovery for %d devices",
+            "Cleaning up" if clean else "Starting",
+            len(self._device_history),
+        )
+        for mac, hist_data in list(self._device_history.items()):
+            # Always cleanup legacy topics to be sure
+            await self._async_discovery_mqtt_device_cleanup(mac)
+
+            if not clean:
+                await self._async_discovery_mqtt_device(
+                    mac, hist_data.get("hostname") or mac
+                )
+
+            # Small delay between discovery calls to avoid flooding
+            await asyncio.sleep(0.05)
+        _LOGGER.debug("MQTT discovery loop finished")
+
+    async def _async_discovery_mqtt_device_cleanup(self, mac: str) -> None:
+        """Remove legacy MQTT discovery messages for a device tracker."""
+        mac_safe = mac.replace(":", "_")
+
+        # Cleanup all legacy patterns we might have used
+        legacy_topics = [
+            f"homeassistant/device_tracker/{self.router_id}_{mac_safe}/config",
+            f"homeassistant/device_tracker/openwrt_{mac_safe}/config",
+            f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config",
+        ]
+
+        for topic in legacy_topics:
+            try:
+                await self.hass.services.async_call(
+                    "mqtt",
+                    "publish",
+                    {
+                        "topic": topic,
+                        "payload": "",
+                        "retain": True,
+                    },
+                )
+            except Exception:
+                pass
+
+        if mac in self._mqtt_discovered:
+            self._mqtt_discovered.remove(mac)
+
+    async def _async_discovery_mqtt_device(self, mac: str, hostname: str) -> None:
+        """Send MQTT discovery message for a device tracker."""
+        if mac in self._mqtt_discovered:
+            return
+
+        mac_safe = mac.replace(":", "_")
+        discovery_topic = f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config"
+        _LOGGER.debug(
+            "Sending MQTT discovery for %s (%s) to %s", hostname, mac, discovery_topic
+        )
+
+        payload = {
+            "name": f"{hostname} MQTT",
+            "state_topic": f"presence/{mac_safe}",
+            "unique_id": f"openwrt_track_{mac_safe}",
+            "payload_home": "home",
+            "payload_not_home": "not_home",
+            "source_type": "router",
+            "device": {
+                "connections": [["mac", mac]],
+                "identifiers": [f"openwrt_{mac}"],
+                "name": hostname,
+                "via_device": self.router_id,
+            },
+        }
+
+        try:
+            await self.hass.services.async_call(
+                "mqtt",
+                "publish",
+                {
+                    "topic": discovery_topic,
+                    "payload": json.dumps(payload),
+                    "retain": True,
+                },
+            )
+            self._mqtt_discovered.add(mac)
+            _LOGGER.info(
+                "Sent MQTT discovery for %s (%s) to %s", hostname, mac, discovery_topic
+            )
+        except Exception as err:
+            _LOGGER.error("Failed to send MQTT discovery for %s: %s", mac, err)
 
     def _get_own_macs(self, data: OpenWrtData) -> set[str]:
         """Collect all MAC addresses belonging to the router itself."""
@@ -660,7 +851,61 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 via_device=(DOMAIN, self.router_id),
             )
 
-        # 3. Cleanup orphaned devices
+        # 3. Retroactively update manufacturer/model for already-registered tracked devices.
+        # HA only writes manufacturer/model at first creation; subsequent coordinator polls
+        # are ignored unless we call async_update_device() explicitly. This loop fixes all
+        # devices that were registered before the OUI mapping was added or that were created
+        # with the generic "OpenWrt" / "Tracked device" defaults.
+        mac_pattern = re.compile(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", re.IGNORECASE)
+        for dev in device_registry.devices.values():
+            # Only touch devices that belong to our specific config entry
+            if self.config_entry.entry_id not in dev.config_entries:
+                continue
+
+            # Skip the root router device itself and merged/auxiliary entries
+            if dev.via_device_id is None or dev.hidden_by is not None or dev.entry_type is not None:
+                continue
+
+            # Only proceed if the device still has placeholder manufacturer/model
+            if not (
+                dev.manufacturer in (None, "OpenWrt", "by OpenWrt", "manufacturer")
+                or dev.model in (None, "Tracked device", "model")
+            ):
+                continue
+
+            for ident in dev.identifiers:
+                if ident[0] != DOMAIN:
+                    continue
+                ident_str = str(ident[1])
+                if not mac_pattern.match(ident_str):
+                    continue
+
+                vendor_info = get_mac_vendor_info(ident_str)
+                if not vendor_info:
+                    break
+
+                new_manufacturer, new_model = vendor_info
+                # Only write if the values differ from the current ones
+                if (
+                    dev.manufacturer != new_manufacturer
+                    or dev.model != new_model
+                ):
+                    _LOGGER.debug(
+                        "Updating tracked device %s: manufacturer %s -> %s, model %s -> %s",
+                        ident_str,
+                        dev.manufacturer,
+                        new_manufacturer,
+                        dev.model,
+                        new_model,
+                    )
+                    device_registry.async_update_device(
+                        dev.id,
+                        manufacturer=new_manufacturer,
+                        model=new_model,
+                    )
+                break
+
+        # 4. Cleanup orphaned devices
         # We scan the ENTIRE registry for devices that belong to this router
         # but are no longer active. This catches ghosts from previous installations.
         active_identifiers = {(DOMAIN, self.router_id)}

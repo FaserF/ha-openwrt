@@ -54,12 +54,15 @@ if ! id "$USER" >/dev/null 2>&1; then
     else
         # Manual fallback for minimal systems
         mkdir -p "/home/$USER"
-        if ! echo "$USER:x:1001:1001:HomeAssistant:/home/$USER:/bin/ash" >> /etc/passwd; then
+        # Use GID 0 (root) for better system access on some firmwares
+        if ! echo "$USER:x:1001:0:HomeAssistant:/home/$USER:/bin/ash" >> /etc/passwd; then
             echo "ANALYSIS: PASSWD_WRITE_FAILED"
             echo "LOG: FAIL: could not write to /etc/passwd"
             exit 1
         fi
         echo "$USER:x:1001:" >> /etc/group
+        # Ensure user is in root group
+        grep -q "^root:.*$USER" /etc/group || sed -i "s/^root:x:0:/root:x:0:$USER,/" /etc/group
     fi
 else
     # Update existing user to have valid shell
@@ -112,17 +115,18 @@ if ! cat <<EOF > "$ACL_FILE"
                 "system": ["info", "board", "logread", "upgrade"],
                 "log": ["read"],
                 "network": ["*"],
-                "network.interface": ["dump", "status"],
-                "network.device": ["status"],
-                "network.wireless": ["status"],
-                "iwinfo": ["info", "assoclist", "txpowerlist", "scan", "devices"],
-                "file": ["read", "stat", "list"],
-                "firewall": ["status"],
-                "rc": ["list"],
-                "service": ["list"],
-                "uci": ["get", "state"],
-                "session": ["list"],
-                "hostapd.*": ["get_clients"],
+                "network.*": ["*"],
+                "iwinfo": ["*"],
+                "file": ["*"],
+                "firewall": ["*"],
+                "rc": ["*"],
+                "service": ["*"],
+                "system": ["*"],
+                "uci": ["*"],
+                "session": ["*"],
+                "hostapd.*": ["*"],
+                "luci": ["*"],
+                "luci-rpc": ["*"],
                 "attendedsysupgrade": ["*"]
             }},
             "uci": ["*"],
@@ -150,6 +154,8 @@ if ! cat <<EOF > "$ACL_FILE"
                 "/sbin/ip": ["read", "stat", "exec"],
                 "/usr/sbin/ip": ["read", "stat", "exec"],
                 "/bin/ubus": ["read", "stat", "exec"],
+                "/bin/ping": ["read", "stat", "exec"],
+                "/usr/bin/ping": ["read", "stat", "exec"],
                 "/usr/bin/uptime": ["read", "stat", "exec"],
                 "/proc/stat": ["read"],
                 "/proc/meminfo": ["read"],
@@ -286,37 +292,69 @@ class WirelessInterface:
     width: str = ""  # 20 MHz, 40 MHz, 80 MHz, 160 MHz, 320 MHz
     standard: str = ""  # 802.11n/ac/ax/be
 
+    @staticmethod
+    def _band_from_raw(raw: str) -> str:
+        """Normalise raw band/frequency/hwmode strings to a human-readable band.
+
+        Handles:
+        - OpenWrt new-style short strings: '2g', '5g', '6g'
+        - Legacy hwmode strings: 'b', 'g', 'bg', 'a', 'ac', 'ax'
+        - Raw frequency values in MHz: '2412', '5180', '6135'
+        - Already normalised strings: '2.4 GHz', '5 GHz', '6 GHz'
+        """
+        if not raw:
+            return ""
+        s = str(raw).lower().strip()
+        # Already normalised
+        if "ghz" in s:
+            if "2.4" in s:
+                return "2.4 GHz"
+            if "6" in s:
+                return "6 GHz"
+            if "5" in s:
+                return "5 GHz"
+        # Short OpenWrt band keys: 2g, 5g, 6g
+        if s in ("2g", "2.4g"):
+            return "2.4 GHz"
+        if s == "5g":
+            return "5 GHz"
+        if s == "6g":
+            return "6 GHz"
+        # Legacy hwmode strings
+        if any(x in s for x in ("11b", "11g", "bg", "bgn")):
+            return "2.4 GHz"
+        if any(x in s for x in ("11a", "ac", "11ac")):
+            return "5 GHz"
+        if "11ax" in s or "ax" in s:
+            return ""  # ax is ambiguous without frequency
+        # Raw numeric frequency in MHz or GHz
+        digits = s.replace(".", "", 1)
+        if digits.isdigit():
+            freq = float(s)
+            if 2000 <= freq <= 3000:
+                return "2.4 GHz"
+            if 4900 <= freq <= 5900:
+                return "5 GHz"
+            if 5900 < freq <= 7200:
+                return "6 GHz"
+            # Frequency given in GHz (e.g. '2.412')
+            if 2.0 <= freq <= 3.0:
+                return "2.4 GHz"
+            if 4.9 <= freq <= 5.9:
+                return "5 GHz"
+            if 5.9 < freq <= 7.2:
+                return "6 GHz"
+        return ""
+
     def __post_init__(self) -> None:
         """Post-process wireless data."""
         if not self.band:
-            if self.frequency:
-                freq_str = str(self.frequency).lower()
-                if "2.4" in freq_str or (
-                    freq_str.replace(".", "").isdigit()
-                    and 2000 <= float(freq_str) <= 3000
-                ):
-                    self.band = "2.4 GHz"
-                elif "5" in freq_str or (
-                    freq_str.replace(".", "").isdigit()
-                    and 4900 <= float(freq_str) <= 5900
-                ):
-                    self.band = "5 GHz"
-                elif "6" in freq_str or (
-                    freq_str.replace(".", "").isdigit()
-                    and 5900 < float(freq_str) <= 7200
-                ):
-                    self.band = "6 GHz"
-
-            if not self.band and self.hwmode:
-                mode = self.hwmode.lower()
-                if any(x in mode for x in ["b", "g"]):
-                    self.band = "2.4 GHz"
-                elif any(x in mode for x in ["a", "ac"]):
-                    self.band = "5 GHz"
-                elif "ax" in mode:
-                    # ax can be both, but usually 5GHz on OpenWrt routers
-                    # unless it's specifically radio0/1 check
-                    pass
+            # Prefer frequency (most accurate), then hwmode, then the radio's band field
+            for raw in (self.frequency, self.hwmode):
+                resolved = self._band_from_raw(raw)
+                if resolved:
+                    self.band = resolved
+                    break
 
 
 @dataclass
@@ -819,6 +857,8 @@ class OpenWrtData:
     sqm: list[SqmStatus] = field(default_factory=list)
     packages: OpenWrtPackages = field(default_factory=OpenWrtPackages)
     permissions: OpenWrtPermissions = field(default_factory=OpenWrtPermissions)
+    mqtt_presence_status: str | None = None
+    mqtt_presence_logs: list[str] | None = None
 
 
 @dataclass
@@ -1463,26 +1503,46 @@ class OpenWrtClient(abc.ABC):
         """Enable/disable the ban-ip service."""
         return False
 
-    async def get_latency(self, target: str = "8.8.8.8") -> LatencyResult:
+    async def get_latency(self, target: str = "8.8.8.8") -> LatencyResult | None:
         """Measure network latency via ping."""
-        result = LatencyResult(target=target)
         try:
             output = await self.execute_command(f"ping -c 3 -W 2 {target}")
-            if output:
-                result.available = True
-                # Parse avg from "min/avg/max/mdev = x/y/z/w ms"
-                for line in output.splitlines():
-                    if "min/avg/max" in line:
-                        stats = line.split("=")[-1].strip().split("/")
-                        if len(stats) >= 2:
-                            result.latency_ms = round(float(stats[1]), 1)
-                    if "packet loss" in line:
-                        match = re.search(r"(\d+)%", line)
-                        if match:
-                            result.packet_loss = float(match.group(1))
+            if not output:
+                _LOGGER.debug("Ping command returned no output for %s", target)
+                return None
+
+            result = LatencyResult(target=target)
+            # We got some output, so the command itself is available
+            result.available = True
+            _LOGGER.debug("Ping output for %s: %s", target, output)
+
+            # Parse avg from "min/avg/max/mdev = x/y/z/w ms" or similar
+            # We use a regex that looks for the slash-separated numbers
+            stats_match = re.search(
+                r"(\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+)/(\d+\.\d+)", output
+            )
+            if stats_match:
+                # stats_match.group(2) is avg
+                result.latency_ms = round(float(stats_match.group(2)), 1)
+            else:
+                # Fallback for simpler ping versions: "round-trip min/avg/max = 1.2/3.4/5.6 ms"
+                # or even "1 packets transmitted, 1 packets received, 0% packet loss"
+                stats_match = re.search(r"=\s*([0-9.]+)/([0-9.]+)/([0-9.]+)", output)
+                if stats_match:
+                    result.latency_ms = round(float(stats_match.group(2)), 1)
+
+            # Parse packet loss: "0% packet loss"
+            loss_match = re.search(r"(\d+)%\s*packet\s*loss", output, re.IGNORECASE)
+            if loss_match:
+                result.packet_loss = float(loss_match.group(1))
+
+            if result.latency_ms is None:
+                return None
+
+            return result
         except Exception as err:
-            _LOGGER.debug("Latency check failed: %s", err)
-        return result
+            _LOGGER.debug("Latency check failed for %s: %s", target, err)
+            return None
 
     async def create_backup(self) -> str:
         """Create a configuration backup on the router. Returns the backup file path on the router."""

@@ -40,6 +40,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtData, StorageUsage
 from .const import (
+    CONF_MQTT_PRESENCE,
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
@@ -159,7 +160,7 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
             name=name_label,
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, router_id),
+            via_device=(DOMAIN, coordinator.router_id),
         )
         self._attr_translation_placeholders = {"iface": iface_name}
 
@@ -447,7 +448,7 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
         ),
         OpenWrtSensorDescription(
             key="load_1min",
-            name="Load (1m)",
+            name="System Load (1m)",
             translation_key="load_1min",
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -456,7 +457,7 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
         ),
         OpenWrtSensorDescription(
             key="load_5min",
-            name="Load (5m)",
+            name="System Load (5m)",
             translation_key="load_5min",
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -466,7 +467,7 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
         ),
         OpenWrtSensorDescription(
             key="load_15min",
-            name="Load (15m)",
+            name="System Load (15m)",
             translation_key="load_15min",
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -479,11 +480,10 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             name="Uptime",
             translation_key="uptime",
             device_class=SensorDeviceClass.DURATION,
-            native_unit_of_measurement=UnitOfTime.MINUTES,
+            native_unit_of_measurement=UnitOfTime.SECONDS,
             state_class=SensorStateClass.TOTAL_INCREASING,
             entity_category=EntityCategory.DIAGNOSTIC,
-            suggested_display_precision=1,
-            value_fn=lambda data: round(data.system_resources.uptime / 60, 1),
+            value_fn=lambda data: data.system_resources.uptime,
             attrs_fn=lambda data: {
                 "days": data.system_resources.uptime // 86400,
                 "hours": (data.system_resources.uptime % 86400) // 3600,
@@ -526,6 +526,19 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
                 "used_mb": _bytes_to_mb(data.system_resources.filesystem_used),
                 "free_mb": _bytes_to_mb(data.system_resources.filesystem_free),
             },
+        ),
+        OpenWrtSensorDescription(
+            key="filesystem_free",
+            name="Filesystem Free",
+            translation_key="filesystem_free",
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+            device_class=SensorDeviceClass.DATA_SIZE,
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
+            suggested_display_precision=1,
+            value_fn=lambda data: _bytes_to_mb(data.system_resources.filesystem_free),
+            available_fn=lambda data: data.system_resources.filesystem_total > 0,
         ),
         OpenWrtSensorDescription(
             key="kernel_version",
@@ -1329,32 +1342,35 @@ def _async_setup_storage_sensors(
         OpenWrtStorageSensorDescription(
             key="storage_total",
             translation_key="mount_storage_total",
-            native_unit_of_measurement=UnitOfInformation.BYTES,
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
-            value_fn=lambda usage: usage.total,
+            suggested_display_precision=1,
+            value_fn=lambda usage: _bytes_to_mb(usage.total),
         ),
         OpenWrtStorageSensorDescription(
             key="storage_used",
             translation_key="mount_storage_used",
-            native_unit_of_measurement=UnitOfInformation.BYTES,
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
-            value_fn=lambda usage: usage.used,
+            suggested_display_precision=1,
+            value_fn=lambda usage: _bytes_to_mb(usage.used),
         ),
         OpenWrtStorageSensorDescription(
             key="storage_free",
             translation_key="mount_storage_free",
-            native_unit_of_measurement=UnitOfInformation.BYTES,
+            native_unit_of_measurement=UnitOfInformation.MEGABYTES,
             device_class=SensorDeviceClass.DATA_SIZE,
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
-            value_fn=lambda usage: usage.free,
+            suggested_display_precision=1,
+            value_fn=lambda usage: _bytes_to_mb(usage.free),
         ),
         OpenWrtStorageSensorDescription(
             key="storage_usage",
@@ -1363,6 +1379,7 @@ def _async_setup_storage_sensors(
             state_class=SensorStateClass.MEASUREMENT,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
+            suggested_display_precision=1,
             value_fn=lambda usage: usage.percent,
         ),
     ]
@@ -1397,7 +1414,7 @@ def _async_setup_wireless_sensors(
         if not wifi.name:
             continue
         # Use signal as a representative key for the group of sensors created by _create_wifi_sensors
-        key = f"wifi_{wifi.name}_signal"
+        key = f"wifi_{wifi.section or wifi.name}_signal"
         if key not in tracked_keys:
             tracked_keys.add(key)
             entities.extend(
@@ -1455,6 +1472,38 @@ def _async_setup_network_sensors(
                 ),
             )
         )
+
+    # Create MQTT presence status sensor conditionally
+    key = "mqtt_presence_status"
+    if entry.options.get(CONF_MQTT_PRESENCE, False) and key not in tracked_keys:
+        tracked_keys.add(key)
+        entities.append(
+            OpenWrtSensorEntity(
+                coordinator,
+                entry,
+                OpenWrtSensorDescription(
+                    key=key,
+                    name="MQTT Presence Status",
+                    translation_key="mqtt_presence_status",
+                    value_fn=lambda data: data.mqtt_presence_status,
+                    attrs_fn=lambda data: (
+                        {"logs": data.mqtt_presence_logs}
+                        if data.mqtt_presence_logs
+                        else {}
+                    ),
+                    available_fn=lambda data: data.mqtt_presence_status is not None,
+                    entity_category=EntityCategory.DIAGNOSTIC,
+                    icon="mdi:home-search",
+                ),
+            )
+        )
+
+    # Add network interface sensors
+    for iface in coordinator.data.network_interfaces:
+        key = f"net_iface_{iface.name}"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            entities.extend(_create_net_sensors(coordinator, entry, iface.name))
 
 
 def _async_setup_specialized_sensors(
@@ -1696,7 +1745,7 @@ def _create_wifi_base_sensors(
             coordinator,
             entry,
             OpenWrtSensorDescription(
-                key=f"wifi_{iface_name}_clients",
+                key=f"wifi_{section_id or iface_name}_clients",
                 translation_key="wifi_clients",
                 name=f"{label} Clients",
                 state_class=SensorStateClass.MEASUREMENT,
@@ -1732,7 +1781,7 @@ def _create_wifi_base_sensors(
                 coordinator,
                 entry,
                 OpenWrtSensorDescription(
-                    key=f"wifi_{iface_name}_{key}",
+                    key=f"wifi_{section_id or iface_name}_{key}",
                     translation_key=tkey,
                     name=f"{label} {name}",
                     native_unit_of_measurement="dBm" if key == "txpower" else None,
@@ -1773,7 +1822,7 @@ def _create_wifi_station_sensors(
             coordinator,
             entry,
             OpenWrtSensorDescription(
-                key=f"wifi_{iface_name}_signal",
+                key=f"wifi_{section_id or iface_name}_signal",
                 translation_key="wifi_signal",
                 name=f"{label} Signal",
                 native_unit_of_measurement="dBm",
@@ -1824,7 +1873,7 @@ def _create_wifi_station_sensors(
                 coordinator,
                 entry,
                 OpenWrtSensorDescription(
-                    key=f"wifi_{iface_name}_{key}",
+                    key=f"wifi_{section_id or iface_name}_{key}",
                     translation_key=tkey,
                     name=f"{label} {name}",
                     native_unit_of_measurement=unit,
@@ -2109,20 +2158,16 @@ def _create_net_status_sensors(
                 translation_key="net_uptime",
                 translation_placeholders={"interface": iface_name},
                 device_class=SensorDeviceClass.DURATION,
-                native_unit_of_measurement=UnitOfTime.MINUTES,
+                native_unit_of_measurement=UnitOfTime.SECONDS,
                 state_class=SensorStateClass.TOTAL_INCREASING,
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
-                    (
-                        round(i.uptime / 60, 1)
-                        for i in data.network_interfaces
-                        if i.name == n
-                    ),
+                    (i.uptime for i in data.network_interfaces if i.name == n),
                     None,
                 ),
                 available_fn=lambda data, n=iface_name: any(
-                    i.name == n and i.uptime > 0 for i in data.network_interfaces
+                    i.name == n for i in data.network_interfaces
                 ),
             ),
         )
