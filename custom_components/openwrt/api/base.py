@@ -857,6 +857,8 @@ class OpenWrtData:
     sqm: list[SqmStatus] = field(default_factory=list)
     packages: OpenWrtPackages = field(default_factory=OpenWrtPackages)
     permissions: OpenWrtPermissions = field(default_factory=OpenWrtPermissions)
+    mqtt_presence_status: str | None = None
+    mqtt_presence_logs: list[str] | None = None
 
 
 @dataclass

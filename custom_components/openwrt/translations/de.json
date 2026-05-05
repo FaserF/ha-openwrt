@@ -519,6 +519,9 @@
       "dhcp_lease_count": {
         "name": "DHCP Leases"
       },
+      "mqtt_presence_status": {
+        "name": "MQTT Presence Status"
+      },
       "wan_latency": {
         "name": "WAN Latenz"
       },

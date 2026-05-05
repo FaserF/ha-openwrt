@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import re
 import time
@@ -50,6 +51,7 @@ from .const import (
     CONF_CONNECTION_TYPE,
     CONF_CUSTOM_FIRMWARE_REPO,
     CONF_DHCP_SOFTWARE,
+    CONF_MQTT_PRESENCE,
     CONF_PASSWORD,
     CONF_PORT,
     CONF_SKIP_RANDOM_MAC,
@@ -181,10 +183,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self.hass = hass
         self.config_entry = config_entry
         self._firmware_checked = False
-        self._last_firmware_check: float = 0.0
+        self._last_firmware_check: float = -86400.0  # Force check on startup
         self._last_update_time: float = 0.0
         self._device_history: dict[str, dict[str, Any]] = {}
         self._prev_network_stats: dict[str, dict[str, int]] = {}
+        self._mqtt_discovered: set[str] = set()
         # Interface name to stable identifier mapping (for AP devices)
         self.interface_to_stable_id: dict[str, str] = {}
         self.router_id = (
@@ -300,7 +303,28 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # 8. Check for stale permissions
         self._async_check_stale_permissions(data)
 
+        # 9. Fetch MQTT presence status if enabled
+        if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+            try:
+                await self._async_fetch_mqtt_presence_data(data)
+            except Exception as err:
+                _LOGGER.debug("MQTT presence data fetch failed: %s", err)
+
         return data
+
+    async def _async_fetch_mqtt_presence_data(self, data: OpenWrtData) -> None:
+        """Fetch MQTT presence status and logs if enabled."""
+        try:
+            status_output = await self.client.execute_command("/etc/init.d/presence_hostapd status 2>/dev/null")
+            data.mqtt_presence_status = status_output.strip() if status_output else "stopped"
+
+            # Optimized log fetch: tail first, then grep
+            logs_output = await self.client.execute_command("logread | tail -n 100 | grep presence_event | tail -n 10")
+            data.mqtt_presence_logs = logs_output.splitlines() if logs_output else []
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch MQTT presence data: %s", err)
+            data.mqtt_presence_status = "error"
+            data.mqtt_presence_logs = [str(err)]
 
     def _async_check_stale_permissions(self, data: OpenWrtData) -> None:
         """Check if the homeassistant user has stale permissions."""
@@ -500,6 +524,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             ):
                 continue
 
+            # 5. Handle MQTT Discovery if enabled
+            if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+                await self._async_discovery_mqtt_device(mac, device.hostname or mac)
+
             filtered_devices.append(device)
 
             _LOGGER.debug(
@@ -579,6 +607,111 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         if history_updated:
             await self._store.async_save(self._device_history)
+
+        # 6. Handle MQTT Discovery (Start or Cleanup)
+        is_mqtt_enabled = self.config_entry.options.get(CONF_MQTT_PRESENCE, False)
+        discovery_started = getattr(self, "_mqtt_discovery_started", False)
+
+        if is_mqtt_enabled and not discovery_started:
+            self._mqtt_discovery_started = True
+            self.hass.async_create_task(self._async_discovery_loop(clean=False))
+        elif not is_mqtt_enabled and discovery_started:
+            # If it was previously started but now disabled, cleanup
+            self._mqtt_discovery_started = False
+            self.hass.async_create_task(self._async_discovery_loop(clean=True))
+
+    async def _async_discovery_loop(self, clean: bool = False) -> None:
+        """Loop through history and discover or cleanup devices for MQTT."""
+        # Wait for MQTT service to be available (max 60s)
+        for _ in range(12):
+            if self.hass.services.has_service("mqtt", "publish"):
+                break
+            _LOGGER.debug("MQTT service not ready, waiting...")
+            await asyncio.sleep(5)
+        else:
+            _LOGGER.warning("MQTT service not available after 60s, operation aborted")
+            return
+
+        _LOGGER.debug("%s MQTT discovery for %d devices", "Cleaning up" if clean else "Starting", len(self._device_history))
+        for mac, hist_data in list(self._device_history.items()):
+            # Always cleanup legacy topics to be sure
+            await self._async_discovery_mqtt_device_cleanup(mac)
+            
+            if not clean:
+                await self._async_discovery_mqtt_device(mac, hist_data.get("hostname") or mac)
+            
+            # Small delay between discovery calls to avoid flooding
+            await asyncio.sleep(0.05)
+        _LOGGER.debug("MQTT discovery loop finished")
+
+    async def _async_discovery_mqtt_device_cleanup(self, mac: str) -> None:
+        """Remove legacy MQTT discovery messages for a device tracker."""
+        mac_safe = mac.replace(":", "_")
+        router_id = self.router_id.replace(":", "")
+        
+        # Cleanup all legacy patterns we might have used
+        legacy_topics = [
+            f"homeassistant/device_tracker/{self.router_id}_{mac_safe}/config",
+            f"homeassistant/device_tracker/openwrt_{mac_safe}/config",
+            f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config",
+        ]
+        
+        for topic in legacy_topics:
+            try:
+                await self.hass.services.async_call(
+                    "mqtt",
+                    "publish",
+                    {
+                        "topic": topic,
+                        "payload": "",
+                        "retain": True,
+                    },
+                )
+            except Exception:
+                pass
+        
+        if mac in self._mqtt_discovered:
+            self._mqtt_discovered.remove(mac)
+
+    async def _async_discovery_mqtt_device(self, mac: str, hostname: str) -> None:
+        """Send MQTT discovery message for a device tracker."""
+        if mac in self._mqtt_discovered:
+            return
+
+        router_id = self.router_id.replace(":", "")
+        mac_safe = mac.replace(":", "_")
+        discovery_topic = f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config"
+        _LOGGER.debug("Sending MQTT discovery for %s (%s) to %s", hostname, mac, discovery_topic)
+
+        payload = {
+            "name": f"{hostname} MQTT",
+            "state_topic": f"presence/{mac_safe}",
+            "unique_id": f"openwrt_track_{mac_safe}",
+            "payload_home": "home",
+            "payload_not_home": "not_home",
+            "source_type": "router",
+            "device": {
+                "connections": [["mac", mac]],
+                "identifiers": [f"openwrt_{mac}"],
+                "name": hostname,
+                "via_device": self.router_id,
+            }
+        }
+
+        try:
+            await self.hass.services.async_call(
+                "mqtt",
+                "publish",
+                {
+                    "topic": discovery_topic,
+                    "payload": json.dumps(payload),
+                    "retain": True,
+                },
+            )
+            self._mqtt_discovered.add(mac)
+            _LOGGER.info("Sent MQTT discovery for %s (%s) to %s", hostname, mac, discovery_topic)
+        except Exception as err:
+            _LOGGER.error("Failed to send MQTT discovery for %s: %s", mac, err)
 
     def _get_own_macs(self, data: OpenWrtData) -> set[str]:
         """Collect all MAC addresses belonging to the router itself."""

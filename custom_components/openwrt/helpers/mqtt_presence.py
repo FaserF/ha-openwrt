@@ -44,6 +44,18 @@ async def async_deploy_mqtt_presence(
         # 1. Ensure directory exists
         await client.execute_command("mkdir -p /etc/presence")
 
+        # Discover active wireless interfaces to configure presence.conf
+        ifaces_output = await client.execute_command("ls -1 /var/run/hostapd/ 2>/dev/null || true")
+        valid_ifaces = []
+        if ifaces_output:
+            for line in ifaces_output.splitlines():
+                line = line.strip()
+                if line and line != "global" and "No such file" not in line:
+                    valid_ifaces.append(line)
+        
+        ifaces_str = " ".join(valid_ifaces) if valid_ifaces else "wl0-ap0 wl1-ap0"
+
+
         # 2. Download and write each file
         for file_path in FILES_TO_DEPLOY:
             url = f"{REPO_URL}/{file_path}"
@@ -70,6 +82,35 @@ async def async_deploy_mqtt_presence(
                     f'PASS="{escape_shell_value(mqtt_config["password"])}"',
                 )
 
+            # Apply IFACES config and enable DEBUG to etc/presence/presence.conf
+            if file_path == "etc/presence/presence.conf":
+                content = content.replace('DEBUG=0', 'DEBUG=1')
+                if valid_ifaces:
+                    content = content.replace(
+                        'IFACES="wl0-ap0 wl1-ap0"',
+                        f'IFACES="{ifaces_str}"',
+                    )
+
+            # Patch presence_event.sh to auto-publish all devices and use unique client IDs
+            if file_path == "etc/presence/presence_event.sh":
+                # Auto-topic fallback
+                content = content.replace(
+                    '[ -n "$TOPIC" ] || exit 0',
+                    'if [ -z "$TOPIC" ]; then SAFE_MAC=$(echo "$MAC" | tr ":" "_"); TOPIC="presence/${SAFE_MAC}"; fi'
+                )
+                # Unique Client ID per interface to avoid "session taken over"
+                content = content.replace(
+                    '-i "ap-presence-$HOST_ID"',
+                    '-i "ap-presence-$HOST_ID-$IFACE"'
+                )
+
+            # Patch init script to use unique instance names for multiple interfaces
+            if file_path == "etc/init.d/presence_hostapd":
+                content = content.replace(
+                    'procd_open_instance',
+                    'procd_open_instance "$IFACE"'
+                )
+
             # Write file to router via heredoc for robustness
             cmd = f"cat <<'EOF' > /{file_path}\n{content}\nEOF"
 
@@ -93,6 +134,8 @@ async def async_deploy_mqtt_presence(
 
         # Start/Enable service
         await client.execute_command("/etc/init.d/presence_hostapd enable")
+        # Kill old instances and restart service
+        await client.execute_command("killall -9 hostapd_cli 2>/dev/null || true")
         await client.execute_command("/etc/init.d/presence_hostapd restart")
 
         return True, None

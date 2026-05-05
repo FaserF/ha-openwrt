@@ -2074,7 +2074,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 {
                     vol.Required(
                         CONF_MQTT_PRESENCE,
-                        default=current.get(CONF_MQTT_PRESENCE, False),
+                        default=True,
                     ): bool,
                     vol.Optional(
                         CONF_MQTT_BROKER,

@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_SSH_KEY, DATA_COORDINATOR, DOMAIN
+from .const import CONF_MQTT_PRESENCE, CONF_SSH_KEY, DATA_COORDINATOR, DOMAIN
 from .coordinator import OpenWrtDataCoordinator
 
 REDACT_KEYS = {
@@ -152,6 +152,11 @@ async def async_get_config_entry_diagnostics(
                 }
                 for p in data.system_resources.top_processes[:5]
             ]
+            if entry.options.get(CONF_MQTT_PRESENCE, False):
+                diag["mqtt_presence"] = {
+                    "status": data.mqtt_presence_status,
+                    "logs": data.mqtt_presence_logs,
+                }
         except Exception as err:
             diag["data_error"] = str(err)
 

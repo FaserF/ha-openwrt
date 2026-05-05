@@ -43,6 +43,7 @@ from .const import (
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_MQTT_PRESENCE,
     DATA_COORDINATOR,
     DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
@@ -159,7 +160,7 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
             name=name_label,
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, router_id),
+            via_device=(DOMAIN, coordinator.router_id),
         )
         self._attr_translation_placeholders = {"iface": iface_name}
 
@@ -1472,7 +1473,27 @@ def _async_setup_network_sensors(
             )
         )
 
-    # Interface Sensors
+    # Create MQTT presence status sensor conditionally
+    key = "mqtt_presence_status"
+    if entry.options.get(CONF_MQTT_PRESENCE, False) and key not in tracked_keys:
+        tracked_keys.add(key)
+        entities.append(
+            OpenWrtSensorEntity(
+                coordinator,
+                entry,
+                OpenWrtSensorDescription(
+                    key=key,
+                    translation_key="mqtt_presence_status",
+                    value_fn=lambda data: data.mqtt_presence_status,
+                    attrs_fn=lambda data: {"logs": data.mqtt_presence_logs} if data.mqtt_presence_logs else {},
+                    available_fn=lambda data: data.mqtt_presence_status is not None,
+                    entity_category=EntityCategory.DIAGNOSTIC,
+                    icon="mdi:home-search",
+                ),
+            )
+        )
+
+    # Add network interface sensors
     for iface in coordinator.data.network_interfaces:
         if iface.name not in tracked_keys:
             tracked_keys.add(iface.name)
