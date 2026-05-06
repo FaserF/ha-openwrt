@@ -73,6 +73,11 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
   - **UPnP Mappings**: Track active UPnP and NAT-PMP port forwardings.
   - **Refined Naming**: Routers are primarily identified by their product model (e.g. "Xiaomi AX3600") for a premium dashboard look.
   - **LLDP Neighbors**: Discover and monitor physical port connections via the LLDP protocol (if available on the router).
+- **Batman-adv Mesh Support**: 
+  - **Topology Overview**: Monitor mesh neighbors, originators (nodes), and gateways.
+  - **Link Quality**: Track Transmit Quality (TQ) sensors for each mesh neighbor.
+  - **Client Routing**: Automatically track which mesh node a mobile client is currently connected to.
+  - **Status**: Monitor mesh activity status.
 - **Optimized for Large Environments**: 
   - Parallel API calls and background platform loading prevent Home Assistant blocking warnings and ensure smooth startup even with 100+ devices.
 - **Native Experience**:
@@ -192,6 +197,8 @@ Some features require additional OpenWrt packages to be installed on your router
 | **etherwake** | Wake on LAN functionality |
 | **wireguard-tools** | WireGuard VPN Sensors |
 | **openvpn** | OpenVPN Sensors |
+| **kmod-batman-adv** | Batman-adv Mesh Support (Kernel module) |
+| **batctl-full** | Batman-adv Control (Required for mesh data) |
 
 ### 🛠️ Options Flow
 
@@ -822,6 +829,27 @@ The "Internet Access" switches in Home Assistant act as a toggle for the firewal
 
 ### Why are some Signal sensors hidden?
 The integration automatically hides "STA-style" sensors (Signal, Quality, Bitrate) if the WiFi interface is in **Master/AP mode**. These values only make sense when the router itself is acting as a client (Station) or Mesh node.
+
+### Does this work with devices behind other Access Points (e.g. Unifi, TP-Link)?
+**Yes, absolutely!** A common setup is an OpenWrt router (acting as the main gateway) connected to separate Access Points via LAN cable. 
+
+Even if the WiFi on your OpenWrt router is disabled, the integration can still track mobile devices (phones, tablets) connected to those external APs. It does this by monitoring two low-level system sources:
+- **ARP/Neighbor Table (`ip neigh`)**: Every device that communicates with the internet or the router itself must appear in the ARP table. The integration identifies these devices and marks them as "Home" as long as they are in an active state (`REACHABLE` or `STALE`).
+- **Bridge Forwarding Database (FDB)**: The router's internal bridge/switch learns which MAC address is active on which physical LAN port. This allows the integration to "see" devices even if they haven't sent a packet to the router's IP recently.
+
+From OpenWrt's perspective, these devices will appear as **"wired"** clients, but they will be correctly tracked as individual `device_tracker` entities in Home Assistant.
+
+### Why does it take 10 minutes for my device to show as "Away"?
+If your devices are connected via a separate Access Point or Switch, the OpenWrt router doesn't "see" them disconnect. It has to wait for the internal system tables to age out:
+1. **Bridge FDB aging**: Usually takes 5 minutes (300s).
+2. **ARP aging**: Usually takes another 1-2 minutes to transition to `STALE` and then `FAILED`.
+3. **HA Consider Home**: Home Assistant adds another 3 minutes (default) of grace period to prevent flickering.
+
+**How to speed this up:**
+In the integration **Options**, you can enable higher precision for presence detection:
+- **Trust ARP 'STALE' state**: If disabled, devices that the router hasn't verified recently will be marked as "Away" immediately. This can save several minutes but might cause "flickering" if a device is idle.
+- **Trust Bridge FDB**: If disabled, the integration will only rely on active ARP communication. This is the most responsive method but might miss devices that are only talking to other local devices.
+- **Consider Home**: Lower this value in the options flow (e.g. to 60 seconds).
 
 ## 🧑‍💻 Development
 

@@ -81,6 +81,8 @@ class SshClient(OpenWrtClient):
         verify_ssl: bool = False,
         ssh_key: str | None = None,
         dhcp_software: str = "auto",
+        trust_stale_arp: bool = True,
+        trust_bridge_fdb: bool = True,
     ) -> None:
         """Initialize the SSH client."""
         super().__init__(
@@ -91,6 +93,8 @@ class SshClient(OpenWrtClient):
             use_ssl,
             verify_ssl,
             dhcp_software,
+            trust_stale_arp,
+            trust_bridge_fdb,
         )
         self._ssh_key = ssh_key
         self._client: Any = None
@@ -1031,7 +1035,8 @@ class SshClient(OpenWrtClient):
             await self._add_wireless_devices_ubus_ssh(devices)
 
         # 4. Supplemental source: Bridge FDB (Forwarding Database)
-        await self._process_bridge_fdb(devices)
+        if self.trust_bridge_fdb:
+            await self._process_bridge_fdb(devices)
 
         return list(devices.values())
 
@@ -1067,6 +1072,7 @@ class SshClient(OpenWrtClient):
                             port = entry.get("port", "")
                             if port:
                                 dev.port = port
+                                dev.connected = True  # Seen on a physical port recently
                                 if not dev.is_wireless and not dev.interface:
                                     dev.interface = dev_name
                 except Exception:
@@ -1233,7 +1239,7 @@ class SshClient(OpenWrtClient):
                     mac=mac,
                     ip=lease.ip,
                     hostname=lease.hostname,
-                    connected=True,
+                    connected=False,  # DHCP alone is not proof of connectivity
                     is_wireless=False,
                     connection_type="wired",
                 )
@@ -1246,12 +1252,20 @@ class SshClient(OpenWrtClient):
         """Add or update devices discovered via IP neighbors (ARP)."""
         try:
             neighbors = await self.get_ip_neighbors()
+            active_states = ["REACHABLE", "DELAY", "PROBE", "PERMANENT"]
+            if self.trust_stale_arp:
+                active_states.append("STALE")
             for neigh in neighbors:
                 mac = neigh.mac.lower()
                 if not mac:
                     continue
+
+                is_active = neigh.state.upper() in active_states
+
                 if mac in devices:
                     dev = devices[mac]
+                    if is_active:
+                        dev.connected = True
                     if not dev.neighbor_state:
                         dev.neighbor_state = neigh.state
                     if not dev.interface:
@@ -1262,7 +1276,7 @@ class SshClient(OpenWrtClient):
                     mac=mac,
                     ip=neigh.ip,
                     interface=neigh.interface,
-                    connected=True,
+                    connected=is_active,
                     is_wireless=False,
                     connection_type="wired",
                     neighbor_state=neigh.state,
@@ -1531,6 +1545,7 @@ class SshClient(OpenWrtClient):
                 perms.write_access_control = True
                 perms.write_devices = True
                 perms.write_services = True
+                perms.read_batman = True
                 return perms
 
             # 1. Check UCI read access (very common baseline for non-root)
@@ -1557,7 +1572,15 @@ class SshClient(OpenWrtClient):
                 if "ESSID" in iwinfo_check:
                     perms.read_wireless = True
 
-            # 3. Write permissions
+            # 3. Check Batman access
+            if "batman-adv" in ubus_list:
+                perms.read_batman = True
+            elif not perms.read_batman:
+                bat_check = await self._exec("[ -d /sys/module/batman_adv ] && echo 1")
+                if bat_check.strip() == "1":
+                    perms.read_batman = True
+
+            # 4. Write permissions
             if is_root:
                 perms.write_system = True
                 perms.write_network = True
@@ -1616,8 +1639,8 @@ class SshClient(OpenWrtClient):
             "/usr/share/luci/menu.d/luci-mod-rpc.json "
             "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
             "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
-            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm /etc/init.d/odhcpd /etc/init.d/lldpd; do "
-            "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
+            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm /etc/init.d/odhcpd /etc/init.d/lldpd /usr/sbin/batctl /sys/module/batman_adv; do "
+            "if [ -f $f ] || [ -x $f ] || [ -d $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._exec(cmd)
         results = out.strip().splitlines()
@@ -1649,6 +1672,8 @@ class SshClient(OpenWrtClient):
             if "ipv4leases" not in dhcp_check:
                 packages.dhcp = False
         packages.lldp = detect(21)
+        packages.batctl = detect(22)
+        packages.batman_adv = detect(23)
 
         # Detect wireless via presence of iwinfo or ubus network.wireless
         if packages.iwinfo:
@@ -1672,7 +1697,7 @@ class SshClient(OpenWrtClient):
             "etherwake": "etherwake",
             "wireguard": "wireguard",
             "openvpn": "openvpn",
-            "luci_mod_rpc": "luci-mod-rpc",
+            "luci_mod_rpc": "luci-rpc",
             "asu": "luci-app-attendedsysupgrade",
             "adblock": "adblock",
             "simple_adblock": "simple-adblock",
@@ -1680,11 +1705,19 @@ class SshClient(OpenWrtClient):
             "dhcp": "odhcpd",
             "lldp": "lldpd",
             "wireless": "iwinfo",
+            "batman_adv": "kmod-batman-adv",
+            "batctl": "batctl",
         }
         for attr, pkg_name in mapping.items():
             if getattr(packages, attr) is not True:
-                if pkg_name in ("wireguard", "openvpn"):
+                if pkg_name in ("wireguard", "openvpn", "batctl"):
                     setattr(packages, attr, any(pkg_name in p for p in installed))
+                elif attr == "luci_mod_rpc":
+                    setattr(
+                        packages,
+                        attr,
+                        any(p in installed for p in ("luci-rpc", "luci-mod-rpc")),
+                    )
                 else:
                     setattr(packages, attr, pkg_name in installed)
 

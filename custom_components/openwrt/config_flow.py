@@ -79,6 +79,8 @@ from .const import (
     CONF_TARGET_OVERRIDE,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_TRUST_BRIDGE_FDB,
+    CONF_TRUST_STALE_ARP,
     CONF_UBUS_PATH,
     CONF_UPDATE_INTERVAL,
     CONF_USE_SSL,
@@ -93,6 +95,8 @@ from .const import (
     DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
+    DEFAULT_TRUST_BRIDGE_FDB,
+    DEFAULT_TRUST_STALE_ARP,
     DEFAULT_UBUS_PATH,
     DEFAULT_UPDATE_INTERVAL,
     DEFAULT_USE_SSL,
@@ -191,6 +195,10 @@ def _generate_permission_table(
     rows.append(
         f"| {t('permissions_sub_mwan3', 'MWAN3')} | {to_icon(perms.read_mwan)} | - | -"
     )
+    # Batman
+    rows.append(
+        f"| {t('permissions_sub_batman', 'Batman-adv')} | {to_icon(perms.read_batman)} | - | {get_missing(perms.read_batman, True, t('permissions_sub_batman', 'Batman-adv'), [])}"
+    )
 
     return header + "\n".join(rows)
 
@@ -254,7 +262,9 @@ def _generate_package_table(
         f"| **wireguard-tools** | {to_icon(packages.wireguard)} | {get_missing(packages.wireguard, 'WireGuard Sensors', 'wireguard')} |\n"
         f"| **openvpn** | {to_icon(packages.openvpn)} | {get_missing(packages.openvpn, 'OpenVPN Sensors', 'openvpn')} |\n"
         f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, 'luci_mod_rpc', required=luci_required)} |\n"
-        f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)', 'asu')} |"
+        f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)', 'asu')} |\n"
+        f"| **kmod-batman-adv** | {to_icon(packages.batman_adv)} | {get_missing(packages.batman_adv, 'Batman-adv Mesh', 'batman_adv')} |\n"
+        f"| **batctl** | {to_icon(packages.batctl)} | {get_missing(packages.batctl, 'Batman-adv Control (batctl)', 'batctl')} |"
     )
 
 
@@ -1903,6 +1913,16 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_REDEPLOY_MQTT,
                     default=False,
+                ): bool,
+                vol.Optional(
+                    CONF_TRUST_STALE_ARP,
+                    default=current.get(CONF_TRUST_STALE_ARP, DEFAULT_TRUST_STALE_ARP),
+                ): bool,
+                vol.Optional(
+                    CONF_TRUST_BRIDGE_FDB,
+                    default=current.get(
+                        CONF_TRUST_BRIDGE_FDB, DEFAULT_TRUST_BRIDGE_FDB
+                    ),
                 ): bool,
             },
         )

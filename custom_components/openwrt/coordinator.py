@@ -24,6 +24,9 @@ from homeassistant.helpers import (
     device_registry as dr,
 )
 from homeassistant.helpers import (
+    entity_registry as er,
+)
+from homeassistant.helpers import (
     storage,
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -57,6 +60,8 @@ from .const import (
     CONF_SKIP_RANDOM_MAC,
     CONF_SSH_KEY,
     CONF_TARGET_OVERRIDE,
+    CONF_TRUST_BRIDGE_FDB,
+    CONF_TRUST_STALE_ARP,
     CONF_UBUS_PATH,
     CONF_UPDATE_INTERVAL,
     CONF_USE_SSL,
@@ -122,6 +127,9 @@ def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
     verify_ssl = config.get(CONF_VERIFY_SSL, False)
     dhcp_software = config.get(CONF_DHCP_SOFTWARE, "auto")
 
+    trust_stale_arp = config.get(CONF_TRUST_STALE_ARP, True)
+    trust_bridge_fdb = config.get(CONF_TRUST_BRIDGE_FDB, True)
+
     _LOGGER.debug("Creating client for router (type: %s)", connection_type)
 
     if connection_type == CONNECTION_TYPE_SSH:
@@ -133,6 +141,8 @@ def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
             port=port,
             ssh_key=config.get(CONF_SSH_KEY),
             dhcp_software=dhcp_software,
+            trust_stale_arp=trust_stale_arp,
+            trust_bridge_fdb=trust_bridge_fdb,
         )
 
     if connection_type == CONNECTION_TYPE_LUCI_RPC:
@@ -148,6 +158,8 @@ def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
             use_ssl=use_ssl,
             verify_ssl=verify_ssl,
             dhcp_software=dhcp_software,
+            trust_stale_arp=trust_stale_arp,
+            trust_bridge_fdb=trust_bridge_fdb,
         )
 
     port = config.get(
@@ -163,6 +175,8 @@ def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
         verify_ssl=verify_ssl,
         ubus_path=config.get(CONF_UBUS_PATH, DEFAULT_UBUS_PATH),
         dhcp_software=dhcp_software,
+        trust_stale_arp=trust_stale_arp,
+        trust_bridge_fdb=trust_bridge_fdb,
     )
 
 
@@ -188,6 +202,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self._device_history: dict[str, dict[str, Any]] = {}
         self._prev_network_stats: dict[str, dict[str, int]] = {}
         self._mqtt_discovered: set[str] = set()
+        self._mqtt_discovery_started = False
+        self._mqtt_cleanup_done = False
         # Interface name to stable identifier mapping (for AP devices)
         self.interface_to_stable_id: dict[str, str] = {}
         self.router_id = (
@@ -615,19 +631,20 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             await self._store.async_save(self._device_history)
 
         # 6. Handle MQTT Discovery (Start or Cleanup)
-        is_mqtt_enabled = self.config_entry.options.get(CONF_MQTT_PRESENCE, False)
-        discovery_started = getattr(self, "_mqtt_discovery_started", False)
-
-        if is_mqtt_enabled and not discovery_started:
-            self._mqtt_discovery_started = True
-            self.hass.async_create_task(self._async_discovery_loop(clean=False))
-        elif not is_mqtt_enabled and discovery_started:
-            # If it was previously started but now disabled, cleanup
-            self._mqtt_discovery_started = False
-            self.hass.async_create_task(self._async_discovery_loop(clean=True))
+        # Initial MQTT discovery if enabled, or cleanup if disabled
+        if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+            if not self._mqtt_discovery_started:
+                self._mqtt_discovery_started = True
+                self.hass.async_create_task(self._async_discovery_loop(clean=False))
+        else:
+            # If MQTT is disabled, ensure we clean up at least once per coordinator instance
+            if not self._mqtt_cleanup_done:
+                self._mqtt_cleanup_done = True
+                self.hass.async_create_task(self._async_discovery_loop(clean=True))
 
     async def _async_discovery_loop(self, clean: bool = False) -> None:
         """Loop through history and discover or cleanup devices for MQTT."""
+        _LOGGER.debug("Starting MQTT discovery loop (clean=%s)", clean)
         # Wait for MQTT service to be available (max 60s)
         for _ in range(12):
             if self.hass.services.has_service("mqtt", "publish"):
@@ -654,20 +671,56 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
             # Small delay between discovery calls to avoid flooding
             await asyncio.sleep(0.05)
+
+        # Global registry cleanup (independent of device history)
+        if clean:
+            await self._async_global_registry_cleanup()
+
         _LOGGER.debug("MQTT discovery loop finished")
 
     async def _async_discovery_mqtt_device_cleanup(self, mac: str) -> None:
         """Remove legacy MQTT discovery messages for a device tracker."""
         mac_safe = mac.replace(":", "_")
+        mac_colons = mac.lower()
+        router_id_safe = self.router_id.replace(":", "_")
+
+        mac_no_colons = mac.replace(":", "").lower()
+        mac_6chars = mac_no_colons[-6:].upper()
 
         # Cleanup all legacy patterns we might have used
+        # IMPORTANT: Discovery topics MUST NOT contain colons
         legacy_topics = [
             f"homeassistant/device_tracker/{self.router_id}_{mac_safe}/config",
+            f"homeassistant/device_tracker/{router_id_safe}_{mac_safe}/config",
             f"homeassistant/device_tracker/openwrt_{mac_safe}/config",
-            f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config",
+            f"homeassistant/device_tracker/{mac_6chars}/config",
+            f"homeassistant/device_tracker/openwrt_{mac_6chars}/config",
         ]
 
         for topic in legacy_topics:
+            _LOGGER.debug("Clearing MQTT discovery topic: %s", topic)
+            try:
+                await self.hass.services.async_call(
+                    "mqtt",
+                    "publish",
+                    {
+                        "topic": topic,
+                        "payload": "",
+                        "retain": True,
+                    },
+                )
+            except Exception as err:
+                _LOGGER.debug("Failed to clear topic %s: %s", topic, err)
+
+        # Cleanup status topics too to clear retained messages
+        status_topics = [
+            f"presence/{mac_safe}",
+            f"presence/{mac_colons}",
+            f"openwrt/presence/{mac_safe}",
+            f"openwrt/presence/{mac_colons}",
+        ]
+        for topic in status_topics:
+            _LOGGER.debug("Clearing MQTT status topic: %s", topic)
             try:
                 await self.hass.services.async_call(
                     "mqtt",
@@ -683,6 +736,59 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         if mac in self._mqtt_discovered:
             self._mqtt_discovered.remove(mac)
+
+    async def _async_global_registry_cleanup(self) -> None:
+        """Scan ALL entities for MQTT zombies and remove them."""
+        _LOGGER.debug("Starting global MQTT registry cleanup")
+        ent_reg = er.async_get(self.hass)
+
+        # Get all known MAC formats from history
+        known_macs = set()
+        for mac in self._device_history:
+            known_macs.add(mac.lower())
+            known_macs.add(mac.replace(":", "").lower())
+            known_macs.add(mac.replace(":", "_").lower())
+            known_macs.add(mac.replace(":", "")[-6:].lower())  # Last 6 chars
+
+        # Build a set of STRICT identifiers belonging to THIS router
+        router_prefixes = {
+            self.config_entry.entry_id.lower(),
+            self.router_id.lower(),
+            self.router_id.replace(":", "_").lower(),
+            self.router_id.replace(":", "").lower(),
+            "openwrt",  # Historical prefix
+        }
+
+        # Scan ALL entities for MQTT zombies belonging to THIS router
+        for entry in list(ent_reg.entities.values()):
+            if entry.platform == "mqtt" and entry.domain == "device_tracker":
+                unique_id = (entry.unique_id or "").lower()
+                entity_id = entry.entity_id.lower()
+
+                # Rule 1: Starts with our router-specific prefix?
+                is_match = any(unique_id.startswith(p) for p in router_prefixes)
+
+                # Rule 2: Contains one of our known MACs in a safe format?
+                if not is_match:
+                    for m in known_macs:
+                        if len(m) < 8:  # Skip fragments
+                            continue
+                        if m in unique_id or m in entity_id:
+                            is_match = True
+                            break
+
+                if is_match:
+                    _LOGGER.debug(
+                        "Removing zombie MQTT entity from registry: %s (unique_id=%s)",
+                        entry.entity_id,
+                        unique_id,
+                    )
+                    try:
+                        ent_reg.async_remove(entry.entity_id)
+                    except Exception as err:
+                        _LOGGER.debug(
+                            "Failed to remove entity %s: %s", entry.entity_id, err
+                        )
 
     async def _async_discovery_mqtt_device(self, mac: str, hostname: str) -> None:
         """Send MQTT discovery message for a device tracker."""
@@ -863,7 +969,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 continue
 
             # Skip the root router device itself and merged/auxiliary entries
-            if dev.via_device_id is None or dev.hidden_by is not None or dev.entry_type is not None:
+            if (
+                dev.via_device_id is None
+                or dev.disabled_by is not None
+                or dev.entry_type is not None
+            ):
                 continue
 
             # Only proceed if the device still has placeholder manufacturer/model
@@ -886,10 +996,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
                 new_manufacturer, new_model = vendor_info
                 # Only write if the values differ from the current ones
-                if (
-                    dev.manufacturer != new_manufacturer
-                    or dev.model != new_model
-                ):
+                if dev.manufacturer != new_manufacturer or dev.model != new_model:
                     _LOGGER.debug(
                         "Updating tracked device %s: manufacturer %s -> %s, model %s -> %s",
                         ident_str,

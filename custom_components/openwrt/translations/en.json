@@ -191,7 +191,9 @@
           "target_override": "Target Override (e.g. arch/subtarget)",
           "skip_random_mac": "Ignore devices with randomized MAC addresses",
           "mqtt_presence": "Enable MQTT Presence Detection",
-          "redeploy_mqtt": "Re-deploy MQTT Presence Scripts"
+          "redeploy_mqtt": "Re-deploy MQTT Presence Scripts",
+          "trust_stale_arp": "Trust ARP 'STALE' state for presence",
+          "trust_bridge_fdb": "Trust Bridge FDB for presence (Wired)"
         },
         "description": "Configure OpenWrt integration options."
       },
@@ -294,6 +296,7 @@
           "permissions_sub_service": "Service",
           "permissions_sub_leds": "LEDs",
           "permissions_sub_mwan3": "MWAN3",
+          "permissions_sub_batman": "Batman-adv",
           "permissions_feature_reboot": "Reboot",
           "permissions_feature_upgrade": "Upgrade",
           "permissions_feature_backup": "Backup",
@@ -525,6 +528,18 @@
       "wan_latency": {
         "name": "WAN Latency"
       },
+      "batman_originators_count": {
+        "name": "Batman Mesh Originators"
+      },
+      "batman_neighbors_count": {
+        "name": "Batman Mesh Neighbors"
+      },
+      "batman_gateways_count": {
+        "name": "Batman Mesh Gateways"
+      },
+      "batman_tq": {
+        "name": "Mesh Link Quality (TQ)"
+      },
       "vpn_rx": {
         "name": "{interface} RX"
       },
@@ -570,7 +585,9 @@
           "asu": "Firmware Upgrade (ASU)",
           "adblock": "AdBlock",
           "simple_adblock": "Simple AdBlock",
-          "ban_ip": "Ban-IP"
+          "ban_ip": "Ban-IP",
+          "batman_adv": "Batman-adv Mesh",
+          "batctl": "Batman-adv Control (batctl)"
         }
       }
     },
@@ -589,6 +606,9 @@
       },
       "reboot_required": {
         "name": "Reboot Required"
+      },
+      "batman_mesh_active": {
+        "name": "Batman Mesh Active"
       }
     },
     "button": {
@@ -719,29 +739,26 @@
       "description": "The OpenWrt router {host} is running version {current_version}, but version {latest_version} is available.\n\nIt is highly recommended to keep your router's firmware up to date for security reasons. You can download the latest release [here]({release_url})."
     },
     "stale_permissions": {
-      "title": "Stale permissions for '{username}' on {host}",
-      "description": "The dedicated user '{username}' on your OpenWrt router {host} seems to have outdated or insufficient ACL permissions. This often happens after firmware updates or when new features are added to the integration.\n\nTo fix this, the integration needs to temporarily connect with **root** privileges to refresh the ACL rules for your dedicated user."
-    }
-  },
-  "repair_flow": {
-    "stale_permissions": {
-      "step": {
-        "init": {
-          "title": "Refresh Permissions",
-          "description": "The permissions for user **{username}** on **{host}** need to be updated. You will be asked to provide the **root** password to perform this one-time maintenance task.\n\nNote: The root password is only used for this session and is not stored."
-        },
-        "root_login": {
-          "title": "Login as Root",
-          "description": "Please enter the **root** password for **{host}**.",
-          "data": {
-            "password": "Root Password"
+      "title": "Stale permissions for {username} on {host}",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Refresh Permissions",
+            "description": "The permissions for user **{username}** on **{host}** need to be updated. You will be asked to provide the **root** password to perform this one-time maintenance task.\n\nNote: The root password is only used for this session and is not stored."
+          },
+          "root_login": {
+            "title": "Login as Root",
+            "description": "Please enter the **root** password for **{host}**.",
+            "data": {
+              "password": "Root Password"
+            }
           }
+        },
+        "abort": {
+          "unknown_error": "An unknown error occurred.",
+          "cannot_connect": "Failed to connect to the router as root.",
+          "provision_failed": "Failed to update permissions for the dedicated user."
         }
-      },
-      "abort": {
-        "unknown_error": "An unknown error occurred.",
-        "cannot_connect": "Failed to connect to the router as root.",
-        "provision_failed": "Failed to update permissions for the dedicated user."
       }
     }
   },

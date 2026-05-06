@@ -150,12 +150,20 @@ async def async_remove_mqtt_presence(
     """Stop service and remove MQTT presence scripts from the router."""
     try:
         # 1. Stop and disable service
-        await client.execute_command("/etc/init.d/presence_hostapd stop")
-        await client.execute_command("/etc/init.d/presence_hostapd disable")
+        await client.execute_command(
+            "/etc/init.d/presence_hostapd stop 2>/dev/null || true"
+        )
+        await client.execute_command(
+            "/etc/init.d/presence_hostapd disable 2>/dev/null || true"
+        )
+        # Ensure any background hostapd_cli processes are killed
+        await client.execute_command("killall -9 hostapd_cli 2>/dev/null || true")
 
         # 2. Remove files
-        await client.execute_command("rm -rf /etc/presence")
-        await client.execute_command("rm /etc/init.d/presence_hostapd")
+        await client.execute_command("rm -rf /etc/presence 2>/dev/null || true")
+        await client.execute_command(
+            "rm -f /etc/init.d/presence_hostapd 2>/dev/null || true"
+        )
 
         return True, None
 

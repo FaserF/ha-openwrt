@@ -191,7 +191,9 @@
           "target_override": "Target Override (z.B. arch/subtarget)",
           "skip_random_mac": "Geräte mit zufälligen MAC-Adressen ignorieren",
           "mqtt_presence": "MQTT Präsenzerkennung aktivieren",
-          "redeploy_mqtt": "MQTT-Präsenz-Skripte erneut übertragen"
+          "redeploy_mqtt": "MQTT-Präsenz-Skripte erneut übertragen",
+          "trust_stale_arp": "ARP-Status 'STALE' als anwesend werten",
+          "trust_bridge_fdb": "Bridge-FDB für Anwesenheit nutzen (Kabel)"
         },
         "description": "Konfiguriere die Optionen der OpenWrt-Integration."
       },
@@ -294,6 +296,7 @@
           "permissions_sub_service": "Dienst",
           "permissions_sub_leds": "LEDs",
           "permissions_sub_mwan3": "MWAN3",
+          "permissions_sub_batman": "Batman-adv",
           "permissions_feature_reboot": "Neustart",
           "permissions_feature_upgrade": "Upgrade",
           "permissions_feature_backup": "Backup",
@@ -525,6 +528,18 @@
       "wan_latency": {
         "name": "WAN Latenz"
       },
+      "batman_originators_count": {
+        "name": "Batman Mesh Originatoren"
+      },
+      "batman_neighbors_count": {
+        "name": "Batman Mesh Nachbarn"
+      },
+      "batman_gateways_count": {
+        "name": "Batman Mesh Gateways"
+      },
+      "batman_tq": {
+        "name": "Mesh Verbindungsqualität (TQ)"
+      },
       "vpn_rx": {
         "name": "{interface} Empfangen"
       },
@@ -570,7 +585,9 @@
           "asu": "Firmware Upgrade (ASU)",
           "adblock": "AdBlock",
           "simple_adblock": "Simple AdBlock",
-          "ban_ip": "Ban-IP"
+          "ban_ip": "Ban-IP",
+          "batman_adv": "Batman-adv Mesh",
+          "batctl": "Batman-adv Steuerung (batctl)"
         }
       }
     },
@@ -589,6 +606,9 @@
       },
       "reboot_required": {
         "name": "Neustart erforderlich"
+      },
+      "batman_mesh_active": {
+        "name": "Batman Mesh Aktiv"
       }
     },
     "button": {
@@ -719,29 +739,26 @@
       "description": "Auf dem OpenWrt-Router {host} läuft Version {current_version}, aber Version {latest_version} ist verfügbar.\n\nEs wird dringend empfohlen, die Firmware deines Routers aus Sicherheitsgründen aktuell zu halten. Du kannst das neueste Release [hier]({release_url}) herunterladen."
     },
     "stale_permissions": {
-      "title": "Veraltete Berechtigungen für '{username}' auf {host}",
-      "description": "Der dedizierte Benutzer '{username}' auf deinem OpenWrt-Router {host} scheint veraltete oder unzureichende ACL-Berechtigungen zu haben. Dies passiert oft nach Firmware-Updates oder wenn neue Funktionen zur Integration hinzugefügt wurden.\n\nUm dies zu beheben, muss die Integration vorübergehend eine Verbindung mit **root**-Rechten herstellen, um die ACL-Regeln für deinen dedizierten Benutzer zu aktualisieren."
-    }
-  },
-  "repair_flow": {
-    "stale_permissions": {
-      "step": {
-        "init": {
-          "title": "Berechtigungen aktualisieren",
-          "description": "Die Berechtigungen für Benutzer **{username}** auf **{host}** müssen aktualisiert werden. Du wirst aufgefordert, das **root**-Passwort einzugeben, um diese einmalige Wartungsaufgabe durchzuführen.\n\nHinweis: Das root-Passwort wird nur für diese Sitzung verwendet und nicht gespeichert."
-        },
-        "root_login": {
-          "title": "Login als Root",
-          "description": "Bitte gib das **root**-Passwort für **{host}** ein.",
-          "data": {
-            "password": "Root Passwort"
+      "title": "Veraltete Berechtigungen für {username} auf {host}",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Berechtigungen aktualisieren",
+            "description": "Die Berechtigungen für Benutzer **{username}** auf **{host}** müssen aktualisiert werden. Du wirst aufgefordert, das **root**-Passwort einzugeben, um diese einmalige Wartungsaufgabe durchzuführen.\n\nHinweis: Das root-Passwort wird nur für diese Sitzung verwendet und nicht gespeichert."
+          },
+          "root_login": {
+            "title": "Login als Root",
+            "description": "Bitte gib das **root**-Passwort für **{host}** ein.",
+            "data": {
+              "password": "Root Passwort"
+            }
           }
+        },
+        "abort": {
+          "unknown_error": "Ein unbekannter Fehler ist aufgetreten.",
+          "cannot_connect": "Verbindung zum Router als root fehlgeschlagen.",
+          "provision_failed": "Aktualisierung der Berechtigungen für den dedizierten Benutzer fehlgeschlagen."
         }
-      },
-      "abort": {
-        "unknown_error": "Ein unbekannter Fehler ist aufgetreten.",
-        "cannot_connect": "Verbindung zum Router als root fehlgeschlagen.",
-        "provision_failed": "Aktualisierung der Berechtigungen für den dedizierten Benutzer fehlgeschlagen."
       }
     }
   },

@@ -89,6 +89,8 @@ class LuciRpcClient(OpenWrtClient):
         use_ssl: bool = False,
         verify_ssl: bool = False,
         dhcp_software: str = "auto",
+        trust_stale_arp: bool = True,
+        trust_bridge_fdb: bool = True,
     ) -> None:
         """Initialize the LuCI RPC client."""
         super().__init__(
@@ -99,6 +101,8 @@ class LuciRpcClient(OpenWrtClient):
             use_ssl,
             verify_ssl,
             dhcp_software,
+            trust_stale_arp,
+            trust_bridge_fdb,
         )
         self._auth_token: str = ""
         self._session: aiohttp.ClientSession | None = None
@@ -614,6 +618,7 @@ class LuciRpcClient(OpenWrtClient):
             perms.write_devices = not denied
 
         perms.write_access_control = perms.write_firewall
+        perms.read_batman = perms.read_services
         return perms
 
     async def check_packages(self) -> OpenWrtPackages:
@@ -653,6 +658,10 @@ class LuciRpcClient(OpenWrtClient):
                 packages.wireless = True
             if "lldp" in objects:
                 packages.lldp = True
+            if "batman-adv" in objects:
+                packages.batman_adv = True
+            if "batctl" in objects:
+                packages.batctl = True
         except Exception:
             pass
 
@@ -694,8 +703,10 @@ class LuciRpcClient(OpenWrtClient):
             "/etc/init.d/adguardhome "
             "/etc/init.d/unbound "
             "/etc/init.d/odhcpd "
-            "/etc/init.d/lldpd; do "
-            "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
+            "/etc/init.d/lldpd "
+            "/usr/sbin/batctl "
+            "/sys/module/batman_adv; do "
+            "if [ -e $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._rpc_call("sys", "exec", [cmd])
         if out:
@@ -742,6 +753,10 @@ class LuciRpcClient(OpenWrtClient):
                 packages.dhcp = detect_status(18)
             if packages.lldp is not True:
                 packages.lldp = detect_status(19)
+            if packages.batctl is not True:
+                packages.batctl = detect_status(20)
+            if packages.batman_adv is not True:
+                packages.batman_adv = detect_status(21)
 
         # Step 3: Check UCI configs for remaining packages (very robust fallback)
         if packages.sqm_scripts is not True:
@@ -1685,7 +1700,9 @@ class LuciRpcClient(OpenWrtClient):
 
         # 5. Final refinement from IP neighbors (for states)
         try:
-            active_states = ("REACHABLE", "DELAY", "PROBE", "PERMANENT")
+            active_states = ["REACHABLE", "DELAY", "PROBE", "PERMANENT"]
+            if self.trust_stale_arp:
+                active_states.append("STALE")
             neighbors = await self.get_ip_neighbors()
             for neigh in neighbors:
                 mac = neigh.mac.lower()
@@ -1712,7 +1729,8 @@ class LuciRpcClient(OpenWrtClient):
             pass
 
         # 5. Supplemental source: Bridge FDB (Forwarding Database)
-        await self._process_bridge_fdb(devices)
+        if self.trust_bridge_fdb:
+            await self._process_bridge_fdb(devices)
 
         return list(devices.values())
 
@@ -1748,6 +1766,7 @@ class LuciRpcClient(OpenWrtClient):
                             port = entry.get("port", "")
                             if port:
                                 dev.port = port
+                                dev.connected = True  # Seen on a physical port recently
                                 if not dev.is_wireless and not dev.interface:
                                     dev.interface = dev_name
                 except Exception:

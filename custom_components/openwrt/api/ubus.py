@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from typing import Any
 
 import aiohttp
@@ -96,6 +97,8 @@ class UbusClient(OpenWrtClient):
         verify_ssl: bool = False,
         ubus_path: str = "/ubus",
         dhcp_software: str = "auto",
+        trust_stale_arp: bool = True,
+        trust_bridge_fdb: bool = True,
     ) -> None:
         """Initialize the ubus client."""
         super().__init__(
@@ -106,6 +109,8 @@ class UbusClient(OpenWrtClient):
             use_ssl,
             verify_ssl,
             dhcp_software,
+            trust_stale_arp,
+            trust_bridge_fdb,
         )
         self._ubus_path = ubus_path
         self._session_id: str = "00000000000000000000000000000000"
@@ -694,7 +699,6 @@ class UbusClient(OpenWrtClient):
         self, resources: SystemResources, raw: str, path: str = ""
     ) -> bool:
         """Parse raw temperature string into resources."""
-        import re
 
         match = re.search(r"(\d+)", raw)
         if match:
@@ -1391,7 +1395,8 @@ class UbusClient(OpenWrtClient):
 
         # 6. Supplemental source: Bridge FDB (Forwarding Database)
         # This helps identifying which physical port a wired device is on
-        await self._process_bridge_fdb(devices)
+        if self.trust_bridge_fdb:
+            await self._process_bridge_fdb(devices)
 
         # Always run fallback to ensure we catch any manually added or mesh interfaces
         if self.packages.wireless is not False:
@@ -1462,7 +1467,9 @@ class UbusClient(OpenWrtClient):
             # on the next unicast exchange.  Excluding STALE would cause wired
             # clients to disappear from the count even while actively using the
             # network.
-            active_states = ("REACHABLE", "STALE", "DELAY", "PROBE", "PERMANENT")
+            active_states = ["REACHABLE", "DELAY", "PROBE", "PERMANENT"]
+            if self.trust_stale_arp:
+                active_states.append("STALE")
             for neigh in neighbors:
                 mac = neigh.mac.lower()
                 if not mac:
@@ -1563,6 +1570,7 @@ class UbusClient(OpenWrtClient):
                             port = entry.get("port", "")
                             if port:
                                 dev.port = port
+                                dev.connected = True  # Seen on a physical port recently
                                 # If it's a wired device, we can improve its interface info
                                 if not dev.is_wireless and not dev.interface:
                                     dev.interface = dev_name
@@ -1775,6 +1783,7 @@ class UbusClient(OpenWrtClient):
             perms.read_services = has_perm("service", "list")
             perms.write_services = has_perm("service", "list")
             perms.write_access_control = perms.write_firewall
+            perms.read_batman = has_perm("batman", "*") or has_perm("file", "exec")
 
             return True
         return False
@@ -1846,6 +1855,9 @@ class UbusClient(OpenWrtClient):
             or is_root
         )
         perms.write_access_control = perms.write_firewall
+        perms.read_batman = (
+            await can_call("file", "exec", {"command": "/usr/sbin/batctl"}) or is_root
+        )
         perms.read_services = await can_call("service", "list") or is_root
         perms.write_services = await can_call("service", "list") or is_root
 
@@ -1926,6 +1938,8 @@ class UbusClient(OpenWrtClient):
                     "/etc/init.d/pbr "
                     "/etc/init.d/adguardhome "
                     "/etc/init.d/unbound "
+                    "/usr/sbin/batctl "
+                    "/sys/module/batman_adv "
                     "/etc/config/sqm; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
@@ -1941,7 +1955,7 @@ class UbusClient(OpenWrtClient):
                     return len(results) > idx and results[idx].strip() == "1"
 
                 if packages.sqm_scripts is not True:
-                    packages.sqm_scripts = detect_status(0) or detect_status(18)
+                    packages.sqm_scripts = detect_status(0) or detect_status(20)
                 if packages.mwan3 is not True:
                     packages.mwan3 = detect_status(1)
                 if packages.iwinfo is not True:
@@ -1974,6 +1988,8 @@ class UbusClient(OpenWrtClient):
                     packages.adguardhome = detect_status(16)
                 if packages.unbound is not True:
                     packages.unbound = detect_status(17)
+                packages.batctl = detect_status(18)
+                packages.batman_adv = detect_status(19)
 
             except Exception as err:
                 _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)

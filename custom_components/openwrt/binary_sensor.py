@@ -119,6 +119,27 @@ async def async_setup_entry(
                 coordinator, entry, entities, tracked_keys
             )
 
+        # Batman Mesh Active
+        if pkgs.batman_adv or pkgs.batctl:
+            key = "batman_mesh_active"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.append(
+                    OpenWrtBinarySensorEntity(
+                        coordinator,
+                        entry,
+                        OpenWrtBinarySensorDescription(
+                            key=key,
+                            name="Batman Mesh Active",
+                            translation_key="batman_mesh_active",
+                            icon="mdi:transit-connection-variant",
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                            is_on_fn=lambda data: data.batman_mesh_active,
+                            available_fn=lambda data: data.permissions.read_batman,
+                        ),
+                    )
+                )
+
         if entities:
             async_add_entities(entities)
 

@@ -1039,6 +1039,17 @@ async def async_setup_entry(
                             ent_reg.async_remove(ent.entity_id)
                             continue
 
+            # Cleanup Batman neighbors
+            if "batman_neighbor_" in unique_id:
+                current_keys = {
+                    f"batman_neighbor_{n.mac}"
+                    for n in coordinator.data.batman_neighbors
+                }
+                if unique_id not in current_keys:
+                    ent_reg.async_remove(ent.entity_id)
+                    tracked_keys.discard(unique_id)
+                    continue
+
             # Cleanup orphaned wireless sensors (e.g. ghost radios)
             if "_wifi_" in unique_id and coordinator.data:
                 found = False
@@ -1601,6 +1612,23 @@ def _async_setup_specialized_sensors(
                 ),
             )
         )
+
+    # Batman Mesh
+    if perms.read_batman and (pkgs.batman_adv is not False or pkgs.batctl is not False):
+        key = "batman_mesh_global"
+        if key not in tracked_keys:
+            tracked_keys.add(key)
+            entities.extend(_get_batman_global_sensors(coordinator, entry))
+
+        for mesh_neighbor in coordinator.data.batman_neighbors:
+            key = f"batman_neighbor_{mesh_neighbor.mac}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.extend(
+                    _create_batman_neighbor_sensors(
+                        coordinator, entry, mesh_neighbor.mac
+                    )
+                )
 
 
 def _create_device_sensors(
@@ -2440,3 +2468,89 @@ class OpenWrtMwanMetricSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorE
             if m.interface_name == self._iface:
                 return getattr(m, self._metric)
         return None
+
+
+def _get_batman_global_sensors(
+    coordinator: OpenWrtDataCoordinator, entry: ConfigEntry
+) -> list[OpenWrtSensorEntity]:
+    """Get Batman-adv global sensors."""
+    return [
+        OpenWrtSensorEntity(
+            coordinator,
+            entry,
+            OpenWrtSensorDescription(
+                key="batman_originators_count",
+                name="Batman Mesh Originators",
+                translation_key="batman_originators_count",
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:transit-connection-variant",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                value_fn=lambda data: len(data.batman_originators),
+            ),
+        ),
+        OpenWrtSensorEntity(
+            coordinator,
+            entry,
+            OpenWrtSensorDescription(
+                key="batman_neighbors_count",
+                name="Batman Mesh Neighbors",
+                translation_key="batman_neighbors_count",
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:router-wireless",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                value_fn=lambda data: len(data.batman_neighbors),
+            ),
+        ),
+        OpenWrtSensorEntity(
+            coordinator,
+            entry,
+            OpenWrtSensorDescription(
+                key="batman_gateways_count",
+                name="Batman Mesh Gateways",
+                translation_key="batman_gateways_count",
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:gateway",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                value_fn=lambda data: len(data.batman_gateways),
+            ),
+        ),
+    ]
+
+
+def _create_batman_neighbor_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    mac: str,
+) -> list[OpenWrtDeviceSensor]:
+    """Create sensors for a specific Batman neighbor."""
+    sensors = []
+
+    # TQ (Transmit Quality) to this neighbor (if it's also an originator)
+    def get_tq(data: OpenWrtData) -> int | None:
+        for orig in data.batman_originators:
+            if orig.mac == mac:
+                return orig.tq
+        return None
+
+    def is_available(data: OpenWrtData) -> bool:
+        return any(orig.mac == mac for orig in data.batman_originators)
+
+    sensors.append(
+        OpenWrtDeviceSensor(
+            coordinator,
+            entry,
+            mac,
+            SensorEntityDescription(
+                key="batman_tq",
+                name="Mesh Link Quality (TQ)",
+                translation_key="batman_tq",
+                native_unit_of_measurement=PERCENTAGE,
+                state_class=SensorStateClass.MEASUREMENT,
+                icon="mdi:signal-variant",
+            ),
+            value_fn=get_tq,
+            available_fn=is_available,
+        )
+    )
+
+    return sensors
