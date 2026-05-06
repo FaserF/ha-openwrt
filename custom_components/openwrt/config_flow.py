@@ -79,6 +79,8 @@ from .const import (
     CONF_TARGET_OVERRIDE,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_TRUST_BRIDGE_FDB,
+    CONF_TRUST_STALE_ARP,
     CONF_UBUS_PATH,
     CONF_UPDATE_INTERVAL,
     CONF_USE_SSL,
@@ -93,6 +95,8 @@ from .const import (
     DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
     DEFAULT_TRACK_WIRED,
+    DEFAULT_TRUST_BRIDGE_FDB,
+    DEFAULT_TRUST_STALE_ARP,
     DEFAULT_UBUS_PATH,
     DEFAULT_UPDATE_INTERVAL,
     DEFAULT_USE_SSL,
@@ -1909,6 +1913,14 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_REDEPLOY_MQTT,
                     default=False,
+                ): bool,
+                vol.Optional(
+                    CONF_TRUST_STALE_ARP,
+                    default=current.get(CONF_TRUST_STALE_ARP, DEFAULT_TRUST_STALE_ARP),
+                ): bool,
+                vol.Optional(
+                    CONF_TRUST_BRIDGE_FDB,
+                    default=current.get(CONF_TRUST_BRIDGE_FDB, DEFAULT_TRUST_BRIDGE_FDB),
                 ): bool,
             },
         )

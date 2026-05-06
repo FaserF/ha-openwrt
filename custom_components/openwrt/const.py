@@ -31,6 +31,8 @@ CONF_MQTT_PORT: Final = "mqtt_port"
 CONF_MQTT_USERNAME: Final = "mqtt_username"
 CONF_MQTT_PASSWORD: Final = "mqtt_password"
 CONF_REDEPLOY_MQTT: Final = "redeploy_mqtt"
+CONF_TRUST_STALE_ARP: Final = "trust_stale_arp"
+CONF_TRUST_BRIDGE_FDB: Final = "trust_bridge_fdb"
 
 CONNECTION_TYPE_UBUS: Final = "ubus"
 CONNECTION_TYPE_LUCI_RPC: Final = "luci_rpc"
@@ -49,6 +51,8 @@ DEFAULT_TRACK_WIRED: Final = True
 DEFAULT_USE_SSL: Final = False
 DEFAULT_VERIFY_SSL: Final = False
 DEFAULT_SKIP_RANDOM_MAC: Final = False
+DEFAULT_TRUST_STALE_ARP: Final = True
+DEFAULT_TRUST_BRIDGE_FDB: Final = True
 
 DHCP_SOFTWARE_AUTO: Final = "auto"
 DHCP_SOFTWARE_DNSMASQ: Final = "dnsmasq"

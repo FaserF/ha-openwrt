@@ -1696,7 +1696,9 @@ class LuciRpcClient(OpenWrtClient):
 
         # 5. Final refinement from IP neighbors (for states)
         try:
-            active_states = ("REACHABLE", "STALE", "DELAY", "PROBE", "PERMANENT")
+            active_states = ["REACHABLE", "DELAY", "PROBE", "PERMANENT"]
+            if self.trust_stale_arp:
+                active_states.append("STALE")
             neighbors = await self.get_ip_neighbors()
             for neigh in neighbors:
                 mac = neigh.mac.lower()
@@ -1723,7 +1725,8 @@ class LuciRpcClient(OpenWrtClient):
             pass
 
         # 5. Supplemental source: Bridge FDB (Forwarding Database)
-        await self._process_bridge_fdb(devices)
+        if self.trust_bridge_fdb:
+            await self._process_bridge_fdb(devices)
 
         return list(devices.values())
 

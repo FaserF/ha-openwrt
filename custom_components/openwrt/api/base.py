@@ -929,6 +929,8 @@ class OpenWrtClient(abc.ABC):
         use_ssl: bool = False,
         verify_ssl: bool = False,
         dhcp_software: str = "auto",
+        trust_stale_arp: bool = True,
+        trust_bridge_fdb: bool = True,
     ) -> None:
         """Initialize the client."""
         self.host = host
@@ -938,6 +940,8 @@ class OpenWrtClient(abc.ABC):
         self.use_ssl = use_ssl
         self.verify_ssl = verify_ssl
         self.dhcp_software = dhcp_software
+        self.trust_stale_arp = trust_stale_arp
+        self.trust_bridge_fdb = trust_bridge_fdb
         self._connected = False
         self._poll_count = 0
         self._cached_device_info: DeviceInfo | None = None

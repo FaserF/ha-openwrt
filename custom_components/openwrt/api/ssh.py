@@ -1031,7 +1031,8 @@ class SshClient(OpenWrtClient):
             await self._add_wireless_devices_ubus_ssh(devices)
 
         # 4. Supplemental source: Bridge FDB (Forwarding Database)
-        await self._process_bridge_fdb(devices)
+        if self.trust_bridge_fdb:
+            await self._process_bridge_fdb(devices)
 
         return list(devices.values())
 
@@ -1247,7 +1248,9 @@ class SshClient(OpenWrtClient):
         """Add or update devices discovered via IP neighbors (ARP)."""
         try:
             neighbors = await self.get_ip_neighbors()
-            active_states = ("REACHABLE", "STALE", "DELAY", "PROBE", "PERMANENT")
+            active_states = ["REACHABLE", "DELAY", "PROBE", "PERMANENT"]
+            if self.trust_stale_arp:
+                active_states.append("STALE")
             for neigh in neighbors:
                 mac = neigh.mac.lower()
                 if not mac:

@@ -191,7 +191,9 @@
           "target_override": "Target Override (e.g. arch/subtarget)",
           "skip_random_mac": "Ignore devices with randomized MAC addresses",
           "mqtt_presence": "Enable MQTT Presence Detection",
-          "redeploy_mqtt": "Re-deploy MQTT Presence Scripts"
+          "redeploy_mqtt": "Re-deploy MQTT Presence Scripts",
+          "trust_stale_arp": "Trust ARP 'STALE' state for presence",
+          "trust_bridge_fdb": "Trust Bridge FDB for presence (Wired)"
         },
         "description": "Configure OpenWrt integration options."
       },

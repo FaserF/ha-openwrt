@@ -191,7 +191,9 @@
           "target_override": "Target Override (z.B. arch/subtarget)",
           "skip_random_mac": "Geräte mit zufälligen MAC-Adressen ignorieren",
           "mqtt_presence": "MQTT Präsenzerkennung aktivieren",
-          "redeploy_mqtt": "MQTT-Präsenz-Skripte erneut übertragen"
+          "redeploy_mqtt": "MQTT-Präsenz-Skripte erneut übertragen",
+          "trust_stale_arp": "ARP-Status 'STALE' als anwesend werten",
+          "trust_bridge_fdb": "Bridge-FDB für Anwesenheit nutzen (Kabel)"
         },
         "description": "Konfiguriere die Optionen der OpenWrt-Integration."
       },

@@ -839,6 +839,18 @@ Even if the WiFi on your OpenWrt router is disabled, the integration can still t
 
 From OpenWrt's perspective, these devices will appear as **"wired"** clients, but they will be correctly tracked as individual `device_tracker` entities in Home Assistant.
 
+### Why does it take 10 minutes for my device to show as "Away"?
+If your devices are connected via a separate Access Point or Switch, the OpenWrt router doesn't "see" them disconnect. It has to wait for the internal system tables to age out:
+1. **Bridge FDB aging**: Usually takes 5 minutes (300s).
+2. **ARP aging**: Usually takes another 1-2 minutes to transition to `STALE` and then `FAILED`.
+3. **HA Consider Home**: Home Assistant adds another 3 minutes (default) of grace period to prevent flickering.
+
+**How to speed this up:**
+In the integration **Options**, you can enable higher precision for presence detection:
+- **Trust ARP 'STALE' state**: If disabled, devices that the router hasn't verified recently will be marked as "Away" immediately. This can save several minutes but might cause "flickering" if a device is idle.
+- **Trust Bridge FDB**: If disabled, the integration will only rely on active ARP communication. This is the most responsive method but might miss devices that are only talking to other local devices.
+- **Consider Home**: Lower this value in the options flow (e.g. to 60 seconds).
+
 ## 🧑‍💻 Development
 
 This project uses modern Python development tools:

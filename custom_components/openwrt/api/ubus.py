@@ -1391,7 +1391,8 @@ class UbusClient(OpenWrtClient):
 
         # 6. Supplemental source: Bridge FDB (Forwarding Database)
         # This helps identifying which physical port a wired device is on
-        await self._process_bridge_fdb(devices)
+        if self.trust_bridge_fdb:
+            await self._process_bridge_fdb(devices)
 
         # Always run fallback to ensure we catch any manually added or mesh interfaces
         if self.packages.wireless is not False:
@@ -1462,7 +1463,9 @@ class UbusClient(OpenWrtClient):
             # on the next unicast exchange.  Excluding STALE would cause wired
             # clients to disappear from the count even while actively using the
             # network.
-            active_states = ("REACHABLE", "STALE", "DELAY", "PROBE", "PERMANENT")
+            active_states = ["REACHABLE", "DELAY", "PROBE", "PERMANENT"]
+            if self.trust_stale_arp:
+                active_states.append("STALE")
             for neigh in neighbors:
                 mac = neigh.mac.lower()
                 if not mac:

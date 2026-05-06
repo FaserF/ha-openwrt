@@ -24,6 +24,9 @@ from homeassistant.helpers import (
     device_registry as dr,
 )
 from homeassistant.helpers import (
+    entity_registry as er,
+)
+from homeassistant.helpers import (
     storage,
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -57,6 +60,8 @@ from .const import (
     CONF_SKIP_RANDOM_MAC,
     CONF_SSH_KEY,
     CONF_TARGET_OVERRIDE,
+    CONF_TRUST_BRIDGE_FDB,
+    CONF_TRUST_STALE_ARP,
     CONF_UBUS_PATH,
     CONF_UPDATE_INTERVAL,
     CONF_USE_SSL,
@@ -122,6 +127,9 @@ def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
     verify_ssl = config.get(CONF_VERIFY_SSL, False)
     dhcp_software = config.get(CONF_DHCP_SOFTWARE, "auto")
 
+    trust_stale_arp = config.get(CONF_TRUST_STALE_ARP, True)
+    trust_bridge_fdb = config.get(CONF_TRUST_BRIDGE_FDB, True)
+
     _LOGGER.debug("Creating client for router (type: %s)", connection_type)
 
     if connection_type == CONNECTION_TYPE_SSH:
@@ -133,6 +141,8 @@ def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
             port=port,
             ssh_key=config.get(CONF_SSH_KEY),
             dhcp_software=dhcp_software,
+            trust_stale_arp=trust_stale_arp,
+            trust_bridge_fdb=trust_bridge_fdb,
         )
 
     if connection_type == CONNECTION_TYPE_LUCI_RPC:
@@ -148,6 +158,8 @@ def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
             use_ssl=use_ssl,
             verify_ssl=verify_ssl,
             dhcp_software=dhcp_software,
+            trust_stale_arp=trust_stale_arp,
+            trust_bridge_fdb=trust_bridge_fdb,
         )
 
     port = config.get(
@@ -163,6 +175,8 @@ def create_client(config: Mapping[str, Any]) -> OpenWrtClient:
         verify_ssl=verify_ssl,
         ubus_path=config.get(CONF_UBUS_PATH, DEFAULT_UBUS_PATH),
         dhcp_software=dhcp_software,
+        trust_stale_arp=trust_stale_arp,
+        trust_bridge_fdb=trust_bridge_fdb,
     )
 
 
@@ -735,7 +749,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         """Scan ALL entities for MQTT zombies and remove them."""
         _LOGGER.debug("Starting global MQTT registry cleanup")
         ent_reg = er.async_get(self.hass)
-        
+
         # Get all known MAC formats from history
         known_macs = set()
         for mac in self._device_history:
@@ -743,14 +757,14 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             known_macs.add(mac.replace(":", "").lower())
             known_macs.add(mac.replace(":", "_").lower())
             known_macs.add(mac.replace(":", "")[-6:].lower()) # Last 6 chars
-            
+
         # Scan ALL entities for MQTT zombies
         for entry in list(ent_reg.entities.values()):
             if entry.platform == "mqtt" and entry.domain == "device_tracker":
                 unique_id = (entry.unique_id or "").lower()
                 entity_id = entry.entity_id.lower()
                 original_name = (entry.original_name or "").lower()
-                
+
                 # Match if it contains any of our known MACs OR openwrt/mqtt keywords
                 is_match = False
                 if any(m in unique_id for m in known_macs if len(m) > 4):
@@ -759,7 +773,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     is_match = True
                 elif "mqtt" in unique_id or "mqtt" in entity_id or "mqtt" in original_name:
                     is_match = True
-                    
+
                 if is_match:
                     _LOGGER.debug("Removing zombie MQTT entity from registry: %s (unique_id=%s)", entry.entity_id, unique_id)
                     try:
