@@ -73,6 +73,11 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
   - **UPnP Mappings**: Track active UPnP and NAT-PMP port forwardings.
   - **Refined Naming**: Routers are primarily identified by their product model (e.g. "Xiaomi AX3600") for a premium dashboard look.
   - **LLDP Neighbors**: Discover and monitor physical port connections via the LLDP protocol (if available on the router).
+- **Batman-adv Mesh Support**: 
+  - **Topology Overview**: Monitor mesh neighbors, originators (nodes), and gateways.
+  - **Link Quality**: Track Transmit Quality (TQ) sensors for each mesh neighbor.
+  - **Client Routing**: Automatically track which mesh node a mobile client is currently connected to.
+  - **Status**: Monitor mesh activity status.
 - **Optimized for Large Environments**: 
   - Parallel API calls and background platform loading prevent Home Assistant blocking warnings and ensure smooth startup even with 100+ devices.
 - **Native Experience**:
@@ -192,6 +197,8 @@ Some features require additional OpenWrt packages to be installed on your router
 | **etherwake** | Wake on LAN functionality |
 | **wireguard-tools** | WireGuard VPN Sensors |
 | **openvpn** | OpenVPN Sensors |
+| **kmod-batman-adv** | Batman-adv Mesh Support (Kernel module) |
+| **batctl-full** | Batman-adv Control (Required for mesh data) |
 
 ### 🛠️ Options Flow
 

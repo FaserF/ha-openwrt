@@ -614,6 +614,7 @@ class LuciRpcClient(OpenWrtClient):
             perms.write_devices = not denied
 
         perms.write_access_control = perms.write_firewall
+        perms.read_batman = perms.read_services
         return perms
 
     async def check_packages(self) -> OpenWrtPackages:
@@ -653,6 +654,9 @@ class LuciRpcClient(OpenWrtClient):
                 packages.wireless = True
             if "lldp" in objects:
                 packages.lldp = True
+            if "batman-adv" in objects or "batctl" in objects:
+                packages.batctl = True
+                packages.batman_adv = True
         except Exception:
             pass
 
@@ -694,7 +698,9 @@ class LuciRpcClient(OpenWrtClient):
             "/etc/init.d/adguardhome "
             "/etc/init.d/unbound "
             "/etc/init.d/odhcpd "
-            "/etc/init.d/lldpd; do "
+            "/etc/init.d/lldpd "
+            "/usr/sbin/batctl "
+            "/sys/module/batman_adv; do "
             "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._rpc_call("sys", "exec", [cmd])
@@ -742,6 +748,10 @@ class LuciRpcClient(OpenWrtClient):
                 packages.dhcp = detect_status(18)
             if packages.lldp is not True:
                 packages.lldp = detect_status(19)
+            if packages.batctl is not True:
+                packages.batctl = detect_status(20)
+            if packages.batman_adv is not True:
+                packages.batman_adv = detect_status(21)
 
         # Step 3: Check UCI configs for remaining packages (very robust fallback)
         if packages.sqm_scripts is not True:

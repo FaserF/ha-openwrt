@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from typing import Any
 
 import aiohttp
@@ -694,7 +695,6 @@ class UbusClient(OpenWrtClient):
         self, resources: SystemResources, raw: str, path: str = ""
     ) -> bool:
         """Parse raw temperature string into resources."""
-        import re
 
         match = re.search(r"(\d+)", raw)
         if match:
@@ -1775,6 +1775,7 @@ class UbusClient(OpenWrtClient):
             perms.read_services = has_perm("service", "list")
             perms.write_services = has_perm("service", "list")
             perms.write_access_control = perms.write_firewall
+            perms.read_batman = has_perm("batman", "*") or has_perm("file", "exec")
 
             return True
         return False
@@ -1846,6 +1847,9 @@ class UbusClient(OpenWrtClient):
             or is_root
         )
         perms.write_access_control = perms.write_firewall
+        perms.read_batman = (
+            await can_call("file", "exec", {"command": "/usr/sbin/batctl"}) or is_root
+        )
         perms.read_services = await can_call("service", "list") or is_root
         perms.write_services = await can_call("service", "list") or is_root
 
@@ -1926,6 +1930,8 @@ class UbusClient(OpenWrtClient):
                     "/etc/init.d/pbr "
                     "/etc/init.d/adguardhome "
                     "/etc/init.d/unbound "
+                    "/usr/sbin/batctl "
+                    "/sys/module/batman_adv "
                     "/etc/config/sqm; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
@@ -1974,6 +1980,8 @@ class UbusClient(OpenWrtClient):
                     packages.adguardhome = detect_status(16)
                 if packages.unbound is not True:
                     packages.unbound = detect_status(17)
+                packages.batctl = detect_status(18)
+                packages.batman_adv = detect_status(19)
 
             except Exception as err:
                 _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)

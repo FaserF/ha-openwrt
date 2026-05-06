@@ -294,6 +294,7 @@
           "permissions_sub_service": "Dienst",
           "permissions_sub_leds": "LEDs",
           "permissions_sub_mwan3": "MWAN3",
+          "permissions_sub_batman": "Batman-adv",
           "permissions_feature_reboot": "Neustart",
           "permissions_feature_upgrade": "Upgrade",
           "permissions_feature_backup": "Backup",
@@ -525,6 +526,18 @@
       "wan_latency": {
         "name": "WAN Latenz"
       },
+      "batman_originators_count": {
+        "name": "Batman Mesh Originatoren"
+      },
+      "batman_neighbors_count": {
+        "name": "Batman Mesh Nachbarn"
+      },
+      "batman_gateways_count": {
+        "name": "Batman Mesh Gateways"
+      },
+      "batman_tq": {
+        "name": "Mesh Verbindungsqualität (TQ)"
+      },
       "vpn_rx": {
         "name": "{interface} Empfangen"
       },
@@ -570,7 +583,9 @@
           "asu": "Firmware Upgrade (ASU)",
           "adblock": "AdBlock",
           "simple_adblock": "Simple AdBlock",
-          "ban_ip": "Ban-IP"
+          "ban_ip": "Ban-IP",
+          "batman_adv": "Batman-adv Mesh",
+          "batctl": "Batman-adv Steuerung (batctl)"
         }
       }
     },
@@ -589,6 +604,9 @@
       },
       "reboot_required": {
         "name": "Neustart erforderlich"
+      },
+      "batman_mesh_active": {
+        "name": "Batman Mesh Aktiv"
       }
     },
     "button": {

@@ -1531,6 +1531,7 @@ class SshClient(OpenWrtClient):
                 perms.write_access_control = True
                 perms.write_devices = True
                 perms.write_services = True
+                perms.read_batman = True
                 return perms
 
             # 1. Check UCI read access (very common baseline for non-root)
@@ -1616,7 +1617,7 @@ class SshClient(OpenWrtClient):
             "/usr/share/luci/menu.d/luci-mod-rpc.json "
             "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
             "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
-            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm /etc/init.d/odhcpd /etc/init.d/lldpd; do "
+            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm /etc/init.d/odhcpd /etc/init.d/lldpd /usr/sbin/batctl /sys/module/batman_adv; do "
             "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._exec(cmd)
@@ -1649,6 +1650,8 @@ class SshClient(OpenWrtClient):
             if "ipv4leases" not in dhcp_check:
                 packages.dhcp = False
         packages.lldp = detect(21)
+        packages.batctl = detect(22)
+        packages.batman_adv = detect(23)
 
         # Detect wireless via presence of iwinfo or ubus network.wireless
         if packages.iwinfo:
@@ -1672,7 +1675,7 @@ class SshClient(OpenWrtClient):
             "etherwake": "etherwake",
             "wireguard": "wireguard",
             "openvpn": "openvpn",
-            "luci_mod_rpc": "luci-mod-rpc",
+            "luci_mod_rpc": "luci-rpc",
             "asu": "luci-app-attendedsysupgrade",
             "adblock": "adblock",
             "simple_adblock": "simple-adblock",
@@ -1680,10 +1683,12 @@ class SshClient(OpenWrtClient):
             "dhcp": "odhcpd",
             "lldp": "lldpd",
             "wireless": "iwinfo",
+            "batman_adv": "kmod-batman-adv",
+            "batctl": "batctl",
         }
         for attr, pkg_name in mapping.items():
             if getattr(packages, attr) is not True:
-                if pkg_name in ("wireguard", "openvpn"):
+                if pkg_name in ("wireguard", "openvpn", "batctl"):
                     setattr(packages, attr, any(pkg_name in p for p in installed))
                 else:
                     setattr(packages, attr, pkg_name in installed)

@@ -273,6 +273,21 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                         )
                     break
 
+            # If not directly wireless on this router, check if it's behind a mesh node
+            if (
+                via_device == (DOMAIN, router_id)
+                and self._mac in self.coordinator.data.batman_translation_table
+            ):
+                originator_mac = self.coordinator.data.batman_translation_table[
+                    self._mac
+                ].lower()
+                if (
+                    originator_mac
+                    != self.coordinator.data.device_info.mac_address.lower()
+                ):
+                    # It's behind another mesh node
+                    via_device = (DOMAIN, originator_mac)
+
         # Standard values for tracked devices
         manufacturer = ATTR_MANUFACTURER
         model = "Tracked device"
@@ -403,4 +418,18 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             )
 
         attrs.update({k: v for k, v in optional_metrics.items() if v})
+
+        # Add Mesh info
+        if (
+            self.coordinator.data
+            and self._mac in self.coordinator.data.batman_translation_table
+        ):
+            originator_mac = self.coordinator.data.batman_translation_table[self._mac]
+            attrs["mesh_node"] = originator_mac
+            if (
+                originator_mac.lower()
+                != self.coordinator.data.device_info.mac_address.lower()
+            ):
+                attrs["is_via_mesh"] = True
+
         return attrs
