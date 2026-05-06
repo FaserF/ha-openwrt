@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from ..const import CONF_HOST
+from homeassistant.core import HomeAssistant
+
+from ..const import CONF_HOST, DOMAIN
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -29,6 +31,54 @@ def format_ap_device_id(entry_or_router_id: ConfigEntry | str, iface_name: str) 
     return format_ap_identifier(entry_or_router_id, iface_name)
 
 
+def normalize_band(band: str | None) -> str:
+    """Normalize raw frequency or band strings to a standard format.
+
+    Examples:
+        "2412" -> "2.4 GHz"
+        "5180" -> "5 GHz"
+        "2.412" -> "2.4 GHz"
+        "5 GHz" -> "5 GHz"
+    """
+    if not band:
+        return "unknown"
+
+    freq_str = str(band).lower().strip()
+
+    # Handle numeric MHz/GHz strings
+    try:
+        # Remove units if present for numeric check
+        clean_freq = freq_str.replace("ghz", "").replace("mhz", "").strip()
+        if clean_freq.replace(".", "").isdigit():
+            freq = float(clean_freq)
+            # Frequencies in MHz
+            if 2000 <= freq <= 3000:
+                return "2.4 GHz"
+            if 4900 <= freq <= 5900:
+                return "5 GHz"
+            if 5900 < freq <= 7200:
+                return "6 GHz"
+            # Frequencies in GHz
+            if 2.0 <= freq <= 3.0:
+                return "2.4 GHz"
+            if 4.9 <= freq <= 5.9:
+                return "5 GHz"
+            if 5.9 < freq <= 7.2:
+                return "6 GHz"
+    except ValueError:
+        pass
+
+    # Fallback to keyword matching
+    if "2.4" in freq_str:
+        return "2.4 GHz"
+    if "5" in freq_str:
+        return "5 GHz"
+    if "6" in freq_str:
+        return "6 GHz"
+
+    return freq_str if "ghz" in freq_str else f"{freq_str} GHz"
+
+
 def format_ap_name(ssid: str, band: str = "") -> str:
     """Format the display name for an Access Point device.
 
@@ -37,26 +87,10 @@ def format_ap_name(ssid: str, band: str = "") -> str:
         format_ap_name("SmartLife", "2412")     -> "AP SmartLife (2.4 GHz)"
     """
     label = ssid
-    # Normalise raw frequency strings like "2.412" or "2412" -> "2.4 GHz"
-    if band:
-        freq_str = str(band).lower()
-        if "2.4" in freq_str or (
-            freq_str.replace(".", "").isdigit() and 2000 <= float(freq_str) <= 3000
-        ):
-            band = "2.4 GHz"
-        elif "5" in freq_str or (
-            freq_str.replace(".", "").isdigit() and 4900 <= float(freq_str) <= 5900
-        ):
-            band = "5 GHz"
-        elif "6" in freq_str or (
-            freq_str.replace(".", "").isdigit() and 5900 < float(freq_str) <= 7200
-        ):
-            band = "6 GHz"
-        elif "ghz" not in freq_str:
-            band = f"{band} GHz"
+    norm_band = normalize_band(band) if band else ""
 
-    if band:
-        return f"AP {label} ({band})"
+    if norm_band and norm_band != "unknown":
+        return f"AP {label} ({norm_band})"
     return f"AP {label}"
 
 
@@ -99,3 +133,59 @@ def parse_uci_bool(value: Any, default: bool = False) -> bool:
         if val in ("0", "no", "off", "false", "disabled"):
             return False
     return default
+
+
+def get_via_device(
+    hass: HomeAssistant,
+    coordinator: Any,  # Avoid circular import
+    entry: ConfigEntry,
+    mac: str,
+) -> tuple[str, str]:
+    """Resolve the via_device for a connected device.
+
+    Returns a tuple (DOMAIN, identifier). Falls back to the router if
+    the AP device is not found in the registry or if the device is wired.
+    """
+    from homeassistant.helpers import device_registry as dr
+
+    router_id = cast(str, entry.unique_id or entry.data[CONF_HOST])
+    via_device = (DOMAIN, router_id)
+
+    if coordinator.data:
+        mac_lower = mac.lower()
+        # 1. Check local wireless interfaces
+        for device in coordinator.data.connected_devices:
+            if (
+                device.mac
+                and device.mac.lower() == mac_lower
+                and device.is_wireless
+                and device.interface
+            ):
+                stable_id = coordinator.interface_to_stable_id.get(device.interface)
+                if stable_id:
+                    ap_id = format_ap_device_id(router_id, stable_id)
+                    # Verify the AP device exists to avoid "non existing via_device" warnings
+                    dev_reg = dr.async_get(hass)
+                    if dev_reg.async_get_device(identifiers={(DOMAIN, ap_id)}):
+                        via_device = (DOMAIN, ap_id)
+                break
+
+        # 2. If not local wireless, check Batman-adv mesh for remote nodes
+        if (
+            via_device == (DOMAIN, router_id)
+            and mac_lower in coordinator.data.batman_translation_table
+        ):
+            originator_mac = coordinator.data.batman_translation_table[
+                mac_lower
+            ].lower()
+            if (
+                coordinator.data.device_info
+                and coordinator.data.device_info.mac_address
+                and originator_mac != coordinator.data.device_info.mac_address.lower()
+            ):
+                # It's behind another mesh node. Verify it exists in registry.
+                dev_reg = dr.async_get(hass)
+                if dev_reg.async_get_device(identifiers={(DOMAIN, originator_mac)}):
+                    via_device = (DOMAIN, originator_mac)
+
+    return via_device

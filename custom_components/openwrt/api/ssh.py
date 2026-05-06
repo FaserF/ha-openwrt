@@ -1012,8 +1012,66 @@ class SshClient(OpenWrtClient):
                         iface.ipv6_address = ipv6[0].get("address", "")
                     iface.dns_servers = iface_data.get("dns-server", [])
                     interfaces.append(iface)
-        except Exception:  # noqa: BLE001
-            pass
+
+            # 2. Fetch all device statistics and link status
+            dev_status_str = await self._exec("ubus call network.device status 2>/dev/null")
+            if dev_status_str and dev_status_str.strip().startswith("{"):
+                device_stats = json.loads(dev_status_str)
+                for iface in interfaces:
+                    dev_name = iface.device
+                    if dev_name and dev_name in device_stats:
+                        dev_status = device_stats[dev_name]
+                        iface.is_link_up = dev_status.get("link", False)
+                        iface.link_speed = dev_status.get("speed", 0)
+                        iface.link_duplex = (
+                            "full" if dev_status.get("full_duplex") else "half"
+                        )
+
+                        stats = dev_status.get("statistics", {})
+                        iface.rx_bytes = stats.get("rx_bytes", 0)
+                        iface.tx_bytes = stats.get("tx_bytes", 0)
+                        iface.rx_packets = stats.get("rx_packets", 0)
+                        iface.tx_packets = stats.get("tx_packets", 0)
+                        iface.rx_errors = stats.get("rx_errors", 0)
+                        iface.tx_errors = stats.get("tx_errors", 0)
+                        iface.rx_dropped = stats.get("rx_dropped", 0)
+                        iface.tx_dropped = stats.get("tx_dropped", 0)
+                        iface.collisions = stats.get("collisions", 0)
+                        iface.mac_address = dev_status.get("macaddr", "")
+                        iface.speed = (
+                            str(iface.link_speed)
+                            if iface.link_speed
+                            else str(dev_status.get("speed", ""))
+                        )
+
+                # 3. Add physical devices that are NOT logical interfaces (e.g. eth1, eth2)
+                seen_phys = {i.device for i in interfaces if i.device}
+                seen_phys.update({i.name for i in interfaces})
+
+                for dev_name, dev_status in device_stats.items():
+                    if dev_name in seen_phys:
+                        continue
+                    # Skip virtual/internal interfaces to avoid clutter
+                    if dev_name.startswith(("lo", "teql", "sit", "gre", "erspan")):
+                        continue
+
+                    iface = NetworkInterface(
+                        name=dev_name,
+                        device=dev_name,
+                        up=dev_status.get("up", False),
+                        is_link_up=dev_status.get("link", False),
+                        link_speed=dev_status.get("speed", 0),
+                        link_duplex="full" if dev_status.get("full_duplex") else "half",
+                        mac_address=dev_status.get("macaddr", ""),
+                        speed=str(dev_status.get("speed", "")),
+                    )
+                    stats = dev_status.get("statistics", {})
+                    iface.rx_bytes = stats.get("rx_bytes", 0)
+                    iface.tx_bytes = stats.get("tx_bytes", 0)
+                    interfaces.append(iface)
+
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Failed to get network interfaces via SSH: %s", err)
 
         return interfaces
 

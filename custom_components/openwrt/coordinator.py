@@ -396,7 +396,21 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         try:
             _LOGGER.debug("Fetching all data from OpenWrt device")
-            return await self.client.get_all_data()
+            data = await self.client.get_all_data()
+
+            # Robustness: If core components (interfaces) are missing but we either expect them
+            # (initial fetch) or previously had them, retry once after a small delay.
+            # This handles cases where the router is still starting services like rpcd/network.
+            if not data.network_interfaces and (
+                self.data is None or self.data.network_interfaces
+            ):
+                _LOGGER.debug(
+                    "Fetched data is missing core network interfaces, retrying in 2s..."
+                )
+                await asyncio.sleep(2)
+                data = await self.client.get_all_data()
+
+            return data
         except (UbusAuthError, LuciRpcAuthError, SshAuthError) as err:
             async_create_auth_repair(self.hass, self.config_entry)
             raise UpdateFailed(
@@ -939,7 +953,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # than the raw frequency in MHz. This groups all virtual interfaces on
             # the same radio+SSID combination under one stable AP device, even
             # when different channels are reported across updates.
-            band = wifi.band or wifi.frequency or wifi.radio or "unknown"
+            from .helpers import normalize_band
+
+            band = normalize_band(wifi.band or wifi.frequency or wifi.radio)
             label = format_ap_name(wifi.ssid, band)
 
             # Use SSID and Band as stable identifier to group virtual interfaces

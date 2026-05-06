@@ -41,7 +41,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import format_ap_device_id, is_random_mac
+from .helpers import format_ap_device_id, get_via_device, is_random_mac
 from .helpers.mac_vendor import get_mac_vendor_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -235,7 +235,6 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         self._mac = mac.lower()
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_tracker_{self._mac}"
-        from .helpers import is_random_mac
 
         if is_random_mac(self._mac):
             self._attr_entity_registry_enabled_default = False
@@ -253,41 +252,6 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        router_id = cast(str, self._entry.unique_id or self._entry.data[CONF_HOST])
-        via_device = (DOMAIN, router_id)
-        if self.coordinator.data:
-            for device in self.coordinator.data.connected_devices:
-                if (
-                    device.mac
-                    and device.mac.lower() == self._mac
-                    and device.is_wireless
-                    and device.interface
-                ):
-                    stable_id = self.coordinator.interface_to_stable_id.get(
-                        device.interface
-                    )
-                    if stable_id:
-                        via_device = (
-                            DOMAIN,
-                            format_ap_device_id(router_id, stable_id),
-                        )
-                    break
-
-            # If not directly wireless on this router, check if it's behind a mesh node
-            if (
-                via_device == (DOMAIN, router_id)
-                and self._mac in self.coordinator.data.batman_translation_table
-            ):
-                originator_mac = self.coordinator.data.batman_translation_table[
-                    self._mac
-                ].lower()
-                if (
-                    originator_mac
-                    != self.coordinator.data.device_info.mac_address.lower()
-                ):
-                    # It's behind another mesh node
-                    via_device = (DOMAIN, originator_mac)
-
         # Standard values for tracked devices
         manufacturer = ATTR_MANUFACTURER
         model = "Tracked device"
@@ -302,7 +266,9 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             name=self.name or self._initial_name,
             manufacturer=manufacturer,
             model=model,
-            via_device=via_device,
+            via_device=get_via_device(
+                self.coordinator.hass, self.coordinator, self._entry, self._mac
+            ),
         )
 
     @property

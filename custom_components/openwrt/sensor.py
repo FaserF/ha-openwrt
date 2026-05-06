@@ -51,7 +51,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import format_ap_device_id, format_ap_name, is_random_mac
+from .helpers import format_ap_device_id, format_ap_name, get_via_device, is_random_mac
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -277,7 +277,6 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         )
         self._entry = entry
         self._initial_name = device_name or mac
-        from .helpers import is_random_mac
 
         if is_random_mac(self._mac):
             self._attr_entity_registry_enabled_default = False
@@ -289,31 +288,13 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        router_id = cast(str, self._entry.unique_id or self._entry.data[CONF_HOST])
-        via_device = (DOMAIN, router_id)
-        if self.coordinator.data:
-            for device in self.coordinator.data.connected_devices:
-                if (
-                    device.mac
-                    and device.mac.lower() == self._mac
-                    and device.is_wireless
-                    and device.interface
-                ):
-                    stable_id = self.coordinator.interface_to_stable_id.get(
-                        device.interface
-                    )
-                    if stable_id:
-                        via_device = (
-                            DOMAIN,
-                            format_ap_device_id(router_id, stable_id),
-                        )
-                    break
-
         return DeviceInfo(
             identifiers={(DOMAIN, self._mac)},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
             name=self._initial_name,
-            via_device=via_device,
+            via_device=get_via_device(
+                self.coordinator.hass, self.coordinator, self._entry, self._mac
+            ),
         )
 
     @property
@@ -1109,7 +1090,6 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
         self._initial_name = name
         self._attr_name = name
         self._attr_unique_id = f"{entry.entry_id}_nlbwmon_{mac.replace(':', '_')}"
-        from .helpers import is_random_mac
 
         if is_random_mac(mac):
             self._attr_entity_registry_enabled_default = False
@@ -1117,31 +1097,13 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        router_id = cast(str, self._entry.unique_id or self._entry.data[CONF_HOST])
-        via_device = (DOMAIN, router_id)
-        if self.coordinator.data:
-            for device in self.coordinator.data.connected_devices:
-                if (
-                    device.mac
-                    and device.mac.lower() == self._mac.lower()
-                    and device.is_wireless
-                    and device.interface
-                ):
-                    stable_id = self.coordinator.interface_to_stable_id.get(
-                        device.interface
-                    )
-                    if stable_id:
-                        via_device = (
-                            DOMAIN,
-                            format_ap_device_id(router_id, stable_id),
-                        )
-                    break
-
         return DeviceInfo(
             identifiers={(DOMAIN, self._mac.lower())},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac.lower())},
             name=self._initial_name,
-            via_device=via_device,
+            via_device=get_via_device(
+                self.hass, self.coordinator, self._entry, self._mac
+            ),
         )
 
     @property

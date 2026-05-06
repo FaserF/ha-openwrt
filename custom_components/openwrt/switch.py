@@ -30,7 +30,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import format_ap_device_id, format_ap_name
+from .helpers import _router_id, format_ap_device_id, format_ap_name, normalize_band
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -734,21 +734,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         self._attr_translation_key = "wireless_radio"
 
         # Calculate band for placeholders
-        band = ""
-        if frequency:
-            freq_str = str(frequency).lower()
-            if "2.4" in freq_str or (
-                freq_str.replace(".", "").isdigit() and 2000 <= float(freq_str) <= 3000
-            ):
-                band = "2.4 GHz"
-            elif "5" in freq_str or (
-                freq_str.replace(".", "").isdigit() and 4900 <= float(freq_str) <= 5900
-            ):
-                band = "5 GHz"
-            elif "6" in freq_str or (
-                freq_str.replace(".", "").isdigit() and 5900 < float(freq_str) <= 7200
-            ):
-                band = "6 GHz"
+        band = normalize_band(frequency) if frequency else ""
 
         self._attr_translation_placeholders = {
             "ssid": ssid or iface_name,
@@ -777,7 +763,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             name=name_label,
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, cast(str, entry.unique_id)),
+            via_device=(DOMAIN, _router_id(entry)),
         )
 
     @property

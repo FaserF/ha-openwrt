@@ -1843,7 +1843,40 @@ class OpenWrtClient(abc.ABC):
                 if name:
                     _LOGGER.debug("Fetch of %s failed: %s", name, res)
                 return default
-            return res if res is not None else default
+            if res is None:
+                return default
+            # Stickiness for critical lists: if we previously had data and now it's empty,
+            # retain the old data for a few cycles to avoid entities going unavailable
+            # during temporary router boot states or command glitches.
+            if (
+                name in ("network_interfaces", "SQM")
+                and isinstance(res, list)
+                and default
+            ):
+                # If the new list is missing items that were previously there,
+                # merge them to prevent entities from going unavailable.
+                # We assume the name/section_id is the unique key.
+                if name == "network_interfaces":
+                    new_names = {i.name for i in res}
+                    for old_iface in default:
+                        if old_iface.name not in new_names:
+                            # Keep the old interface but mark as down/inactive
+                            # to avoid "unavailable" state in HA.
+                            old_iface.up = False
+                            res.append(old_iface)
+                elif name == "SQM":
+                    new_ids = {s.section_id for s in res}
+                    for old_sqm in default:
+                        if old_sqm.section_id not in new_ids:
+                            res.append(old_sqm)
+
+                if not res:
+                    _LOGGER.debug(
+                        "Fetch of %s returned empty result, retaining previous data",
+                        name,
+                    )
+                    return default
+            return res
 
         # 1. Core data (Fast block) - Essential for basic functionality and trackers
         core_tasks = [
