@@ -152,6 +152,8 @@ async def async_remove_mqtt_presence(
         # 1. Stop and disable service
         await client.execute_command("/etc/init.d/presence_hostapd stop")
         await client.execute_command("/etc/init.d/presence_hostapd disable")
+        # Ensure any background hostapd_cli processes are killed
+        await client.execute_command("killall -9 hostapd_cli 2>/dev/null || true")
 
         # 2. Remove files
         await client.execute_command("rm -rf /etc/presence")

@@ -737,11 +737,11 @@
       "description": "Auf dem OpenWrt-Router {host} läuft Version {current_version}, aber Version {latest_version} ist verfügbar.\n\nEs wird dringend empfohlen, die Firmware deines Routers aus Sicherheitsgründen aktuell zu halten. Du kannst das neueste Release [hier]({release_url}) herunterladen."
     },
     "stale_permissions": {
-      "title": "Veraltete Berechtigungen für '{username}' auf {host}",
-      "description": "Der dedizierte Benutzer '{username}' auf deinem OpenWrt-Router {host} scheint veraltete oder unzureichende ACL-Berechtigungen zu haben. Dies passiert oft nach Firmware-Updates oder wenn neue Funktionen zur Integration hinzugefügt wurden.\n\nUm dies zu beheben, muss die Integration vorübergehend eine Verbindung mit **root**-Rechten herstellen, um die ACL-Regeln für deinen dedizierten Benutzer zu aktualisieren."
+      "title": "Veraltete Berechtigungen für {username} auf {host}",
+      "description": "Der dedizierte Benutzer {username} auf deinem OpenWrt-Router {host} scheint veraltete oder unzureichende ACL-Berechtigungen zu haben. Dies passiert oft nach Firmware-Updates oder wenn neue Funktionen zur Integration hinzugefügt wurden.\n\nUm dies zu beheben, muss die Integration vorübergehend eine Verbindung mit **root**-Rechten herstellen, um die ACL-Regeln für deinen dedizierten Benutzer zu aktualisieren."
     }
   },
-  "repair_flow": {
+  "repair": {
     "stale_permissions": {
       "step": {
         "init": {

@@ -188,6 +188,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self._device_history: dict[str, dict[str, Any]] = {}
         self._prev_network_stats: dict[str, dict[str, int]] = {}
         self._mqtt_discovered: set[str] = set()
+        self._mqtt_discovery_started = False
+        self._mqtt_cleanup_done = False
         # Interface name to stable identifier mapping (for AP devices)
         self.interface_to_stable_id: dict[str, str] = {}
         self.router_id = (
@@ -615,19 +617,20 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             await self._store.async_save(self._device_history)
 
         # 6. Handle MQTT Discovery (Start or Cleanup)
-        is_mqtt_enabled = self.config_entry.options.get(CONF_MQTT_PRESENCE, False)
-        discovery_started = getattr(self, "_mqtt_discovery_started", False)
-
-        if is_mqtt_enabled and not discovery_started:
-            self._mqtt_discovery_started = True
-            self.hass.async_create_task(self._async_discovery_loop(clean=False))
-        elif not is_mqtt_enabled and discovery_started:
-            # If it was previously started but now disabled, cleanup
-            self._mqtt_discovery_started = False
-            self.hass.async_create_task(self._async_discovery_loop(clean=True))
+        # Initial MQTT discovery if enabled, or cleanup if disabled
+        if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+            if not self._mqtt_discovery_started:
+                self._mqtt_discovery_started = True
+                self.hass.async_create_task(self._async_discovery_loop(clean=False))
+        else:
+            # If MQTT is disabled, ensure we clean up at least once per coordinator instance
+            if not self._mqtt_cleanup_done:
+                self._mqtt_cleanup_done = True
+                self.hass.async_create_task(self._async_discovery_loop(clean=True))
 
     async def _async_discovery_loop(self, clean: bool = False) -> None:
         """Loop through history and discover or cleanup devices for MQTT."""
+        _LOGGER.debug("Starting MQTT discovery loop (clean=%s)", clean)
         # Wait for MQTT service to be available (max 60s)
         for _ in range(12):
             if self.hass.services.has_service("mqtt", "publish"):
@@ -654,20 +657,64 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
             # Small delay between discovery calls to avoid flooding
             await asyncio.sleep(0.05)
+
+        # Global registry cleanup (independent of device history)
+        if clean:
+            await self._async_global_registry_cleanup()
+
         _LOGGER.debug("MQTT discovery loop finished")
 
     async def _async_discovery_mqtt_device_cleanup(self, mac: str) -> None:
         """Remove legacy MQTT discovery messages for a device tracker."""
         mac_safe = mac.replace(":", "_")
+        mac_colons = mac.lower()
+        router_id_safe = self.router_id.replace(":", "_")
+        entry_id = self.config_entry.entry_id
+
+        mac_no_colons = mac.replace(":", "").lower()
+        mac_6chars = mac_no_colons[-6:].upper()
 
         # Cleanup all legacy patterns we might have used
+        # IMPORTANT: Discovery topics MUST NOT contain colons
         legacy_topics = [
             f"homeassistant/device_tracker/{self.router_id}_{mac_safe}/config",
+            f"homeassistant/device_tracker/{router_id_safe}_{mac_safe}/config",
             f"homeassistant/device_tracker/openwrt_{mac_safe}/config",
             f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config",
+            f"homeassistant/device_tracker/openwrt_track_{mac_safe}/config",
+            f"homeassistant/device_tracker/{entry_id}_{mac_safe}/config",
+            f"homeassistant/device_tracker/{mac_safe}/config",
+            f"homeassistant/device_tracker/{mac_no_colons}/config",
+            f"homeassistant/device_tracker/openwrt_{mac_no_colons}/config",
+            f"homeassistant/device_tracker/openwrt_mqtt_{mac_no_colons}/config",
+            f"homeassistant/device_tracker/{mac_6chars}/config",
+            f"homeassistant/device_tracker/openwrt_{mac_6chars}/config",
         ]
 
         for topic in legacy_topics:
+            _LOGGER.debug("Clearing MQTT discovery topic: %s", topic)
+            try:
+                await self.hass.services.async_call(
+                    "mqtt",
+                    "publish",
+                    {
+                        "topic": topic,
+                        "payload": "",
+                        "retain": True,
+                    },
+                )
+            except Exception as err:
+                _LOGGER.debug("Failed to clear topic %s: %s", topic, err)
+
+        # Cleanup status topics too to clear retained messages
+        status_topics = [
+            f"presence/{mac_safe}",
+            f"presence/{mac_colons}",
+            f"openwrt/presence/{mac_safe}",
+            f"openwrt/presence/{mac_colons}",
+        ]
+        for topic in status_topics:
+            _LOGGER.debug("Clearing MQTT status topic: %s", topic)
             try:
                 await self.hass.services.async_call(
                     "mqtt",
@@ -683,6 +730,42 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         if mac in self._mqtt_discovered:
             self._mqtt_discovered.remove(mac)
+
+    async def _async_global_registry_cleanup(self) -> None:
+        """Scan ALL entities for MQTT zombies and remove them."""
+        _LOGGER.debug("Starting global MQTT registry cleanup")
+        ent_reg = er.async_get(self.hass)
+        
+        # Get all known MAC formats from history
+        known_macs = set()
+        for mac in self._device_history:
+            known_macs.add(mac.lower())
+            known_macs.add(mac.replace(":", "").lower())
+            known_macs.add(mac.replace(":", "_").lower())
+            known_macs.add(mac.replace(":", "")[-6:].lower()) # Last 6 chars
+            
+        # Scan ALL entities for MQTT zombies
+        for entry in list(ent_reg.entities.values()):
+            if entry.platform == "mqtt" and entry.domain == "device_tracker":
+                unique_id = (entry.unique_id or "").lower()
+                entity_id = entry.entity_id.lower()
+                original_name = (entry.original_name or "").lower()
+                
+                # Match if it contains any of our known MACs OR openwrt/mqtt keywords
+                is_match = False
+                if any(m in unique_id for m in known_macs if len(m) > 4):
+                    is_match = True
+                elif "openwrt" in unique_id or "openwrt" in entity_id or "openwrt" in original_name:
+                    is_match = True
+                elif "mqtt" in unique_id or "mqtt" in entity_id or "mqtt" in original_name:
+                    is_match = True
+                    
+                if is_match:
+                    _LOGGER.debug("Removing zombie MQTT entity from registry: %s (unique_id=%s)", entry.entity_id, unique_id)
+                    try:
+                        ent_reg.async_remove(entry.entity_id)
+                    except Exception as err:
+                        _LOGGER.debug("Failed to remove entity %s: %s", entry.entity_id, err)
 
     async def _async_discovery_mqtt_device(self, mac: str, hostname: str) -> None:
         """Send MQTT discovery message for a device tracker."""
@@ -865,7 +948,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # Skip the root router device itself and merged/auxiliary entries
             if (
                 dev.via_device_id is None
-                or dev.hidden_by is not None  # type: ignore[attr-defined]
+                or dev.disabled_by is not None
                 or dev.entry_type is not None
             ):
                 continue

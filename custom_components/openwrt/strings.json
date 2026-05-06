@@ -737,11 +737,11 @@
       "description": "The OpenWrt router {host} is running version {current_version}, but version {latest_version} is available.\n\nIt is highly recommended to keep your router's firmware up to date for security reasons. You can download the latest release [here]({release_url})."
     },
     "stale_permissions": {
-      "title": "Stale permissions for '{username}' on {host}",
-      "description": "The dedicated user '{username}' on your OpenWrt router {host} seems to have outdated or insufficient ACL permissions. This often happens after firmware updates or when new features are added to the integration.\n\nTo fix this, the integration needs to temporarily connect with **root** privileges to refresh the ACL rules for your dedicated user."
+      "title": "Stale permissions for {username} on {host}",
+      "description": "The dedicated user {username} on your OpenWrt router {host} seems to have outdated or insufficient ACL permissions. This often happens after firmware updates or when new features are added to the integration.\n\nTo fix this, the integration needs to temporarily connect with **root** privileges to refresh the ACL rules for your dedicated user."
     }
   },
-  "repair_flow": {
+  "repair": {
     "stale_permissions": {
       "step": {
         "init": {
