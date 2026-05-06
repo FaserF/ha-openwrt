@@ -1067,6 +1067,7 @@ class SshClient(OpenWrtClient):
                             port = entry.get("port", "")
                             if port:
                                 dev.port = port
+                                dev.connected = True  # Seen on a physical port recently
                                 if not dev.is_wireless and not dev.interface:
                                     dev.interface = dev_name
                 except Exception:
@@ -1233,7 +1234,7 @@ class SshClient(OpenWrtClient):
                     mac=mac,
                     ip=lease.ip,
                     hostname=lease.hostname,
-                    connected=True,
+                    connected=False,  # DHCP alone is not proof of connectivity
                     is_wireless=False,
                     connection_type="wired",
                 )
@@ -1246,12 +1247,18 @@ class SshClient(OpenWrtClient):
         """Add or update devices discovered via IP neighbors (ARP)."""
         try:
             neighbors = await self.get_ip_neighbors()
+            active_states = ("REACHABLE", "STALE", "DELAY", "PROBE", "PERMANENT")
             for neigh in neighbors:
                 mac = neigh.mac.lower()
                 if not mac:
                     continue
+                
+                is_active = neigh.state.upper() in active_states
+                
                 if mac in devices:
                     dev = devices[mac]
+                    if is_active:
+                        dev.connected = True
                     if not dev.neighbor_state:
                         dev.neighbor_state = neigh.state
                     if not dev.interface:
@@ -1262,7 +1269,7 @@ class SshClient(OpenWrtClient):
                     mac=mac,
                     ip=neigh.ip,
                     interface=neigh.interface,
-                    connected=True,
+                    connected=is_active,
                     is_wireless=False,
                     connection_type="wired",
                     neighbor_state=neigh.state,

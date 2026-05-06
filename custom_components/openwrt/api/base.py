@@ -1226,7 +1226,7 @@ class OpenWrtClient(abc.ABC):
         # Filter out invalid or inactive states
         # LuCI typically only considers REACHABLE, DELAY, PROBE, and PERMANENT as active.
         # STALE means the device was seen recently but hasn't responded to the last probe.
-        if state in ("FAILED", "INCOMPLETE", "STALE"):
+        if state in ("FAILED", "INCOMPLETE"):
             return None
 
         if "lladdr" in parts:

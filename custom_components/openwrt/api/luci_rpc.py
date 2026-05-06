@@ -1695,7 +1695,7 @@ class LuciRpcClient(OpenWrtClient):
 
         # 5. Final refinement from IP neighbors (for states)
         try:
-            active_states = ("REACHABLE", "DELAY", "PROBE", "PERMANENT")
+            active_states = ("REACHABLE", "STALE", "DELAY", "PROBE", "PERMANENT")
             neighbors = await self.get_ip_neighbors()
             for neigh in neighbors:
                 mac = neigh.mac.lower()
@@ -1758,6 +1758,7 @@ class LuciRpcClient(OpenWrtClient):
                             port = entry.get("port", "")
                             if port:
                                 dev.port = port
+                                dev.connected = True  # Seen on a physical port recently
                                 if not dev.is_wireless and not dev.interface:
                                     dev.interface = dev_name
                 except Exception:
