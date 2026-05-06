@@ -1920,7 +1920,9 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 ): bool,
                 vol.Optional(
                     CONF_TRUST_BRIDGE_FDB,
-                    default=current.get(CONF_TRUST_BRIDGE_FDB, DEFAULT_TRUST_BRIDGE_FDB),
+                    default=current.get(
+                        CONF_TRUST_BRIDGE_FDB, DEFAULT_TRUST_BRIDGE_FDB
+                    ),
                 ): bool,
             },
         )

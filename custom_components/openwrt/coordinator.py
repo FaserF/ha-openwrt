@@ -683,7 +683,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         mac_safe = mac.replace(":", "_")
         mac_colons = mac.lower()
         router_id_safe = self.router_id.replace(":", "_")
-        entry_id = self.config_entry.entry_id
 
         mac_no_colons = mac.replace(":", "").lower()
         mac_6chars = mac_no_colons[-6:].upper()
@@ -694,13 +693,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             f"homeassistant/device_tracker/{self.router_id}_{mac_safe}/config",
             f"homeassistant/device_tracker/{router_id_safe}_{mac_safe}/config",
             f"homeassistant/device_tracker/openwrt_{mac_safe}/config",
-            f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config",
-            f"homeassistant/device_tracker/openwrt_track_{mac_safe}/config",
-            f"homeassistant/device_tracker/{entry_id}_{mac_safe}/config",
-            f"homeassistant/device_tracker/{mac_safe}/config",
-            f"homeassistant/device_tracker/{mac_no_colons}/config",
-            f"homeassistant/device_tracker/openwrt_{mac_no_colons}/config",
-            f"homeassistant/device_tracker/openwrt_mqtt_{mac_no_colons}/config",
             f"homeassistant/device_tracker/{mac_6chars}/config",
             f"homeassistant/device_tracker/openwrt_{mac_6chars}/config",
         ]
@@ -756,30 +748,47 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             known_macs.add(mac.lower())
             known_macs.add(mac.replace(":", "").lower())
             known_macs.add(mac.replace(":", "_").lower())
-            known_macs.add(mac.replace(":", "")[-6:].lower()) # Last 6 chars
+            known_macs.add(mac.replace(":", "")[-6:].lower())  # Last 6 chars
 
-        # Scan ALL entities for MQTT zombies
+        # Build a set of STRICT identifiers belonging to THIS router
+        router_prefixes = {
+            self.config_entry.entry_id.lower(),
+            self.router_id.lower(),
+            self.router_id.replace(":", "_").lower(),
+            self.router_id.replace(":", "").lower(),
+            "openwrt",  # Historical prefix
+        }
+
+        # Scan ALL entities for MQTT zombies belonging to THIS router
         for entry in list(ent_reg.entities.values()):
             if entry.platform == "mqtt" and entry.domain == "device_tracker":
                 unique_id = (entry.unique_id or "").lower()
                 entity_id = entry.entity_id.lower()
-                original_name = (entry.original_name or "").lower()
 
-                # Match if it contains any of our known MACs OR openwrt/mqtt keywords
-                is_match = False
-                if any(m in unique_id for m in known_macs if len(m) > 4):
-                    is_match = True
-                elif "openwrt" in unique_id or "openwrt" in entity_id or "openwrt" in original_name:
-                    is_match = True
-                elif "mqtt" in unique_id or "mqtt" in entity_id or "mqtt" in original_name:
-                    is_match = True
+                # Rule 1: Starts with our router-specific prefix?
+                is_match = any(unique_id.startswith(p) for p in router_prefixes)
+
+                # Rule 2: Contains one of our known MACs in a safe format?
+                if not is_match:
+                    for m in known_macs:
+                        if len(m) < 8:  # Skip fragments
+                            continue
+                        if m in unique_id or m in entity_id:
+                            is_match = True
+                            break
 
                 if is_match:
-                    _LOGGER.debug("Removing zombie MQTT entity from registry: %s (unique_id=%s)", entry.entity_id, unique_id)
+                    _LOGGER.debug(
+                        "Removing zombie MQTT entity from registry: %s (unique_id=%s)",
+                        entry.entity_id,
+                        unique_id,
+                    )
                     try:
                         ent_reg.async_remove(entry.entity_id)
                     except Exception as err:
-                        _LOGGER.debug("Failed to remove entity %s: %s", entry.entity_id, err)
+                        _LOGGER.debug(
+                            "Failed to remove entity %s: %s", entry.entity_id, err
+                        )
 
     async def _async_discovery_mqtt_device(self, mac: str, hostname: str) -> None:
         """Send MQTT discovery message for a device tracker."""

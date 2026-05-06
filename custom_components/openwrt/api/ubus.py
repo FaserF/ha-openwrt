@@ -97,6 +97,8 @@ class UbusClient(OpenWrtClient):
         verify_ssl: bool = False,
         ubus_path: str = "/ubus",
         dhcp_software: str = "auto",
+        trust_stale_arp: bool = True,
+        trust_bridge_fdb: bool = True,
     ) -> None:
         """Initialize the ubus client."""
         super().__init__(
@@ -107,6 +109,8 @@ class UbusClient(OpenWrtClient):
             use_ssl,
             verify_ssl,
             dhcp_software,
+            trust_stale_arp,
+            trust_bridge_fdb,
         )
         self._ubus_path = ubus_path
         self._session_id: str = "00000000000000000000000000000000"

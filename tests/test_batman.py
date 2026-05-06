@@ -63,6 +63,7 @@ async def test_ubus_get_batman_data():
         assert len(data["translation_table"]) == 2
         assert data["translation_table"]["00:11:22:33:44:58"] == "00:11:22:33:44:56"
         assert data["translation_table"]["00:11:22:33:44:59"] == "00:11:22:33:44:57"
+        assert data["mesh_active"] is True
 
 
 @pytest.mark.asyncio
@@ -90,6 +91,7 @@ async def test_ssh_get_batman_data():
         assert data["originators"][0].tq == 123
         assert data["originators"][1].tq == 45
         assert data["translation_table"]["00:11:22:33:44:58"] == "00:11:22:33:44:56"
+        assert data["mesh_active"] is True
 
 
 @pytest.mark.asyncio
@@ -117,3 +119,4 @@ async def test_luci_get_batman_data():
         assert data["originators"][0].tq == 123
         assert data["originators"][1].tq == 45
         assert data["translation_table"]["00:11:22:33:44:58"] == "00:11:22:33:44:56"
+        assert data["mesh_active"] is True

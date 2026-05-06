@@ -81,6 +81,8 @@ class SshClient(OpenWrtClient):
         verify_ssl: bool = False,
         ssh_key: str | None = None,
         dhcp_software: str = "auto",
+        trust_stale_arp: bool = True,
+        trust_bridge_fdb: bool = True,
     ) -> None:
         """Initialize the SSH client."""
         super().__init__(
@@ -91,6 +93,8 @@ class SshClient(OpenWrtClient):
             use_ssl,
             verify_ssl,
             dhcp_software,
+            trust_stale_arp,
+            trust_bridge_fdb,
         )
         self._ssh_key = ssh_key
         self._client: Any = None
@@ -1708,6 +1712,12 @@ class SshClient(OpenWrtClient):
             if getattr(packages, attr) is not True:
                 if pkg_name in ("wireguard", "openvpn", "batctl"):
                     setattr(packages, attr, any(pkg_name in p for p in installed))
+                elif attr == "luci_mod_rpc":
+                    setattr(
+                        packages,
+                        attr,
+                        any(p in installed for p in ("luci-rpc", "luci-mod-rpc")),
+                    )
                 else:
                     setattr(packages, attr, pkg_name in installed)
 

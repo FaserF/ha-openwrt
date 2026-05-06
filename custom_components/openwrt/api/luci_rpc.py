@@ -89,6 +89,8 @@ class LuciRpcClient(OpenWrtClient):
         use_ssl: bool = False,
         verify_ssl: bool = False,
         dhcp_software: str = "auto",
+        trust_stale_arp: bool = True,
+        trust_bridge_fdb: bool = True,
     ) -> None:
         """Initialize the LuCI RPC client."""
         super().__init__(
@@ -99,6 +101,8 @@ class LuciRpcClient(OpenWrtClient):
             use_ssl,
             verify_ssl,
             dhcp_software,
+            trust_stale_arp,
+            trust_bridge_fdb,
         )
         self._auth_token: str = ""
         self._session: aiohttp.ClientSession | None = None
@@ -702,7 +706,7 @@ class LuciRpcClient(OpenWrtClient):
             "/etc/init.d/lldpd "
             "/usr/sbin/batctl "
             "/sys/module/batman_adv; do "
-            "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
+            "if [ -e $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._rpc_call("sys", "exec", [cmd])
         if out:

@@ -740,28 +740,25 @@
     },
     "stale_permissions": {
       "title": "Veraltete Berechtigungen für {username} auf {host}",
-      "description": "Der dedizierte Benutzer {username} auf deinem OpenWrt-Router {host} scheint veraltete oder unzureichende ACL-Berechtigungen zu haben. Dies passiert oft nach Firmware-Updates oder wenn neue Funktionen zur Integration hinzugefügt wurden.\n\nUm dies zu beheben, muss die Integration vorübergehend eine Verbindung mit **root**-Rechten herstellen, um die ACL-Regeln für deinen dedizierten Benutzer zu aktualisieren."
-    }
-  },
-  "repair": {
-    "stale_permissions": {
-      "step": {
-        "init": {
-          "title": "Berechtigungen aktualisieren",
-          "description": "Die Berechtigungen für Benutzer **{username}** auf **{host}** müssen aktualisiert werden. Du wirst aufgefordert, das **root**-Passwort einzugeben, um diese einmalige Wartungsaufgabe durchzuführen.\n\nHinweis: Das root-Passwort wird nur für diese Sitzung verwendet und nicht gespeichert."
-        },
-        "root_login": {
-          "title": "Login als Root",
-          "description": "Bitte gib das **root**-Passwort für **{host}** ein.",
-          "data": {
-            "password": "Root Passwort"
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Berechtigungen aktualisieren",
+            "description": "Die Berechtigungen für Benutzer **{username}** auf **{host}** müssen aktualisiert werden. Du wirst aufgefordert, das **root**-Passwort einzugeben, um diese einmalige Wartungsaufgabe durchzuführen.\n\nHinweis: Das root-Passwort wird nur für diese Sitzung verwendet und nicht gespeichert."
+          },
+          "root_login": {
+            "title": "Login als Root",
+            "description": "Bitte gib das **root**-Passwort für **{host}** ein.",
+            "data": {
+              "password": "Root Passwort"
+            }
           }
+        },
+        "abort": {
+          "unknown_error": "Ein unbekannter Fehler ist aufgetreten.",
+          "cannot_connect": "Verbindung zum Router als root fehlgeschlagen.",
+          "provision_failed": "Aktualisierung der Berechtigungen für den dedizierten Benutzer fehlgeschlagen."
         }
-      },
-      "abort": {
-        "unknown_error": "Ein unbekannter Fehler ist aufgetreten.",
-        "cannot_connect": "Verbindung zum Router als root fehlgeschlagen.",
-        "provision_failed": "Aktualisierung der Berechtigungen für den dedizierten Benutzer fehlgeschlagen."
       }
     }
   },

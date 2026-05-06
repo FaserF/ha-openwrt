@@ -1039,6 +1039,17 @@ async def async_setup_entry(
                             ent_reg.async_remove(ent.entity_id)
                             continue
 
+            # Cleanup Batman neighbors
+            if "batman_neighbor_" in unique_id:
+                current_keys = {
+                    f"batman_neighbor_{n.mac}"
+                    for n in coordinator.data.batman_neighbors
+                }
+                if unique_id not in current_keys:
+                    ent_reg.async_remove(ent.entity_id)
+                    tracked_keys.discard(unique_id)
+                    continue
+
             # Cleanup orphaned wireless sensors (e.g. ghost radios)
             if "_wifi_" in unique_id and coordinator.data:
                 found = False
@@ -1603,7 +1614,7 @@ def _async_setup_specialized_sensors(
         )
 
     # Batman Mesh
-    if perms.read_batman and (pkgs.batman_adv or pkgs.batctl):
+    if perms.read_batman and (pkgs.batman_adv is not False or pkgs.batctl is not False):
         key = "batman_mesh_global"
         if key not in tracked_keys:
             tracked_keys.add(key)
