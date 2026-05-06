@@ -1510,6 +1510,10 @@ class OpenWrtClient(abc.ABC):
         except Exception as err:
             _LOGGER.debug("Failed to get Batman translation table: %s", err)
 
+        # Determine if mesh is active (has any data)
+        data["mesh_active"] = any(
+            [data["originators"], data["neighbors"], data["gateways"]]
+        )
         return data
 
     async def get_vpn_status(self) -> list[VpnInterface]:
@@ -2015,12 +2019,13 @@ class OpenWrtClient(abc.ABC):
         if "ban_ip" in dyn_map:
             data.ban_ip = get_val(dyn_map["ban_ip"], data.ban_ip, "ban-ip")
         if "batman" in dyn_map:
-            batman = get_val(dyn_map["batman"], {}, "batman")
-            data.batman_originators = batman.get("originators", [])
-            data.batman_neighbors = batman.get("neighbors", [])
-            data.batman_gateways = batman.get("gateways", [])
-            data.batman_translation_table = batman.get("translation_table", {})
-            data.batman_mesh_active = batman.get("mesh_active", False)
+            batman = get_val(dyn_map["batman"], None, "batman")
+            if batman:
+                data.batman_originators = batman.get("originators", [])
+                data.batman_neighbors = batman.get("neighbors", [])
+                data.batman_gateways = batman.get("gateways", [])
+                data.batman_translation_table = batman.get("translation_table", {})
+                data.batman_mesh_active = batman.get("mesh_active", False)
 
         # Populate MAC address for device info if missing
         if data.device_info and not data.device_info.mac_address:

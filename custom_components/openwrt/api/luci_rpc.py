@@ -654,9 +654,10 @@ class LuciRpcClient(OpenWrtClient):
                 packages.wireless = True
             if "lldp" in objects:
                 packages.lldp = True
-            if "batman-adv" in objects or "batctl" in objects:
-                packages.batctl = True
+            if "batman-adv" in objects:
                 packages.batman_adv = True
+            if "batctl" in objects:
+                packages.batctl = True
         except Exception:
             pass
 

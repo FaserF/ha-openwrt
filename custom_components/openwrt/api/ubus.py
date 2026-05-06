@@ -1948,7 +1948,7 @@ class UbusClient(OpenWrtClient):
                     return len(results) > idx and results[idx].strip() == "1"
 
                 if packages.sqm_scripts is not True:
-                    packages.sqm_scripts = detect_status(0) or detect_status(18)
+                    packages.sqm_scripts = detect_status(0) or detect_status(20)
                 if packages.mwan3 is not True:
                     packages.mwan3 = detect_status(1)
                 if packages.iwinfo is not True:

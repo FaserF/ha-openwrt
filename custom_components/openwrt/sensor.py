@@ -2522,7 +2522,7 @@ def _create_batman_neighbor_sensors(
         return None
 
     def is_available(data: OpenWrtData) -> bool:
-        return any(neigh.mac == mac for neigh in data.batman_neighbors)
+        return any(orig.mac == mac for orig in data.batman_originators)
 
     sensors.append(
         OpenWrtDeviceSensor(

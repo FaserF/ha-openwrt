@@ -1252,9 +1252,9 @@ class SshClient(OpenWrtClient):
                 mac = neigh.mac.lower()
                 if not mac:
                     continue
-                
+
                 is_active = neigh.state.upper() in active_states
-                
+
                 if mac in devices:
                     dev = devices[mac]
                     if is_active:
@@ -1565,7 +1565,15 @@ class SshClient(OpenWrtClient):
                 if "ESSID" in iwinfo_check:
                     perms.read_wireless = True
 
-            # 3. Write permissions
+            # 3. Check Batman access
+            if "batman-adv" in ubus_list:
+                perms.read_batman = True
+            elif not perms.read_batman:
+                bat_check = await self._exec("[ -d /sys/module/batman_adv ] && echo 1")
+                if bat_check.strip() == "1":
+                    perms.read_batman = True
+
+            # 4. Write permissions
             if is_root:
                 perms.write_system = True
                 perms.write_network = True
@@ -1625,7 +1633,7 @@ class SshClient(OpenWrtClient):
             "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
             "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
             "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm /etc/init.d/odhcpd /etc/init.d/lldpd /usr/sbin/batctl /sys/module/batman_adv; do "
-            "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
+            "if [ -f $f ] || [ -x $f ] || [ -d $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._exec(cmd)
         results = out.strip().splitlines()

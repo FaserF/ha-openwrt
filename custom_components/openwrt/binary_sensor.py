@@ -131,9 +131,11 @@ async def async_setup_entry(
                         OpenWrtBinarySensorDescription(
                             key=key,
                             name="Batman Mesh Active",
+                            translation_key="batman_mesh_active",
                             icon="mdi:transit-connection-variant",
                             entity_category=EntityCategory.DIAGNOSTIC,
-                            is_on_fn=lambda data: data.packages.batman_adv is True,
+                            is_on_fn=lambda data: data.batman_mesh_active,
+                            available_fn=lambda data: data.permissions.read_batman,
                         ),
                     )
                 )
