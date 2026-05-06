@@ -830,6 +830,15 @@ The "Internet Access" switches in Home Assistant act as a toggle for the firewal
 ### Why are some Signal sensors hidden?
 The integration automatically hides "STA-style" sensors (Signal, Quality, Bitrate) if the WiFi interface is in **Master/AP mode**. These values only make sense when the router itself is acting as a client (Station) or Mesh node.
 
+### Does this work with devices behind other Access Points (e.g. Unifi, TP-Link)?
+**Yes, absolutely!** A common setup is an OpenWrt router (acting as the main gateway) connected to separate Access Points via LAN cable. 
+
+Even if the WiFi on your OpenWrt router is disabled, the integration can still track mobile devices (phones, tablets) connected to those external APs. It does this by monitoring two low-level system sources:
+- **ARP/Neighbor Table (`ip neigh`)**: Every device that communicates with the internet or the router itself must appear in the ARP table. The integration identifies these devices and marks them as "Home" as long as they are in an active state (`REACHABLE` or `STALE`).
+- **Bridge Forwarding Database (FDB)**: The router's internal bridge/switch learns which MAC address is active on which physical LAN port. This allows the integration to "see" devices even if they haven't sent a packet to the router's IP recently.
+
+From OpenWrt's perspective, these devices will appear as **"wired"** clients, but they will be correctly tracked as individual `device_tracker` entities in Home Assistant.
+
 ## 🧑‍💻 Development
 
 This project uses modern Python development tools:
