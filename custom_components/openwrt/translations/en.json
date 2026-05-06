@@ -637,7 +637,7 @@
         "name": "Stop {service}"
       },
       "kick_device": {
-        "name": "Kick Device"
+        "name": "Disconnect device"
       },
       "wake_on_lan": {
         "name": "Wake on LAN"

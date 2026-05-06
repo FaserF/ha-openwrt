@@ -1014,7 +1014,9 @@ class SshClient(OpenWrtClient):
                     interfaces.append(iface)
 
             # 2. Fetch all device statistics and link status
-            dev_status_str = await self._exec("ubus call network.device status 2>/dev/null")
+            dev_status_str = await self._exec(
+                "ubus call network.device status 2>/dev/null"
+            )
             if dev_status_str and dev_status_str.strip().startswith("{"):
                 device_stats = json.loads(dev_status_str)
                 for iface in interfaces:

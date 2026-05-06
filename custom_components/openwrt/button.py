@@ -36,7 +36,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import format_ap_device_id, get_via_device, is_random_mac
+from .helpers import get_via_device, is_random_mac
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -690,7 +690,6 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
         self._client = client
         self._mac = mac.lower()
         self._interface = interface
-        self._attr_name = "Disconnect"
         self._attr_unique_id = f"{entry.entry_id}_{self._mac}_kick_{interface}"
         self._entry = entry
         self._initial_name = hostname

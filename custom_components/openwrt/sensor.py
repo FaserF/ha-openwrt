@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from homeassistant.components.sensor import (
@@ -24,7 +25,6 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfInformation,
     UnitOfTemperature,
-    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
@@ -37,6 +37,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import UNDEFINED, StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .api.base import OpenWrtData, StorageUsage
 from .const import (
@@ -60,7 +61,7 @@ _LOGGER = logging.getLogger(__name__)
 class OpenWrtSensorDescription(SensorEntityDescription):
     """Describe an OpenWrt sensor."""
 
-    value_fn: Callable[[OpenWrtData], StateType]
+    value_fn: Callable[[OpenWrtData], StateType | datetime]
     attrs_fn: Callable[[OpenWrtData], dict[str, Any]] | None = None
     available_fn: Callable[[OpenWrtData], bool] | None = None
 
@@ -69,7 +70,7 @@ class OpenWrtSensorDescription(SensorEntityDescription):
 class OpenWrtStorageSensorDescription(SensorEntityDescription):
     """Describe an OpenWrt storage sensor."""
 
-    value_fn: Callable[[StorageUsage], StateType]
+    value_fn: Callable[[StorageUsage], StateType | datetime]
 
 
 class OpenWrtSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
@@ -93,7 +94,7 @@ class OpenWrtSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         )
 
     @property
-    def native_value(self) -> StateType:
+    def native_value(self) -> StateType | datetime:
         """Return the sensor value."""
         if self.coordinator.data is None:
             return None
@@ -189,7 +190,7 @@ class OpenWrtStorageSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
         self._attr_translation_placeholders = {"mount": mount_point}
 
     @property
-    def native_value(self) -> StateType:
+    def native_value(self) -> StateType | datetime:
         """Return the sensor value."""
         if (
             not self.coordinator.data
@@ -234,7 +235,7 @@ class OpenWrtQModemSensorEntity(OpenWrtSensorEntity):
         )
 
     @property
-    def native_value(self) -> StateType:
+    def native_value(self) -> StateType | datetime:
         """Return the sensor value."""
         if self.coordinator.data is None:
             return None
@@ -298,7 +299,7 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         )
 
     @property
-    def native_value(self) -> StateType:
+    def native_value(self) -> StateType | datetime:
         """Return the value of the sensor."""
         if self.coordinator.data is None:
             return None
@@ -460,12 +461,15 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             key="uptime",
             name="Uptime",
             translation_key="uptime",
-            device_class=SensorDeviceClass.DURATION,
-            native_unit_of_measurement=UnitOfTime.SECONDS,
-            state_class=SensorStateClass.TOTAL_INCREASING,
+            device_class=SensorDeviceClass.TIMESTAMP,
             entity_category=EntityCategory.DIAGNOSTIC,
-            value_fn=lambda data: data.system_resources.uptime,
+            value_fn=lambda data: (
+                dt_util.utcnow() - timedelta(seconds=data.system_resources.uptime)
+                if data.system_resources.uptime > 0
+                else None
+            ),
             attrs_fn=lambda data: {
+                "uptime_seconds": data.system_resources.uptime,
                 "days": data.system_resources.uptime // 86400,
                 "hours": (data.system_resources.uptime % 86400) // 3600,
                 "minutes": (data.system_resources.uptime % 3600) // 60,
@@ -1576,7 +1580,7 @@ def _async_setup_specialized_sensors(
         )
 
     # Batman Mesh
-    if perms.read_batman and (pkgs.batman_adv is not False or pkgs.batctl is not False):
+    if perms.read_batman and (pkgs.batman_adv or pkgs.batctl):
         key = "batman_mesh_global"
         if key not in tracked_keys:
             tracked_keys.add(key)
@@ -2147,13 +2151,15 @@ def _create_net_status_sensors(
                 name=f"{iface_name} Uptime",
                 translation_key="net_uptime",
                 translation_placeholders={"interface": iface_name},
-                device_class=SensorDeviceClass.DURATION,
-                native_unit_of_measurement=UnitOfTime.SECONDS,
-                state_class=SensorStateClass.TOTAL_INCREASING,
+                device_class=SensorDeviceClass.TIMESTAMP,
                 entity_category=EntityCategory.DIAGNOSTIC,
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
-                    (i.uptime for i in data.network_interfaces if i.name == n),
+                    (
+                        dt_util.utcnow() - timedelta(seconds=i.uptime)
+                        for i in data.network_interfaces
+                        if i.name == n and i.uptime > 0
+                    ),
                     None,
                 ),
                 available_fn=lambda data, n=iface_name: any(

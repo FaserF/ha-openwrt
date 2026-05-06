@@ -922,6 +922,22 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         ):
             identifiers.add((DOMAIN, self.config_entry.unique_id))
 
+        # Determine current name to prevent downgrading to less descriptive versions
+        current_name = None
+        existing_device = device_registry.async_get_device(identifiers=identifiers)
+        if existing_device and existing_device.name:
+            current_name = existing_device.name
+
+        new_name = device_info.model or device_info.hostname or self.config_entry.title
+        # If AX3600 is reported but Xiaomi AX3600 is currently set, stick with Xiaomi
+        if (
+            current_name
+            and new_name
+            and len(current_name) > len(new_name)
+            and new_name.lower() in current_name.lower()
+        ):
+            new_name = current_name
+
         device_registry.async_get_or_create(
             config_entry_id=self.config_entry.entry_id,
             identifiers=identifiers,
@@ -932,7 +948,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             ),
             manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
             model=device_info.model or device_info.board_name,
-            name=device_info.model or device_info.hostname or self.config_entry.title,
+            name=new_name,
             sw_version=device_info.firmware_version,
             hw_version=device_info.board_name,
             via_device=via_device,

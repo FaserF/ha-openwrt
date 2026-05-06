@@ -1010,7 +1010,6 @@ class OpenWrtAccessControlSwitch(
         self._client = client
         self._mac = mac.lower()
         self._attr_unique_id = f"{entry.entry_id}_access_{self._mac.replace(':', '_')}"
-        self._attr_name = "Internet Access"
         self._attr_translation_key = "device_access"
         from .helpers import is_random_mac
 
