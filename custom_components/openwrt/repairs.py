@@ -188,17 +188,18 @@ async def async_create_fix_flow(
 ) -> RepairsFlow:
     """Create a repair flow for fixable issues."""
     if issue_id.startswith("auth_failed_"):
-        return AuthFailedRepairFlow(data)
+        return AuthFailedRepairFlow(issue_id, data)
     if issue_id.startswith("stale_permissions_"):
-        return StalePermissionsRepairFlow(data)
+        return StalePermissionsRepairFlow(issue_id, data)
     return ConfirmRepairFlow()
 
 
 class AuthFailedRepairFlow(RepairsFlow):
     """Handler for auth failure repair flow - triggers re-authentication."""
 
-    def __init__(self, data: dict[str, Any] | None) -> None:
+    def __init__(self, issue_id: str, data: dict[str, Any] | None) -> None:
         """Initialize."""
+        self.issue_id = issue_id
         self.data = data
 
     async def async_step_init(
@@ -206,8 +207,11 @@ class AuthFailedRepairFlow(RepairsFlow):
         user_input: dict[str, Any] | None = None,
     ) -> FlowResult:
         """Handle the init step - redirect to reauth."""
+        entry_id = self.data.get("entry_id") if self.data else None
+        if not entry_id:
+            entry_id = self.issue_id.split("_")[-1]
+
         if user_input is not None:
-            entry_id = self.data.get("entry_id") if self.data else None
             if entry_id:
                 entry = self.hass.config_entries.async_get_entry(str(entry_id))
                 if entry:
@@ -220,8 +224,9 @@ class AuthFailedRepairFlow(RepairsFlow):
 class StalePermissionsRepairFlow(RepairsFlow):
     """Handler for stale permissions repair flow - re-provisions the user."""
 
-    def __init__(self, data: dict[str, Any] | None) -> None:
+    def __init__(self, issue_id: str, data: dict[str, Any] | None) -> None:
         """Initialize."""
+        self.issue_id = issue_id
         self.data = data
         self._root_data: dict[str, Any] = {}
 
@@ -231,6 +236,9 @@ class StalePermissionsRepairFlow(RepairsFlow):
     ) -> FlowResult:
         """Handle the init step."""
         entry_id = self.data.get("entry_id") if self.data else None
+        if not entry_id:
+            entry_id = self.issue_id.split("_")[-1]
+
         if not entry_id:
             return self.async_abort(reason="unknown_error")
 
@@ -261,6 +269,9 @@ class StalePermissionsRepairFlow(RepairsFlow):
 
         errors: dict[str, str] = {}
         entry_id = self.data.get("entry_id") if self.data else None
+        if not entry_id:
+            entry_id = self.issue_id.split("_")[-1]
+
         if not entry_id:
             return self.async_abort(reason="unknown_error")
         entry = self.hass.config_entries.async_get_entry(str(entry_id))
