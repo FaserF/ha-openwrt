@@ -229,6 +229,20 @@ if ! ($UCI commit luci && $UCI commit rpcd); then
     exit 1
 fi
 
+# Ensure ACL file is persistent across upgrades
+SYSUPGRADE_CONF="/etc/sysupgrade.conf"
+if [ -f "$SYSUPGRADE_CONF" ]; then
+    if ! grep -q "$ACL_FILE" "$SYSUPGRADE_CONF"; then
+        $LOGGER -t ha-openwrt "Adding $ACL_FILE to $SYSUPGRADE_CONF for persistence"
+        echo "$ACL_FILE" >> "$SYSUPGRADE_CONF"
+    fi
+fi
+
+# Restart services to apply changes
+$LOGGER -t ha-openwrt "Restarting services to apply ACLs"
+/etc/init.d/rpcd restart >/dev/null 2>&1
+/etc/init.d/uhttpd restart >/dev/null 2>&1
+
 $LOGGER -t ha-openwrt "Provisioning SUCCESS for $USER"
 echo "ANALYSIS: SUCCESS"
 echo "LOG: Provisioning SUCCESS"

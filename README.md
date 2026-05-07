@@ -831,7 +831,7 @@ By default, OpenWrt does not preserve the custom ACL file `/usr/share/rpcd/acl.d
 1.  **Check Repairs**: Look at **Settings > System > Repairs** in Home Assistant. The integration automatically detects missing permissions and offers a **"Refresh Permissions"** fix. Follow the steps and provide your router's root credentials to redeploy the ACLs.
 2.  **Options Flow**: Alternatively, go to the integration in Home Assistant, click **Configure**, and check the **"Re-deploy Home Assistant User & ACLs"** option. This will recreate the user and ACL file on your router.
 3.  **Manual Check**: If you set up ACLs manually, ensure the file `/usr/share/rpcd/acl.d/homeassistant.json` still exists on your router and contains the correct permissions.
-4.  **Persistent Fix**: To prevent this from happening in the next upgrade, add the ACL path to your sysupgrade configuration:
+4.  **Persistent Fix**: To prevent this from happening in the next upgrade, the ACL path should be added to your sysupgrade configuration. **The integration now attempts to do this automatically during user deployment**, but you can also do it manually:
     ```bash
     echo "/usr/share/rpcd/acl.d/homeassistant.json" >> /etc/sysupgrade.conf
     ```
