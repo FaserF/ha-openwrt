@@ -22,6 +22,7 @@ def test_uptime_conversion() -> None:
         connected_devices=[],
         network_interfaces=[],
         wireless_interfaces=[],
+        boot_time=now - timedelta(seconds=120),
     )
 
     coordinator = MagicMock()

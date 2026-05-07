@@ -10,7 +10,7 @@ Creates actionable repair issues for common problems:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.config_entries import ConfigEntry
@@ -277,11 +277,9 @@ class StalePermissionsRepairFlow(RepairsFlow):
                 await client.connect()
                 # Provision the user again with EXISTING credentials
                 ha_username = entry.data.get(CONF_USERNAME, "homeassistant")
-                ha_password = entry.data.get(CONF_PASSWORD)
+                ha_password = cast(str, entry.data.get(CONF_PASSWORD, ""))
 
-                success, error = await client.provision_user(
-                    ha_username, ha_password
-                )
+                success, error = await client.provision_user(ha_username, ha_password)
                 if success:
                     # We didn't change the password, so just reload or just mark as fixed
                     await self.hass.config_entries.async_reload(entry.entry_id)

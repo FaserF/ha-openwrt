@@ -463,11 +463,7 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             translation_key="uptime",
             device_class=SensorDeviceClass.TIMESTAMP,
             entity_category=EntityCategory.DIAGNOSTIC,
-            value_fn=lambda data: (
-                dt_util.utcnow() - timedelta(seconds=data.system_resources.uptime)
-                if data.system_resources.uptime > 0
-                else None
-            ),
+            value_fn=lambda data: data.boot_time,
             attrs_fn=lambda data: {
                 "uptime_seconds": data.system_resources.uptime,
                 "days": data.system_resources.uptime // 86400,

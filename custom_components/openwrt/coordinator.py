@@ -13,7 +13,7 @@ import logging
 import re
 import time
 from collections.abc import Mapping
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import aiohttp
@@ -31,6 +31,7 @@ from homeassistant.helpers import (
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api.base import OpenWrtClient, OpenWrtData
 from .api.luci_rpc import (
@@ -210,6 +211,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             self.config_entry.unique_id or self.config_entry.data[CONF_HOST]
         )
         self._last_version: str | None = None
+        self._boot_time: datetime | None = None
         self._store: storage.Store = storage.Store(
             hass,
             1,
@@ -241,7 +243,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 else:
                     # Legacy structure (direct dict of devices)
                     self._device_history.update(stored_data)
-                
+
                 _LOGGER.debug(
                     "Loaded %s devices from persistent history (last_version: %s)",
                     len(self._device_history),
@@ -308,7 +310,24 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             except Exception as err:
                 _LOGGER.debug("Firmware update check failed: %s", err)
 
-        # 4. Calculate network rates
+        # 4. Calculate stabilized boot time
+        uptime = data.system_resources.uptime
+        if uptime > 0:
+            utc_now = dt_util.utcnow()
+            new_boot_time = utc_now - timedelta(seconds=uptime)
+            # Stabilize: if change is small (< 10s), keep old value to prevent sensor flickering
+            if self._boot_time:
+                diff = abs((new_boot_time - self._boot_time).total_seconds())
+                if diff < 10:
+                    data.boot_time = self._boot_time
+                else:
+                    self._boot_time = new_boot_time.replace(microsecond=0)
+                    data.boot_time = self._boot_time
+            else:
+                self._boot_time = new_boot_time.replace(microsecond=0)
+                data.boot_time = self._boot_time
+
+        # 5. Calculate network rates
         self._async_process_network_rates(data, now)
         self._last_update_time = now
 

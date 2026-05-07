@@ -918,6 +918,7 @@ class OpenWrtData:
     batman_neighbors: list[BatmanNeighbor] = field(default_factory=list)
     batman_gateways: list[BatmanGateway] = field(default_factory=list)
     batman_translation_table: dict[str, str] = field(default_factory=dict)
+    boot_time: datetime | None = None
 
 
 @dataclass
