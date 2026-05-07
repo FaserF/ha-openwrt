@@ -120,7 +120,7 @@
       "modelName": "OpenWrt*"
     }
   ],
-  "version": "2.0.1",
+  "version": "2.0.2-dev0",
   "zeroconf": [
     {
       "type": "_http._tcp.local.",
