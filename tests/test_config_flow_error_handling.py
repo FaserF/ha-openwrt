@@ -147,8 +147,8 @@ async def test_luci_rpc_html_response_handling(hass):
     mock_session.post = MagicMock(return_value=mock_resp)
     mock_session.closed = False
 
-    client = LuciRpcClient("192.168.1.1", "root", "password")
-    client._session = mock_session
+    client = LuciRpcClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "password")
+    client.session = mock_session
 
     # The _rpc_call should detect it's not JSON and raise LuciRpcPackageMissingError
     with pytest.raises(LuciRpcPackageMissingError):

@@ -1,7 +1,7 @@
 """Tests for the System Logs diagnostic sensor."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -13,7 +13,13 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.mark.asyncio
 async def test_ubus_get_system_logs():
     """Test getting system logs via Ubus using logread."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with (
@@ -35,7 +41,13 @@ async def test_ubus_get_system_logs():
 @pytest.mark.asyncio
 async def test_ssh_get_system_logs():
     """Test getting system logs via SSH."""
-    client = SshClient(host="192.168.1.1", username="root", password="password")
+    client = SshClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "_exec", new_callable=AsyncMock) as mock_exec:
@@ -54,7 +66,13 @@ async def test_ssh_get_system_logs():
 @pytest.mark.asyncio
 async def test_luci_rpc_get_system_logs():
     """Test getting system logs via LuCI RPC."""
-    client = LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._session_id = "test_token"
     client._connected = True
 

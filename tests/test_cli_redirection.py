@@ -1,6 +1,6 @@
 """Tests for command-line redirection and error suppression."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -10,7 +10,13 @@ from custom_components.openwrt.api.luci_rpc import LuciRpcClient
 @pytest.fixture
 def luci_client() -> LuciRpcClient:
     """Fixture for LuCI RPC client."""
-    return LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    return LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
 
 
 @pytest.mark.asyncio

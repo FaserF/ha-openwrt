@@ -51,7 +51,11 @@ async def async_setup_entry(
         perms = coordinator.data.permissions
 
         # We need write_led permission to control LEDs
-        if perms.write_led and coordinator.data.leds and entry.options.get(CONF_ENABLE_LED, True):
+        if (
+            perms.write_led
+            and coordinator.data.leds
+            and entry.options.get(CONF_ENABLE_LED, True)
+        ):
             for led in coordinator.data.leds:
                 if led.name not in tracked_leds:
                     tracked_leds.add(led.name)

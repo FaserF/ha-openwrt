@@ -1,7 +1,7 @@
 """Tests for AdBlock status detection and one-shot service handling (Issue #30)."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,7 +12,13 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.mark.asyncio
 async def test_ubus_adblock_formatted_domains() -> None:
     """Test parsing AdBlock blocked_domains with commas (Issue #30)."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "_call", new_callable=AsyncMock) as mock_call:
@@ -32,7 +38,13 @@ async def test_ubus_adblock_formatted_domains() -> None:
 @pytest.mark.asyncio
 async def test_ubus_adblock_exception_fallback() -> None:
     """Test that AdBlock status falls back to UCI if ubus call raises an exception (Issue #30)."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "_call", new_callable=AsyncMock) as mock_call:
@@ -52,7 +64,13 @@ async def test_ubus_adblock_exception_fallback() -> None:
 @pytest.mark.asyncio
 async def test_luci_rpc_adblock_service_one_shot() -> None:
     """Test that AdBlock service is considered running if exit_code is 0 (Issue #30)."""
-    client = LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._auth_token = "test_token"
     client._connected = True
 
@@ -80,7 +98,13 @@ async def test_luci_rpc_adblock_service_one_shot() -> None:
 @pytest.mark.asyncio
 async def test_luci_rpc_adblock_formatted_domains() -> None:
     """Test LuCI RPC parsing of AdBlock status with formatted numbers."""
-    client = LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._auth_token = "test_token"
     client._connected = True
 
@@ -99,7 +123,13 @@ async def test_luci_rpc_adblock_formatted_domains() -> None:
 @pytest.mark.asyncio
 async def test_luci_rpc_adblock_formatted_domains_dot() -> None:
     """Test LuCI RPC parsing of AdBlock status with dot as thousands separator."""
-    client = LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._auth_token = "test_token"
     client._connected = True
 

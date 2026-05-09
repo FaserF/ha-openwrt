@@ -1,7 +1,7 @@
 """Tests for one-shot service handling (Issue #30)."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -13,7 +13,13 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.mark.asyncio
 async def test_ubus_sysctl_one_shot() -> None:
     """Test that sysctl is reported as running via Ubus if exit_code is 0."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "_call", new_callable=AsyncMock) as mock_call:
@@ -31,7 +37,13 @@ async def test_ubus_sysctl_one_shot() -> None:
 @pytest.mark.asyncio
 async def test_luci_rpc_sysctl_one_shot() -> None:
     """Test that sysctl is reported as running via LuCI RPC if exit_code is 0."""
-    client = LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._auth_token = "test_token"
     client._connected = True
 
@@ -60,7 +72,13 @@ async def test_luci_rpc_sysctl_one_shot() -> None:
 @pytest.mark.asyncio
 async def test_ssh_sysctl_one_shot() -> None:
     """Test that sysctl is reported as running via SSH if enabled."""
-    client = SshClient(host="192.168.1.1", username="root", password="password")
+    client = SshClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "_exec", new_callable=AsyncMock) as mock_exec:

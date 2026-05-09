@@ -1,6 +1,6 @@
 """Test the OpenWrt LuCI RPC API client."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -13,7 +13,13 @@ from custom_components.openwrt.api.luci_rpc import (
 @pytest.fixture
 def luci_client() -> LuciRpcClient:
     """Fixture for LuCI RPC client."""
-    return LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    return LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
 
 
 class MockResponse:
@@ -38,30 +44,32 @@ class MockResponse:
 @pytest.mark.asyncio
 async def test_luci_connect_success(luci_client: LuciRpcClient):
     """Test successful connection and login."""
-    with patch("aiohttp.ClientSession.post") as mock_post:
-        # LuCI returns the token as result directly
-        mock_post.return_value = MockResponse(
-            200,
-            {"id": 1, "result": "luci_test_token"},
-        )
+    mock_post = MagicMock()
+    luci_client.session.post = mock_post
+    # LuCI returns the token as result directly
+    mock_post.return_value = MockResponse(
+        200,
+        {"id": 1, "result": "luci_test_token"},
+    )
 
-        await luci_client.connect()
+    await luci_client.connect()
 
-        assert luci_client.connected is True
-        assert luci_client._auth_token == "luci_test_token"
+    assert luci_client.connected is True
+    assert luci_client._auth_token == "luci_test_token"
 
 
 @pytest.mark.asyncio
 async def test_luci_connect_auth_error(luci_client: LuciRpcClient):
     """Test auth error handling."""
-    with patch("aiohttp.ClientSession.post") as mock_post:
-        mock_post.return_value = MockResponse(
-            200,
-            {"id": 1, "error": {"message": "Invalid credentials"}},
-        )
+    mock_post = MagicMock()
+    luci_client.session.post = mock_post
+    mock_post.return_value = MockResponse(
+        200,
+        {"id": 1, "error": {"message": "Invalid credentials"}},
+    )
 
-        with pytest.raises(LuciRpcAuthError):
-            await luci_client.connect()
+    with pytest.raises(LuciRpcAuthError):
+        await luci_client.connect()
 
 
 @pytest.mark.asyncio

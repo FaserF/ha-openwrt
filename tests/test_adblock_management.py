@@ -1,6 +1,6 @@
 """Tests for AdBlock, Simple AdBlock, and Ban-IP management."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,7 +12,13 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.mark.asyncio
 async def test_ubus_adblock_status():
     """Test getting AdBlock status via Ubus."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     # Mock ubus call
@@ -35,7 +41,13 @@ async def test_ubus_adblock_status():
 @pytest.mark.asyncio
 async def test_ubus_adblock_toggle():
     """Test toggling AdBlock via Ubus (using execute_command fallback/uci)."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec:
@@ -59,7 +71,13 @@ async def test_ubus_adblock_toggle():
 @pytest.mark.asyncio
 async def test_ssh_simple_adblock_status():
     """Test getting Simple AdBlock status via SSH."""
-    client = SshClient(host="192.168.1.1", username="root", password="password")
+    client = SshClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "_exec", new_callable=AsyncMock) as mock_exec:
@@ -81,7 +99,13 @@ async def test_ssh_simple_adblock_status():
 @pytest.mark.asyncio
 async def test_luci_rpc_banip_status():
     """Test getting Ban-IP status via LuCI RPC."""
-    client = LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._session_id = "test_token"
     client._connected = True
 
@@ -96,7 +120,13 @@ async def test_luci_rpc_banip_status():
 @pytest.mark.asyncio
 async def test_ssh_adblock_status_ubus_failover():
     """Test getting AdBlock status via SSH with ubus failover."""
-    client = SshClient(host="192.168.1.1", username="root", password="password")
+    client = SshClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "_exec", new_callable=AsyncMock) as mock_exec:

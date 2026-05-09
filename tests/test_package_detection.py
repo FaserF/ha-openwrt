@@ -1,6 +1,6 @@
 """Tests for package and capability detection in OpenWrt integration."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,7 +12,13 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.mark.asyncio
 async def test_ubus_package_detection_extended():
     """Test extended package detection via Ubus."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._session_id = "test_token"
     client._connected = True
 
@@ -49,7 +55,13 @@ async def test_ubus_package_detection_extended():
 @pytest.mark.asyncio
 async def test_ssh_package_detection_extended():
     """Test extended package detection via SSH."""
-    client = SshClient(host="192.168.1.1", username="root", password="password")
+    client = SshClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with (
@@ -73,7 +85,13 @@ async def test_ssh_package_detection_extended():
 @pytest.mark.asyncio
 async def test_luci_rpc_package_detection_extended():
     """Test extended package detection via LuCI RPC."""
-    client = LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._session_id = "test_token"
     client._connected = True
 
@@ -100,7 +118,7 @@ async def test_luci_rpc_package_detection_extended():
 @pytest.mark.asyncio
 async def test_packages_wireless_inference_from_iwinfo() -> None:
     """Test that packages.wireless is inferred from iwinfo if network.wireless is missing."""
-    client = UbusClient("192.168.1.1", "root", "pass")
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "pass")
     client._list_objects = AsyncMock(return_value=["iwinfo", "system", "uci"])
     client._get_object_methods = AsyncMock(return_value=["assoclist"])
     client._call = AsyncMock(return_value={})
@@ -113,7 +131,7 @@ async def test_packages_wireless_inference_from_iwinfo() -> None:
 @pytest.mark.asyncio
 async def test_packages_wireless_inference_from_hostapd() -> None:
     """Test that packages.wireless is inferred from hostapd.* objects."""
-    client = UbusClient("192.168.1.1", "root", "pass")
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "pass")
     client._list_objects = AsyncMock(return_value=["hostapd.wlan0", "system"])
     client._call = AsyncMock(return_value={})
 
@@ -124,7 +142,7 @@ async def test_packages_wireless_inference_from_hostapd() -> None:
 @pytest.mark.asyncio
 async def test_packages_wireless_inference_from_full_list() -> None:
     """Test that packages.wireless is inferred if only the package name matches in step 4."""
-    client = UbusClient("192.168.1.1", "root", "pass")
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "pass")
     client._list_objects = AsyncMock(return_value=[])
     client._call = AsyncMock(return_value={})
     client.get_installed_packages = AsyncMock(return_value=["iwinfo", "base-files"])

@@ -50,7 +50,6 @@ from .api.ubus import (
     UbusTimeoutError,
 )
 from .const import (
-    CONF_TRACKED_DEVICES,
     ATTR_MANUFACTURER,
     CONF_ASU_URL,
     CONF_CONNECTION_TYPE,
@@ -62,6 +61,7 @@ from .const import (
     CONF_SKIP_RANDOM_MAC,
     CONF_SSH_KEY,
     CONF_TARGET_OVERRIDE,
+    CONF_TRACKED_DEVICES,
     CONF_TRUST_BRIDGE_FDB,
     CONF_TRUST_STALE_ARP,
     CONF_UBUS_PATH,
@@ -137,8 +137,8 @@ def create_client(hass: HomeAssistant, config: Mapping[str, Any]) -> OpenWrtClie
     if connection_type == CONNECTION_TYPE_SSH:
         port = config.get(CONF_PORT, DEFAULT_PORT_SSH)
         return SshClient(
-        hass=hass,
-        session=None,
+            hass=hass,
+            session=None,
             host=host,
             username=username,
             password=password,
@@ -330,28 +330,35 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             else:
                 # Less than 1 hour: Round to start of minute
                 new_boot_time = boot_time_raw.replace(second=0, microsecond=0)
-            
+
             # Stabilization logic:
             # 1. If we don't have a boot time yet, set it.
             # 2. If uptime decreased significantly (>10s), the router rebooted.
             # 3. If the difference is significant (> 60s), update it (covers clock syncs/drift).
             # 4. Otherwise, keep the old value to prevent sensor flickering from poll jitter.
-            
-            rebooted = self._last_uptime is not None and uptime < (self._last_uptime - 10)
-            
+
+            rebooted = self._last_uptime is not None and uptime < (
+                self._last_uptime - 10
+            )
+
             if self._boot_time is None or rebooted:
                 if rebooted:
                     _LOGGER.info(
                         "Reboot detected on %s (uptime decreased from %s to %s)",
-                        self.host, self._last_uptime, uptime
+                        self.client.host,
+                        self._last_uptime,
+                        uptime,
                     )
                 self._boot_time = new_boot_time
             else:
                 diff = abs((new_boot_time - self._boot_time).total_seconds())
                 if diff > 60:
-                    _LOGGER.debug("Boot time drifted significantly (>60s), updating: %s", self._boot_time)
+                    _LOGGER.debug(
+                        "Boot time drifted significantly (>60s), updating: %s",
+                        self._boot_time,
+                    )
                     self._boot_time = new_boot_time
-            
+
             data.boot_time = self._boot_time
             self._last_uptime = uptime
 
@@ -652,7 +659,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # 6. Filter by whitelist if configured
             tracked_devices = self.config_entry.options.get(CONF_TRACKED_DEVICES)
             if tracked_devices and mac not in tracked_devices:
-                _LOGGER.debug("Skipping device %s: not in tracked_devices whitelist", mac)
+                _LOGGER.debug(
+                    "Skipping device %s: not in tracked_devices whitelist", mac
+                )
                 continue
 
             filtered_devices.append(device)
@@ -686,8 +695,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # 5. Filter DHCP leases by whitelist
         tracked_devices = self.config_entry.options.get(CONF_TRACKED_DEVICES)
         if tracked_devices:
-            data.dhcp_leases = [l for l in data.dhcp_leases if l.mac and l.mac.lower() in tracked_devices]
-
+            data.dhcp_leases = [
+                lease
+                for lease in data.dhcp_leases
+                if lease.mac and lease.mac.lower() in tracked_devices
+            ]
 
         # 5. Filter DHCP leases to prevent entities for internal interfaces (veth, wlanX, etc.)
         filtered_leases = []

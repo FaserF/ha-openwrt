@@ -72,7 +72,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if entry.version == 1:
         # Version 2 uses MAC address as unique_id instead of IP
-        client = create_client(dict(entry.data))
+        client = create_client(hass, dict(entry.data))
         try:
             await client.connect()
             device_info = await client.get_device_info()

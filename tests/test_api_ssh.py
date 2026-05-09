@@ -1,6 +1,6 @@
 """Test the OpenWrt SSH API client."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -10,7 +10,13 @@ from custom_components.openwrt.api.ssh import SshAuthError, SshClient
 @pytest.fixture
 def ssh_client() -> SshClient:
     """Fixture for SSH client."""
-    return SshClient(host="192.168.1.1", username="root", password="password")
+    return SshClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
 
 
 @pytest.mark.asyncio

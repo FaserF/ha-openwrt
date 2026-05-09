@@ -54,13 +54,16 @@ async def test_device_tracker_skips_when_mqtt_enabled(
         )
 
 
-async def test_config_flow_mqtt_steps(hass: HomeAssistant) -> None:
+async def test_config_flow_mqtt_steps(hass: HomeAssistant, mock_config_entry) -> None:
     """Test the MQTT presence configuration steps in the config flow."""
     from custom_components.openwrt.config_flow import OpenWrtConfigFlow
 
     flow = OpenWrtConfigFlow()
     flow.hass = hass
     flow._data = {CONF_HOST: "192.168.1.1"}
+    from custom_components.openwrt.api.base import OpenWrtPermissions
+
+    flow._permissions = OpenWrtPermissions(write_mqtt=True)
 
     # 1. Show MQTT presence form
     result = await flow.async_step_mqtt_presence()
@@ -76,6 +79,10 @@ async def test_config_flow_mqtt_steps(hass: HomeAssistant) -> None:
         CONF_MQTT_PASSWORD: "pass",
     }
 
+    # Mock coordinator for permissions check
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": MagicMock(data=MagicMock(permissions=MagicMock(write_mqtt=True)))
+    }
     with (
         patch(
             "custom_components.openwrt.helpers.mqtt_presence.async_deploy_mqtt_presence",
@@ -111,6 +118,10 @@ async def test_options_flow_mqtt_redeploy(
         CONF_MQTT_PRESENCE: True,
     }
 
+    # Mock coordinator for permissions check
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": MagicMock(data=MagicMock(permissions=MagicMock(write_mqtt=True)))
+    }
     with (
         patch(
             "custom_components.openwrt.helpers.mqtt_presence.async_deploy_mqtt_presence",

@@ -1,6 +1,6 @@
 """Tests for Batman-adv mesh support."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -30,7 +30,7 @@ MOCK_BATMAN_TG = """
 @pytest.mark.asyncio
 async def test_ubus_get_batman_data():
     """Test get_batman_data via Ubus."""
-    client = UbusClient("192.168.1.1", "user", "pass")
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "user", "pass")
     client.packages.batctl = True
 
     async def mock_execute(command):
@@ -69,7 +69,7 @@ async def test_ubus_get_batman_data():
 @pytest.mark.asyncio
 async def test_ssh_get_batman_data():
     """Test get_batman_data via SSH."""
-    client = SshClient("192.168.1.1", "user", "pass")
+    client = SshClient(MagicMock(), MagicMock(), "192.168.1.1", "user", "pass")
     client.packages.batctl = True
 
     async def mock_execute(command):
@@ -97,7 +97,7 @@ async def test_ssh_get_batman_data():
 @pytest.mark.asyncio
 async def test_luci_get_batman_data():
     """Test get_batman_data via LuCI-RPC."""
-    client = LuciRpcClient("192.168.1.1", "user", "pass")
+    client = LuciRpcClient(MagicMock(), MagicMock(), "192.168.1.1", "user", "pass")
     client.packages.batctl = True
 
     async def mock_execute(command):

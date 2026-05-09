@@ -1,6 +1,6 @@
 """Tests for Service Management (Restart/Stop)."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,7 +12,13 @@ from custom_components.openwrt.api.ubus import UbusClient, UbusError
 @pytest.mark.asyncio
 async def test_ubus_manage_service():
     """Test managing service via Ubus (rc.init)."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "_call", new_callable=AsyncMock) as mock_call:
@@ -28,7 +34,13 @@ async def test_ubus_manage_service():
 @pytest.mark.asyncio
 async def test_ssh_manage_service():
     """Test managing service via SSH."""
-    client = SshClient(host="192.168.1.1", username="root", password="password")
+    client = SshClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "_exec", new_callable=AsyncMock) as mock_exec:
@@ -40,7 +52,13 @@ async def test_ssh_manage_service():
 @pytest.mark.asyncio
 async def test_luci_rpc_manage_service():
     """Test managing service via LuCI RPC."""
-    client = LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._session_id = "test_token"
     client._connected = True
 
@@ -53,7 +71,13 @@ async def test_luci_rpc_manage_service():
 @pytest.mark.asyncio
 async def test_ubus_manage_service_fallback():
     """Test ubus manage_service fallback through all tiers."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     # Tier 1: rc.init fails -> Tier 2: file.exec fails -> Tier 3: execute_command

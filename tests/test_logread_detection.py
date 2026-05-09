@@ -1,6 +1,6 @@
 """Tests for logread flag detection (-n vs -l)."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -10,7 +10,13 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.mark.asyncio
 async def test_logread_detection_n():
     """Test detection of -n flag (default)."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec:
@@ -31,7 +37,13 @@ async def test_logread_detection_n():
 @pytest.mark.asyncio
 async def test_logread_detection_l():
     """Test detection of -l flag (modern OpenWrt)."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec:
@@ -51,7 +63,13 @@ async def test_logread_detection_l():
 @pytest.mark.asyncio
 async def test_logread_detection_l_alternative():
     """Test detection of -l flag with alternative help text."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec:
@@ -68,7 +86,13 @@ async def test_logread_detection_l_alternative():
 @pytest.mark.asyncio
 async def test_ubus_no_direct_log_read():
     """Verify ubus client no longer issues direct log read proxy calls."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with (
@@ -93,7 +117,13 @@ async def test_luci_rpc_no_direct_log_read():
     """Verify LuCI RPC client no longer issues direct log read proxy calls."""
     from custom_components.openwrt.api.luci_rpc import LuciRpcClient
 
-    client = LuciRpcClient(host="192.168.1.1", username="root", password="password")
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._connected = True
 
     with (

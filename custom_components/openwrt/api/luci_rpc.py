@@ -121,8 +121,6 @@ class LuciRpcClient(OpenWrtClient):
         scheme = "https" if self.use_ssl else "http"
         return f"{scheme}://{self.host}:{self.port}"
 
-
-
     async def _rpc_call(
         self,
         endpoint: str,

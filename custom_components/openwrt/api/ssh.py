@@ -1664,11 +1664,13 @@ class SshClient(OpenWrtClient):
                     perms.write_services = True
                     perms.write_access_control = True
                     perms.write_vpn = True
-                    
+
                     # 5. Check for MQTT write access specifically
-                    # If we have UCI write access, we probably have enough, 
+                    # If we have UCI write access, we probably have enough,
                     # but let's be sure we can write to /etc/presence if it exists
-                    mqtt_check = await self._exec("[ -w /etc/presence ] || [ -w /tmp ] && echo 1")
+                    mqtt_check = await self._exec(
+                        "[ -w /etc/presence ] || [ -w /tmp ] && echo 1"
+                    )
                     if mqtt_check.strip() == "1":
                         perms.write_mqtt = True
             except Exception:

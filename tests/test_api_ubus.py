@@ -1,6 +1,6 @@
 """Test the OpenWrt Ubus API client."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -10,7 +10,13 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.fixture
 def ubus_client() -> UbusClient:
     """Fixture for Ubus client."""
-    return UbusClient(host="192.168.1.1", username="ha-user", password="password")
+    return UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="ha-user",
+        password="password",
+    )
 
 
 class MockResponse:
@@ -34,35 +40,37 @@ class MockResponse:
 @pytest.mark.asyncio
 async def test_ubus_connect_success(ubus_client: UbusClient):
     """Test successful connection and login."""
-    with patch("aiohttp.ClientSession.post") as mock_post:
-        mock_post.return_value = MockResponse(
-            200,
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": [0, {"ubus_rpc_session": "test_token"}],
-            },
-        )
+    mock_post = MagicMock()
+    ubus_client.session.post = mock_post
+    mock_post.return_value = MockResponse(
+        200,
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": [0, {"ubus_rpc_session": "test_token"}],
+        },
+    )
 
-        await ubus_client.connect()
+    await ubus_client.connect()
 
-        assert ubus_client.connected is True
-        assert ubus_client._session_id == "test_token"
+    assert ubus_client.connected is True
+    assert ubus_client._session_id == "test_token"
 
 
 @pytest.mark.asyncio
 async def test_ubus_connect_auth_error(ubus_client: UbusClient):
     """Test auth error handling."""
-    with patch("aiohttp.ClientSession.post") as mock_post:
-        mock_post.return_value = MockResponse(
-            200,
-            {"jsonrpc": "2.0", "id": 1, "result": [5, {"message": "Access denied"}]},
-        )
+    mock_post = MagicMock()
+    ubus_client.session.post = mock_post
+    mock_post.return_value = MockResponse(
+        200,
+        {"jsonrpc": "2.0", "id": 1, "result": [5, {"message": "Access denied"}]},
+    )
 
-        from custom_components.openwrt.api.ubus import UbusAuthError
+    from custom_components.openwrt.api.ubus import UbusAuthError
 
-        with pytest.raises(UbusAuthError):
-            await ubus_client.connect()
+    with pytest.raises(UbusAuthError):
+        await ubus_client.connect()
 
 
 @pytest.mark.asyncio

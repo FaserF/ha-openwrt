@@ -10,7 +10,13 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+import aiohttp
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
 
 _LOGGER = logging.getLogger(__name__)
 

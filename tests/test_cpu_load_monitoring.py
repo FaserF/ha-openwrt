@@ -1,6 +1,6 @@
 """Test the Ubus CPU fallback logic."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -10,7 +10,13 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.fixture
 def ubus_client() -> UbusClient:
     """Fixture for Ubus client."""
-    client = UbusClient(host="192.168.1.1", username="root", password="password")
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
     client._session_id = "test_token"
     return client
 

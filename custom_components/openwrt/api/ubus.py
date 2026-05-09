@@ -143,8 +143,6 @@ class UbusClient(OpenWrtClient):
             "params": params,
         }
 
-
-
     async def _call(
         self,
         ubus_object: str,

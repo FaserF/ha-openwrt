@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -17,7 +17,7 @@ overlayfs:/overlay       10240      1500      8740  15% /
 
 @pytest.mark.asyncio
 async def test_ubus_storage_monitoring():
-    client = UbusClient("192.168.1.1", "root", "pass")
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "pass")
 
     # Mock _call for df -Pk (file.exec) - ubus returns a dict
     with patch.object(client, "_call", return_value={"stdout": DF_OUTPUT}):
@@ -36,7 +36,7 @@ async def test_ubus_storage_monitoring():
 
 @pytest.mark.asyncio
 async def test_ssh_storage_monitoring():
-    client = SshClient("192.168.1.1", "root", "pass")
+    client = SshClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "pass")
 
     # Mock _exec for the 5 commands in gather
     with patch.object(
@@ -61,7 +61,7 @@ async def test_ssh_storage_monitoring():
 
 @pytest.mark.asyncio
 async def test_luci_rpc_storage_monitoring():
-    client = LuciRpcClient("192.168.1.1", "root", "pass")
+    client = LuciRpcClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "pass")
 
     # luci_rpc uses _rpc_call with index 4 for df in the gather list
     # cmds = [meminfo, loadavg, uptime, stat, df, sysinfo, mounts]

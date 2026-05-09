@@ -19,11 +19,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtClient
 from .const import (
+    CONF_ENABLE_FIREWALL,
     CONF_ENABLE_LED,
+    CONF_ENABLE_SERVICES,
     CONF_ENABLE_SQM,
     CONF_ENABLE_VPN,
-    CONF_ENABLE_SERVICES,
-    CONF_ENABLE_FIREWALL,
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
@@ -82,7 +82,11 @@ async def async_setup_entry(
                 coordinator, entry, client, new_entities, tracked_keys
             )
 
-        if perms.write_sqm and pkgs.sqm_scripts is not False and entry.options.get(CONF_ENABLE_SQM, True):
+        if (
+            perms.write_sqm
+            and pkgs.sqm_scripts is not False
+            and entry.options.get(CONF_ENABLE_SQM, True)
+        ):
             _add_sqm_switches(coordinator, entry, client, new_entities, tracked_keys)
 
         if perms.write_vpn and entry.options.get(CONF_ENABLE_VPN, True):

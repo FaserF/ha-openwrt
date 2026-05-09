@@ -1,6 +1,6 @@
 """Test the OpenWrt System Resources API for top processes."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -10,7 +10,13 @@ from custom_components.openwrt.api.ubus import UbusClient
 @pytest.fixture
 def ubus_client() -> UbusClient:
     """Fixture for Ubus client."""
-    return UbusClient(host="192.168.1.1", username="root", password="password")
+    return UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
 
 
 @pytest.mark.asyncio

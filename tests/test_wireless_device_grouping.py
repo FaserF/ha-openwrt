@@ -16,7 +16,9 @@ from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
 @pytest.fixture
 def ubus_client() -> UbusClient:
     """Return a minimal UbusClient for testing."""
-    client = UbusClient(host="192.168.1.1", username="root", password="secret")
+    client = UbusClient(
+        MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="secret"
+    )
     client._session_id = "test-token"
     client.packages.wireless = True
     return client

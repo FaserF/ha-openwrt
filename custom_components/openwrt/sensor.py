@@ -41,9 +41,9 @@ from homeassistant.util import dt as dt_util
 
 from .api.base import OpenWrtData, StorageUsage
 from .const import (
-    CONF_ENABLE_VPN,
-    CONF_ENABLE_SQM,
     CONF_ENABLE_LOAD,
+    CONF_ENABLE_SQM,
+    CONF_ENABLE_VPN,
     CONF_MQTT_PRESENCE,
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
@@ -470,7 +470,9 @@ def _get_system_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             attrs_fn=lambda data: {
                 "days": data.system_resources.uptime // 86400,
                 "hours": (data.system_resources.uptime % 86400) // 3600,
-                "minutes": (data.system_resources.uptime % 3600) // 60 if data.system_resources.uptime < 3600 else None,
+                "minutes": (data.system_resources.uptime % 3600) // 60
+                if data.system_resources.uptime < 3600
+                else None,
             },
         ),
         OpenWrtSensorDescription(
@@ -905,12 +907,21 @@ async def async_setup_entry(
 
         # 1. System & Storage Sensors
         _async_setup_system_sensors(
-            coordinator, entry, new_entities, pkgs, tracked_keys, entry.options.get(CONF_ENABLE_LOAD, True)
+            coordinator,
+            entry,
+            new_entities,
+            pkgs,
+            tracked_keys,
+            entry.options.get(CONF_ENABLE_LOAD, True),
         )
         _async_setup_storage_sensors(coordinator, entry, new_entities, tracked_keys)
 
         # 2. VPN Sensors
-        if perms.read_vpn and pkgs.wireguard is not False and entry.options.get(CONF_ENABLE_VPN, True):
+        if (
+            perms.read_vpn
+            and pkgs.wireguard is not False
+            and entry.options.get(CONF_ENABLE_VPN, True)
+        ):
             _async_setup_wireguard_sensors(
                 coordinator, entry, new_entities, tracked_keys
             )
@@ -1515,7 +1526,11 @@ def _async_setup_specialized_sensors(
                     OpenWrtQModemSensorEntity(coordinator, entry, description)
                 )
 
-    if perms.read_sqm and pkgs.sqm_scripts is not False and entry.options.get(CONF_ENABLE_SQM, True):
+    if (
+        perms.read_sqm
+        and pkgs.sqm_scripts is not False
+        and entry.options.get(CONF_ENABLE_SQM, True)
+    ):
         for sqm in coordinator.data.sqm:
             if sqm.section_id:
                 key = f"sqm_{sqm.section_id}"
@@ -2157,7 +2172,9 @@ def _create_net_status_sensors(
                 entity_registry_enabled_default=False,
                 value_fn=lambda data, n=iface_name: next(
                     (
-                        (dt_util.utcnow() - timedelta(seconds=i.uptime)).replace(second=0, microsecond=0)
+                        (dt_util.utcnow() - timedelta(seconds=i.uptime)).replace(
+                            second=0, microsecond=0
+                        )
                         for i in data.network_interfaces
                         if i.name == n and i.uptime > 0
                     ),

@@ -34,7 +34,7 @@ class MockClient(OpenWrtClient):
     """A concrete implementation of OpenWrtClient for testing."""
 
     def __init__(self, host, username, password):
-        super().__init__(host, username, password)
+        super().__init__(MagicMock(), MagicMock(), host, username, password)
 
     async def connect(self) -> bool:
         return True

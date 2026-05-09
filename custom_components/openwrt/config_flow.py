@@ -68,6 +68,12 @@ from .const import (
     CONF_CONSIDER_HOME,
     CONF_CUSTOM_FIRMWARE_REPO,
     CONF_DHCP_SOFTWARE,
+    CONF_ENABLE_FIREWALL,
+    CONF_ENABLE_LED,
+    CONF_ENABLE_LOAD,
+    CONF_ENABLE_SERVICES,
+    CONF_ENABLE_SQM,
+    CONF_ENABLE_VPN,
     CONF_MQTT_BROKER,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
@@ -80,6 +86,7 @@ from .const import (
     CONF_TARGET_OVERRIDE,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_TRACKED_DEVICES,
     CONF_TRUST_BRIDGE_FDB,
     CONF_TRUST_STALE_ARP,
     CONF_UBUS_PATH,
@@ -89,6 +96,7 @@ from .const import (
     CONNECTION_TYPE_LUCI_RPC,
     CONNECTION_TYPE_SSH,
     CONNECTION_TYPE_UBUS,
+    DATA_COORDINATOR,
     DEFAULT_CONSIDER_HOME,
     DEFAULT_PORT_SSH,
     DEFAULT_PORT_UBUS,
@@ -1659,7 +1667,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors[CONF_MQTT_PORT] = "invalid_port"
 
             if not errors:
-                if not self._permissions.write_mqtt:
+                if self._permissions is None:
+                    from .api.base import OpenWrtPermissions
+
+                    self._permissions = OpenWrtPermissions()
+                if self._permissions and not self._permissions.write_mqtt:
                     errors["base"] = "mqtt_permission_missing"
                 else:
                     self._data.update(user_input)
@@ -1877,16 +1889,18 @@ class OpenWrtOptionsFlow(OptionsFlow):
             return await self.async_step_options_permissions()
 
         # Get discovered devices from coordinator
-        coordinator = self.hass.data[DOMAIN][self._config_entry.entry_id][DATA_COORDINATOR]
+        coordinator = self.hass.data[DOMAIN][self._config_entry.entry_id][
+            DATA_COORDINATOR
+        ]
         devices = coordinator._device_history
-        
+
         device_options = {}
         for mac, info in devices.items():
             name = info.get("hostname") or info.get("name") or mac
             device_options[mac] = f"{name} ({mac})"
 
         current = self._config_entry.options.get(CONF_TRACKED_DEVICES, [])
-        
+
         return self.async_show_form(
             step_id="options_select_devices",
             data_schema=vol.Schema(
@@ -1896,7 +1910,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
                         default=current,
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=[{"value": k, "label": v} for k, v in device_options.items()],
+                            options=[
+                                {"value": k, "label": v}
+                                for k, v in device_options.items()
+                            ],
                             multiple=True,
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
@@ -1904,7 +1921,6 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 }
             ),
         )
-
 
         current = self._config_entry.options
 
@@ -2160,11 +2176,22 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Handle MQTT presence step in options flow."""
         errors: dict[str, str] = {}
         if user_input is not None:
+            if self._permissions is None:
+                try:
+                    coordinator = (
+                        self.hass.data.get(DOMAIN, {})
+                        .get(self._config_entry.entry_id, {})
+                        .get(DATA_COORDINATOR)
+                    )
+                    if coordinator and coordinator.data:
+                        self._permissions = coordinator.data.permissions
+                except KeyError, AttributeError:
+                    pass
             if not user_input.get(CONF_MQTT_PRESENCE):
                 self._options.update(user_input)
                 return await self.async_step_options_permissions()
 
-            if not self._permissions.write_mqtt:
+            if self._permissions and not self._permissions.write_mqtt:
                 errors["base"] = "mqtt_permission_missing"
             else:
                 self._options.update(user_input)

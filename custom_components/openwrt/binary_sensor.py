@@ -1,7 +1,3 @@
-from .const import (
-    CONF_ENABLE_VPN,
-    CONF_ENABLE_SERVICES
-)
 """Binary sensor platform for OpenWrt integration."""
 
 from __future__ import annotations
@@ -22,7 +18,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtData
-from .const import DATA_COORDINATOR, DOMAIN
+from .const import (
+    CONF_ENABLE_SERVICES,
+    CONF_ENABLE_VPN,
+    DATA_COORDINATOR,
+    DOMAIN,
+)
 from .coordinator import OpenWrtDataCoordinator
 
 

@@ -283,7 +283,7 @@ class StalePermissionsRepairFlow(RepairsFlow):
             root_data[CONF_USERNAME] = user_input.get(CONF_USERNAME, "root")
             root_data[CONF_PASSWORD] = user_input[CONF_PASSWORD]
 
-            client = create_client(root_data)
+            client = create_client(self.hass, root_data)
             try:
                 await client.connect()
                 # Provision the user again with EXISTING credentials
