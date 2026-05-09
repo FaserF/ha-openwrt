@@ -50,6 +50,7 @@ from .api.ubus import (
     UbusTimeoutError,
 )
 from .const import (
+    CONF_TRACKED_DEVICES,
     ATTR_MANUFACTURER,
     CONF_ASU_URL,
     CONF_CONNECTION_TYPE,
@@ -648,6 +649,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
                 await self._async_discovery_mqtt_device(mac, device.hostname or mac)
 
+            # 6. Filter by whitelist if configured
+            tracked_devices = self.config_entry.options.get(CONF_TRACKED_DEVICES)
+            if tracked_devices and mac not in tracked_devices:
+                _LOGGER.debug("Skipping device %s: not in tracked_devices whitelist", mac)
+                continue
+
             filtered_devices.append(device)
 
             _LOGGER.debug(
@@ -676,6 +683,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 history_updated = True
 
         data.connected_devices = filtered_devices
+        # 5. Filter DHCP leases by whitelist
+        tracked_devices = self.config_entry.options.get(CONF_TRACKED_DEVICES)
+        if tracked_devices:
+            data.dhcp_leases = [l for l in data.dhcp_leases if l.mac and l.mac.lower() in tracked_devices]
+
 
         # 5. Filter DHCP leases to prevent entities for internal interfaces (veth, wlanX, etc.)
         filtered_leases = []

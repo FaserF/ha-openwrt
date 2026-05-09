@@ -1,3 +1,7 @@
+from .const import (
+    CONF_ENABLE_VPN,
+    CONF_ENABLE_SERVICES
+)
 """Binary sensor platform for OpenWrt integration."""
 
 from __future__ import annotations
@@ -86,13 +90,15 @@ async def async_setup_entry(
             coordinator, entry, entities, tracked_keys
         )
 
-        _async_setup_vpn_binary_sensors(
-            coordinator, entry, entities, pkgs, tracked_keys
-        )
+        if entry.options.get(CONF_ENABLE_VPN, True):
+            _async_setup_vpn_binary_sensors(
+                coordinator, entry, entities, pkgs, tracked_keys
+            )
 
-        _async_setup_wireguard_peer_binary_sensors(
-            coordinator, entry, entities, tracked_keys
-        )
+        if entry.options.get(CONF_ENABLE_VPN, True):
+            _async_setup_wireguard_peer_binary_sensors(
+                coordinator, entry, entities, tracked_keys
+            )
 
         # WPS Status
         key = "wps_active"
@@ -113,7 +119,7 @@ async def async_setup_entry(
                 )
             )
 
-        if perms.read_services:
+        if perms.read_services and entry.options.get(CONF_ENABLE_SERVICES, True):
             _async_setup_service_binary_sensors(
                 coordinator, entry, entities, tracked_keys
             )

@@ -19,6 +19,11 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtClient
 from .const import (
+    CONF_ENABLE_LED,
+    CONF_ENABLE_SQM,
+    CONF_ENABLE_VPN,
+    CONF_ENABLE_SERVICES,
+    CONF_ENABLE_FIREWALL,
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
@@ -62,12 +67,12 @@ async def async_setup_entry(
                 coordinator, entry, client, new_entities, tracked_keys
             )
 
-        if perms.write_services:
+        if perms.write_services and entry.options.get(CONF_ENABLE_SERVICES, True):
             _add_service_switches(
                 coordinator, entry, client, new_entities, tracked_keys
             )
 
-        if perms.write_firewall:
+        if perms.write_firewall and entry.options.get(CONF_ENABLE_FIREWALL, True):
             _add_firewall_switches(
                 coordinator, entry, client, new_entities, tracked_keys
             )
@@ -77,13 +82,13 @@ async def async_setup_entry(
                 coordinator, entry, client, new_entities, tracked_keys
             )
 
-        if perms.write_sqm and pkgs.sqm_scripts is not False:
+        if perms.write_sqm and pkgs.sqm_scripts is not False and entry.options.get(CONF_ENABLE_SQM, True):
             _add_sqm_switches(coordinator, entry, client, new_entities, tracked_keys)
 
-        if perms.write_vpn:
+        if perms.write_vpn and entry.options.get(CONF_ENABLE_VPN, True):
             _add_vpn_switches(coordinator, entry, client, new_entities, tracked_keys)
 
-        if perms.write_led:
+        if perms.write_led and entry.options.get(CONF_ENABLE_LED, True):
             _add_led_switches(coordinator, entry, client, new_entities, tracked_keys)
 
         _add_package_switches(

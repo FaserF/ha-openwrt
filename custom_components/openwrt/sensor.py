@@ -41,6 +41,9 @@ from homeassistant.util import dt as dt_util
 
 from .api.base import OpenWrtData, StorageUsage
 from .const import (
+    CONF_ENABLE_VPN,
+    CONF_ENABLE_SQM,
+    CONF_ENABLE_LOAD,
     CONF_MQTT_PRESENCE,
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
@@ -902,12 +905,12 @@ async def async_setup_entry(
 
         # 1. System & Storage Sensors
         _async_setup_system_sensors(
-            coordinator, entry, new_entities, pkgs, tracked_keys
+            coordinator, entry, new_entities, pkgs, tracked_keys, entry.options.get(CONF_ENABLE_LOAD, True)
         )
         _async_setup_storage_sensors(coordinator, entry, new_entities, tracked_keys)
 
         # 2. VPN Sensors
-        if perms.read_vpn and pkgs.wireguard is not False:
+        if perms.read_vpn and pkgs.wireguard is not False and entry.options.get(CONF_ENABLE_VPN, True):
             _async_setup_wireguard_sensors(
                 coordinator, entry, new_entities, tracked_keys
             )
@@ -1254,9 +1257,12 @@ def _async_setup_system_sensors(
     entities: list[SensorEntity],
     pkgs: Any,
     tracked_keys: set[str],
+    enable_load: bool = True,
 ) -> None:
     """Set up system-wide sensors."""
     for description in _get_system_sensors():
+        if not enable_load and "load_" in description.key:
+            continue
         if description.key not in tracked_keys:
             _LOGGER.debug("Adding system sensor: %s", description.key)
             tracked_keys.add(description.key)
@@ -1509,7 +1515,7 @@ def _async_setup_specialized_sensors(
                     OpenWrtQModemSensorEntity(coordinator, entry, description)
                 )
 
-    if perms.read_sqm and pkgs.sqm_scripts is not False:
+    if perms.read_sqm and pkgs.sqm_scripts is not False and entry.options.get(CONF_ENABLE_SQM, True):
         for sqm in coordinator.data.sqm:
             if sqm.section_id:
                 key = f"sqm_{sqm.section_id}"

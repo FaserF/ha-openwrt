@@ -23,7 +23,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN
+from .const import CONF_ENABLE_LED, DATA_CLIENT, DATA_COORDINATOR, DOMAIN
 from .coordinator import OpenWrtDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ async def async_setup_entry(
         perms = coordinator.data.permissions
 
         # We need write_led permission to control LEDs
-        if perms.write_led and coordinator.data.leds:
+        if perms.write_led and coordinator.data.leds and entry.options.get(CONF_ENABLE_LED, True):
             for led in coordinator.data.leds:
                 if led.name not in tracked_leds:
                     tracked_leds.add(led.name)

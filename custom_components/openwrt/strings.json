@@ -195,7 +195,13 @@
           "redeploy_mqtt": "Re-deploy MQTT Presence Scripts",
           "redeploy_user": "Re-deploy Home Assistant User & ACLs",
           "trust_stale_arp": "Trust ARP 'STALE' state for presence",
-          "trust_bridge_fdb": "Trust Bridge FDB for presence (Wired)"
+          "trust_bridge_fdb": "Trust Bridge FDB for presence (Wired)",
+          "enable_firewall": "Enable Firewall Entities (Rules & Redirects)",
+          "enable_services": "Enable Service Monitoring & Controls",
+          "enable_vpn": "Enable VPN Monitoring & Controls",
+          "enable_led": "Enable LED Controls",
+          "enable_sqm": "Enable SQM QoS Controls",
+          "enable_load": "Enable System Load Sensors (1m, 5m, 15m)"
         },
         "description": "Configure OpenWrt integration options."
       },
@@ -255,6 +261,13 @@
         "description": "The redeployment of the Home Assistant user failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check the credentials and ensure the router is reachable.",
         "data": {
           "action": "Next Step"
+        }
+      },
+      "options_select_devices": {
+        "title": "Select Devices to Track",
+        "description": "Select the devices you want to track in Home Assistant. If none are selected, all discovered devices will be tracked.",
+        "data": {
+          "tracked_devices": "Tracked Devices"
         }
       }
     }

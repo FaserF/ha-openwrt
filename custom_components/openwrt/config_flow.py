@@ -1863,7 +1863,48 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 finally:
                     await client.disconnect()
 
+            if user_input.get(CONF_TRACK_DEVICES):
+                return await self.async_step_options_select_devices()
             return await self.async_step_options_permissions()
+
+    async def async_step_options_select_devices(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Handle selective device tracking step."""
+        if user_input is not None:
+            self._options.update(user_input)
+            return await self.async_step_options_permissions()
+
+        # Get discovered devices from coordinator
+        coordinator = self.hass.data[DOMAIN][self._config_entry.entry_id][DATA_COORDINATOR]
+        devices = coordinator._device_history
+        
+        device_options = {}
+        for mac, info in devices.items():
+            name = info.get("hostname") or info.get("name") or mac
+            device_options[mac] = f"{name} ({mac})"
+
+        current = self._config_entry.options.get(CONF_TRACKED_DEVICES, [])
+        
+        return self.async_show_form(
+            step_id="options_select_devices",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_TRACKED_DEVICES,
+                        default=current,
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[{"value": k, "label": v} for k, v in device_options.items()],
+                            multiple=True,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
 
         current = self._config_entry.options
 
@@ -1897,6 +1938,30 @@ class OpenWrtOptionsFlow(OptionsFlow):
                     CONF_ASU_URL,
                     default=current.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org"),
                 ): str,
+                vol.Optional(
+                    CONF_ENABLE_FIREWALL,
+                    default=current.get(CONF_ENABLE_FIREWALL, True),
+                ): bool,
+                vol.Optional(
+                    CONF_ENABLE_SERVICES,
+                    default=current.get(CONF_ENABLE_SERVICES, True),
+                ): bool,
+                vol.Optional(
+                    CONF_ENABLE_VPN,
+                    default=current.get(CONF_ENABLE_VPN, True),
+                ): bool,
+                vol.Optional(
+                    CONF_ENABLE_LED,
+                    default=current.get(CONF_ENABLE_LED, True),
+                ): bool,
+                vol.Optional(
+                    CONF_ENABLE_SQM,
+                    default=current.get(CONF_ENABLE_SQM, True),
+                ): bool,
+                vol.Optional(
+                    CONF_ENABLE_LOAD,
+                    default=current.get(CONF_ENABLE_LOAD, True),
+                ): bool,
                 vol.Optional(
                     CONF_TARGET_OVERRIDE,
                     default=current.get(CONF_TARGET_OVERRIDE, ""),
