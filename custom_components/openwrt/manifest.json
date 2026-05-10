@@ -97,7 +97,7 @@
     "openwrt"
   ],
   "requirements": [
-    "paramiko==4.0.0",
+    "paramiko==5.0.0",
     "segno==1.6.6"
   ],
   "ssdp": [
