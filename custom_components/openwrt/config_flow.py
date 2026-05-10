@@ -1357,15 +1357,13 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                         "Provisioning via %s failed for root, trying SSH fallback on port 22",
                         self._data.get(CONF_CONNECTION_TYPE),
                     )
-                    from .api.ssh import SshClient
 
                     # Always use port 22 for SSH fallback, independent of the ubus port
-                    ssh_client = SshClient(
-                        host=self._data[CONF_HOST],
-                        username="root",
-                        password=self._data.get(CONF_PASSWORD, ""),
-                        port=DEFAULT_PORT_SSH,
-                    )
+                    ssh_config = dict(self._data)
+                    ssh_config[CONF_CONNECTION_TYPE] = CONNECTION_TYPE_SSH
+                    ssh_config[CONF_USERNAME] = "root"
+                    ssh_config[CONF_PORT] = DEFAULT_PORT_SSH
+                    ssh_client = create_client(self.hass, ssh_config)
                     try:
                         if await ssh_client.connect():
                             success, ssh_error = await ssh_client.provision_user(

@@ -215,10 +215,14 @@ class AuthFailedRepairFlow(RepairsFlow):
             if entry_id:
                 entry = self.hass.config_entries.async_get_entry(str(entry_id))
                 if entry:
-                    _LOGGER.debug("Starting reauth for %s from repair flow", entry.title)
+                    _LOGGER.debug(
+                        "Starting reauth for %s from repair flow", entry.title
+                    )
                     entry.async_start_reauth(self.hass)
                 else:
-                    _LOGGER.warning("Could not find config entry %s for reauth repair", entry_id)
+                    _LOGGER.warning(
+                        "Could not find config entry %s for reauth repair", entry_id
+                    )
             return self.async_abort(reason="reauth_started")
 
         return self.async_show_form(step_id="init")
