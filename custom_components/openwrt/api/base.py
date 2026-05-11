@@ -1145,6 +1145,10 @@ class OpenWrtClient(abc.ABC):
         """Execute a command on the device."""
         raise NotImplementedError
 
+    async def file_exec(self, command: str, params: list[str] | None = None) -> dict[str, Any]:
+        """Execute a binary via rpcd file.exec. Returns {} if unsupported by this client."""
+        return {}
+
     async def kick_device(self, mac_address: str, interface: str) -> bool:
         """Kick a wireless device from the network using hostapd."""
         cmd_ubus = f'ubus call hostapd.{interface} del_client \'{{"addr":"{mac_address}","reason":5,"deauth":true,"ban_time":60000}}\''

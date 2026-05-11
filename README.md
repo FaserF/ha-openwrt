@@ -74,6 +74,7 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
   - **UPnP Mappings**: Track active UPnP and NAT-PMP port forwardings.
   - **Refined Naming**: Routers are primarily identified by their product model (e.g. "Xiaomi AX3600") for a premium dashboard look.
   - **LLDP Neighbors**: Discover and monitor physical port connections via the LLDP protocol (if available on the router).
+  - **NLBWMon Top Bandwidth Hosts** (opt-in): When `nlbwmon` is installed, a dedicated sensor ranks the top 5 bandwidth consumers on your network. State = total tracked host count; attributes include per-host hostname, IP, MAC, connections, and human-readable RX/TX totals. Requires `file.exec` rpcd ACL for `/usr/sbin/nlbw`. Updated every 60 seconds independently of the main poll interval.
 - **Batman-adv Mesh Support**:
   - **Topology Overview**: Monitor mesh neighbors, originators (nodes), and gateways.
   - **Link Quality**: Track Transmit Quality (TQ) sensors for each mesh neighbor.
@@ -184,6 +185,7 @@ If you are using a non-root user (e.g. for security reasons), you need to grant 
 | **LEDs** | Read current state of router LEDs | Toggling LEDs, changing brightness |
 | **MWAN3** | Read Multi-WAN load balancing status | - |
 | **MQTT Presence** | Automatic deployment of presence scripts | Deploying/Updating scripts (requires `file.exec`) |
+| **NLBWMon** | Top Bandwidth Hosts sensor — reads per-host traffic via `nlbw` CLI (requires `file.exec` for `/usr/sbin/nlbw`) | - |
 
 During setup, the integration will check your user's permissions and display a summary of available features.
 
@@ -201,6 +203,7 @@ Some features require additional OpenWrt packages to be installed on your router
 | **openvpn** | OpenVPN Sensors |
 | **kmod-batman-adv** | Batman-adv Mesh Support (Kernel module) |
 | **batctl-full** | Batman-adv Control (Required for mesh data) |
+| **nlbwmon** | NLBWMon Top Bandwidth Hosts sensor (opt-in, requires `file.exec` rpcd ACL) |
 
 ### 🛠️ Options Flow
 
@@ -230,6 +233,7 @@ You can control how the integration handles network clients (PCs, phones, IoT de
   - `none`: Disables dynamic IP/hostname resolution to save resources.
 - **Custom Firmware Repo**: Provide a GitHub repo (e.g., `owner/repo`) if you use custom OpenWrt community builds to check for updates.
 - **Attended Sysupgrade Server**: Configure the URL for the ASU server (default: `https://sysupgrade.openwrt.org`).
+- **Enable NLBWMon Top Hosts Sensor** (default: off): When enabled, creates a sensor that ranks the top 5 bandwidth-consuming hosts using the `nlbw` CLI. Requires `nlbwmon` to be installed on the router and `file.exec` rpcd permission for `/usr/sbin/nlbw`. The integration automatically checks for availability at startup and skips entity creation if the binary is not found.
 
 ## 🧱 Services
 
@@ -446,6 +450,30 @@ action:
     data:
       title: "🏎️ Sustained High Download Rate"
       message: "WAN interface has been saturating over 100Mbps for 10 minutes."
+```
+</details>
+
+<details>
+<summary><strong>📊 Alert When a Single Host Dominates Bandwidth</strong></summary>
+
+Trigger a notification when the top bandwidth consumer has transferred more than 10 GB in the current accounting period — useful for catching runaway downloads or misconfigured devices. Requires `nlbwmon` and the **Enable NLBWMon Top Hosts Sensor** option to be turned on.
+
+```yaml
+alias: "Network: Top Bandwidth Host Over 10 GB"
+trigger:
+  - platform: template
+    value_template: >-
+      {% set top = state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts') %}
+      {{ top and top | length > 0 and top[0].total_bytes | int > 10737418240 }}
+action:
+  - service: notify.notify
+    data:
+      title: "📊 Heavy Bandwidth Consumer"
+      message: >-
+        {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].hostname }}
+        has used {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].total }}
+        (↓ {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].download }}
+        ↑ {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].upload }}).
 ```
 </details>
 

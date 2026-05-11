@@ -6,6 +6,8 @@ All entities are grouped under the router device.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -36,18 +38,20 @@ from homeassistant.helpers import (
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import UNDEFINED, StateType
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .api.base import OpenWrtData, StorageUsage
 from .const import (
     CONF_ENABLE_LOAD,
+    CONF_ENABLE_NLBWMON_SENSORS,
     CONF_ENABLE_SQM,
     CONF_ENABLE_VPN,
     CONF_MQTT_PRESENCE,
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    DATA_CLIENT,
     DATA_COORDINATOR,
     DEFAULT_SKIP_RANDOM_MAC,
     DEFAULT_TRACK_DEVICES,
@@ -58,6 +62,15 @@ from .coordinator import OpenWrtDataCoordinator
 from .helpers import format_ap_device_id, format_ap_name, get_via_device, is_random_mac
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _format_bytes(num_bytes: int) -> str:
+    value = float(num_bytes)
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if value < 1024 or unit == "TB":
+            return f"{int(value)} {unit}" if unit == "B" else f"{value:.2f} {unit}"
+        value /= 1024
+    return f"{num_bytes} B"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -876,6 +889,232 @@ def _get_banip_sensors() -> tuple[OpenWrtSensorDescription, ...]:
     )
 
 
+class OpenWrtNlbwmonTopHostsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Coordinator for nlbwmon top hosts — fixed 60 s interval."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: Any,
+        main_coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        self._client = client
+        self.main_coordinator = main_coordinator
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"nlbwmon_top_hosts_{entry.entry_id}",
+            update_interval=timedelta(seconds=60),
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        return await self._fetch_nlbwmon_top_hosts()
+
+    async def _fetch_nlbwmon_top_hosts(self) -> dict[str, Any]:
+        _empty: dict[str, Any] = {"top_hosts": [], "host_count": 0, "total_rx_bytes": 0, "total_tx_bytes": 0}
+        try:
+            result = await self._client.file_exec(
+                "/usr/sbin/nlbw", ["-c", "json", "-g", "ip,mac", "-o", "-rx_bytes,-tx_bytes"]
+            )
+            if not result:
+                return _empty
+
+            stdout = result.get("stdout", "")
+            stderr = result.get("stderr", "")
+
+            if not stdout:
+                return _empty
+
+            combined = (stdout + stderr).lower()
+            if "permission denied" in combined or "access denied" in combined:
+                _LOGGER.warning(
+                    "nlbwmon requires ubus file.exec permission for '/usr/sbin/nlbw' in rpcd ACL"
+                )
+                return _empty
+
+            try:
+                data = json.loads(stdout)
+            except (json.JSONDecodeError, ValueError) as err:
+                _LOGGER.error("Failed to parse nlbwmon output: %s", err)
+                return _empty
+
+            columns = data.get("columns", [])
+            rows = data.get("data", [])
+            if not columns or not rows:
+                return _empty
+
+            col = {name: idx for idx, name in enumerate(columns)}
+            required = {"ip", "mac", "rx_bytes", "tx_bytes", "conns"}
+            if not required.issubset(col.keys()):
+                _LOGGER.error("nlbwmon output missing required columns: %s", columns)
+                return _empty
+
+            aggregated: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                ip = row[col["ip"]] if "ip" in col else ""
+                mac = (row[col["mac"]] if "mac" in col else "").upper()
+                if mac == "00:00:00:00:00:00" and not ip:
+                    continue
+                key = ip if mac == "00:00:00:00:00:00" else mac
+                if key not in aggregated:
+                    aggregated[key] = {"mac": mac, "ip": ip, "rx_bytes": 0, "tx_bytes": 0, "conns": 0}
+                aggregated[key]["rx_bytes"] += row[col["rx_bytes"]]
+                aggregated[key]["tx_bytes"] += row[col["tx_bytes"]]
+                aggregated[key]["conns"] += row[col["conns"]]
+                current_ip = aggregated[key]["ip"]
+                if ":" in current_ip and ":" not in ip and ip:
+                    aggregated[key]["ip"] = ip
+
+            # Build hostname map from three sources, in priority order:
+            # 1. Raw DHCP leases fetched directly (unfiltered — coordinator.data.dhcp_leases
+            #    is stripped to tracked devices only when a whitelist is configured, so
+            #    using the filtered copy would miss any device not explicitly tracked).
+            # 2. HA device registry — covers user-renamed devices and devices whose
+            #    DHCP hostname field is empty/* (the common dnsmasq case).
+            # 3. Fall through to IP, then MAC, then "Unknown".
+            hostname_map: dict[str, str] = {}
+            try:
+                raw_leases = await self._client.get_dhcp_leases()
+                for lease in raw_leases:
+                    if lease.mac and lease.hostname:
+                        hostname_map[lease.mac.upper()] = lease.hostname
+            except Exception:
+                pass
+
+            device_reg = dr.async_get(self.hass)
+            for dev in device_reg.devices.values():
+                name = dev.name_by_user or dev.name
+                if not name:
+                    continue
+                for conn_type, conn_mac in dev.connections:
+                    if conn_type == dr.CONNECTION_NETWORK_MAC:
+                        mac_key = conn_mac.upper()
+                        if mac_key and mac_key not in hostname_map:
+                            hostname_map[mac_key] = name
+
+            hosts = []
+            for entry_data in aggregated.values():
+                total = entry_data["rx_bytes"] + entry_data["tx_bytes"]
+                if total == 0:
+                    continue
+                mac = entry_data["mac"]
+                hostname = hostname_map.get(mac) or entry_data["ip"] or mac or "Unknown"
+                hosts.append({**entry_data, "total_bytes": total, "hostname": hostname})
+
+            hosts.sort(key=lambda x: x["total_bytes"], reverse=True)
+
+            top_hosts = [
+                {
+                    "rank": i + 1,
+                    "hostname": h["hostname"],
+                    "ip": h["ip"],
+                    "mac": h["mac"],
+                    "connections": h["conns"],
+                    "rx_bytes": h["rx_bytes"],
+                    "tx_bytes": h["tx_bytes"],
+                    "total_bytes": h["total_bytes"],
+                    "download": _format_bytes(h["rx_bytes"]),
+                    "upload": _format_bytes(h["tx_bytes"]),
+                    "total": _format_bytes(h["total_bytes"]),
+                }
+                for i, h in enumerate(hosts[:5])
+            ]
+
+            return {
+                "top_hosts": top_hosts,
+                "host_count": len(hosts),
+                "total_rx_bytes": sum(h["rx_bytes"] for h in hosts),
+                "total_tx_bytes": sum(h["tx_bytes"] for h in hosts),
+            }
+
+        except Exception as err:
+            err_str = str(err).lower()
+            if "permission" in err_str or "access denied" in err_str:
+                _LOGGER.warning(
+                    "nlbwmon requires ubus file.exec permission for '/usr/sbin/nlbw' in rpcd ACL"
+                )
+            else:
+                _LOGGER.error("Failed to fetch nlbwmon top hosts: %s", err)
+            return _empty
+
+
+class OpenWrtNlbwmonTopHostsSensor(
+    CoordinatorEntity[OpenWrtNlbwmonTopHostsCoordinator], SensorEntity
+):
+    """Sensor showing count and ranked list of top bandwidth hosts via nlbwmon."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:network-outline"
+    _attr_name = "Top Bandwidth Hosts"
+
+    def __init__(
+        self,
+        coordinator: OpenWrtNlbwmonTopHostsCoordinator,
+        entry: ConfigEntry,
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_top_bandwidth_hosts"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.main_coordinator.router_id)},
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.get("host_count", 0)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        if not self.coordinator.data:
+            return {}
+        data = self.coordinator.data
+        return {
+            "host_count": data.get("host_count", 0),
+            "total_download": _format_bytes(data.get("total_rx_bytes", 0)),
+            "total_upload": _format_bytes(data.get("total_tx_bytes", 0)),
+            "top_hosts": data.get("top_hosts", []),
+        }
+
+
+async def _check_nlbwmon_availability(client: Any) -> bool:
+    """Check if /usr/sbin/nlbw is installed and accessible. Retries on exception only."""
+    for attempt in range(3):
+        try:
+            result = await client.file_exec("/usr/sbin/nlbw", ["-h"])
+            if not result:
+                return False
+            # nlbw -h exits non-zero and writes to stderr on most builds.
+            # A permission-denied response also arrives in stderr, so inspect content.
+            stderr = result.get("stderr", "")
+            if stderr:
+                err_lower = stderr.lower()
+                if "permission" in err_lower or "access denied" in err_lower:
+                    _LOGGER.warning(
+                        "nlbwmon requires file.exec permission for '/usr/sbin/nlbw' in rpcd ACL"
+                    )
+                    return False
+            return bool(result.get("stdout") or stderr)
+        except Exception as err:
+            if attempt < 2:
+                await asyncio.sleep(2)
+                continue
+            err_str = str(err).lower()
+            if "permission" in err_str or "access denied" in err_str:
+                _LOGGER.warning(
+                    "nlbwmon requires ubus file.exec permission for '/usr/sbin/nlbw' in rpcd ACL"
+                )
+            else:
+                _LOGGER.info("nlbwmon binary not accessible: %s", err)
+    return False
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -1058,6 +1297,20 @@ async def async_setup_entry(
                     continue
 
     hass.add_job(_async_cleanup_entities)
+
+    if entry.options.get(CONF_ENABLE_NLBWMON_SENSORS, entry.data.get(CONF_ENABLE_NLBWMON_SENSORS, False)):
+        client = hass.data[DOMAIN][entry.entry_id][DATA_CLIENT]
+        if await _check_nlbwmon_availability(client):
+            nlbwmon_coord = OpenWrtNlbwmonTopHostsCoordinator(
+                hass, client, coordinator, entry
+            )
+            await nlbwmon_coord.async_config_entry_first_refresh()
+            async_add_entities([OpenWrtNlbwmonTopHostsSensor(nlbwmon_coord, entry)])
+        else:
+            _LOGGER.info(
+                "nlbwmon not available on %s — skipping Top Bandwidth Hosts sensor",
+                entry.title,
+            )
 
 
 def _create_nlbwmon_sensors(

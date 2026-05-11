@@ -71,6 +71,7 @@ from .const import (
     CONF_ENABLE_FIREWALL,
     CONF_ENABLE_LED,
     CONF_ENABLE_LOAD,
+    CONF_ENABLE_NLBWMON_SENSORS,
     CONF_ENABLE_SERVICES,
     CONF_ENABLE_SQM,
     CONF_ENABLE_VPN,
@@ -270,7 +271,8 @@ def _generate_package_table(
         f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, 'luci_mod_rpc', required=luci_required)} |\n"
         f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)', 'asu')} |\n"
         f"| **kmod-batman-adv** | {to_icon(packages.batman_adv)} | {get_missing(packages.batman_adv, 'Batman-adv Mesh', 'batman_adv')} |\n"
-        f"| **batctl** | {to_icon(packages.batctl)} | {get_missing(packages.batctl, 'Batman-adv Control (batctl)', 'batctl')} |"
+        f"| **batctl** | {to_icon(packages.batctl)} | {get_missing(packages.batctl, 'Batman-adv Control (batctl)', 'batctl')} |\n"
+        f"| **nlbwmon** | {to_icon(packages.nlbwmon)} | {get_missing(packages.nlbwmon, 'Top Bandwidth Hosts Sensor', 'nlbwmon')} |"
     )
 
 
@@ -1653,6 +1655,8 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             schema_dict[vol.Optional(CONF_ENABLE_SQM, default=True)] = bool
         if self._packages.wireguard or self._packages.openvpn:
             schema_dict[vol.Optional(CONF_ENABLE_VPN, default=True)] = bool
+        if self._packages.nlbwmon:
+            schema_dict[vol.Optional(CONF_ENABLE_NLBWMON_SENSORS, default=False)] = bool
 
         return self.async_show_form(
             step_id="packages",
@@ -2264,6 +2268,13 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_ENABLE_VPN,
                     default=current.get(CONF_ENABLE_VPN, True),
+                )
+            ] = bool
+        if self._packages.nlbwmon:
+            schema_dict[
+                vol.Optional(
+                    CONF_ENABLE_NLBWMON_SENSORS,
+                    default=current.get(CONF_ENABLE_NLBWMON_SENSORS, self._config_entry.data.get(CONF_ENABLE_NLBWMON_SENSORS, False)),
                 )
             ] = bool
 

@@ -43,6 +43,7 @@ CONF_ENABLE_VPN: Final = "enable_vpn"
 CONF_ENABLE_LED: Final = "enable_led"
 CONF_ENABLE_SQM: Final = "enable_sqm"
 CONF_ENABLE_LOAD: Final = "enable_load"
+CONF_ENABLE_NLBWMON_SENSORS: Final = "enable_nlbwmon_sensors"
 
 CONNECTION_TYPE_UBUS: Final = "ubus"
 CONNECTION_TYPE_LUCI_RPC: Final = "luci_rpc"

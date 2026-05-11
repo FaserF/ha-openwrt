@@ -2822,6 +2822,16 @@ class UbusClient(OpenWrtClient):
             _LOGGER.debug("Command failed via ubus file.exec: %s", err)
             return ""
 
+    async def file_exec(self, command: str, params: list[str] | None = None) -> dict[str, Any]:
+        """Execute a binary directly via rpcd file.exec without shell wrapping."""
+        try:
+            return await self._call("file", "exec", {"command": command, "params": params or []})
+        except (UbusPermissionError, UbusAuthError, UbusTimeoutError, UbusConnectionError, UbusSslError):
+            raise
+        except UbusError as err:
+            _LOGGER.debug("file.exec failed for %s: %s", command, err)
+            return {}
+
     async def user_exists(self, username: str) -> bool:
         """Check if a system user exists on the device."""
         # 1. Try via ubus file.read (more robust/standard than exec)

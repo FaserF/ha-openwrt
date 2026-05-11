@@ -102,6 +102,7 @@
           "enable_led": "Enable LED Controls",
           "enable_sqm": "Enable SQM QoS Controls",
           "enable_vpn": "Enable VPN Monitoring & Controls",
+          "enable_nlbwmon_sensors": "Enable NLBWMon Top Hosts Sensor",
           "acknowledge": "I have reviewed this information and want to proceed"
         }
       },
@@ -243,6 +244,7 @@
           "enable_led": "Enable LED Controls",
           "enable_sqm": "Enable SQM QoS Controls",
           "enable_vpn": "Enable VPN Monitoring & Controls",
+          "enable_nlbwmon_sensors": "Enable NLBWMon Top Hosts Sensor",
           "acknowledge": "I have reviewed this information and want to proceed"
         }
       },
@@ -633,7 +635,8 @@
           "simple_adblock": "Simple AdBlock",
           "ban_ip": "Ban-IP",
           "batman_adv": "Batman-adv Mesh",
-          "batctl": "Batman-adv Control (batctl)"
+          "batctl": "Batman-adv Control (batctl)",
+          "nlbwmon": "Top Bandwidth Hosts Sensor"
         }
       }
     },
