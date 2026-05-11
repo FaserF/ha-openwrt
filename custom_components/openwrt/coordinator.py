@@ -775,36 +775,57 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     async def _async_discovery_loop(self, clean: bool = False) -> None:
         """Loop through history and discover or cleanup devices for MQTT."""
         _LOGGER.debug("Starting MQTT discovery loop (clean=%s)", clean)
-        # Wait for MQTT service to be available (max 60s)
-        for _ in range(12):
-            if self.hass.services.has_service("mqtt", "publish"):
-                break
-            _LOGGER.debug("MQTT service not ready, waiting...")
-            await asyncio.sleep(5)
-        else:
-            _LOGGER.warning("MQTT service not available after 60s, operation aborted")
+
+        # Check if MQTT integration is even available in HA
+        mqtt_component_loaded = "mqtt" in self.hass.config.components
+
+        if not mqtt_component_loaded:
+            if not clean:
+                _LOGGER.error(
+                    "MQTT Presence Detection enabled but MQTT integration not found"
+                )
             return
 
-        _LOGGER.debug(
-            "%s MQTT discovery for %d devices",
-            "Cleaning up" if clean else "Starting",
-            len(self._device_history),
-        )
-        for mac, hist_data in list(self._device_history.items()):
-            # Always cleanup legacy topics to be sure
-            await self._async_discovery_mqtt_device_cleanup(mac)
+        mqtt_ready = self.hass.services.has_service("mqtt", "publish")
 
-            if not clean:
-                await self._async_discovery_mqtt_device(
-                    mac, hist_data.get("hostname") or mac
+        if not mqtt_ready and not clean:
+            # Only wait if we actually want to start discovery (not just cleaning up)
+            _LOGGER.debug("Waiting for MQTT service...")
+            for _ in range(12):
+                if self.hass.services.has_service("mqtt", "publish"):
+                    mqtt_ready = True
+                    break
+                await asyncio.sleep(5)
+
+            if not mqtt_ready:
+                _LOGGER.warning(
+                    "MQTT service not available after 60s, operation aborted"
                 )
+                return
 
-            # Small delay between discovery calls to avoid flooding
-            await asyncio.sleep(0.05)
+        if mqtt_ready:
+            _LOGGER.debug(
+                "%s MQTT discovery for %d devices",
+                "Cleaning up" if clean else "Starting",
+                len(self._device_history),
+            )
+            for mac, hist_data in list(self._device_history.items()):
+                # Always cleanup legacy topics to be sure
+                await self._async_discovery_mqtt_device_cleanup(mac)
 
+                if not clean:
+                    await self._async_discovery_mqtt_device(
+                        mac, hist_data.get("hostname") or mac
+                    )
+
+                # Small delay between discovery calls to avoid flooding
+                await asyncio.sleep(0.05)
+        
         # Global registry cleanup (independent of device history)
-        if clean:
+        if clean and mqtt_ready:
             await self._async_global_registry_cleanup()
+
+        _LOGGER.debug("MQTT discovery loop finished")
 
     @callback
     def _async_get_tracked_devices_whitelist(self) -> set[str] | None:
@@ -826,7 +847,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         return whitelist if whitelist else None
 
-        _LOGGER.debug("MQTT discovery loop finished")
+
 
     async def _async_discovery_mqtt_device_cleanup(self, mac: str) -> None:
         """Remove legacy MQTT discovery messages for a device tracker."""
