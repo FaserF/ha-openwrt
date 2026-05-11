@@ -2039,7 +2039,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Handle selective device tracking step."""
         if user_input is not None:
             self._options.update(user_input)
-            return await self.async_step_options_permissions()
+            return self.async_create_entry(title="", data=self._options)
 
         # Get discovered devices from coordinator
         coordinator = self.hass.data[DOMAIN][self._config_entry.entry_id][

@@ -236,6 +236,13 @@
         "title": "Packages Summary",
         "description": "The following optional packages were detected on your router. Some features may be limited if packages are missing:\n\n{packages_table}\n\nYou can proceed if this is expected.",
         "data": {
+          "track_devices": "Enable Device Tracking",
+          "enable_load": "Enable System Load Monitoring",
+          "enable_services": "Enable Service Monitoring & Controls",
+          "enable_firewall": "Enable Firewall Entities (Rules & Redirects)",
+          "enable_led": "Enable LED Controls",
+          "enable_sqm": "Enable SQM QoS Controls",
+          "enable_vpn": "Enable VPN Monitoring & Controls",
           "acknowledge": "I have reviewed this information and want to proceed"
         }
       },

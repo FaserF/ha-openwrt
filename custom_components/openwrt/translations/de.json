@@ -236,6 +236,13 @@
         "title": "Paket-Übersicht",
         "description": "Die folgenden optionalen Pakete wurden auf deinem Router erkannt. Einige Funktionen könnten eingeschränkt sein, wenn Pakete fehlen:\n\n{packages_table}\n\nDu kannst fortfahren, wenn dies so erwartet wird.",
         "data": {
+          "track_devices": "Geräteverfolgung aktivieren",
+          "enable_load": "Systemlast-Überwachung aktivieren",
+          "enable_services": "Dienst-Überwachung & Steuerung aktivieren",
+          "enable_firewall": "Firewall-Überwachung & Steuerung aktivieren",
+          "enable_led": "LED-Steuerung aktivieren",
+          "enable_sqm": "SQM QoS-Steuerung aktivieren",
+          "enable_vpn": "VPN-Überwachung & Steuerung aktivieren",
           "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
         }
       },
