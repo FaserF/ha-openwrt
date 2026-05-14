@@ -12,6 +12,7 @@ import contextlib
 import json
 import logging
 import re
+import shlex
 from typing import Any
 
 import paramiko
@@ -912,8 +913,9 @@ class SshClient(OpenWrtClient):
             iface_name = wifi.name
             try:
                 # Get basic info
+                safe_arg = shlex.quote(json.dumps({"device": iface_name}))
                 info_str = await self._exec(
-                    f'ubus call iwinfo info \'{{"device":"{iface_name}"}}\' 2>/dev/null'
+                    f"ubus call iwinfo info {safe_arg} 2>/dev/null"
                 )
                 if info_str and info_str.strip().startswith("{"):
                     info = json.loads(info_str)
@@ -941,7 +943,7 @@ class SshClient(OpenWrtClient):
 
                     # Association list for client count
                     assoc_str = await self._exec(
-                        f'ubus call iwinfo assoclist \'{{"device":"{iface_name}"}}\' 2>/dev/null'
+                        f"ubus call iwinfo assoclist {safe_arg} 2>/dev/null"
                     )
                     if assoc_str and assoc_str.strip().startswith("{"):
                         assoc = json.loads(assoc_str).get("results", [])
@@ -949,8 +951,9 @@ class SshClient(OpenWrtClient):
 
                     if not wifi.clients_count:
                         with contextlib.suppress(Exception):
+                            safe_obj = shlex.quote(f"hostapd.{iface_name}")
                             hostapd_clients = await self._exec(
-                                f"ubus call hostapd.{iface_name} get_clients 2>/dev/null"
+                                f"ubus call {safe_obj} get_clients 2>/dev/null"
                             )
                             if hostapd_clients and hostapd_clients.strip().startswith(
                                 "{"
