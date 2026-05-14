@@ -44,7 +44,7 @@ def test_device_tracker_init(mock_coordinator, mock_config_entry) -> None:
     tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
 
     assert tracker.unique_id == f"test_entry_tracker_{mac.lower()}"
-    assert tracker.mac_address == mac.lower()
+    assert tracker.mac_address == f"test_entry_{mac.lower()}"
     assert tracker.source_type == SourceType.ROUTER
     assert tracker._consider_home == timedelta(seconds=20)
 
@@ -131,6 +131,10 @@ def test_device_tracker_stable_device_info(mock_coordinator, mock_config_entry) 
         # We check the second part of the tuple as DOMAIN might be mocked
         assert device_info["via_device"][1] == "11:22:33:44:55:66"
         assert (dr.CONNECTION_NETWORK_MAC, mac.lower()) in device_info["connections"]
+        assert any(
+            ident[1] == f"test_entry_{mac.lower()}"
+            for ident in device_info["identifiers"]
+        )
 
 
 def test_device_tracker_randomized_mac(mock_coordinator, mock_config_entry) -> None:

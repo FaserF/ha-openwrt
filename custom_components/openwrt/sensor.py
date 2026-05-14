@@ -303,7 +303,7 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self._mac)},
+            identifiers={(DOMAIN, f"{self._entry.entry_id}_{self._mac}")},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
             name=self._initial_name,
             via_device=get_via_device(
@@ -1187,11 +1187,11 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
     def device_info(self) -> DeviceInfo:
         """Return device information."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self._mac.lower())},
+            identifiers={(DOMAIN, f"{self._entry.entry_id}_{self._mac.lower()}")},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac.lower())},
             name=self._initial_name,
             via_device=get_via_device(
-                self.hass, self.coordinator, self._entry, self._mac
+                self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),
         )
 

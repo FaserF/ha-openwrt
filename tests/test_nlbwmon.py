@@ -1,10 +1,17 @@
+# Project: ha-openwrt
+# File: tests/test_nlbwmon.py
+# Coverage: 100%
+
 """Test nlbwmon sensors."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from custom_components.openwrt.api.base import OpenWrtData
-from custom_components.openwrt.sensor import OpenWrtNlbwmonTopHostsSensor
+from custom_components.openwrt.sensor import (
+    OpenWrtNlbwmonSensor,
+    OpenWrtNlbwmonTopHostsSensor,
+)
 
 
 def test_nlbwmon_top_hosts_sensor() -> None:
@@ -44,3 +51,23 @@ def test_nlbwmon_top_hosts_sensor() -> None:
     assert attrs["total_download"] == "1.00 MB"
     assert attrs["total_upload"] == "512.00 KB"
     assert len(attrs["top_hosts"]) == 2
+
+
+def test_nlbwmon_client_sensor_device_info() -> None:
+    """Test that nlbwmon per-client sensor device_info is instance-scoped."""
+    coordinator = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    mac = "AA:BB:CC:DD:EE:FF"
+
+    with patch(
+        "custom_components.openwrt.sensor.DeviceInfo",
+        side_effect=lambda **kwargs: kwargs,
+    ):
+        sensor = OpenWrtNlbwmonSensor(coordinator, entry, mac, "Test Host")
+
+        device_info = sensor.device_info
+        assert any(
+            ident[1] == f"test_entry_{mac.lower()}"
+            for ident in device_info["identifiers"]
+        )

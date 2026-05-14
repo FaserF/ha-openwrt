@@ -271,7 +271,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
 
         return DeviceInfo(
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
-            identifiers={(DOMAIN, self._mac)},
+            identifiers={(DOMAIN, f"{self._entry.entry_id}_{self._mac}")},
             name=self.name or self._initial_name,
             manufacturer=manufacturer,
             model=model,
@@ -333,7 +333,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     @property
     def mac_address(self) -> str:
         """Return MAC."""
-        return self._mac
+        return f"{self._entry.entry_id}_{self._mac}"
 
     @property
     def hostname(self) -> str | None:
