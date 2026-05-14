@@ -438,9 +438,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             "total_tx_bytes": 0,
         }
         result = await self.client.file_exec(
-            "/usr/sbin/nlbw", ["-c", "json", "-g", "ip,mac", "-o", "-rx_bytes,-tx_bytes"]
+            "/usr/sbin/nlbw",
+            ["-c", "json", "-g", "ip,mac", "-o", "-rx_bytes,-tx_bytes"],
         )
-        _LOGGER.debug("nlbwmon file_exec result keys: %s", list(result.keys()) if result else None)
+        _LOGGER.debug(
+            "nlbwmon file_exec result keys: %s", list(result.keys()) if result else None
+        )
         if not result:
             _LOGGER.info(
                 "nlbwmon top hosts: file_exec returned empty — "
@@ -515,7 +518,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 continue
             key = ip if mac == "00:00:00:00:00:00" else mac
             if key not in aggregated:
-                aggregated[key] = {"mac": mac, "ip": ip, "rx_bytes": 0, "tx_bytes": 0, "conns": 0}
+                aggregated[key] = {
+                    "mac": mac,
+                    "ip": ip,
+                    "rx_bytes": 0,
+                    "tx_bytes": 0,
+                    "conns": 0,
+                }
             aggregated[key]["rx_bytes"] += row[col["rx_bytes"]]
             aggregated[key]["tx_bytes"] += row[col["tx_bytes"]]
             if "conns" in col:

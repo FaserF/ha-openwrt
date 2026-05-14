@@ -162,9 +162,12 @@ class SshClient(OpenWrtClient):
         """Execute a command via SSH."""
         return await self._exec(command)
 
-    async def file_exec(self, command: str, params: list[str] | None = None) -> dict[str, Any]:
+    async def file_exec(
+        self, command: str, params: list[str] | None = None
+    ) -> dict[str, Any]:
         """Execute a binary directly via SSH, returning a file.exec-compatible dict."""
         import shlex
+
         parts = [command] + (params or [])
         cmd = " ".join(shlex.quote(p) for p in parts)
         output = await self._exec(f"{cmd} 2>&1; echo __HA_RC__$?")
@@ -307,7 +310,9 @@ class SshClient(OpenWrtClient):
             client.load_system_host_keys()
 
             class PinningHostKeyPolicy(paramiko.MissingHostKeyPolicy):
-                def missing_host_key(self, client_: Any, hostname: str, key: Any) -> None:
+                def missing_host_key(
+                    self, client_: Any, hostname: str, key: Any
+                ) -> None:
                     key_type = key.get_name()
                     key_b64 = key.get_base64()
 
@@ -728,7 +733,7 @@ class SshClient(OpenWrtClient):
                 try:
                     dev_idx = parts.index("dev")
                     wan_iface = parts[dev_idx + 1]
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     pass
 
             # 2. Get interface dump
@@ -1208,7 +1213,9 @@ class SshClient(OpenWrtClient):
                                 dev.port = port
                                 dev.fdb_age = entry.get("age")
                                 if dev.fdb_age is None or dev.fdb_age < 60:
-                                    dev.connected = True  # Seen on a physical port recently
+                                    dev.connected = (
+                                        True  # Seen on a physical port recently
+                                    )
                                 if not dev.is_wireless and not dev.interface:
                                     dev.interface = dev_name
                 except Exception:
@@ -1359,7 +1366,7 @@ class SshClient(OpenWrtClient):
                         command=" ".join(parts[cmd_idx:]),
                     )
                 )
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 continue
 
             if len(resources.top_processes) >= 10:
@@ -1507,7 +1514,7 @@ class SshClient(OpenWrtClient):
                                     else "wireless"
                                 )
                             )
-                except (json.JSONDecodeError, KeyError):
+                except json.JSONDecodeError, KeyError:
                     continue
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("ubus hostapd discovery failed (SSH): %s", err)
@@ -2077,9 +2084,7 @@ class SshClient(OpenWrtClient):
         # Download to /tmp and then run sysupgrade
         keep = "" if keep_settings else "-n"
         safe_url = shlex.quote(url)
-        cmd = (
-            f"wget -O /tmp/firmware.bin {safe_url} && sysupgrade {keep} /tmp/firmware.bin"
-        )
+        cmd = f"wget -O /tmp/firmware.bin {safe_url} && sysupgrade {keep} /tmp/firmware.bin"
         try:
             _LOGGER.info("Initiating firmware installation via SSH from: %s", url)
             # We expect this to eventually fail or disconnect as the router reboots
@@ -2261,7 +2266,7 @@ class SshClient(OpenWrtClient):
                         )
                         try:
                             status.blocked_domains = int(float(blocked))
-                        except (ValueError, TypeError):
+                        except ValueError, TypeError:
                             pass
                         status.last_update = res.get("last_run")
                         return status

@@ -2274,7 +2274,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
             schema_dict[
                 vol.Optional(
                     CONF_ENABLE_NLBWMON_SENSORS,
-                    default=current.get(CONF_ENABLE_NLBWMON_SENSORS, self._config_entry.data.get(CONF_ENABLE_NLBWMON_SENSORS, False)),
+                    default=current.get(
+                        CONF_ENABLE_NLBWMON_SENSORS,
+                        self._config_entry.data.get(CONF_ENABLE_NLBWMON_SENSORS, False),
+                    ),
                 )
             ] = bool
 

@@ -306,9 +306,11 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
 
         # Authority-based writing & Last-wireless-writer wins rule:
         # Only the instance that sees the device via active wireless association takes ownership.
-        if is_wireless and connected:
+        if device and is_wireless and connected:
             # We use the config entry title as the AP name, falling back to host
-            ap_name = self.coordinator.config_entry.title or self._entry.data.get(CONF_HOST)
+            ap_name = self.coordinator.config_entry.title or self._entry.data.get(
+                CONF_HOST
+            )
             state_info = {
                 "owner_entry_id": self._entry.entry_id,
                 "last_seen": now,
@@ -431,29 +433,37 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         }
 
         if device:
-            attrs.update({
-                "is_wireless": device.is_wireless,
-                "connection_type": device.connection_type,
-            })
+            attrs.update(
+                {
+                    "is_wireless": device.is_wireless,
+                    "connection_type": device.connection_type,
+                }
+            )
         elif state_info:
-            attrs.update({
-                "is_wireless": True,
-                "connection_type": state_info.get("connection_type"),
-            })
+            attrs.update(
+                {
+                    "is_wireless": True,
+                    "connection_type": state_info.get("connection_type"),
+                }
+            )
 
         # Add AP attribution attributes from global wireless state
         if state_info and state_info.get("connected"):
-            attrs.update({
-                "connected_ap": state_info.get("connected_ap"),
-                "connected_ap_entry_id": state_info.get("connected_ap_entry_id"),
-                "interface": state_info.get("interface"),
-                "signal_strength": state_info.get("signal_strength"),
-            })
+            attrs.update(
+                {
+                    "connected_ap": state_info.get("connected_ap"),
+                    "connected_ap_entry_id": state_info.get("connected_ap_entry_id"),
+                    "interface": state_info.get("interface"),
+                    "signal_strength": state_info.get("signal_strength"),
+                }
+            )
         else:
-            attrs.update({
-                "connected_ap": None,
-                "interface": device.interface if device else None,
-            })
+            attrs.update(
+                {
+                    "connected_ap": None,
+                    "interface": device.interface if device else None,
+                }
+            )
 
         # Add historical seen data
         if self._mac in self.coordinator._device_history:
@@ -472,15 +482,17 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         # Add optional metrics
         optional_metrics = {}
         if device:
-            optional_metrics.update({
-                "port": device.port,
-                "fdb_age": device.fdb_age,
-                "rx_bytes": device.rx_bytes,
-                "tx_bytes": device.tx_bytes,
-                "uptime": device.uptime,
-                "neighbor_state": device.neighbor_state,
-                "connection_info": device.connection_info,
-            })
+            optional_metrics.update(
+                {
+                    "port": device.port,
+                    "fdb_age": device.fdb_age,
+                    "rx_bytes": device.rx_bytes,
+                    "tx_bytes": device.tx_bytes,
+                    "uptime": device.uptime,
+                    "neighbor_state": device.neighbor_state,
+                    "connection_info": device.connection_info,
+                }
+            )
             if device.is_wireless:
                 optional_metrics.update(
                     {
@@ -492,7 +504,9 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         elif state_info and state_info.get("connected"):
             optional_metrics["signal_strength"] = state_info.get("signal_strength")
 
-        attrs.update({k: v for k, v in optional_metrics.items() if v is not None and v != ""})
+        attrs.update(
+            {k: v for k, v in optional_metrics.items() if v is not None and v != ""}
+        )
 
         # Add Mesh info
         if (

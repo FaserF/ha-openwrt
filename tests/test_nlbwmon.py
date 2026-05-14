@@ -3,6 +3,7 @@
 # Coverage: 100%
 
 """Test nlbwmon sensors."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -67,7 +68,4 @@ def test_nlbwmon_client_sensor_device_info() -> None:
         sensor = OpenWrtNlbwmonSensor(coordinator, entry, mac, "Test Host")
 
         device_info = sensor.device_info
-        assert any(
-            ident[1] == mac.lower()
-            for ident in device_info["identifiers"]
-        )
+        assert any(ident[1] == mac.lower() for ident in device_info["identifiers"])

@@ -1096,9 +1096,12 @@ async def async_setup_entry(
                             continue
 
             # Cleanup top bandwidth hosts sensor when option is disabled
-            if unique_id == f"{entry.entry_id}_top_bandwidth_hosts" and not entry.options.get(
-                CONF_ENABLE_NLBWMON_SENSORS,
-                entry.data.get(CONF_ENABLE_NLBWMON_SENSORS, False),
+            if (
+                unique_id == f"{entry.entry_id}_top_bandwidth_hosts"
+                and not entry.options.get(
+                    CONF_ENABLE_NLBWMON_SENSORS,
+                    entry.data.get(CONF_ENABLE_NLBWMON_SENSORS, False),
+                )
             ):
                 ent_reg.async_remove(ent.entity_id)
                 continue

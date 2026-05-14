@@ -747,7 +747,7 @@ class UbusClient(OpenWrtClient):
                                 )
                                 resources.storage.append(usage)
                                 self._update_legacy_fs_fields(resources, usage)
-                            except (ValueError, IndexError):
+                            except ValueError, IndexError:
                                 continue
 
     def _update_legacy_fs_fields(self, resources: SystemResources, usage: Any) -> None:
@@ -871,7 +871,7 @@ class UbusClient(OpenWrtClient):
                         command=" ".join(parts[cmd_idx:]),
                     )
                 )
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 continue
 
             # Only keep top 10
@@ -1574,7 +1574,9 @@ class UbusClient(OpenWrtClient):
                                 dev.port = port
                                 dev.fdb_age = entry.get("age")
                                 if dev.fdb_age is None or dev.fdb_age < 60:
-                                    dev.connected = True  # Seen on a physical port recently
+                                    dev.connected = (
+                                        True  # Seen on a physical port recently
+                                    )
                                 # If it's a wired device, we can improve its interface info
                                 if not dev.is_wireless and not dev.interface:
                                     dev.interface = dev_name
@@ -2822,10 +2824,14 @@ class UbusClient(OpenWrtClient):
             _LOGGER.debug("Command failed via ubus file.exec: %s", err)
             return ""
 
-    async def file_exec(self, command: str, params: list[str] | None = None) -> dict[str, Any]:
+    async def file_exec(
+        self, command: str, params: list[str] | None = None
+    ) -> dict[str, Any]:
         """Execute a binary directly via rpcd file.exec without shell wrapping."""
         try:
-            return await self._call("file", "exec", {"command": command, "params": params or []})
+            return await self._call(
+                "file", "exec", {"command": command, "params": params or []}
+            )
         except UbusError:
             raise
 
@@ -3044,7 +3050,7 @@ class UbusClient(OpenWrtClient):
                 )
                 try:
                     status.blocked_domains = int(float(blocked))
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
                 status.last_update = res.get("last_run")
                 return status
@@ -3248,7 +3254,7 @@ class UbusClient(OpenWrtClient):
                 idx = parts.index("lladdr")
                 if len(parts) > idx + 1:
                     return parts[idx + 1].upper()
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 pass
         return None
 

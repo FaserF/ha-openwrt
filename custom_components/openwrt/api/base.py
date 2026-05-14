@@ -1147,7 +1147,9 @@ class OpenWrtClient(abc.ABC):
         """Execute a command on the device."""
         raise NotImplementedError
 
-    async def file_exec(self, command: str, params: list[str] | None = None) -> dict[str, Any]:
+    async def file_exec(
+        self, command: str, params: list[str] | None = None
+    ) -> dict[str, Any]:
         """Execute a binary via rpcd file.exec. Returns {} if unsupported by this client."""
         return {}
 

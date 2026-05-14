@@ -258,7 +258,9 @@ class LuciRpcClient(OpenWrtClient):
 
         return ""
 
-    async def file_exec(self, command: str, params: list[str] | None = None) -> dict[str, Any]:
+    async def file_exec(
+        self, command: str, params: list[str] | None = None
+    ) -> dict[str, Any]:
         """Execute a binary via the existing sys.exec/shell path on LuCI RPC.
 
         Calling file.exec directly with an arbitrary binary fails unless that binary
@@ -266,6 +268,7 @@ class LuciRpcClient(OpenWrtClient):
         uses /bin/sh (which IS in the ACL) and avoids that restriction.
         """
         import shlex
+
         parts = [command] + (params or [])
         cmd = " ".join(shlex.quote(p) for p in parts)
         output = await self.execute_command(f"{cmd}; echo __HA_RC__$?")
@@ -2176,7 +2179,7 @@ class LuciRpcClient(OpenWrtClient):
 
                 try:
                     enabled = bool(int(val.get("enabled", "1")))
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     enabled = True
                 rules.append(
                     FirewallRule(
@@ -2339,7 +2342,7 @@ class LuciRpcClient(OpenWrtClient):
                         )
                         try:
                             status.blocked_domains = int(float(blocked))
-                        except (ValueError, TypeError):
+                        except ValueError, TypeError:
                             pass
                         status.last_update = res.get("last_run")
                         return status
