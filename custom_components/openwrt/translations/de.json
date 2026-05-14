@@ -102,6 +102,7 @@
           "enable_led": "LED-Steuerung aktivieren",
           "enable_sqm": "SQM QoS-Steuerung aktivieren",
           "enable_vpn": "VPN-Überwachung & Steuerung aktivieren",
+          "enable_nlbwmon_sensors": "NLBWMon Top-Hosts-Sensor aktivieren",
           "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
         }
       },
@@ -243,6 +244,7 @@
           "enable_led": "LED-Steuerung aktivieren",
           "enable_sqm": "SQM QoS-Steuerung aktivieren",
           "enable_vpn": "VPN-Überwachung & Steuerung aktivieren",
+          "enable_nlbwmon_sensors": "NLBWMon Top-Hosts-Sensor aktivieren",
           "acknowledge": "Ich habe diese Informationen geprüft und möchte fortfahren"
         }
       },
@@ -633,7 +635,8 @@
           "simple_adblock": "Simple AdBlock",
           "ban_ip": "Ban-IP",
           "batman_adv": "Batman-adv Mesh-Netzwerk",
-          "batctl": "Batman-adv Steuerung (batctl)"
+          "batctl": "Batman-adv Steuerung (batctl)",
+          "nlbwmon": "Top-Bandbreiten-Hosts-Sensor"
         }
       }
     },

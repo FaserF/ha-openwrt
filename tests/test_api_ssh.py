@@ -155,8 +155,8 @@ async def test_ssh_set_sqm_config(ssh_client: SshClient):
 
         # Check if commands were executed
         calls = [c.args[0] for c in mock_exec.call_args_list]
-        assert "uci set sqm.eth0.enabled='0'" in calls
-        assert "uci set sqm.eth0.download='200000'" in calls
+        assert "uci set sqm.eth0.enabled=0" in calls
+        assert "uci set sqm.eth0.download=200000" in calls
         assert "uci commit sqm" in calls
         assert "/etc/init.d/sqm reload" in calls
 

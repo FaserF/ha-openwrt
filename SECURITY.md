@@ -9,6 +9,7 @@ When integrating your OpenWrt router with Home Assistant, it is highly recommend
 - **Ubus (via HTTPS)**: This is the **strongly recommended** connection method. Ubus is the built-in RPC interface for OpenWrt. It is fast, modern, and supports fine-grained access control (ACLs). You should ensure your router's uhttpd server is configured for HTTPS so that credentials and RPC traffic are encrypted between Home Assistant and OpenWrt.
 - **LuCI RPC**: Acceptable as a fallback, but relies on the LuCI web interface routing.
 - **SSH**: Not recommended for security-conscious setups. While SSH keys are secure, providing shell access to a non-admin service is generally harder to lock down securely compared to Ubus ACLs.
+  > **Security Feature**: To prevent Man-in-the-Middle (MITM) attacks, the integration enforces **SSH Host Key Pinning**. Upon the first successful connection, the router's SSH host key is securely stored in Home Assistant's registry. Subsequent connection attempts with modified or mismatched host keys are strictly rejected.
 
 ## 3. How do I restrict permissions (ACLs)?
 
