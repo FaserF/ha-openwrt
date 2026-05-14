@@ -120,18 +120,5 @@
       "modelName": "OpenWrt*"
     }
   ],
-  "version": "2.1.3-dev0",
-  "zeroconf": [
-    {
-      "type": "_http._tcp.local.",
-      "name": "openwrt*"
-    },
-    {
-      "type": "_ssh._tcp.local.",
-      "name": "openwrt*"
-    },
-    {
-      "type": "_luci._tcp.local."
-    }
-  ]
+  "version": "2.1.3-dev0"
 }
