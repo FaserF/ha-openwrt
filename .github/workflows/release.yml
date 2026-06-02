@@ -18,10 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {contents: write, packages: write}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.3
         with: {fetch-depth: 0}
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v6.2.0
         with: {python-version: '3.14.5'}
       - name: Calculate Version
         id: version
@@ -57,7 +57,7 @@ jobs:
           zip -r ../$DOMAIN.zip $DOMAIN
           cd ..
       - name: Create Release Notes
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.0
         if: inputs.release_type != 'nightly'
         with:
           tag_name: v${{ steps.version.outputs.version }}
