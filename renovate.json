@@ -9,25 +9,25 @@
   "rangeStrategy": "pin",
   "packageRules": [
     {
+      "matchCategories": [
+        "python"
+      ],
+      "enabled": true
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchCurrentVersion": "!/^0/",
       "automerge": true
     }
   ],
-  "python": {
-    "enabled": true
-  },
   "github-actions": {
     "enabled": true
   },
-  "regexManagers": [
+  "customManagers": [
     {
-      "fileMatch": [
-        "custom_components/openwrt/helpers/mqtt_presence.py"
-      ],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+REPO_URL = \"https://raw.githubusercontent.com/[^/]+/[^/]+/(?<currentValue>[a-f0-9]+)\""
-      ]
+      "customType": "regex",
+      "managerFilePatterns": ["/custom_components/openwrt/helpers/mqtt_presence.py/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+REPO_URL = \"https://raw.githubusercontent.com/[^/]+/[^/]+/(?<currentValue>[a-f0-9]+)\""]
     }
   ]
 }
