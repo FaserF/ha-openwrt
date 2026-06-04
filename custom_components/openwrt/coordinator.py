@@ -601,7 +601,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     def _async_check_stale_permissions(self, data: OpenWrtData) -> None:
         """Check for stale permissions."""
-        if self.config_entry.data.get(CONF_USERNAME) != "homeassistant":
+        username = self.config_entry.data.get(CONF_USERNAME, "homeassistant")
+        if username == "root":
             return
 
         # Identify missing but expected permissions based on detected packages
@@ -610,7 +611,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         stale = False
         reason = ""
-        # We check for core features that indicate the 'homeassistant' user needs more rights
+        # We check for core features that indicate the RPC user needs more rights
         # than what were granted during its creation.
         if not perms.read_system:
             stale = True
@@ -651,8 +652,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             self._last_version = current_version
 
         if stale:
-            _LOGGER.debug(
-                "Detected stale permissions for 'homeassistant' user: %s (is_upgrade=%s), creating repair issue",
+            _LOGGER.warning(
+                "Detected missing/stale RPC permissions for OpenWrt user '%s': %s (is_upgrade=%s). "
+                "Some system sensors (such as CPU, memory, load, uptime, or temperature) will stop reporting. "
+                "Please redeploy the Home Assistant user or restore the custom ACL rules on your router.",
+                username,
                 reason,
                 is_upgrade,
             )
