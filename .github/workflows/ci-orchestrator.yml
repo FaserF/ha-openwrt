@@ -56,7 +56,7 @@ jobs:
           pytest --cov=custom_components.openwrt --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v6.0.2
+        uses: codecov/codecov-action@v7.0.0
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
