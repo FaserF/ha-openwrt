@@ -22,7 +22,7 @@ jobs:
         with: {fetch-depth: 0}
       - name: Set up Python
         uses: actions/setup-python@v6.2.0
-        with: {python-version: '3.14.5'}
+        with: {python-version: '3.14.6'}
       - name: Calculate Version
         id: version
         run: |
