@@ -529,6 +529,34 @@ class SshSystemMixin:
         """Perform SSH-specific diagnostic checks."""
         results: list[DiagnosticResult] = []
 
+        # Check connection error
+        if self._last_connect_error:
+            err_str = str(self._last_connect_error)
+            if "connection refused" in err_str.lower() or "connect call failed" in err_str.lower() or "1225" in err_str:
+                results.append(
+                    DiagnosticResult(
+                        name="SSH Service",
+                        status="FAIL",
+                        message="Connection refused by the router's SSH server.",
+                        details=(
+                            "The router's SSH service is not running or is blocking the connection on port 22 (or custom port). "
+                            "Please check that dropbear/openssh is enabled and running on the router."
+                        )
+                    )
+                )
+            elif "unreachable" in err_str.lower() or "no route to host" in err_str.lower():
+                results.append(
+                    DiagnosticResult(
+                        name="Host Reachability",
+                        status="FAIL",
+                        message="Host is unreachable.",
+                        details=(
+                            "The host is unreachable. Please verify the IP address or hostname is correct, "
+                            "and that the router is online and connected to the network."
+                        )
+                    )
+                )
+
         # 1. Check Shell Access
         try:
             output = await self.execute_command("echo 'OpenWrt-SSH-Test'")

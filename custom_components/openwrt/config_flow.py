@@ -338,6 +338,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_routers: list[dict[str, str]] = []
         self._ubus_restricted: bool = False
         self._diagnostic_report: str | None = None
+        self._repair_username: str = "root"
+        self._repair_password: str = ""
+        self._repair_port: int = 22
+        self._repair_error: str | None = None
 
     @staticmethod
     @callback
@@ -1087,7 +1091,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 SshError,
             ),
         ):
-            _LOGGER.warning("Connection/API error: %s", err)
+            err_str = str(err).lower()
+            if "connection refused" in err_str or "connect call failed" in err_str or "1225" in err_str:
+                _LOGGER.error(
+                    "Connection refused during setup for user %s. The router's service (uhttpd/nginx or SSH) may be offline/crashed, or firewall rules are blocking the connection.",
+                    username,
+                )
+            elif "404" in err_str or "not found" in err_str:
+                _LOGGER.error(
+                    "API endpoint not found (HTTP 404) during setup. The required package (uhttpd-mod-ubus or luci-mod-rpc) is likely missing on the router.",
+                )
+            else:
+                _LOGGER.warning("Connection/API error during test: %s", err)
             return "cannot_connect"
         if isinstance(err, (UbusSslError, LuciRpcSslError)):
             _LOGGER.warning("SSL error: %s", err)
@@ -1447,6 +1462,13 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Show diagnostic report after failure."""
         if user_input is not None:
+            if user_input.get("run_repair"):
+                if self._data.get(CONF_USERNAME) == "root":
+                    self._repair_username = "root"
+                    self._repair_password = self._data.get(CONF_PASSWORD, "")
+                    self._repair_port = 22
+                    return await self.async_step_run_repair()
+                return await self.async_step_repair_credentials()
             return await self.async_step_credentials()
 
         # Get translations for footer elements
@@ -1460,9 +1482,15 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 return translations[full_key]
             return default
 
+        schema = vol.Schema(
+            {
+                vol.Optional("run_repair", default=False): bool,
+            }
+        )
+
         return self.async_show_form(
             step_id="diagnostics",
-            data_schema=vol.Schema({}),
+            data_schema=schema,
             description_placeholders={
                 "report": self._diagnostic_report or "No diagnostic data available.",
                 "footer_title": t("diagnostics_footer_title", "How to use this report"),
@@ -1475,6 +1503,127 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
                 "issues_url": "https://github.com/FaserF/ha-openwrt/issues",
             },
+        )
+
+    async def async_step_repair_credentials(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Prompt for SSH root credentials to perform repair."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            self._repair_username = user_input.get(CONF_USERNAME, "root")
+            self._repair_password = user_input.get(CONF_PASSWORD, "")
+            self._repair_port = user_input.get(CONF_PORT, 22)
+            return await self.async_step_run_repair()
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_USERNAME, default="root"): str,
+                vol.Optional(CONF_PASSWORD, default=""): str,
+                vol.Required(CONF_PORT, default=22): int,
+            }
+        )
+        return self.async_show_form(
+            step_id="repair_credentials",
+            data_schema=schema,
+            errors=errors,
+        )
+
+    async def async_step_run_repair(self) -> ConfigFlowResult:
+        """Connect via SSH and perform the repair."""
+        host = self._data.get(CONF_HOST)
+        conn_type = self._data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_UBUS)
+
+        try:
+            # We connect using SshClient
+            ssh = SshClient(
+                hass=self.hass,
+                session=None,
+                host=host,
+                username=self._repair_username,
+                password=self._repair_password,
+                port=self._repair_port,
+            )
+            connected = await ssh.connect()
+            if not connected:
+                raise Exception("SSH connection failed to connect.")
+
+            # Let's perform repair commands
+            # 1. Start web server uhttpd
+            await ssh.execute_command("/etc/init.d/uhttpd start 2>/dev/null || true")
+
+            # 2. Check if we need to install packages
+            # Let's check which package manager is present
+            pkg_mgr = "opkg"
+            apk_check = await ssh.execute_command("command -v apk 2>/dev/null || true")
+            if apk_check and "apk" in apk_check:
+                pkg_mgr = "apk"
+
+            # Determine if we should install luci-mod-rpc or uhttpd-mod-ubus
+            report_str = str(self._diagnostic_report or "").lower()
+            needs_luci_rpc = conn_type == CONNECTION_TYPE_LUCI_RPC and (
+                "404" in report_str or "rpc endpoint" in report_str or "session" in report_str
+            )
+            needs_ubus = conn_type == CONNECTION_TYPE_UBUS and (
+                "404" in report_str or "rpc endpoint" in report_str
+            )
+
+            if needs_luci_rpc:
+                if pkg_mgr == "apk":
+                    await ssh.execute_command("apk update && apk add luci-mod-rpc")
+                else:
+                    await ssh.execute_command("opkg update && opkg install luci-mod-rpc")
+            elif needs_ubus:
+                if pkg_mgr == "apk":
+                    await ssh.execute_command("apk update && apk add uhttpd-mod-ubus")
+                else:
+                    await ssh.execute_command("opkg update && opkg install uhttpd-mod-ubus")
+
+            # Restart web server to ensure changes are loaded
+            await ssh.execute_command("/etc/init.d/uhttpd restart 2>/dev/null || true")
+            await ssh.disconnect()
+
+            # Now, test the connection again using original config data!
+            test_error = await self._test_connection(self._data)
+            if test_error is None:
+                # Success! Let's register unique ID and show success step
+                await self._async_set_unique_id_and_check()
+                return await self.async_step_repair_success()
+            else:
+                raise Exception(
+                    f"Connection test still failed after repair. Error: {test_error}"
+                )
+
+        except Exception as err:
+            _LOGGER.exception("Automatic repair failed: %s", err)
+            return self.async_show_form(
+                step_id="repair_failed",
+                description_placeholders={"error": str(err)},
+            )
+
+    async def async_step_repair_success(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Show success message after repair."""
+        if user_input is not None:
+            if self._data.get(CONF_USERNAME) == "root":
+                return await self.async_step_provision_user()
+            if self._permissions:
+                if self._data.get(CONF_CONNECTION_TYPE) == CONNECTION_TYPE_UBUS:
+                    return await self.async_step_permissions_ubus()
+                return await self.async_step_permissions()
+            if self._packages:
+                return await self.async_step_packages()
+            return self.async_create_entry(
+                title=self._device_info.get("hostname", self._data.get(CONF_HOST)),
+                data=self._data,
+            )
+
+        return self.async_show_form(
+            step_id="repair_success",
+            data_schema=vol.Schema({}),
         )
 
     async def async_step_display_new_user(

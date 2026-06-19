@@ -133,7 +133,27 @@
       },
       "diagnostics": {
         "title": "Connection Diagnostics",
-        "description": "A connection test was performed and identified several issues. Please review the report below to troubleshoot the problem:\n\n{report}\n\n#### {footer_title}\n{footer_intro} [{footer_link_text}]({issues_url}).\n\nYou can try again after making changes to your router configuration."
+        "description": "A connection test was performed and identified several issues. Please review the report below to troubleshoot the problem:\n\n{report}\n\n#### {footer_title}\n{footer_intro} [{footer_link_text}]({issues_url}).\n\nYou can try again after making changes to your router configuration.",
+        "data": {
+          "run_repair": "Attempt automatic repair via SSH (start services / install missing packages)"
+        }
+      },
+      "repair_credentials": {
+        "title": "SSH Credentials for Repair",
+        "description": "To perform automatic repair, the integration needs root access to your router via SSH. Please provide the root credentials for SSH (usually username 'root'):",
+        "data": {
+          "username": "Username",
+          "password": "Password (Optional if using SSH key or blank)",
+          "port": "SSH Port"
+        }
+      },
+      "repair_failed": {
+        "title": "Automatic Repair Failed",
+        "description": "The integration attempted automatic repair but failed:\n\n```\n{error}\n```\n\nPlease check your router configuration or try configuring manually."
+      },
+      "repair_success": {
+        "title": "Automatic Repair Successful",
+        "description": "The integration successfully connected via SSH, started the required services and/or installed the missing packages.\n\nThe connection test is now passing. Click submit to continue setting up the integration."
       },
       "ubus_restricted": {
         "title": "Restricted Ubus Detected",

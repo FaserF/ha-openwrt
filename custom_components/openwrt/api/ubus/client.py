@@ -302,6 +302,14 @@ class UbusClient(
         return {}
     async def connect(self) -> bool:
         """Authenticate with ubus."""
+        try:
+            return await self._connect()
+        except Exception as err:
+            self._last_connect_error = err
+            raise
+
+    async def _connect(self) -> bool:
+        """Authenticate with ubus."""
         if self.session is None:
             raise UbusError("Session not initialized")
         session = self.session

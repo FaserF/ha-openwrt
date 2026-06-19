@@ -358,6 +358,14 @@ class LuciRpcClient(
             return False, str(err)
     async def connect(self) -> bool:
         """Authenticate with LuCI."""
+        try:
+            return await self._connect()
+        except Exception as err:
+            self._last_connect_error = err
+            raise
+
+    async def _connect(self) -> bool:
+        """Authenticate with LuCI."""
         if self.session is None:
             raise LuciRpcError("Session not initialized")
         session = self.session

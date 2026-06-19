@@ -820,6 +820,7 @@ class OpenWrtClient(abc.ABC):
         self._logread_flag: str | None = None
         self.packages = OpenWrtPackages()
         self.coordinator: Any = None
+        self._last_connect_error: Exception | None = None
 
     def _get_assoc_rate(self, client: dict[str, Any], direction: str) -> int:
         """Helper to safely extract wireless rate from assoclist data."""

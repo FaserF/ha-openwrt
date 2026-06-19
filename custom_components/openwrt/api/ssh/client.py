@@ -227,6 +227,14 @@ class SshClient(
             return False, str(err)
     async def connect(self) -> bool:
         """Connect via SSH."""
+        try:
+            return await self._connect()
+        except Exception as err:
+            self._last_connect_error = err
+            raise
+
+    async def _connect(self) -> bool:
+        """Connect via SSH."""
         loop = asyncio.get_event_loop()
 
         pinned_data: dict[str, Any] = {}

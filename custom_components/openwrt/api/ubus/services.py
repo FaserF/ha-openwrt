@@ -609,6 +609,36 @@ class UbusServicesMixin:
         """Perform ubus-specific diagnostic checks."""
         results: list[DiagnosticResult] = []
 
+        # Check connection error
+        if self._last_connect_error:
+            err_str = str(self._last_connect_error)
+            if "ConnectionRefusedError" in err_str or "connection refused" in err_str.lower() or "connect call failed" in err_str.lower() or "1225" in err_str:
+                results.append(
+                    DiagnosticResult(
+                        name="Router Web Server",
+                        status="FAIL",
+                        message="Connection refused by the router's web server.",
+                        details=(
+                            "The router's web server (uhttpd) is not running or is blocking the connection on port 80/443. "
+                            "Please check that uhttpd/nginx is enabled and running on the router (e.g. run "
+                            "'/etc/init.d/uhttpd start' over SSH)."
+                        )
+                    )
+                )
+            elif "404" in err_str or "not found" in err_str.lower():
+                results.append(
+                    DiagnosticResult(
+                        name="RPC Endpoint Availability",
+                        status="FAIL",
+                        message="API endpoint not found (HTTP 404).",
+                        details=(
+                            "The router returned HTTP 404 (Not Found) for the API endpoint. "
+                            "This indicates that the required RPC package is not installed on the router. "
+                            "Please ensure that the 'uhttpd-mod-ubus' package is installed."
+                        )
+                    )
+                )
+
         # 1. Check Session ACLs
         try:
             session_data = await self._call("session", "list")

@@ -133,7 +133,27 @@
       },
       "diagnostics": {
         "title": "Verbindungs-Diagnose",
-        "description": "Ein Verbindungstest wurde durchgeführt und hat mehrere Probleme identifiziert. Bitte prüfe den Bericht unten, um das Problem zu beheben:\n\n{report}\n\n#### {footer_title}\n{footer_intro} [{footer_link_text}]({issues_url}).\n\nDu kannst es erneut versuchen, nachdem du Änderungen an deiner Router-Konfiguration vorgenommen hast."
+        "description": "Ein Verbindungstest wurde durchgeführt und hat mehrere Probleme identifiziert. Bitte prüfe den Bericht unten, um das Problem zu beheben:\n\n{report}\n\n#### {footer_title}\n{footer_intro} [{footer_link_text}]({issues_url}).\n\nDu kannst es erneut versuchen, nachdem du Änderungen an deiner Router-Konfiguration vorgenommen hast.",
+        "data": {
+          "run_repair": "Automatische Reparatur via SSH versuchen (Dienste starten / fehlende Pakete installieren)"
+        }
+      },
+      "repair_credentials": {
+        "title": "SSH-Zugangsdaten für Reparatur",
+        "description": "Für die automatische Reparatur benötigt die Integration Root-Zugriff auf deinen Router via SSH. Bitte gib die Root-Zugangsdaten für SSH an (normalerweise Benutzer 'root'):",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort (optional bei SSH-Key oder leer)",
+          "port": "SSH-Port"
+        }
+      },
+      "repair_failed": {
+        "title": "Automatische Reparatur fehlgeschlagen",
+        "description": "Der Reparaturversuch ist fehlgeschlagen:\n\n```\n{error}\n```\n\nBitte überprüfe deine Router-Konfiguration oder konfiguriere manuell."
+      },
+      "repair_success": {
+        "title": "Automatische Reparatur erfolgreich",
+        "description": "Die Integration hat sich erfolgreich via SSH verbunden, die benötigten Dienste gestartet und/oder fehlende Pakete installiert.\n\nDer Verbindungstest ist nun erfolgreich. Klicke auf Absenden, um mit der Einrichtung fortzufahren."
       },
       "ubus_restricted": {
         "title": "Eingeschränktes Ubus erkannt",
