@@ -1738,32 +1738,34 @@ class LuciRpcClient(OpenWrtClient):
                 iface_name = obj_name.split(".", 1)[1] if "." in obj_name else obj_name
                 try:
                     data = json.loads(data_str)
-                    if data and isinstance(data, dict) and "clients" in data:
-                        for mac, info in data["clients"].items():
-                            mac = mac.lower()
-                            if mac in devices:
-                                dev = devices[mac]
-                            else:
-                                dev = ConnectedDevice(mac=mac, connected=False)
-                                devices[mac] = dev
+                    if data and isinstance(data, dict):
+                        clients = data.get("clients")
+                        if isinstance(clients, dict):
+                            for mac, info in clients.items():
+                                mac = mac.lower()
+                                if mac in devices:
+                                    dev = devices[mac]
+                                else:
+                                    dev = ConnectedDevice(mac=mac, connected=False)
+                                    devices[mac] = dev
 
-                                dev.connected = True  # Wireless association
+                                    dev.connected = True  # Wireless association
 
-                            dev.is_wireless = True
-                            # Map system interface name to UCI section if possible
-                            dev.interface = getattr(self, "_sys_to_uci", {}).get(
-                                iface_name,
-                                iface_name,
-                            )
-                            if not dev.signal:
-                                dev.signal = info.get("signal", 0)
+                                dev.is_wireless = True
+                                # Map system interface name to UCI section if possible
+                                dev.interface = getattr(self, "_sys_to_uci", {}).get(
+                                    iface_name,
+                                    iface_name,
+                                )
+                                if not dev.signal:
+                                    dev.signal = info.get("signal", 0)
 
-                            if "5g" in iface_name.lower():
-                                dev.connection_type = "5GHz"
-                            elif "2g" in iface_name.lower():
-                                dev.connection_type = "2.4GHz"
-                            elif not dev.connection_type:
-                                dev.connection_type = "wireless"
+                                if "5g" in iface_name.lower():
+                                    dev.connection_type = "5GHz"
+                                elif "2g" in iface_name.lower():
+                                    dev.connection_type = "2.4GHz"
+                                elif not dev.connection_type:
+                                    dev.connection_type = "wireless"
                 except (
                     json.JSONDecodeError,
                     KeyError,

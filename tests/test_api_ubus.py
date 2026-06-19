@@ -265,3 +265,57 @@ async def test_ubus_get_firewall_rules_anonymous(ubus_client: UbusClient):
         assert rules[1].section_id == "@rule[1]"
         assert rules[1].name == "@rule[1]"
         assert rules[1].enabled is False
+
+
+@pytest.mark.asyncio
+async def test_ubus_get_connected_devices_wireless(ubus_client: UbusClient):
+    """Test get_connected_devices parses iwinfo associations with interface and type in Ubus."""
+    ubus_client._session_id = "test_token"
+    ubus_client._connected = True
+    ubus_client.packages.wireless = True
+    ubus_client.trust_bridge_fdb = False
+    ubus_client._list_objects = AsyncMock(return_value=["hostapd.wlan0"])
+
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+
+        def call_side_effect(object_name, method, *args, **kwargs):
+            if object_name == "uci" and method == "get":
+                return {"values": {}}
+            if object_name == "network.wireless" and method == "status":
+                return {
+                    "radio0": {"interfaces": [{"ifname": "wlan0", "device": "wlan0"}]}
+                }
+            if object_name == "iwinfo" and method == "assoclist":
+                return {
+                    "results": [
+                        {"mac": "00:11:22:33:44:55", "signal": -60, "noise": -90}
+                    ]
+                }
+            if object_name.startswith("hostapd.") and method == "get_clients":
+                return None
+            return {}
+
+        mock_call.side_effect = call_side_effect
+
+        with (
+            patch.object(
+                ubus_client, "get_dhcp_leases", new_callable=AsyncMock
+            ) as mock_dhcp,
+            patch.object(
+                ubus_client, "get_ip_neighbors", new_callable=AsyncMock
+            ) as mock_neigh,
+        ):
+            mock_dhcp.return_value = []
+            mock_neigh.return_value = []
+
+            devices = await ubus_client.get_connected_devices()
+            assert len(devices) == 1
+
+            dev = devices[0]
+            assert dev.mac == "00:11:22:33:44:55"
+            assert dev.is_wireless is True
+            assert dev.connected is True
+            assert dev.interface == "wlan0"
+            assert dev.connection_type == "wireless"
+            assert dev.signal == -60
+            assert dev.noise == -90

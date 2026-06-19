@@ -1518,25 +1518,27 @@ class SshClient(OpenWrtClient):
                 iface_name = obj_name.split(".", 1)[1] if "." in obj_name else obj_name
                 try:
                     data = json.loads(data_str)
-                    if data and isinstance(data, dict) and "clients" in data:
-                        for mac, info in data["clients"].items():
-                            mac_lower = mac.lower()
-                            dev = devices.setdefault(
-                                mac_lower,
-                                ConnectedDevice(mac=mac_lower, connected=True),
-                            )
-                            dev.is_wireless = True
-                            dev.interface = iface_name
-                            dev.signal = info.get("signal", 0)
-                            dev.connection_type = (
-                                "5GHz"
-                                if "5g" in iface_name.lower()
-                                else (
-                                    "2.4GHz"
-                                    if "2g" in iface_name.lower()
-                                    else "wireless"
+                    if data and isinstance(data, dict):
+                        clients = data.get("clients")
+                        if isinstance(clients, dict):
+                            for mac, info in clients.items():
+                                mac_lower = mac.lower()
+                                dev = devices.setdefault(
+                                    mac_lower,
+                                    ConnectedDevice(mac=mac_lower, connected=True),
                                 )
-                            )
+                                dev.is_wireless = True
+                                dev.interface = iface_name
+                                dev.signal = info.get("signal", 0)
+                                dev.connection_type = (
+                                    "5GHz"
+                                    if "5g" in iface_name.lower()
+                                    else (
+                                        "2.4GHz"
+                                        if "2g" in iface_name.lower()
+                                        else "wireless"
+                                    )
+                                )
                 except json.JSONDecodeError, KeyError:
                     continue
         except SshError:

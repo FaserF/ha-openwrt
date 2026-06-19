@@ -1466,19 +1466,20 @@ class UbusClient(OpenWrtClient):
                     continue
                 try:
                     assoc = await self._call("iwinfo", "assoclist", {"device": ifname})
-                    for client in assoc.get("results", []):
-                        mac = client.get("mac", "").lower()
-                        dev = devices.setdefault(
-                            mac, ConnectedDevice(mac=mac, connected=True)
-                        )
-                        dev.connected = True
-                        dev.is_wireless = True
-                        dev.interface = ifname
-                        self._set_wireless_connection_type(dev, ifname)
-                        dev.signal = client.get("signal", 0)
-                        dev.noise = client.get("noise", 0)
-                        dev.rx_rate = self._get_assoc_rate(client, "rx")
-                        dev.tx_rate = self._get_assoc_rate(client, "tx")
+                    if assoc and isinstance(assoc, dict):
+                        for client in assoc.get("results", []):
+                            mac = client.get("mac", "").lower()
+                            dev = devices.setdefault(
+                                mac, ConnectedDevice(mac=mac, connected=True)
+                            )
+                            dev.connected = True
+                            dev.is_wireless = True
+                            dev.interface = ifname
+                            self._set_wireless_connection_type(dev, ifname)
+                            dev.signal = client.get("signal", 0)
+                            dev.noise = client.get("noise", 0)
+                            dev.rx_rate = self._get_assoc_rate(client, "rx")
+                            dev.tx_rate = self._get_assoc_rate(client, "tx")
                 except (
                     UbusTimeoutError,
                     UbusConnectionError,
@@ -1556,9 +1557,10 @@ class UbusClient(OpenWrtClient):
                     continue
                 try:
                     hostapd_data = await self._call(f"hostapd.{ifname}", "get_clients")
-                    self._merge_hostapd_clients(
-                        devices, hostapd_data.get("clients", {}), ifname
-                    )
+                    if hostapd_data and isinstance(hostapd_data, dict):
+                        clients = hostapd_data.get("clients")
+                        if isinstance(clients, dict):
+                            self._merge_hostapd_clients(devices, clients, ifname)
                 except (
                     UbusTimeoutError,
                     UbusConnectionError,
@@ -1716,19 +1718,18 @@ class UbusClient(OpenWrtClient):
             for ifname in candidates:
                 try:
                     assoc = await self._call("iwinfo", "assoclist", {"device": ifname})
-                    if not assoc:
-                        continue
-                    for client in assoc.get("results", []):
-                        mac = client.get("mac", "").lower()
-                        dev = devices.setdefault(
-                            mac, ConnectedDevice(mac=mac, connected=True)
-                        )
-                        dev.connected = True
-                        dev.is_wireless = True
-                        dev.interface = ifname
-                        self._set_wireless_connection_type(dev, ifname)
-                        dev.signal = client.get("signal", 0)
-                        dev.noise = client.get("noise", 0)
+                    if assoc and isinstance(assoc, dict):
+                        for client in assoc.get("results", []):
+                            mac = client.get("mac", "").lower()
+                            dev = devices.setdefault(
+                                mac, ConnectedDevice(mac=mac, connected=True)
+                            )
+                            dev.connected = True
+                            dev.is_wireless = True
+                            dev.interface = ifname
+                            self._set_wireless_connection_type(dev, ifname)
+                            dev.signal = client.get("signal", 0)
+                            dev.noise = client.get("noise", 0)
                 except (
                     UbusTimeoutError,
                     UbusConnectionError,
@@ -1761,9 +1762,10 @@ class UbusClient(OpenWrtClient):
                     ifname = obj_name.split(".", 1)[1]
                     try:
                         hostapd_data = await self._call(obj_name, "get_clients")
-                        self._merge_hostapd_clients(
-                            devices, hostapd_data.get("clients", {}), ifname
-                        )
+                        if hostapd_data and isinstance(hostapd_data, dict):
+                            clients = hostapd_data.get("clients")
+                            if isinstance(clients, dict):
+                                self._merge_hostapd_clients(devices, clients, ifname)
                     except (
                         UbusTimeoutError,
                         UbusConnectionError,
