@@ -97,9 +97,11 @@ async def async_get_config_entry_diagnostics(
                 "filesystem_total": data.system_resources.filesystem_total,
                 "filesystem_used": data.system_resources.filesystem_used,
             }
-            diag["connected_devices_count"] = len(data.connected_devices)
+            diag["connected_devices_count"] = sum(
+                1 for d in data.all_connected_devices if d.connected
+            )
             diag["wireless_clients_count"] = sum(
-                1 for d in data.connected_devices if d.is_wireless
+                1 for d in data.all_connected_devices if d.is_wireless and d.connected
             )
             diag["firmware"] = {
                 "upgradable": data.firmware_upgradable,
@@ -117,8 +119,9 @@ async def async_get_config_entry_diagnostics(
                     "port": d.port,
                     "interface": d.interface,
                 }
-                for d in data.connected_devices[:20]
-            ]
+                for d in data.all_connected_devices
+                if d.connected
+            ][:20]
             diag["wireless_interfaces"] = [
                 {
                     "name": w.name,
