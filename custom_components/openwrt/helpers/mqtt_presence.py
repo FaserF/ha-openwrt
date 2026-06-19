@@ -14,7 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Pin to a specific commit for security (MIT Licensed scripts from f45tb00t/OpenWRT_HA_Presence)
 # Commit: 818d73bcef3a4f47754ff931243693c11c6a6cd0 (pinned on 2026-04-30)
-# renovate: datasource=github-commits depName=f45tb00t/OpenWRT_HA_Presence
+# renovate: datasource=git-refs depName=https://github.com/f45tb00t/OpenWRT_HA_Presence
 REPO_URL = "https://raw.githubusercontent.com/f45tb00t/OpenWRT_HA_Presence/818d73bcef3a4f47754ff931243693c11c6a6cd0"
 FILES_TO_DEPLOY = [
     "etc/presence/presence_event.sh",
