@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements_test.txt ]; then pip install -r requirements_test.txt; fi
-          pip install ruff black mypy pyyaml pytest pytest-asyncio pytest-cov homeassistant paramiko aiohttp
+          pip install ruff mypy pyyaml pytest pytest-asyncio pytest-cov homeassistant paramiko aiohttp
 
       - name: Validate JSON/YAML
         run: |
@@ -39,8 +39,9 @@ jobs:
 
       - name: Check Integration Structure
         run: |
-          test -d custom_components/openwrt
-          test -f custom_components/openwrt/manifest.json
+          DOMAIN=$(python -c "import json, glob; print(json.load(open(glob.glob('custom_components/*/manifest.json')[0]))['domain'])")
+          test -d "custom_components/$DOMAIN"
+          test -f "custom_components/$DOMAIN/manifest.json"
           test -f hacs.json
 
       - name: Format and Fix with Ruff
@@ -56,19 +57,25 @@ jobs:
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
 
       - name: Run Mypy
-        run: mypy custom_components/openwrt
+        run: |
+          DOMAIN=$(python -c "import json, glob; print(json.load(open(glob.glob('custom_components/*/manifest.json')[0]))['domain'])")
+          mypy "custom_components/$DOMAIN"
 
       - name: Run Tests
         run: |
-          pytest --cov=custom_components.openwrt --cov-report=xml
+          if [ -d tests ]; then
+            DOMAIN=$(python -c "import json, glob; print(json.load(open(glob.glob('custom_components/*/manifest.json')[0]))['domain'])")
+            pytest --cov="custom_components.$DOMAIN" --cov-report=xml
+          else
+            echo "No tests directory found, skipping."
+            echo "<?xml version='1.0' ?><coverage></coverage>" > coverage.xml
+          fi
 
       - name: Upload coverage
         uses: codecov/codecov-action@v7.0.0
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
-
-
 
   hassfest:
     name: Validate with Hassfest

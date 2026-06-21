@@ -13,15 +13,6 @@ name: Release
           - stable
           - beta
           - nightly
-      bump_level:
-        description: "Bump level for SemVer (ignored for CalVer)"
-        required: true
-        default: "patch"
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-release
@@ -40,21 +31,20 @@ jobs:
       is_prerelease: ${{ steps.get_version.outputs.is_prerelease }}
       release_body: ${{ steps.get_version.outputs.release_body }}
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6.2.0
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.14.6"
+          python-version: "3.14"
 
       - name: Calculate Version and Release Details
         id: get_version
         shell: bash
         env:
           RELEASE_TYPE: ${{ inputs.release_type }}
-          BUMP_LEVEL: ${{ inputs.bump_level }}
           REPO: ${{ github.repository }}
           OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
@@ -62,7 +52,7 @@ jobs:
           python .github/scripts/calculate_release_details.py
 
       - name: Upload Release Body
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           name: release-body
           path: release_body.md
@@ -81,6 +71,7 @@ jobs:
           VERSION: ${{ steps.get_version.outputs.version }}
         shell: bash
         run: |
+          # Use gh api to find existing draft release
           release_id=$(gh api "repos/$REPO/releases" --jq '.[] | select(.tag_name=="'$TAG'" or .name=="Release '$VERSION'") | select(.draft==true) | .id')
           if [ -n "$release_id" ]; then
             gh api -X DELETE "repos/$REPO/releases/$release_id"
@@ -88,7 +79,7 @@ jobs:
           fi
 
       - name: Create Initial Draft Release
-        uses: softprops/action-gh-release@v3.0.1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.get_version.outputs.tag }}
           name: Release ${{ steps.get_version.outputs.version }}
@@ -105,14 +96,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6.2.0
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.14.6"
+          python-version: "3.14"
 
       - name: Configure Git and pull latest
         run: |
@@ -123,22 +114,18 @@ jobs:
       - name: Update Files
         shell: bash
         run: |
-          python .github/scripts/version_manager.py bump --type ${{ inputs.release_type }} --level ${{ inputs.bump_level }}
+          python .github/scripts/version_manager.py bump --type ${{ inputs.release_type }}
 
       - name: Commit and Push
         run: |
-          MANIFEST_FILE=$(python -c "import glob; print(glob.glob('custom_components/*/manifest.json')[0])")
-          git add "$MANIFEST_FILE"
-          if [ -f "pyproject.toml" ]; then
-            git add pyproject.toml
-          fi
+          git add custom_components/db_infoscreen/manifest.json
           if ! git diff --staged --quiet; then
             git commit -m "chore: release version ${{ needs.versioning.outputs.version }} [skip ci]"
             git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
           fi
 
-      - name: Download Release Body Artifact
-        uses: actions/download-artifact@v8.0.1
+      - name: Download Release Body
+        uses: actions/download-artifact@v8
         with:
           name: release-body
 
@@ -149,7 +136,7 @@ jobs:
           printf "%s\n\n---\n🔄 **Release Progress**: Repository version synced. Creating release assets...\n" "$body" > updated_draft_body.md
 
       - name: Update Draft Release on GitHub
-        uses: softprops/action-gh-release@v3.0.1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.versioning.outputs.tag }}
           name: Release ${{ needs.versioning.outputs.version }}
@@ -166,34 +153,32 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: 📦 Zip Component
         run: |
-          DOMAIN=$(python -c "import json, glob; print(json.load(open(glob.glob('custom_components/*/manifest.json')[0]))['domain'])")
-          zip -r "$DOMAIN.zip" "custom_components/$DOMAIN"
+          cd custom_components
+          zip -r ../db_infoscreen.zip db_infoscreen
+          cd ..
 
       - name: Download Release Body Artifact
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8
         with:
           name: release-body
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3.0.1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.versioning.outputs.tag }}
-          # Wait, in original workflow, is it needs.versioning.outputs.tag? Yes.
-          # Ah, note the typo in the previous line: needs.needs.versioning.outputs.tag
-          # Let's fix that typo.
           name: Release ${{ needs.versioning.outputs.version }}
           body_path: release_body.md
           prerelease: ${{ needs.versioning.outputs.is_prerelease == 'true' }}
           draft: false
           generate_release_notes: false
           files: |
-            *.zip
+            db_infoscreen.zip
 
   cleanup-release:
     needs: [versioning, sync-version, gh-release]
@@ -214,43 +199,3 @@ jobs:
             gh api -X DELETE "repos/$REPO/releases/$release_id"
             gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
           fi
-
-  post-release:
-    name: Post-Release Dev Bump
-    needs: [versioning, sync-version, gh-release]
-    if: always() && needs.versioning.result == 'success' && needs.sync-version.result == 'success' && needs.gh-release.result == 'success' && inputs.release_type == 'stable'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7.0.0
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v6.2.0
-        with:
-          python-version: "3.14.6"
-
-      - name: Configure Git and pull latest
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin ${{ github.ref_name }}
-
-      - name: Post-Release Dev Bump
-        run: |
-          python .github/scripts/version_manager.py bump --type dev --level patch
-
-      - name: Commit and Push
-        run: |
-          MANIFEST_FILE=$(python -c "import glob; print(glob.glob('custom_components/*/manifest.json')[0])")
-          git add "$MANIFEST_FILE"
-          if [ -f "pyproject.toml" ]; then
-            git add pyproject.toml
-          fi
-          if ! git diff --staged --quiet; then
-            git commit -m "chore(dev): bump version post-release [skip ci]"
-            git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
-          fi
-
