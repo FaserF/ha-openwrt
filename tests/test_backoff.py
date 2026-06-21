@@ -21,7 +21,7 @@ async def test_coordinator_backoff_on_failure(hass) -> None:
 
     entry = MagicMock()
     entry.options = {"update_interval": 30}
-    entry.data = {}
+    entry.data = {"host": "192.168.1.1"}
     entry.entry_id = "test_entry"
 
     coordinator = OpenWrtDataCoordinator(hass, entry, mock_client)

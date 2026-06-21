@@ -55,5 +55,5 @@ async def test_wol_resolve_device(hass) -> None:
             await wol_handler(call_data)
 
             mock_client.execute_command.assert_called_once_with(
-                "etherwake -i br-lan 11:22:33:44:55:66"
+                "ether-wake 11:22:33:44:55:66"
             )
