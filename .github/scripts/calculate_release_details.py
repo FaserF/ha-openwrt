@@ -28,9 +28,7 @@ def main():
         .decode("utf-8")
         .strip()
     )
-    run_git(
-        ["checkout", "--", "custom_components/db_infoscreen/manifest.json"]
-    )
+    run_git(["checkout", "--", "custom_components/db_infoscreen/manifest.json"])
 
     print(f"Calculated Version: {version}")
     tag = f"v{version}"

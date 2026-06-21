@@ -1,10 +1,10 @@
 import argparse
 import datetime
+import glob
 import json
 import os
 import re
 import subprocess
-import glob
 
 
 def find_manifest():
@@ -44,10 +44,10 @@ def get_current_version(manifest_path=None):
                 )
         if v_tags:
             return sorted(v_tags, key=lambda x: x["key"], reverse=True)[0]["tag"]
-    except (subprocess.CalledProcessError, IndexError, ValueError):
+    except subprocess.CalledProcessError, IndexError, ValueError:
         pass
     if manifest_path and os.path.exists(manifest_path):
-        with open(manifest_path, "r") as f:
+        with open(manifest_path) as f:
             return json.load(f).get("version", "2026.1.0")
     return "2026.1.0"
 
@@ -56,7 +56,7 @@ def write_version(v, manifest_path=None):
     if manifest_path is None:
         manifest_path = MANIFEST_FILE
     if manifest_path and os.path.exists(manifest_path):
-        with open(manifest_path, "r") as f:
+        with open(manifest_path) as f:
             data = json.load(f)
         data["version"] = v
         with open(manifest_path, "w") as f:
