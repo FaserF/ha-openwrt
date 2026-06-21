@@ -44,10 +44,10 @@ def get_current_version(manifest_path=None):
                 )
         if v_tags:
             return sorted(v_tags, key=lambda x: x["key"], reverse=True)[0]["tag"]
-    except subprocess.CalledProcessError, IndexError, ValueError:
+    except (subprocess.CalledProcessError, IndexError, ValueError):
         pass
     if manifest_path and os.path.exists(manifest_path):
-        with open(manifest_path, encoding="utf-8") as f:
+        with open(manifest_path, "r", encoding="utf-8") as f:
             return json.load(f).get("version", "1.0.0")
     return "1.0.0"
 
@@ -56,14 +56,14 @@ def write_version(v, manifest_path=None):
     if manifest_path is None:
         manifest_path = MANIFEST_FILE
     if manifest_path and os.path.exists(manifest_path):
-        with open(manifest_path, encoding="utf-8") as f:
+        with open(manifest_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         data["version"] = v
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
             f.write("\n")
     if os.path.exists("pyproject.toml"):
-        with open("pyproject.toml", encoding="utf-8") as f:
+        with open("pyproject.toml", "r", encoding="utf-8") as f:
             content = f.read()
         content = re.sub(
             r'^version\s*=\s*".*?"', f'version = "{v}"', content, flags=re.MULTILINE

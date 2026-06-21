@@ -235,6 +235,17 @@ jobs:
               $prerelease_arg \
               openwrt.zip
           fi
+ 
+      - name: Post-Release Dev Bump
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin ${{ github.ref_name }}
+          NEW_DEV=$(python .github/scripts/version_manager.py bump --type dev --level patch)
+          if ! git diff --quiet; then
+            git commit -am "chore(dev): bump to $NEW_DEV [skip ci]"
+            git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
+          fi
 
   cleanup-release:
     needs: [versioning, sync-version, gh-release]
