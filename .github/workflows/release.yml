@@ -75,8 +75,7 @@ jobs:
       - name: Prepare Initial Draft Body
         shell: bash
         run: |
-          body=$(cat release_body.md)
-          printf "%s\n\n---\n🔄 **Release Progress**: Version determined. Syncing repository files...\n" "$body" > initial_draft_body.md
+          cp release_body.md initial_draft_body.md
 
       - name: Check and Delete Existing Draft Release
         env:
@@ -147,8 +146,7 @@ jobs:
       - name: Update Draft Status (Zipping Integration)
         shell: bash
         run: |
-          body=$(cat release_body.md)
-          printf "%s\n\n---\n🔄 **Release Progress**: Repository version synced. Creating release assets...\n" "$body" > updated_draft_body.md
+          cp release_body.md updated_draft_body.md
 
       - name: Update Draft Release on GitHub
         uses: softprops/action-gh-release@v3.0.1
