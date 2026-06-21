@@ -44,14 +44,14 @@ jobs:
       is_prerelease: ${{ steps.get_version.outputs.is_prerelease }}
       release_body: ${{ steps.get_version.outputs.release_body }}
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6.2.0
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.14.6"
+          python-version: "3.14"
 
       - name: Calculate Version and Release Details
         id: get_version
@@ -67,7 +67,7 @@ jobs:
           python .github/scripts/calculate_release_details.py
 
       - name: Upload Release Body
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           name: release-body
           path: release_body.md
@@ -93,14 +93,22 @@ jobs:
           fi
 
       - name: Create Initial Draft Release
-        uses: softprops/action-gh-release@v3.0.1
-        with:
-          tag_name: ${{ steps.get_version.outputs.tag }}
-          name: Release ${{ steps.get_version.outputs.version }}
-          body_path: initial_draft_body.md
-          prerelease: ${{ steps.get_version.outputs.is_prerelease == 'true' }}
-          draft: true
-          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.get_version.outputs.tag }}
+          VERSION: ${{ steps.get_version.outputs.version }}
+          IS_PRERELEASE: ${{ steps.get_version.outputs.is_prerelease }}
+        shell: bash
+        run: |
+          prerelease_arg=""
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            prerelease_arg="--prerelease"
+          fi
+          gh release create "$TAG" \
+            --title "Release $VERSION" \
+            --notes-file "initial_draft_body.md" \
+            --draft \
+            $prerelease_arg
 
   sync-version:
     name: Sync Repository Version
@@ -110,14 +118,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6.2.0
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.14.6"
+          python-version: "3.14"
 
       - name: Configure Git and pull latest
         run: |
@@ -139,7 +147,7 @@ jobs:
           fi
 
       - name: Download Release Body
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8
         with:
           name: release-body
 
@@ -149,14 +157,23 @@ jobs:
           cp release_body.md updated_draft_body.md
 
       - name: Update Draft Release on GitHub
-        uses: softprops/action-gh-release@v3.0.1
-        with:
-          tag_name: ${{ needs.versioning.outputs.tag }}
-          name: Release ${{ needs.versioning.outputs.version }}
-          body_path: updated_draft_body.md
-          prerelease: ${{ needs.versioning.outputs.is_prerelease == 'true' }}
-          draft: true
-          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.versioning.outputs.tag }}
+          VERSION: ${{ needs.versioning.outputs.version }}
+          IS_PRERELEASE: ${{ needs.versioning.outputs.is_prerelease }}
+        shell: bash
+        run: |
+          release_id=$(gh api "repos/$REPO/releases" --jq '.[] | select(.tag_name=="'$TAG'" or .name=="Release '$VERSION'") | select(.draft==true) | .id')
+          if [ -n "$release_id" ]; then
+            gh api -X PATCH "repos/$REPO/releases/$release_id" \
+              -f tag_name="$TAG" \
+              -f name="Release $VERSION" \
+              -f body_path="updated_draft_body.md" \
+              -F draft=true \
+              -F prerelease=$( [ "$IS_PRERELEASE" = "true" ] && echo "true" || echo "false" )
+          fi
 
   gh-release:
     needs: [versioning, sync-version]
@@ -166,7 +183,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -177,21 +194,47 @@ jobs:
           cd ..
 
       - name: Download Release Body Artifact
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8
         with:
           name: release-body
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3.0.1
-        with:
-          tag_name: ${{ needs.versioning.outputs.tag }}
-          name: Release ${{ needs.versioning.outputs.version }}
-          body_path: release_body.md
-          prerelease: ${{ needs.versioning.outputs.is_prerelease == 'true' }}
-          draft: false
-          generate_release_notes: false
-          files: |
-            openwrt.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.versioning.outputs.tag }}
+          VERSION: ${{ needs.versioning.outputs.version }}
+          IS_PRERELEASE: ${{ needs.versioning.outputs.is_prerelease }}
+        shell: bash
+        run: |
+          # Find existing draft release
+          release_id=$(gh api "repos/$REPO/releases" --jq '.[] | select(.tag_name=="'$TAG'" or .name=="Release '$VERSION'") | select(.draft==true) | .id')
+          
+          # Set prerelease argument
+          prerelease_arg=""
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            prerelease_arg="--prerelease"
+          fi
+          
+          if [ -n "$release_id" ]; then
+            # Update the existing draft release to publish it
+            gh api -X PATCH "repos/$REPO/releases/$release_id" \
+              -f tag_name="$TAG" \
+              -f name="Release $VERSION" \
+              -f body_path="release_body.md" \
+              -F draft=false \
+              -F prerelease=$( [ "$IS_PRERELEASE" = "true" ] && echo "true" || echo "false" )
+              
+            # Upload the assets to the published release
+            gh release upload "$TAG" openwrt.zip --clobber
+          else
+            # Create a brand new release if no draft exists
+            gh release create "$TAG" \
+              --title "Release $VERSION" \
+              --notes-file "release_body.md" \
+              $prerelease_arg \
+              openwrt.zip
+          fi
 
   cleanup-release:
     needs: [versioning, sync-version, gh-release]
