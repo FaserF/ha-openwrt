@@ -44,10 +44,36 @@ async def async_setup_entry(
         DATA_COORDINATOR
     ]
 
-    if coordinator.data:
-        perms = coordinator.data.permissions
-        if perms.read_system:
-            async_add_entities([OpenWrtUpdateEntity(coordinator, entry)])
+    tracked_keys: set[str] = set()
+
+    def _async_add_new_entities() -> None:
+        if not coordinator.data:
+            return
+
+        new_entities = []
+
+        # 1. Add firmware update entity
+        fw_key = f"{entry.entry_id}_firmware_update"
+        if fw_key not in tracked_keys:
+            perms = coordinator.data.permissions
+            if perms.read_system:
+                tracked_keys.add(fw_key)
+                new_entities.append(OpenWrtUpdateEntity(coordinator, entry))
+
+        # 2. Add package update entities
+        for pkg_name, latest_ver in coordinator.data.upgradeable_packages.items():
+            pkg_key = f"{entry.entry_id}_pkg_update_{pkg_name}"
+            if pkg_key not in tracked_keys:
+                tracked_keys.add(pkg_key)
+                new_entities.append(
+                    OpenWrtPackageUpdateEntity(coordinator, entry, pkg_name, latest_ver)
+                )
+
+        if new_entities:
+            async_add_entities(new_entities)
+
+    _async_add_new_entities()
+    entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
 
 
 class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntity):
@@ -430,3 +456,63 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             # unless the user really wants it. But usually, an update is more important.
             # However, safety first - maybe we should raise?
             # User said "automatically trigger a backup", so let's log it.
+
+
+class OpenWrtPackageUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntity):
+    """Representation of an OpenWrt package update."""
+
+    _attr_has_entity_name = True
+    _attr_entity_registry_enabled_default = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        package_name: str,
+        latest_version: str,
+    ) -> None:
+        """Initialize."""
+        super().__init__(coordinator)
+        self._package_name = package_name
+        self._latest_version = latest_version
+        self._attr_name = f"Package {package_name}"
+        self._attr_unique_id = f"{entry.entry_id}_pkg_update_{package_name}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, coordinator.router_id)},
+        }
+
+    @property
+    def supported_features(self) -> UpdateEntityFeature:
+        """Return supported features."""
+        return UpdateEntityFeature.INSTALL
+
+    @property
+    def installed_version(self) -> str | None:
+        """Return the installed version."""
+        return "outdated"
+
+    @property
+    def latest_version(self) -> str | None:
+        """Return the latest version."""
+        if self.coordinator.data is None:
+            return self._latest_version
+        return self.coordinator.data.upgradeable_packages.get(self._package_name, self._latest_version)
+
+    async def async_install(
+        self, version: str | None, backup: bool, **kwargs: Any
+    ) -> None:
+        """Install package update."""
+        client = self.coordinator.client
+        try:
+            script = (
+                f"if command -v apk >/dev/null 2>&1; then "
+                f"  apk add --upgrade {self._package_name}; "
+                f"elif command -v opkg >/dev/null 2>&1; then "
+                f"  opkg install {self._package_name}; "
+                f"fi"
+            )
+            await client.execute_command(script)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to install package {self._package_name}: {err}") from err

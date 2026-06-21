@@ -749,6 +749,7 @@ class OpenWrtData:
     firmware_checksum: str = ""
     is_custom_build: bool = False
     installed_packages: list[str] = field(default_factory=list)
+    upgradeable_packages: dict[str, str] = field(default_factory=dict)
     asu_supported: bool = False
     asu_update_available: bool = False
     asu_image_status: str = ""  # e.g. "available", "building", "failed"
@@ -1222,6 +1223,33 @@ class OpenWrtClient(abc.ABC):
         except Exception as err:
             _LOGGER.debug("Failed to retrieve dmesg logs: %s", err)
         return []
+
+    async def get_upgradeable_packages(self) -> dict[str, str]:
+        """Get a dictionary of upgradeable packages mapped to their latest versions."""
+        try:
+            script = (
+                "if command -v apk >/dev/null 2>&1; then "
+                "  apk list --upgradable 2>/dev/null | awk -F' ' '{print $1}'; "
+                "elif command -v opkg >/dev/null 2>&1; then "
+                "  opkg list-upgradable 2>/dev/null | awk '{print $1 \" \" $3}'; "
+                "fi"
+            )
+            output = await self.execute_command(script)
+            upgrades = {}
+            if output:
+                for line in output.strip().splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split()
+                    if len(parts) == 1:
+                        upgrades[parts[0]] = "latest"
+                    elif len(parts) >= 2:
+                        upgrades[parts[0]] = parts[1]
+            return upgrades
+        except Exception as err:
+            _LOGGER.debug("Failed to check upgradeable packages: %s", err)
+            return {}
 
     async def is_reboot_required(self) -> bool:
         """Check if the system requires a reboot."""
@@ -1838,6 +1866,7 @@ class OpenWrtClient(abc.ABC):
                 "reboot_required": self.is_reboot_required(),
                 "system_logs": self.get_system_logs(count=10),
                 "dmesg_logs": self.get_dmesg_logs(count=50),
+                "upgradeable_packages": self.get_upgradeable_packages(),
             }
 
             keys = list(slow_optional_tasks.keys())
@@ -1879,6 +1908,9 @@ class OpenWrtClient(abc.ABC):
             data.dmesg_logs = get_val(
                 slow_map["dmesg_logs"], data.dmesg_logs, "dmesg logs"
             )
+            data.upgradeable_packages = get_val(
+                slow_map["upgradeable_packages"], data.upgradeable_packages, "upgradeable packages"
+            )
 
             self._cached_device_info = data.device_info
             self._cached_slow_data = {
@@ -1896,6 +1928,7 @@ class OpenWrtClient(abc.ABC):
                     "reboot_required",
                     "system_logs",
                     "dmesg_logs",
+                    "upgradeable_packages",
                 ]
             }
             self._last_slow_poll_time = now
