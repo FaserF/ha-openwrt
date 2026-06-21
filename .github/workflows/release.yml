@@ -203,9 +203,7 @@ jobs:
 
       - name: 📦 Zip Component
         run: |
-          cd custom_components
-          zip -r ../openwrt.zip openwrt
-          cd ..
+          zip -r openwrt.zip custom_components/openwrt
 
       - name: Download Release Body Artifact
         uses: actions/download-artifact@v8.0.1
