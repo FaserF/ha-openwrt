@@ -133,7 +133,7 @@ def get_formatted_item(display: str, hashes: list[str], repo: str) -> str:
 
 
 def main():
-    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
     parser.add_argument("--from-tag", default="")
     parser.add_argument("--total-commits", default="")
@@ -154,7 +154,7 @@ def main():
             cmd.append(git_range)
         else:
             cmd.extend(["--max-count=2000"])
-        cmd.append('--pretty=format:%h %s')
+        cmd.append("--pretty=format:%h %s")
 
         # Run git command
         res = subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -162,11 +162,7 @@ def main():
     except subprocess.CalledProcessError:
         raw_lines = []
 
-    total_raw = (
-        int(args.total_commits)
-        if args.total_commits
-        else len(raw_lines)
-    )
+    total_raw = int(args.total_commits) if args.total_commits else len(raw_lines)
 
     buckets = {k: [] for k in CATEGORY_ORDER}
     seen_items = {}
@@ -273,7 +269,10 @@ def main():
                 if commit_hash and commit_hash not in existing_break["hashes"]:
                     existing_break["hashes"].append(commit_hash)
             else:
-                break_item = {"display": break_display, "hashes": [commit_hash] if commit_hash else []}
+                break_item = {
+                    "display": break_display,
+                    "hashes": [commit_hash] if commit_hash else [],
+                }
                 seen_items[break_key] = break_item
                 buckets["breaking"].append(break_item)
 
@@ -295,7 +294,9 @@ def main():
     if buckets["breaking"]:
         has_any = True
         out.append("> [!CAUTION]")
-        out.append("> **This release contains breaking changes. Please review before updating.**")
+        out.append(
+            "> **This release contains breaking changes. Please review before updating.**"
+        )
         out.append(">")
         for item in buckets["breaking"]:
             formatted = get_formatted_item(item["display"], item["hashes"], repo)
@@ -341,14 +342,18 @@ def main():
 
     if not has_any:
         out.append("> *No categorised changes found in this release.*")
-        out.append("> Most commits were maintenance, dependency updates, or automated changes.")
+        out.append(
+            "> Most commits were maintenance, dependency updates, or automated changes."
+        )
         out.append("")
 
     range_str = f"{from_tag}..HEAD" if from_tag else "all history"
     out.append("---")
 
     if total_raw > 0:
-        out.append(f"*{filtered_count} significant changes from {total_raw} total commits since `{from_tag}`.*")
+        out.append(
+            f"*{filtered_count} significant changes from {total_raw} total commits since `{from_tag}`.*"
+        )
     else:
         out.append(f"*Changelog generated from `{range_str}`.*")
 
