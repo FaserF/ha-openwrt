@@ -1,6 +1,6 @@
-import subprocess
-import re
 import argparse
+import re
+import subprocess
 
 
 def get_commits(tag=None):
