@@ -12,7 +12,7 @@ def run_cmd(cmd: list[str]) -> str:
 
 def main():
     # Set encoding to UTF-8
-    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding="utf-8")
 
     release_type = os.environ.get("RELEASE_TYPE", "beta")
     bump_level = os.environ.get("BUMP_LEVEL", "patch")
@@ -20,7 +20,17 @@ def main():
 
     # 1. Dry run get next version
     # Run version_manager.py bump and then restore files
-    version = run_cmd(["python", ".github/scripts/version_manager.py", "bump", "--type", release_type, "--level", bump_level])
+    version = run_cmd(
+        [
+            "python",
+            ".github/scripts/version_manager.py",
+            "bump",
+            "--type",
+            release_type,
+            "--level",
+            bump_level,
+        ]
+    )
     # Revert modified files to keep clean state
     for path in ["custom_components/openwrt/manifest.json", "pyproject.toml"]:
         try:
@@ -52,7 +62,9 @@ def main():
 
     # Get all tags matching SemVer pattern
     try:
-        raw_tags = run_cmd(["git", "tag", "-l", "[0-9]*", "v[0-9]*", "--sort=-v:refname"]).splitlines()
+        raw_tags = run_cmd(
+            ["git", "tag", "-l", "[0-9]*", "v[0-9]*", "--sort=-v:refname"]
+        ).splitlines()
     except Exception:
         raw_tags = []
 
@@ -95,10 +107,17 @@ def main():
         total_commit_count = 0
 
     # 4. Generate Changelog
-    changelog_md = "_Changelog could not be generated automatically. See commit history._"
+    changelog_md = (
+        "_Changelog could not be generated automatically. See commit history._"
+    )
     if os.path.exists("scripts/generate_changelog.py"):
         try:
-            cl_args = ["python", "scripts/generate_changelog.py", "--total-commits", str(total_commit_count)]
+            cl_args = [
+                "python",
+                "scripts/generate_changelog.py",
+                "--total-commits",
+                str(total_commit_count),
+            ]
             if changelog_from:
                 cl_args.extend(["--from-tag", changelog_from])
             if repo:
@@ -155,7 +174,13 @@ def main():
             log_cmd.append(diff_range)
         log_msgs = run_cmd(log_cmd)
         # Find matches of BREAKING CHANGE or BREAKING: or conventional breaking !:
-        breaking_count = len(re.findall(r"\bBREAKING CHANGE\b|\bBREAKING:\b|^[a-zA-Z]+!:", log_msgs, re.MULTILINE))
+        breaking_count = len(
+            re.findall(
+                r"\bBREAKING CHANGE\b|\bBREAKING:\b|^[a-zA-Z]+!:",
+                log_msgs,
+                re.MULTILINE,
+            )
+        )
     except Exception:
         pass
 
@@ -187,7 +212,9 @@ def main():
             impact_summary.append(f"⚙️ Core ({integration_count} files · {pct}%)")
         if translation_count > 0:
             pct = round((translation_count / total_files) * 100)
-            impact_summary.append(f"🗣️ Translations ({translation_count} files · {pct}%)")
+            impact_summary.append(
+                f"🗣️ Translations ({translation_count} files · {pct}%)"
+            )
         if test_count > 0:
             pct = round((test_count / total_files) * 100)
             impact_summary.append(f"🧪 Tests ({test_count} files · {pct}%)")
@@ -198,7 +225,11 @@ def main():
             pct = round((docs_count / total_files) * 100)
             impact_summary.append(f"📖 Docs ({docs_count} files · {pct}%)")
 
-    impact_str = "  ·  ".join(impact_summary) if impact_summary else "No codebase changes detected."
+    impact_str = (
+        "  ·  ".join(impact_summary)
+        if impact_summary
+        else "No codebase changes detected."
+    )
 
     # Build risk warning note
     prerelease_note = (
@@ -210,7 +241,9 @@ def main():
     )
 
     # Assemble release body
-    released_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M") + " UTC"
+    released_at = (
+        datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M") + " UTC"
+    )
     body_parts = [
         f"# OpenWrt {version}  {channel_badge}",
         "",
@@ -230,7 +263,7 @@ def main():
         "",
         "---",
         "",
-        f"*📖 [Documentation](https://github.com/{repo}#readme)  ·  🐛 [Report an Issue](https://github.com/{repo}/issues/new/choose)  ·  📦 [All Releases](https://github.com/{repo}/releases)*"
+        f"*📖 [Documentation](https://github.com/{repo}#readme)  ·  🐛 [Report an Issue](https://github.com/{repo}/issues/new/choose)  ·  📦 [All Releases](https://github.com/{repo}/releases)*",
     ]
 
     body = "\n".join(body_parts)
@@ -247,6 +280,7 @@ def main():
             f.write(f"is_prerelease={is_prerelease}\n")
             # Write multiline output for release_body
             import uuid
+
             delimiter = f"DELIMITER_{uuid.uuid4().hex}"
             f.write(f"release_body<<{delimiter}\n")
             f.write(body)
