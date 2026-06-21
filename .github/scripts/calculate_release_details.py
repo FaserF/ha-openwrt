@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
+import glob
+import json
 import os
 import re
 import subprocess
-import json
-import glob
 from datetime import datetime
 
 
@@ -38,7 +38,7 @@ def main():
     manifest_path = manifest_files[0]
     domain = os.path.basename(os.path.dirname(manifest_path))
 
-    with open(manifest_path, "r", encoding="utf-8") as f:
+    with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
 
     friendly_name = manifest.get("name", domain)
@@ -67,11 +67,7 @@ def main():
     if version_override and version_override.strip():
         bump_args += ["--override", version_override.strip()]
 
-    version = (
-        subprocess.check_output(bump_args)
-        .decode("utf-8")
-        .strip()
-    )
+    version = subprocess.check_output(bump_args).decode("utf-8").strip()
 
     # Revert version bump change in manifest file (since versioning job only calculates it, sync-version actually writes it)
     run_git(["checkout", "--", manifest_path])
