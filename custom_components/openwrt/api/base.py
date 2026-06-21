@@ -725,6 +725,7 @@ class OpenWrtData:
     dhcp_leases: list[DhcpLease] = field(default_factory=list)
     reboot_required: bool = False
     system_logs: list[str] = field(default_factory=list)
+    dmesg_logs: list[str] = field(default_factory=list)
     ip_neighbors: list[IpNeighbor] = field(default_factory=list)
     mwan_status: list[MwanStatus] = field(default_factory=list)
     wps_status: WpsStatus = field(default_factory=WpsStatus)
@@ -1210,6 +1211,16 @@ class OpenWrtClient(abc.ABC):
 
     async def get_system_logs(self, count: int = 10) -> list[str]:
         """Get recent system log entries."""
+        return []
+
+    async def get_dmesg_logs(self, count: int = 100) -> list[str]:
+        """Get recent dmesg kernel log entries."""
+        try:
+            output = await self.execute_command(f"dmesg | tail -n {int(count or 100)}")
+            if output:
+                return [line.strip() for line in output.splitlines() if line.strip()]
+        except Exception as err:
+            _LOGGER.debug("Failed to retrieve dmesg logs: %s", err)
         return []
 
     async def is_reboot_required(self) -> bool:
@@ -1829,6 +1840,7 @@ class OpenWrtClient(abc.ABC):
                 "permissions": self.check_permissions(),
                 "reboot_required": self.is_reboot_required(),
                 "system_logs": self.get_system_logs(count=10),
+                "dmesg_logs": self.get_dmesg_logs(count=50),
             }
 
             keys = list(slow_optional_tasks.keys())
@@ -1867,6 +1879,9 @@ class OpenWrtClient(abc.ABC):
             data.system_logs = get_val(
                 slow_map["system_logs"], data.system_logs, "system logs"
             )
+            data.dmesg_logs = get_val(
+                slow_map["dmesg_logs"], data.dmesg_logs, "dmesg logs"
+            )
 
             self._cached_device_info = data.device_info
             self._cached_slow_data = {
@@ -1883,6 +1898,7 @@ class OpenWrtClient(abc.ABC):
                     "permissions",
                     "reboot_required",
                     "system_logs",
+                    "dmesg_logs",
                 ]
             }
             self._last_slow_poll_time = now

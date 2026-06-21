@@ -53,6 +53,7 @@ from .const import (
     SERVICE_WOL,
     SERVICE_ADD_STATIC_LEASE,
     SERVICE_DELETE_STATIC_LEASE,
+    SERVICE_GET_SYSTEM_LOGS,
 )
 from .coordinator import OpenWrtDataCoordinator, create_client
 
@@ -582,4 +583,39 @@ uci commit dhcp
                 vol.Required("mac"): cv.string,
             },
         ),
+    )
+
+    async def _handle_get_system_logs(call: ServiceCall) -> ServiceResponse:
+        """Handle get system/kernel logs service call."""
+        entry_id = call.data["entry_id"]
+        count = call.data.get("count", 50)
+        log_type = call.data.get("log_type", "system")
+
+        if entry_id not in hass.data[DOMAIN]:
+            msg = f"Config entry {entry_id} not found"
+            raise vol.Invalid(msg)
+
+        client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
+        try:
+            if log_type == "kernel":
+                logs = await client.get_dmesg_logs(count=count)
+            else:
+                logs = await client.get_system_logs(count=count)
+            return {"logs": logs}
+        except Exception as err:
+            msg = f"Failed to retrieve logs: {err}"
+            raise HomeAssistantError(msg) from err
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_SYSTEM_LOGS,
+        _handle_get_system_logs,
+        schema=vol.Schema(
+            {
+                vol.Required("entry_id"): cv.string,
+                vol.Optional("count"): vol.All(vol.Coerce(int), vol.Range(min=1, max=1000)),
+                vol.Optional("log_type"): vol.In(["system", "kernel"]),
+            },
+        ),
+        supports_response=SupportsResponse.ONLY,
     )

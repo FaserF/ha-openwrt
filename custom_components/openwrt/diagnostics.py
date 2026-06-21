@@ -167,6 +167,15 @@ async def async_get_config_entry_diagnostics(
                 }
                 for p in data.system_resources.top_processes[:5]
             ]
+            import re
+            def redact_log_line(line: str) -> str:
+                line = re.sub(r'(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}', '[REDACTED_MAC]', line)
+                line = re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '[REDACTED_IP]', line)
+                return line
+
+            diag["system_logs"] = [redact_log_line(line) for line in getattr(data, "system_logs", [])]
+            diag["dmesg_logs"] = [redact_log_line(line) for line in getattr(data, "dmesg_logs", [])]
+
             if entry.options.get(CONF_MQTT_PRESENCE, False):
                 logs = data.mqtt_presence_logs or []
                 diag["mqtt_presence"] = {
