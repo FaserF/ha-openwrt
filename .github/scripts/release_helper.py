@@ -192,15 +192,15 @@ def main():
     if breaking_count > 0:
         severity = "Critical"
         alert_type = "CAUTION"
-        preamble = f"This release contains **{breaking_count} breaking change(s)**! Please review the changelog carefully before updating."
+        preamble = f"This release contains **{breaking_count} breaking change(s)**! Please review the changelog carefully and create a Home Assistant backup before updating."
     elif integration_count > 8:
         severity = "High"
         alert_type = "WARNING"
-        preamble = "This release contains major code updates to the integration components. Testing in a sandbox environment is recommended."
+        preamble = "This release contains major updates to the integration logic. Creating a Home Assistant backup before updating is recommended."
     elif integration_count > 2 or translation_count > 5:
         severity = "Medium"
         alert_type = "TIP"
-        preamble = "This release contains standard updates and feature enhancements to the integration logic or translations."
+        preamble = "This release contains standard updates and feature enhancements."
 
     if release_type != "stable":
         preamble = f"ℹ️ **This is a {release_type} build.** It contains preview features for testing.<br><br>{preamble}"
