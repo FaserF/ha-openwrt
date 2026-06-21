@@ -44,14 +44,14 @@ jobs:
       is_prerelease: ${{ steps.get_version.outputs.is_prerelease }}
       release_body: ${{ steps.get_version.outputs.release_body }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v6.2.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.6"
 
       - name: Calculate Version and Release Details
         id: get_version
@@ -67,7 +67,7 @@ jobs:
           python .github/scripts/calculate_release_details.py
 
       - name: Upload Release Body
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: release-body
           path: release_body.md
@@ -94,7 +94,7 @@ jobs:
           fi
 
       - name: Create Initial Draft Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.1
         with:
           tag_name: ${{ steps.get_version.outputs.tag }}
           name: Release ${{ steps.get_version.outputs.version }}
@@ -111,14 +111,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v6.2.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.6"
 
       - name: Configure Git and pull latest
         run: |
@@ -140,7 +140,7 @@ jobs:
           fi
 
       - name: Download Release Body
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: release-body
 
@@ -151,7 +151,7 @@ jobs:
           printf "%s\n\n---\n🔄 **Release Progress**: Repository version synced. Creating release assets...\n" "$body" > updated_draft_body.md
 
       - name: Update Draft Release on GitHub
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.1
         with:
           tag_name: ${{ needs.versioning.outputs.tag }}
           name: Release ${{ needs.versioning.outputs.version }}
@@ -168,7 +168,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 
@@ -179,12 +179,12 @@ jobs:
           cd ..
 
       - name: Download Release Body Artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: release-body
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.1
         with:
           tag_name: ${{ needs.versioning.outputs.tag }}
           name: Release ${{ needs.versioning.outputs.version }}
