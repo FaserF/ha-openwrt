@@ -44,10 +44,10 @@ def get_current_version(manifest_path=None):
                 )
         if v_tags:
             return sorted(v_tags, key=lambda x: x["key"], reverse=True)[0]["tag"]
-    except (subprocess.CalledProcessError, IndexError, ValueError):
+    except subprocess.CalledProcessError, IndexError, ValueError:
         pass
     if manifest_path and os.path.exists(manifest_path):
-        with open(manifest_path, "r", encoding="utf-8") as f:
+        with open(manifest_path, encoding="utf-8") as f:
             return json.load(f).get("version", "1.0.0")
     return "1.0.0"
 
@@ -56,14 +56,14 @@ def write_version(v, manifest_path=None):
     if manifest_path is None:
         manifest_path = MANIFEST_FILE
     if manifest_path and os.path.exists(manifest_path):
-        with open(manifest_path, "r", encoding="utf-8") as f:
+        with open(manifest_path, encoding="utf-8") as f:
             data = json.load(f)
         data["version"] = v
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
             f.write("\n")
     if os.path.exists("pyproject.toml"):
-        with open("pyproject.toml", "r", encoding="utf-8") as f:
+        with open("pyproject.toml", encoding="utf-8") as f:
             content = f.read()
         content = re.sub(
             r'^version\s*=\s*".*?"', f'version = "{v}"', content, flags=re.MULTILINE
@@ -77,7 +77,7 @@ def calculate_version(rtype, level="patch", curr=None, now=None):
         now = datetime.datetime.now()
     if curr is None:
         curr = get_current_version(MANIFEST_FILE)
-        
+
     match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)(?:(b)(\d+)|(-dev)(\d+))?$", curr)
     if not match:
         return "1.0.0"
@@ -88,13 +88,13 @@ def calculate_version(rtype, level="patch", curr=None, now=None):
 
     # Detect scheme based on major version (e.g. 2026 is CalVer, 1 or 2 is SemVer)
     is_calver = v1 >= 2020
-    
+
     if is_calver:
         # CalVer Bumping Logic (Year.Month.Patch)
         year, month = now.year, now.month
         new_cyc = (year != v1) or (month != v2)
         p = 0 if new_cyc else v3
-        
+
         if rtype == "stable":
             if stype:
                 return f"{year}.{month}.{p}"
@@ -139,20 +139,24 @@ def calculate_version(rtype, level="patch", curr=None, now=None):
             if level == "minor":
                 return f"{v1}.{v2 + 1}.0-dev0"
             return f"{v1}.{v2}.{v3 + 1}-dev0"
-            
+
     return curr
 
 
 def main():
     p = argparse.ArgumentParser()
     subparsers = p.add_subparsers(dest="command")
-    
+
     bump_parser = subparsers.add_parser("bump")
-    bump_parser.add_argument("--type", choices=["stable", "beta", "dev", "nightly"], required=True)
-    bump_parser.add_argument("--level", choices=["major", "minor", "patch"], default="patch")
-    
+    bump_parser.add_argument(
+        "--type", choices=["stable", "beta", "dev", "nightly"], required=True
+    )
+    bump_parser.add_argument(
+        "--level", choices=["major", "minor", "patch"], default="patch"
+    )
+
     args = p.parse_args()
-    
+
     if args.command == "bump":
         new_v = calculate_version(args.type, args.level)
         write_version(new_v)
