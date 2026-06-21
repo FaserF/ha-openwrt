@@ -1146,12 +1146,18 @@ def _create_nlbwmon_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
     device: Any,
-) -> list[OpenWrtNlbwmonSensor]:
+) -> list[SensorEntity]:
     """Create nlbwmon sensors for a device."""
     if not coordinator.data or not coordinator.data.packages.nlbwmon:
         return []
     return [
-        OpenWrtNlbwmonSensor(
+        OpenWrtNlbwmonRxSensor(
+            coordinator,
+            entry,
+            device.mac.lower(),
+            device.hostname or device.mac,
+        ),
+        OpenWrtNlbwmonTxSensor(
             coordinator,
             entry,
             device.mac.lower(),
@@ -1160,12 +1166,12 @@ def _create_nlbwmon_sensors(
     ]
 
 
-class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
-    """Sensor for per-client bandwidth usage from nlbwmon."""
+class OpenWrtNlbwmonRxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
+    """Sensor for client download usage (Rx) from nlbwmon."""
 
     _attr_has_entity_name = True
     _attr_entity_registry_enabled_default = False
-    _attr_icon = "mdi:transfer"
+    _attr_icon = "mdi:download"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_native_unit_of_measurement = UnitOfInformation.MEGABYTES
     _attr_device_class = SensorDeviceClass.DATA_SIZE
@@ -1178,16 +1184,13 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
         mac: str,
         name: str,
     ) -> None:
-        """Initialize the nlbwmon sensor."""
+        """Initialize the nlbwmon Rx sensor."""
         super().__init__(coordinator)
         self._mac = mac.upper()
         self._entry = entry
         self._initial_name = name
-        self._attr_name = name
-        self._attr_unique_id = f"{entry.entry_id}_nlbwmon_{mac.replace(':', '_')}"
-
-        if is_random_mac(mac):
-            self._attr_entity_registry_enabled_default = False
+        self._attr_name = "Traffic Rx"
+        self._attr_unique_id = f"{entry.entry_id}_nlbwmon_rx_{mac.replace(':', '_')}"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -1203,28 +1206,62 @@ class OpenWrtNlbwmonSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEnti
 
     @property
     def native_value(self) -> float | None:
-        """Return the total bandwidth usage in MB."""
+        """Return the Rx bandwidth usage in MB."""
         if not self.coordinator.data:
             return None
         traffic = self.coordinator.data.nlbwmon_traffic.get(self._mac)
         if not traffic:
             return None
-        return round((traffic.rx_bytes + traffic.tx_bytes) / (1024 * 1024), 2)
+        return round(traffic.rx_bytes / (1024 * 1024), 2)
+
+
+class OpenWrtNlbwmonTxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
+    """Sensor for client upload usage (Tx) from nlbwmon."""
+
+    _attr_has_entity_name = True
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:upload"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = UnitOfInformation.MEGABYTES
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        mac: str,
+        name: str,
+    ) -> None:
+        """Initialize the nlbwmon Tx sensor."""
+        super().__init__(coordinator)
+        self._mac = mac.upper()
+        self._entry = entry
+        self._initial_name = name
+        self._attr_name = "Traffic Tx"
+        self._attr_unique_id = f"{entry.entry_id}_nlbwmon_tx_{mac.replace(':', '_')}"
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._mac.lower())},
+            connections={(dr.CONNECTION_NETWORK_MAC, self._mac.lower())},
+            name=self._initial_name,
+            via_device=get_via_device(
+                self.coordinator.hass, self.coordinator, self._entry, self._mac
+            ),
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the Tx bandwidth usage in MB."""
         if not self.coordinator.data:
-            return {}
+            return None
         traffic = self.coordinator.data.nlbwmon_traffic.get(self._mac)
         if not traffic:
-            return {}
-        return {
-            "rx_bytes": traffic.rx_bytes,
-            "tx_bytes": traffic.tx_bytes,
-            "rx_packets": traffic.rx_packets,
-            "tx_packets": traffic.tx_packets,
-        }
+            return None
+        return round(traffic.tx_bytes / (1024 * 1024), 2)
 
 
 def _async_setup_wireguard_sensors(
