@@ -85,7 +85,33 @@ class UbusDevicesMixin:
                 ):
                     raise
                 except UbusError:
-                    pass
+                    if self.coordinator and self.coordinator.data and self.coordinator.data.all_connected_devices:
+                        for prev_dev in self.coordinator.data.all_connected_devices:
+                            if prev_dev.is_wireless and prev_dev.connected and prev_dev.interface == ifname:
+                                dev = devices.setdefault(
+                                    prev_dev.mac,
+                                    ConnectedDevice(
+                                        mac=prev_dev.mac,
+                                        ip=prev_dev.ip,
+                                        hostname=prev_dev.hostname,
+                                        connected=True,
+                                        is_wireless=True,
+                                        interface=ifname,
+                                        connection_type=prev_dev.connection_type,
+                                        signal=prev_dev.signal,
+                                        noise=prev_dev.noise,
+                                        rx_rate=prev_dev.rx_rate,
+                                        tx_rate=prev_dev.tx_rate,
+                                    )
+                                )
+                                dev.connected = True
+                                dev.is_wireless = True
+                                dev.interface = ifname
+                                dev.connection_type = prev_dev.connection_type or dev.connection_type
+                                dev.signal = prev_dev.signal or dev.signal
+                                dev.noise = prev_dev.noise or dev.noise
+                                dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
+                                dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
         elif wireless_data:
             await self._process_iwinfo_assoc(devices, wireless_data)
         else:
@@ -116,7 +142,33 @@ class UbusDevicesMixin:
                 ):
                     raise
                 except UbusError:
-                    pass
+                    if self.coordinator and self.coordinator.data and self.coordinator.data.all_connected_devices:
+                        for prev_dev in self.coordinator.data.all_connected_devices:
+                            if prev_dev.is_wireless and prev_dev.connected and prev_dev.interface == ifname:
+                                dev = devices.setdefault(
+                                    prev_dev.mac,
+                                    ConnectedDevice(
+                                        mac=prev_dev.mac,
+                                        ip=prev_dev.ip,
+                                        hostname=prev_dev.hostname,
+                                        connected=True,
+                                        is_wireless=True,
+                                        interface=ifname,
+                                        connection_type=prev_dev.connection_type,
+                                        signal=prev_dev.signal,
+                                        noise=prev_dev.noise,
+                                        rx_rate=prev_dev.rx_rate,
+                                        tx_rate=prev_dev.tx_rate,
+                                    )
+                                )
+                                dev.connected = True
+                                dev.is_wireless = True
+                                dev.interface = ifname
+                                dev.connection_type = prev_dev.connection_type or dev.connection_type
+                                dev.signal = prev_dev.signal or dev.signal
+                                dev.noise = prev_dev.noise or dev.noise
+                                dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
+                                dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
         elif wireless_data and self.packages.wireless is not False:
             await self._process_hostapd_clients(devices, wireless_data)
 
@@ -439,6 +491,33 @@ class UbusDevicesMixin:
                 ):
                     raise
                 except UbusError:
+                    if self.coordinator and self.coordinator.data and self.coordinator.data.all_connected_devices:
+                        for prev_dev in self.coordinator.data.all_connected_devices:
+                            if prev_dev.is_wireless and prev_dev.connected and prev_dev.interface == ifname:
+                                dev = devices.setdefault(
+                                    prev_dev.mac,
+                                    ConnectedDevice(
+                                        mac=prev_dev.mac,
+                                        ip=prev_dev.ip,
+                                        hostname=prev_dev.hostname,
+                                        connected=True,
+                                        is_wireless=True,
+                                        interface=ifname,
+                                        connection_type=prev_dev.connection_type,
+                                        signal=prev_dev.signal,
+                                        noise=prev_dev.noise,
+                                        rx_rate=prev_dev.rx_rate,
+                                        tx_rate=prev_dev.tx_rate,
+                                    )
+                                )
+                                dev.connected = True
+                                dev.is_wireless = True
+                                dev.interface = ifname
+                                dev.connection_type = prev_dev.connection_type or dev.connection_type
+                                dev.signal = prev_dev.signal or dev.signal
+                                dev.noise = prev_dev.noise or dev.noise
+                                dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
+                                dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
                     continue
         except (
             UbusTimeoutError,
@@ -475,7 +554,33 @@ class UbusDevicesMixin:
                     ):
                         raise
                     except UbusError:
-                        pass
+                        if self.coordinator and self.coordinator.data and self.coordinator.data.all_connected_devices:
+                            for prev_dev in self.coordinator.data.all_connected_devices:
+                                if prev_dev.is_wireless and prev_dev.connected and prev_dev.interface == ifname:
+                                    dev = devices.setdefault(
+                                        prev_dev.mac,
+                                        ConnectedDevice(
+                                            mac=prev_dev.mac,
+                                            ip=prev_dev.ip,
+                                            hostname=prev_dev.hostname,
+                                            connected=True,
+                                            is_wireless=True,
+                                            interface=ifname,
+                                            connection_type=prev_dev.connection_type,
+                                            signal=prev_dev.signal,
+                                            noise=prev_dev.noise,
+                                            rx_rate=prev_dev.rx_rate,
+                                            tx_rate=prev_dev.tx_rate,
+                                        )
+                                    )
+                                    dev.connected = True
+                                    dev.is_wireless = True
+                                    dev.interface = ifname
+                                    dev.connection_type = prev_dev.connection_type or dev.connection_type
+                                    dev.signal = prev_dev.signal or dev.signal
+                                    dev.noise = prev_dev.noise or dev.noise
+                                    dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
+                                    dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
         except (
             UbusTimeoutError,
             UbusConnectionError,

@@ -125,68 +125,123 @@ class LuciRpcDevicesMixin:
         ):
             raise
         except LuciRpcError:
-            pass
+            if self.coordinator and self.coordinator.data and self.coordinator.data.all_connected_devices:
+                for prev_dev in self.coordinator.data.all_connected_devices:
+                    if prev_dev.is_wireless and prev_dev.connected:
+                        dev = devices.setdefault(
+                            prev_dev.mac,
+                            ConnectedDevice(
+                                mac=prev_dev.mac,
+                                ip=prev_dev.ip,
+                                hostname=prev_dev.hostname,
+                                connected=True,
+                                is_wireless=True,
+                                interface=prev_dev.interface,
+                                connection_type=prev_dev.connection_type,
+                                signal=prev_dev.signal,
+                                noise=prev_dev.noise,
+                                rx_rate=prev_dev.rx_rate,
+                                tx_rate=prev_dev.tx_rate,
+                            )
+                        )
+                        dev.connected = True
+                        dev.is_wireless = True
+                        dev.interface = prev_dev.interface or dev.interface
+                        dev.connection_type = prev_dev.connection_type or dev.connection_type
+                        dev.signal = prev_dev.signal or dev.signal
+                        dev.noise = prev_dev.noise or dev.noise
+                        dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
+                        dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
 
         # 4. Fallback: Discovery of all hostapd objects
         if self.packages.wireless is not False:
-            cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients 2>/dev/null)\"; done"
-            stdout = await self.execute_command(cmd)
-        if stdout:
-            for line in stdout.splitlines():
-                if not line.strip():
-                    continue
-                parts = line.split(" ", 1)
-                if len(parts) < 2:
-                    continue
-                obj_name, data_str = parts
-                iface_name = obj_name.split(".", 1)[1] if "." in obj_name else obj_name
-                try:
-                    data = json.loads(data_str)
-                    if data and isinstance(data, dict):
-                        clients = data.get("clients")
-                        if isinstance(clients, dict):
-                            for mac, info in clients.items():
-                                mac = mac.lower()
-                                if mac in devices:
-                                    dev = devices[mac]
-                                else:
-                                    dev = ConnectedDevice(mac=mac, connected=False)
-                                    devices[mac] = dev
+            try:
+                cmd = "for obj in $(ubus list 'hostapd.*'); do echo \"$obj $(ubus call $obj get_clients 2>/dev/null)\"; done"
+                stdout = await self.execute_command(cmd)
+                if stdout:
+                    for line in stdout.splitlines():
+                        if not line.strip():
+                            continue
+                        parts = line.split(" ", 1)
+                        if len(parts) < 2:
+                            continue
+                        obj_name, data_str = parts
+                        iface_name = obj_name.split(".", 1)[1] if "." in obj_name else obj_name
+                        try:
+                            data = json.loads(data_str)
+                            if data and isinstance(data, dict):
+                                clients = data.get("clients")
+                                if isinstance(clients, dict):
+                                    for mac, info in clients.items():
+                                        mac = mac.lower()
+                                        if mac in devices:
+                                            dev = devices[mac]
+                                        else:
+                                            dev = ConnectedDevice(mac=mac, connected=False)
+                                            devices[mac] = dev
 
-                                    dev.connected = True  # Wireless association
+                                            dev.connected = True  # Wireless association
 
-                                dev.is_wireless = True
-                                # Map system interface name to UCI section if possible
-                                dev.interface = getattr(self, "_sys_to_uci", {}).get(
-                                    iface_name,
-                                    iface_name,
+                                        dev.is_wireless = True
+                                        # Map system interface name to UCI section if possible
+                                        dev.interface = getattr(self, "_sys_to_uci", {}).get(
+                                            iface_name,
+                                            iface_name,
+                                        )
+                                        if not dev.signal:
+                                            dev.signal = info.get("signal", 0)
+
+                                        bytes_data = info.get("bytes", {})
+                                        if isinstance(bytes_data, dict):
+                                            dev.rx_bytes = bytes_data.get("rx", 0)
+                                            dev.tx_bytes = bytes_data.get("tx", 0)
+
+                                        # Hostapd returns rate in 100kbps (tenths of Mbps).
+                                        # Convert to Kbps by multiplying by 100.
+                                        if "rx_rate" in info and not dev.rx_rate:
+                                            dev.rx_rate = info.get("rx_rate", 0) * 100
+                                        if "tx_rate" in info and not dev.tx_rate:
+                                            dev.tx_rate = info.get("tx_rate", 0) * 100
+
+                                        if "5g" in iface_name.lower():
+                                            dev.connection_type = "5GHz"
+                                        elif "2g" in iface_name.lower():
+                                            dev.connection_type = "2.4GHz"
+                                        elif not dev.connection_type:
+                                            dev.connection_type = "wireless"
+                        except (
+                            json.JSONDecodeError,
+                            KeyError,
+                        ):
+                            continue
+            except LuciRpcError:
+                if self.coordinator and self.coordinator.data and self.coordinator.data.all_connected_devices:
+                    for prev_dev in self.coordinator.data.all_connected_devices:
+                        if prev_dev.is_wireless and prev_dev.connected:
+                            dev = devices.setdefault(
+                                prev_dev.mac,
+                                ConnectedDevice(
+                                    mac=prev_dev.mac,
+                                    ip=prev_dev.ip,
+                                    hostname=prev_dev.hostname,
+                                    connected=True,
+                                    is_wireless=True,
+                                    interface=prev_dev.interface,
+                                    connection_type=prev_dev.connection_type,
+                                    signal=prev_dev.signal,
+                                    noise=prev_dev.noise,
+                                    rx_rate=prev_dev.rx_rate,
+                                    tx_rate=prev_dev.tx_rate,
                                 )
-                                if not dev.signal:
-                                    dev.signal = info.get("signal", 0)
-
-                                bytes_data = info.get("bytes", {})
-                                if isinstance(bytes_data, dict):
-                                    dev.rx_bytes = bytes_data.get("rx", 0)
-                                    dev.tx_bytes = bytes_data.get("tx", 0)
-
-                                # Hostapd returns rate in 100kbps (tenths of Mbps).
-                                # Convert to Kbps by multiplying by 100.
-                                if "rx_rate" in info and not dev.rx_rate:
-                                    dev.rx_rate = info.get("rx_rate", 0) * 100
-                                if "tx_rate" in info and not dev.tx_rate:
-                                    dev.tx_rate = info.get("tx_rate", 0) * 100
-
-                                if "5g" in iface_name.lower():
-                                    dev.connection_type = "5GHz"
-                                elif "2g" in iface_name.lower():
-                                    dev.connection_type = "2.4GHz"
-                                elif not dev.connection_type:
-                                    dev.connection_type = "wireless"
-                except (
-                    json.JSONDecodeError,
-                    KeyError,
-                ):
-                    continue
+                            )
+                            dev.connected = True
+                            dev.is_wireless = True
+                            dev.interface = prev_dev.interface or dev.interface
+                            dev.connection_type = prev_dev.connection_type or dev.connection_type
+                            dev.signal = prev_dev.signal or dev.signal
+                            dev.noise = prev_dev.noise or dev.noise
+                            dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
+                            dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
 
         # 5. Final refinement from IP neighbors (for states)
         try:

@@ -266,6 +266,33 @@ class UbusNetworkMixin:
                 _LOGGER.debug(
                     "Failed to fetch detailed info for wifi interface %s", wifi.name
                 )
+                if self.coordinator and self.coordinator.data and self.coordinator.data.wireless_interfaces:
+                    for prev_wifi in self.coordinator.data.wireless_interfaces:
+                        if prev_wifi.name == wifi.name:
+                            wifi.ssid = prev_wifi.ssid
+                            wifi.mac_address = prev_wifi.mac_address
+                            wifi.channel = prev_wifi.channel
+                            wifi.frequency = prev_wifi.frequency
+                            wifi.signal = prev_wifi.signal
+                            wifi.noise = prev_wifi.noise
+                            wifi.bitrate = prev_wifi.bitrate
+                            wifi.quality = prev_wifi.quality
+                            wifi.hwmode = prev_wifi.hwmode
+                            wifi.encryption = prev_wifi.encryption
+                            wifi.clients_count = prev_wifi.clients_count
+                            wifi.enabled = prev_wifi.enabled
+                            wifi.up = prev_wifi.up
+                            wifi.radio = prev_wifi.radio
+                            wifi.htmode = prev_wifi.htmode
+                            wifi.txpower = prev_wifi.txpower
+                            wifi.mesh_id = prev_wifi.mesh_id
+                            wifi.mesh_fwding = prev_wifi.mesh_fwding
+                            wifi.ifname = prev_wifi.ifname
+                            wifi.section = prev_wifi.section
+                            wifi.band = prev_wifi.band
+                            wifi.width = prev_wifi.width
+                            wifi.standard = prev_wifi.standard
+                            break
 
         if interfaces:
             await asyncio.gather(*[_fetch_metrics(w) for w in interfaces])
