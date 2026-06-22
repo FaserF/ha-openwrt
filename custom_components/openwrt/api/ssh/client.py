@@ -7,7 +7,7 @@ import logging
 import shlex
 from typing import Any
 
-import paramiko
+import paramiko  # type: ignore[import-untyped]
 from homeassistant.helpers import storage
 
 from ..base import (
