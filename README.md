@@ -1,6 +1,7 @@
 # OpenWrt (for Homeassistant)
 
 [![GitHub Release](https://img.shields.io/github/release/FaserF/ha-openwrt.svg?style=flat-square)](https://github.com/FaserF/ha-openwrt/releases)
+[![Downloads (Current release)](https://img.shields.io/github/downloads/FaserF/ha-openwrt/latest/openwrt.zip?label=Downloads%20(Current%20release)&style=flat-square)](https://github.com/FaserF/ha-openwrt/releases)
 [![License](https://img.shields.io/github/license/FaserF/ha-openwrt.svg?style=flat-square)](LICENSE)
 [![hacs](https://img.shields.io/badge/HACS-custom-orange.svg?style=flat-square)](https://hacs.xyz)
 [![Documentation](https://img.shields.io/badge/docs-Material--MkDocs-blue.svg?style=flat-square)](https://faserf.github.io/ha-openwrt/)
