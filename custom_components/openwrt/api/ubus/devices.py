@@ -751,6 +751,18 @@ class UbusDevicesMixin:
             return None
 
         ip = parts[0]
+
+        # Filter out IPv6 link-local addresses (fe80::/10) as they can cause devices
+        # to be falsely reported as home due to stale link-local neighbor entries.
+        import ipaddress
+
+        try:
+            ip_obj = ipaddress.ip_address(ip)
+            if ip_obj.version == 6 and ip_obj.is_link_local:
+                return None
+        except ValueError:
+            pass
+
         mac = ""
         interface = ""
         state = parts[-1]
