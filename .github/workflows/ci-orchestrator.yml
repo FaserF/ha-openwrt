@@ -55,7 +55,7 @@ jobs:
           ruff format .
 
       - name: Commit and push changes
-        uses: stefanzweifel/git-auto-commit-action@v7.1.0
+        uses: stefanzweifel/git-auto-commit-action@v7.2.0
         with:
           commit_message: "style: auto-fix and format with Ruff [skip ci]"
           commit_user_name: "github-actions[bot]"
