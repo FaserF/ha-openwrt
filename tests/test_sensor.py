@@ -82,3 +82,55 @@ def test_wifi_sensor_ap_mode_suppression() -> None:
     assert "wifi_wlan1_signal" in keys_sta
     assert "wifi_wlan1_quality" in keys_sta
     assert "wifi_wlan1_bitrate" in keys_sta
+
+
+def test_device_sensor_case_insensitivity() -> None:
+    """Test that device diagnostic sensors correctly match MAC addresses case-insensitively."""
+    from custom_components.openwrt.api.base import ConnectedDevice
+    from custom_components.openwrt.sensor import _create_device_sensors
+
+    # Device has lowercased MAC
+    device = ConnectedDevice(
+        mac="aa:bb:cc:dd:ee:ff",
+        is_wireless=True,
+        rx_rate=120100,
+        tx_rate=86600,
+        signal=-50,
+        noise=-95,
+    )
+
+    coordinator = MagicMock()
+    # Data has device with uppercase MAC
+    coordinator.data = OpenWrtData(
+        connected_devices=[
+            ConnectedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                is_wireless=True,
+                rx_rate=120100,
+                tx_rate=86600,
+                signal=-50,
+                noise=-95,
+            )
+        ]
+    )
+    # Mock coordinator update status
+    coordinator.last_update_success = True
+    entry = MagicMock()
+    entry.entry_id = "test"
+
+    sensors = _create_device_sensors(coordinator, entry, device)
+
+    # We should have 4 sensors (signal, rx_rate, tx_rate, noise)
+    assert len(sensors) == 4
+
+    # Check that they are available and return the correct value despite case difference
+    for sensor in sensors:
+        assert sensor.available is True
+        if "signal" in sensor.entity_description.key:
+            assert sensor.native_value == -50
+        elif "rx_rate" in sensor.entity_description.key:
+            assert sensor.native_value == 120.1
+        elif "tx_rate" in sensor.entity_description.key:
+            assert sensor.native_value == 86.6
+        elif "noise" in sensor.entity_description.key:
+            assert sensor.native_value == -95

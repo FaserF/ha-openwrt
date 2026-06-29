@@ -1749,10 +1749,12 @@ def _create_device_sensors(
             "device_signal",
             "dBm",
             lambda d, m=mac: next(
-                (x.signal for x in d.connected_devices if x.mac == m), None
+                (x.signal for x in d.connected_devices if x.mac and x.mac.lower() == m),
+                None,
             ),
             lambda d, m=mac: any(
-                x.mac == m and x.is_wireless for x in d.connected_devices
+                x.mac and x.mac.lower() == m and x.is_wireless
+                for x in d.connected_devices
             ),
         ),
         (
@@ -1761,11 +1763,16 @@ def _create_device_sensors(
             "device_rx_rate",
             "Mbps",
             lambda d, m=mac: next(
-                (round(x.rx_rate / 1000, 1) for x in d.connected_devices if x.mac == m),
+                (
+                    round(x.rx_rate / 1000, 1)
+                    for x in d.connected_devices
+                    if x.mac and x.mac.lower() == m
+                ),
                 None,
             ),
             lambda d, m=mac: any(
-                x.mac == m and x.is_wireless for x in d.connected_devices
+                x.mac and x.mac.lower() == m and x.is_wireless
+                for x in d.connected_devices
             ),
         ),
         (
@@ -1774,11 +1781,16 @@ def _create_device_sensors(
             "device_tx_rate",
             "Mbps",
             lambda d, m=mac: next(
-                (round(x.tx_rate / 1000, 1) for x in d.connected_devices if x.mac == m),
+                (
+                    round(x.tx_rate / 1000, 1)
+                    for x in d.connected_devices
+                    if x.mac and x.mac.lower() == m
+                ),
                 None,
             ),
             lambda d, m=mac: any(
-                x.mac == m and x.is_wireless for x in d.connected_devices
+                x.mac and x.mac.lower() == m and x.is_wireless
+                for x in d.connected_devices
             ),
         ),
         (
@@ -1787,10 +1799,12 @@ def _create_device_sensors(
             "device_noise",
             "dBm",
             lambda d, m=mac: next(
-                (x.noise for x in d.connected_devices if x.mac == m), None
+                (x.noise for x in d.connected_devices if x.mac and x.mac.lower() == m),
+                None,
             ),
             lambda d, m=mac: any(
-                x.mac == m and x.is_wireless for x in d.connected_devices
+                x.mac and x.mac.lower() == m and x.is_wireless
+                for x in d.connected_devices
             ),
         ),
     ]
