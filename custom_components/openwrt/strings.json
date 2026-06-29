@@ -230,7 +230,10 @@
           "redeploy_user": "Re-deploy Home Assistant User & ACLs",
           "trust_stale_arp": "Trust ARP 'STALE' state for presence",
           "trust_bridge_fdb": "Trust Bridge FDB for presence (Wired)",
-          "force_wireless_macs": "Force Wireless MACs (One per line)"
+          "force_wireless_macs": "Force Wireless MACs (One per line)",
+          "gps_modem_enabled": "Enable GPS Modem tracking",
+          "gps_modem_port": "GPS Modem Serial Port",
+          "gps_poll_interval": "GPS Modem Poll Interval (seconds)"
         },
         "description": "Configure OpenWrt integration options."
       },

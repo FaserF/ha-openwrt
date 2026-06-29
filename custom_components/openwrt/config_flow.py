@@ -78,6 +78,9 @@ from .const import (
     CONF_ENABLE_SQM,
     CONF_ENABLE_VPN,
     CONF_FORCE_WIRELESS_MACS,
+    CONF_GPS_MODEM_ENABLED,
+    CONF_GPS_MODEM_PORT,
+    CONF_GPS_POLL_INTERVAL,
     CONF_MANUAL_TRACKED_DEVICES,
     CONF_MQTT_BROKER,
     CONF_MQTT_PASSWORD,
@@ -104,6 +107,9 @@ from .const import (
     DATA_COORDINATOR,
     DEFAULT_BACKUP_RETENTION_DAYS,
     DEFAULT_CONSIDER_HOME,
+    DEFAULT_GPS_MODEM_ENABLED,
+    DEFAULT_GPS_MODEM_PORT,
+    DEFAULT_GPS_POLL_INTERVAL,
     DEFAULT_PORT_SSH,
     DEFAULT_PORT_UBUS,
     DEFAULT_PORT_UBUS_SSL,
@@ -2216,6 +2222,22 @@ class OpenWrtOptionsFlow(OptionsFlow):
                         type=selector.TextSelectorType.TEXT,
                     )
                 ),
+                vol.Optional(
+                    CONF_GPS_MODEM_ENABLED,
+                    default=current.get(
+                        CONF_GPS_MODEM_ENABLED, DEFAULT_GPS_MODEM_ENABLED
+                    ),
+                ): bool,
+                vol.Optional(
+                    CONF_GPS_MODEM_PORT,
+                    default=current.get(CONF_GPS_MODEM_PORT, DEFAULT_GPS_MODEM_PORT),
+                ): str,
+                vol.Optional(
+                    CONF_GPS_POLL_INTERVAL,
+                    default=current.get(
+                        CONF_GPS_POLL_INTERVAL, DEFAULT_GPS_POLL_INTERVAL
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=10, max=86400)),
                 vol.Optional(
                     CONF_REDEPLOY_USER,
                     default=False,

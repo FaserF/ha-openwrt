@@ -38,6 +38,14 @@ CONF_TRUST_BRIDGE_FDB: Final = "trust_bridge_fdb"
 CONF_FORCE_WIRELESS_MACS: Final = "force_wireless_macs"
 CONF_REDEPLOY_USER: Final = "redeploy_user"
 
+CONF_GPS_MODEM_ENABLED: Final = "gps_modem_enabled"
+CONF_GPS_MODEM_PORT: Final = "gps_modem_port"
+CONF_GPS_POLL_INTERVAL: Final = "gps_poll_interval"
+
+DEFAULT_GPS_MODEM_ENABLED: Final = False
+DEFAULT_GPS_MODEM_PORT: Final = "/dev/ttyUSB3"
+DEFAULT_GPS_POLL_INTERVAL: Final = 3600
+
 CONF_ENABLE_FIREWALL: Final = "enable_firewall"
 CONF_ENABLE_SERVICES: Final = "enable_services"
 CONF_ENABLE_VPN: Final = "enable_vpn"

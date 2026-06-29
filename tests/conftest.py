@@ -334,3 +334,16 @@ def hass() -> MagicMock:
     mock_hass.services.has_service = MagicMock(return_value=False)
     mock_hass.services.async_register = MagicMock()
     return mock_hass
+
+
+def pytest_configure(config):
+    """Allow loopback connections on Windows for asyncio."""
+    import sys
+
+    if sys.platform == "win32":
+        try:
+            from pytest_socket import socket_allow_hosts
+
+            socket_allow_hosts(["127.0.0.1", "localhost", "::1"])
+        except ImportError:
+            pass

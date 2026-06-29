@@ -58,6 +58,9 @@ from .const import (
     CONF_DHCP_SOFTWARE,
     CONF_ENABLE_NLBWMON_SENSORS,
     CONF_FORCE_WIRELESS_MACS,
+    CONF_GPS_MODEM_ENABLED,
+    CONF_GPS_MODEM_PORT,
+    CONF_GPS_POLL_INTERVAL,
     CONF_MANUAL_TRACKED_DEVICES,
     CONF_MQTT_PRESENCE,
     CONF_PASSWORD,
@@ -78,6 +81,8 @@ from .const import (
     CONNECTION_TYPE_SSH,
     CONNECTION_TYPE_UBUS,
     DEFAULT_CONSIDER_HOME,
+    DEFAULT_GPS_MODEM_PORT,
+    DEFAULT_GPS_POLL_INTERVAL,
     DEFAULT_PORT_SSH,
     DEFAULT_PORT_UBUS,
     DEFAULT_PORT_UBUS_SSL,
@@ -213,6 +218,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self.config_entry = config_entry
         self._firmware_checked = False
         self._last_firmware_check: float = -86400.0  # Force check on startup
+        self._last_gps_check: float = -86400.0  # Force check on startup
         self._last_update_time: float = 0.0
         self._device_history: dict[str, dict[str, Any]] = {}
         self._wireless_last_seen: dict[str, float] = {}
@@ -448,6 +454,22 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 await self._async_fetch_nlbwmon_top_hosts_data(data)
             except Exception as err:
                 _LOGGER.debug("nlbwmon top hosts fetch failed: %s", err)
+        if self.config_entry.options.get(CONF_GPS_MODEM_ENABLED, False):
+            gps_port = self.config_entry.options.get(
+                CONF_GPS_MODEM_PORT, DEFAULT_GPS_MODEM_PORT
+            )
+            gps_interval = self.config_entry.options.get(
+                CONF_GPS_POLL_INTERVAL, DEFAULT_GPS_POLL_INTERVAL
+            )
+            now_time = self.hass.loop.time()
+            if now_time - self._last_gps_check >= gps_interval:
+                self._last_gps_check = now_time
+                from .helpers.gps import async_update_gps_location
+
+                try:
+                    await async_update_gps_location(self.hass, self.client, gps_port)
+                except Exception as gps_err:
+                    _LOGGER.debug("GPS location update failed: %s", gps_err)
 
         return data
 

@@ -230,7 +230,10 @@
           "redeploy_user": "Home Assistant Benutzer & ACLs neu übertragen",
           "trust_stale_arp": "ARP-Status 'STALE' als anwesend werten",
           "trust_bridge_fdb": "Bridge-FDB für Anwesenheit nutzen (Kabel)",
-          "force_wireless_macs": "Drahtlose MACs erzwingen (Eine pro Zeile)"
+          "force_wireless_macs": "Drahtlose MACs erzwingen (Eine pro Zeile)",
+          "gps_modem_enabled": "GPS-Modem-Tracking aktivieren",
+          "gps_modem_port": "GPS-Modem Serieller Port",
+          "gps_poll_interval": "GPS-Modem Abfrageintervall (Sekunden)"
         },
         "description": "Konfiguriere die Optionen der OpenWrt-Integration."
       },
