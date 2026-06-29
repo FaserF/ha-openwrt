@@ -83,3 +83,24 @@ Using the `root` account means Home Assistant has **unrestricted administrative 
 - **Complete Network Compromise**: If your Home Assistant instance is somehow compromised (e.g., via an exposed dashboard, a vulnerable third-party add-on, or a leaked token), the attacker instantly gains full control over your router. They could reroute DNS, intercept traffic, open firewall ports, or install malicious firmware.
 - **Accidental Damage**: A software bug in the integration, or an accidental misconfiguration in an automation on the Home Assistant side, could unintentionally change critical router settings or brick the device.
 - **Auditability**: When you use a dedicated account, system logs on OpenWrt will clearly show which actions were performed by Home Assistant versus actions performed by you as the administrator. Using `root` makes it impossible to distinguish between the two.
+
+## 5. Security & Trust FAQ
+
+### Why is this not an official Home Assistant Core integration?
+Maintaining a core integration in the official Home Assistant repository comes with significant trade-offs:
+- **High Maintenance Overhead**: Every minor change to the Home Assistant core API requires rapid updates to the integration. 
+- **Slow Release Cycle**: PR reviews in the official Home Assistant repository are thorough but can take several months. This makes it extremely difficult to roll out quick bug fixes, performance improvements, or support for newer OpenWrt releases.
+- **Agility & HACS**: Keeping it as a community integration in HACS allows the project to remain agile, issue updates immediately when OpenWrt features change, and support older/newer Home Assistant versions without being constrained by core release schedules.
+
+### What security reviews has this integration undergone?
+When this integration was submitted to the default HACS repository, it underwent code review by Frenck, a lead developer of the Home Assistant Core team. The security feedback provided during this process (e.g., ensuring secure session handling, avoiding shell execution where possible, and strict credential containment) was fully resolved and verified before the integration was officially accepted into HACS (see [HACS PR #6270](https://github.com/hacs/default/pull/6270#pullrequestreview-4284547826)).
+
+### How is the risk of supply chain attacks mitigated?
+- **Pinned Versions**: Using HACS, you are not forced to auto-update. You can pin the integration to a specific release version and update only after reading the changelog or when you feel comfortable.
+- **Minimal Dependencies**: The integration relies heavily on native Python/Home Assistant libraries rather than external third-party packages, reducing the risk of a compromised dependency.
+- **Open Source Community**: All PRs, commits, and releases are public, allowing auditability by the community.
+
+### What about the third-party MQTT Presence script?
+The MQTT Presence Detection feature integrates with [OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence). 
+- **Completely Optional**: This feature is entirely opt-in. If you do not use MQTT Presence, you do not need to install these scripts or grant the `file.exec` permission to the `homeassistant` user.
+- **Vetted Source**: The presence scripts are lightweight and open-source, allowing you to review them before deploying them to your router.
