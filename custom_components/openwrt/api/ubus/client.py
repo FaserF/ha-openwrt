@@ -279,9 +279,12 @@ class UbusClient(
     async def connect(self) -> bool:
         """Authenticate with ubus."""
         import time
+
         async with self._reauth_lock:
             if self._connected and (time.time() - self._last_connect_time < 5.0):
-                _LOGGER.debug("Ubus already connected recently, skipping re-authentication")
+                _LOGGER.debug(
+                    "Ubus already connected recently, skipping re-authentication"
+                )
                 return True
             try:
                 res = await self._connect()
