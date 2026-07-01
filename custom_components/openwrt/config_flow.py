@@ -282,7 +282,9 @@ def _generate_package_table(
         f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)', 'asu')} |\n"
         f"| **kmod-batman-adv** | {to_icon(packages.batman_adv)} | {get_missing(packages.batman_adv, 'Batman-adv Mesh', 'batman_adv')} |\n"
         f"| **batctl** | {to_icon(packages.batctl)} | {get_missing(packages.batctl, 'Batman-adv Control (batctl)', 'batctl')} |\n"
-        f"| **nlbwmon** | {to_icon(packages.nlbwmon)} | {get_missing(packages.nlbwmon, 'Top Bandwidth Hosts Sensor', 'nlbwmon')} |"
+        f"| **nlbwmon** | {to_icon(packages.nlbwmon)} | {get_missing(packages.nlbwmon, 'Top Bandwidth Hosts Sensor', 'nlbwmon')} |\n"
+        f"| **coreutils-stty** | {to_icon(packages.stty)} | {get_missing(packages.stty, 'GPS Modem Tracking (stty)', 'stty')} |\n"
+        f"| **coreutils-timeout** | {to_icon(packages.timeout)} | {get_missing(packages.timeout, 'GPS Modem Tracking (timeout)', 'timeout')} |"
     )
 
 

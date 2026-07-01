@@ -488,7 +488,7 @@ class SshClient(
             "/usr/share/luci/menu.d/luci-mod-rpc.json "
             "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
             "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
-            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm /etc/init.d/odhcpd /etc/init.d/lldpd /usr/sbin/batctl /sys/module/batman_adv; do "
+            "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm /etc/init.d/odhcpd /etc/init.d/lldpd /usr/sbin/batctl /sys/module/batman_adv /usr/bin/stty /bin/stty /usr/bin/timeout /bin/timeout; do "
             "if [ -f $f ] || [ -x $f ] || [ -d $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._exec(cmd)
@@ -523,6 +523,8 @@ class SshClient(
         packages.lldp = detect(21)
         packages.batctl = detect(22)
         packages.batman_adv = detect(23)
+        packages.stty = detect(24) or detect(25)
+        packages.timeout = detect(26) or detect(27)
 
         # Detect wireless via presence of iwinfo or ubus network.wireless
         if packages.iwinfo:

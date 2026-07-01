@@ -293,7 +293,8 @@ class UbusServicesMixin:
                     "/etc/init.d/unbound "
                     "/usr/sbin/batctl "
                     "/sys/module/batman_adv "
-                    "/etc/config/sqm; do "
+                    "/etc/config/sqm "
+                    "/usr/bin/stty /bin/stty /usr/bin/timeout /bin/timeout; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
@@ -343,6 +344,8 @@ class UbusServicesMixin:
                     packages.unbound = detect_status(17)
                 packages.batctl = detect_status(18)
                 packages.batman_adv = detect_status(19)
+                packages.stty = detect_status(21) or detect_status(22)
+                packages.timeout = detect_status(23) or detect_status(24)
 
             except Exception as err:
                 _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)

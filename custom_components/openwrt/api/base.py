@@ -714,6 +714,8 @@ class OpenWrtPackages:
     dhcp: bool | None = None
     wireless: bool | None = None
     lldp: bool | None = None
+    stty: bool | None = None
+    timeout: bool | None = None
 
 
 @dataclass
