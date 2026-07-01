@@ -336,14 +336,29 @@ def hass() -> MagicMock:
     return mock_hass
 
 
-def pytest_configure(config):
-    """Allow loopback connections on Windows for asyncio."""
-    import sys
+if sys.platform == "win32":
+    try:
+        import socket as _socket
 
-    if sys.platform == "win32":
-        try:
-            from pytest_socket import socket_allow_hosts
+        import pytest_socket as _pytest_socket
 
-            socket_allow_hosts(["127.0.0.1", "localhost", "::1"])
-        except ImportError:
-            pass
+        _orig_disable_socket = _pytest_socket.disable_socket
+
+        def _windows_disable_socket(allow_unix_socket: bool = False) -> None:
+            """Wrap disable_socket to allow loopback sockets needed by asyncio ProactorEventLoop on Windows."""
+            _true = _pytest_socket._true_socket
+
+            class WindowsGuardedSocket(_true):  # type: ignore[valid-type]
+                """Allow loopback TCP socketpairs (needed by asyncio on Windows)."""
+
+                def __new__(cls, family=-1, type=-1, proto=-1, fileno=None):  # noqa: A002
+                    # Allow AF_INET loopback sockets (needed for ProactorEventLoop.socketpair)
+                    if family == _socket.AF_INET or family == _socket.AF_INET6:
+                        return _true.__new__(cls, family, type, proto, fileno)
+                    raise _pytest_socket.SocketBlockedError()
+
+            _socket.socket = WindowsGuardedSocket
+
+        _pytest_socket.disable_socket = _windows_disable_socket
+    except (ImportError, AttributeError):
+        pass
