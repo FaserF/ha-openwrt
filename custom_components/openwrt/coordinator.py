@@ -1939,16 +1939,68 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         data.device_info.release_version, latest_stable
                     ):
                         data.firmware_upgradable = True
-                        self._set_stable_release_urls(data, latest_stable)
+                        await self._async_set_stable_release_urls(
+                            data, latest_stable, session
+                        )
                     else:
                         data.firmware_upgradable = False
 
-    def _set_stable_release_urls(self, data: OpenWrtData, latest_stable: str) -> None:
+    async def _async_set_stable_release_urls(
+        self, data: OpenWrtData, latest_stable: str, session: aiohttp.ClientSession
+    ) -> None:
         """Determine release and install URLs for a stable release."""
         data.firmware_release_url = f"https://openwrt.org/releases/{latest_stable}"
         info = data.device_info
         target = self._get_target(info.target)
-        if target and info.board_name:
+        if not target or not info.board_name:
+            return
+
+        # Try to fetch profiles.json to get exact sysupgrade file name (extension, spelling)
+        url = f"https://downloads.openwrt.org/releases/{latest_stable}/targets/{target}/profiles.json"
+
+        with contextlib.suppress(Exception):
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status == 200:
+                    profile_data = await resp.json()
+                    profiles = profile_data.get("profiles", {})
+                    board_name = info.board_name or ""
+
+                    def normalize(name: str) -> str:
+                        return (
+                            name.lower()
+                            .replace("-", "")
+                            .replace("_", "")
+                            .replace(",", "")
+                        )
+
+                    norm_board = normalize(board_name)
+                    board_profile = None
+
+                    for k in [
+                        board_name,
+                        board_name.replace("-", "_").replace(",", "_"),
+                        board_name.replace("_", "-").replace(",", "-"),
+                    ]:
+                        if k in profiles:
+                            board_profile = profiles[k]
+                            break
+
+                    if not board_profile:
+                        for k, prof in profiles.items():
+                            if normalize(k) == norm_board:
+                                board_profile = prof
+                                break
+
+                    if board_profile:
+                        for img in board_profile.get("images", []):
+                            if "sysupgrade" in img.get("name", ""):
+                                data.firmware_install_url = f"https://downloads.openwrt.org/releases/{latest_stable}/targets/{target}/{img.get('name')}"
+                                break
+
+        if not data.firmware_install_url:
+            # Fallback to static URL construction
             board = info.board_name.replace("_", "-").replace(",", "-")
             dist = info.release_distribution or "openwrt"
             data.firmware_install_url = (

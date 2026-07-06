@@ -425,8 +425,9 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             # Create backup on router
             remote_path = await self.coordinator.client.create_backup()
             if not remote_path:
-                _LOGGER.error("Failed to create backup on router")
-                return
+                msg = "Failed to create backup on router"
+                _LOGGER.error(msg)
+                raise HomeAssistantError(msg)
 
             # Prepare local path
             from pathlib import Path
@@ -448,14 +449,16 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 # Cleanup remote file
                 await self.coordinator.client.execute_command(f"rm {remote_path}")
             else:
-                _LOGGER.error("Failed to download backup from router to %s", local_path)
+                msg = f"Failed to download backup from router to {local_path}"
+                _LOGGER.error(msg)
+                raise HomeAssistantError(msg)
 
-        except Exception:
+        except Exception as err:
             _LOGGER.exception("Automatic backup failed")
-            # We don't raise here to avoid blocking the update if backup fails,
-            # unless the user really wants it. But usually, an update is more important.
-            # However, safety first - maybe we should raise?
-            # User said "automatically trigger a backup", so let's log it.
+            if isinstance(err, HomeAssistantError):
+                raise
+            msg = f"Automatic backup failed: {err}"
+            raise HomeAssistantError(msg) from err
 
 
 class OpenWrtPackageUpdateEntity(
