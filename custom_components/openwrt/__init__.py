@@ -150,6 +150,129 @@ def _async_migrate_entity_units(hass: HomeAssistant, entry: ConfigEntry) -> None
                 )
 
 
+async def _async_cleanup_disabled_features(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Remove entities and devices from disabled features from registries."""
+    from .const import (
+        CONF_ENABLE_FIREWALL,
+        CONF_ENABLE_LED,
+        CONF_ENABLE_LOAD,
+        CONF_ENABLE_NLBWMON_SENSORS,
+        CONF_ENABLE_SERVICES,
+        CONF_ENABLE_SNORT_SENSORS,
+        CONF_ENABLE_SQM,
+        CONF_ENABLE_VPN,
+        CONF_TRACK_DEVICES,
+        DEFAULT_TRACK_DEVICES,
+    )
+
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+
+    track_devices = entry.options.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES)
+    enable_led = entry.options.get(CONF_ENABLE_LED, False)
+    enable_firewall = entry.options.get(CONF_ENABLE_FIREWALL, False)
+    enable_services = entry.options.get(CONF_ENABLE_SERVICES, False)
+    enable_vpn = entry.options.get(CONF_ENABLE_VPN, False)
+    enable_sqm = entry.options.get(CONF_ENABLE_SQM, False)
+    enable_load = entry.options.get(CONF_ENABLE_LOAD, False)
+    enable_nlbwmon = entry.options.get(CONF_ENABLE_NLBWMON_SENSORS, False)
+    enable_snort = entry.options.get(CONF_ENABLE_SNORT_SENSORS, False)
+
+    # 1. Clean up entities of disabled features
+    entity_entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+    for ent in entity_entries:
+        should_remove = False
+        ent_unique_id = ent.unique_id or ""
+
+        if not track_devices:
+            if (
+                ent.domain == "device_tracker"
+                or "_wol" in ent_unique_id
+                or "_kick_" in ent_unique_id
+                or "_access_" in ent_unique_id
+            ):
+                should_remove = True
+
+        if not enable_led and "_led_" in ent_unique_id:
+            should_remove = True
+
+        if not enable_firewall and "_firewall_" in ent_unique_id:
+            should_remove = True
+
+        if not enable_services and "_service_" in ent_unique_id:
+            should_remove = True
+
+        if not enable_vpn and "_wg_" in ent_unique_id:
+            should_remove = True
+
+        if not enable_sqm and "_sqm_" in ent_unique_id:
+            should_remove = True
+
+        if not enable_load and "_load_" in ent_unique_id:
+            should_remove = True
+
+        if not enable_nlbwmon and "_nlbwmon_" in ent_unique_id:
+            should_remove = True
+
+        if not enable_snort and "_snort_" in ent_unique_id:
+            should_remove = True
+
+        if should_remove:
+            _LOGGER.info(
+                "Removing entity %s of disabled feature (unique_id=%s)",
+                ent.entity_id,
+                ent_unique_id,
+            )
+            try:
+                ent_reg.async_remove(ent.entity_id)
+            except KeyError:
+                pass
+
+    # 2. Clean up device registry for tracked devices if device tracking is disabled
+    if not track_devices:
+        entry_unique_id = entry.unique_id
+        if entry_unique_id and len(entry_unique_id.replace(":", "")) == 12:
+            router_id = dr.format_mac(entry_unique_id)
+        elif entry_unique_id:
+            router_id = entry_unique_id
+        else:
+            router_id = str(entry.data[CONF_HOST])
+
+        for dev in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+            is_router_or_ap = False
+            for identifier in dev.identifiers:
+                if identifier[0] == DOMAIN:
+                    ident_str = str(identifier[1])
+                    norm_ident = ident_str.replace(":", "").lower()
+                    norm_router_id = (
+                        router_id.replace(":", "").lower()
+                        if isinstance(router_id, str)
+                        else ""
+                    )
+                    norm_host = (
+                        str(entry.data.get(CONF_HOST, "")).replace(":", "").lower()
+                    )
+
+                    if (
+                        ident_str == router_id
+                        or norm_ident == norm_router_id
+                        or norm_ident == norm_host
+                        or "_ap_" in ident_str
+                        or "_ra" in ident_str
+                    ):
+                        is_router_or_ap = True
+                        break
+            if not is_router_or_ap:
+                _LOGGER.info(
+                    "Removing tracked client device %s (%s) because device tracking is disabled",
+                    dev.name,
+                    dev.id,
+                )
+                dev_reg.async_remove_device(dev.id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up from a config entry."""
     client = create_client(hass, {**entry.data, **entry.options})
@@ -171,6 +294,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Clear any stale unit_of_measurement overrides from previous versions
         _async_migrate_entity_units(hass, entry)
+
+        # Clean up any entities or devices from disabled features
+        await _async_cleanup_disabled_features(hass, entry)
 
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = {

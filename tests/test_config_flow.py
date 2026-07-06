@@ -437,9 +437,7 @@ async def test_reconfigure_flow(hass) -> None:
             assert result["step_id"] == "mqtt_presence"
 
             with (
-                patch.object(
-                    hass.config_entries, "async_update_entry"
-                ) as mock_update,
+                patch.object(hass.config_entries, "async_update_entry") as mock_update,
                 patch.object(
                     hass.config_entries, "async_reload", new_callable=AsyncMock
                 ) as mock_reload,
