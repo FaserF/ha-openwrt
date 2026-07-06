@@ -271,4 +271,3 @@ async def test_ssh_get_connected_devices_iwinfo_fallback_rates(ssh_client: SshCl
         assert dev.interface == "phy0-ap0"
         assert dev.rx_rate == 240200
         assert dev.tx_rate == 180100
-

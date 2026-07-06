@@ -1262,12 +1262,9 @@ async def async_setup_entry(
                 continue
 
             # Cleanup Snort alerts sensor when option is disabled
-            if (
-                unique_id == f"{entry.entry_id}_snort_alerts"
-                and not entry.options.get(
-                    CONF_ENABLE_SNORT_SENSORS,
-                    entry.data.get(CONF_ENABLE_SNORT_SENSORS, False),
-                )
+            if unique_id == f"{entry.entry_id}_snort_alerts" and not entry.options.get(
+                CONF_ENABLE_SNORT_SENSORS,
+                entry.data.get(CONF_ENABLE_SNORT_SENSORS, False),
             ):
                 ent_reg.async_remove(ent.entity_id)
                 continue

@@ -1673,9 +1673,7 @@ class OpenWrtClient(abc.ABC):
             if out:
                 payload = json.loads(out)
                 summary = (
-                    payload[0]
-                    if isinstance(payload, list) and payload
-                    else payload
+                    payload[0] if isinstance(payload, list) and payload else payload
                 )
                 if isinstance(summary, dict):
 
@@ -1700,9 +1698,7 @@ class OpenWrtClient(abc.ABC):
                         "autoadd_block": _n("autoadd_block"),
                     }
                     status.blocked_packets = sum(
-                        v
-                        for k, v in status.block_stats.items()
-                        if k != "autoadd_block"
+                        v for k, v in status.block_stats.items() if k != "autoadd_block"
                     )
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("banip report failed: %s", err)
