@@ -968,6 +968,17 @@ def _get_banip_sensors() -> tuple[OpenWrtSensorDescription, ...]:
             entity_category=EntityCategory.DIAGNOSTIC,
             value_fn=lambda data: data.ban_ip.banned_ips,
         ),
+        OpenWrtSensorDescription(
+            key="banip_blocked",
+            name="Ban-IP Blocked Packets",
+            translation_key="banip_blocked",
+            icon="mdi:shield-remove-outline",
+            native_unit_of_measurement="packets",
+            state_class=SensorStateClass.TOTAL_INCREASING,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            value_fn=lambda data: data.ban_ip.blocked_packets,
+            attrs_fn=lambda data: data.ban_ip.block_stats,
+        ),
     )
 
 

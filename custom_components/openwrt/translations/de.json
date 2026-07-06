@@ -469,6 +469,9 @@
       "banip_banned": {
         "name": "Ban-IP Gebannte IPs"
       },
+      "banip_blocked": {
+        "name": "Ban-IP blockierte Pakete"
+      },
       "connected_clients": {
         "name": "Verbundene Clients"
       },

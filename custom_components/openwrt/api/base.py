@@ -516,6 +516,10 @@ class BanIpStatus:
     status: str = "disabled"
     version: str | None = None
     banned_ips: int = 0
+    blocked_packets: int = 0
+    blocked_inbound: int = 0
+    blocked_outbound: int = 0
+    block_stats: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -1651,12 +1655,73 @@ class OpenWrtClient(abc.ABC):
         return False
 
     async def get_banip_status(self) -> BanIpStatus:
-        """Get status of the ban-ip package."""
-        return BanIpStatus()
+        """Get banIP status and runtime block counters."""
+        status = BanIpStatus()
+
+        try:
+            res = await self.file_exec("/etc/init.d/banip", ["enabled"])
+            if isinstance(res, dict) and "code" in res:
+                status.enabled = res.get("code") == 0
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("banip enabled probe failed: %s", err)
+        status.status = "enabled" if status.enabled else "disabled"
+
+        # Element count + packet-block counters from banIP's JSON report.
+        try:
+            res = await self.file_exec("/etc/init.d/banip", ["report", "json"])
+            out = res.get("stdout", "") if isinstance(res, dict) else ""
+            if out:
+                payload = json.loads(out)
+                summary = (
+                    payload[0]
+                    if isinstance(payload, list) and payload
+                    else payload
+                )
+                if isinstance(summary, dict):
+
+                    def _n(key: str) -> int:
+                        try:
+                            return int(str(summary.get(key, "0")).strip() or "0")
+                        except (ValueError, TypeError):
+                            return 0
+
+                    status.banned_ips = _n("sum_cntelements")
+                    status.blocked_inbound = _n("sum_setinbound")
+                    status.blocked_outbound = _n("sum_setoutbound")
+                    status.block_stats = {
+                        "inbound": status.blocked_inbound,
+                        "outbound": status.blocked_outbound,
+                        "syn_flood": _n("sum_synflood"),
+                        "udp_flood": _n("sum_udpflood"),
+                        "icmp_flood": _n("sum_icmpflood"),
+                        "ct_invalid": _n("sum_ctinvalid"),
+                        "tcp_invalid": _n("sum_tcpinvalid"),
+                        "bcp38": _n("sum_bcp38"),
+                        "autoadd_block": _n("autoadd_block"),
+                    }
+                    status.blocked_packets = sum(
+                        v
+                        for k, v in status.block_stats.items()
+                        if k != "autoadd_block"
+                    )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("banip report failed: %s", err)
+        return status
 
     async def set_banip_enabled(self, enabled: bool) -> bool:
-        """Enable/disable the ban-ip service."""
-        return False
+        """Enable/disable the banIP service (uci flag + init start/stop)."""
+        val = "1" if enabled else "0"
+        try:
+            await self.execute_command(
+                f"uci set banip.global.ban_enabled='{val}' && uci commit banip"
+            )
+            await self.execute_command(
+                f"/etc/init.d/banip {'start' if enabled else 'stop'}"
+            )
+            return True
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("banip enable/disable failed: %s", err)
+            return False
 
     async def get_latency(self, target: str = "8.8.8.8") -> LatencyResult | None:
         """Measure network latency via ping."""

@@ -8,7 +8,6 @@ from typing import Any
 from ..base import (
     AccessControl,
     AdBlockStatus,
-    BanIpStatus,
     FirewallRedirect,
     FirewallRule,
     LedInfo,
@@ -422,38 +421,7 @@ class LuciRpcFeaturesMixin:
         except Exception:
             return False
 
-    async def get_banip_status(self) -> BanIpStatus:
-        """Get ban-ip status via LuCI RPC."""
-        from ..base import BanIpStatus
-
-        status = BanIpStatus()
-        try:
-            res = await self._rpc_call(
-                "sys",
-                "exec",
-                ["uci -q get ban-ip.config.enabled"],
-            )
-            status.enabled = res.strip() == "1"
-            status.status = "enabled" if status.enabled else "disabled"
-        except Exception:
-            pass
-        return status
-
-    async def set_banip_enabled(self, enabled: bool) -> bool:
-        """Enable/disable ban-ip service via LuCI RPC."""
-        val = "1" if enabled else "0"
-        try:
-            await self._rpc_call(
-                "sys",
-                "exec",
-                [f"uci set ban-ip.config.enabled='{val}' && uci commit ban-ip"],
-            )
-            action = "start" if enabled else "stop"
-            await self._rpc_call("sys", "exec", [f"/etc/init.d/ban-ip {action}"])
-            self._last_full_poll = 0
-            return True
-        except Exception:
-            return False
+    # banIP is handled backend-agnostically in OpenWrtClient (base.py).
 
     async def get_sqm_status(self) -> list[SqmStatus]:
         """Get SQM status via LuCI RPC."""

@@ -285,7 +285,7 @@ class UbusServicesMixin:
                     "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
                     "/etc/init.d/adblock "
                     "/etc/init.d/simple-adblock "
-                    "/etc/init.d/ban-ip "
+                    "/etc/init.d/banip "
                     "/etc/init.d/miniupnpd "
                     "/etc/init.d/nlbwmon "
                     "/etc/init.d/pbr "
@@ -426,7 +426,7 @@ class UbusServicesMixin:
             ("/usr/lib/lua/luci/controller/attendedsysupgrade.lua", "asu"),
             ("/etc/init.d/adblock", "adblock"),
             ("/etc/init.d/simple-adblock", "simple_adblock"),
-            ("/etc/init.d/ban-ip", "ban_ip"),
+            ("/etc/init.d/banip", "ban_ip"),
         ]
         for path, attr in check_list:
             if getattr(packages, attr) is not True:
@@ -452,7 +452,7 @@ class UbusServicesMixin:
             "asu": "luci-app-attendedsysupgrade",
             "adblock": "adblock",
             "simple_adblock": "simple-adblock",
-            "ban_ip": "ban-ip",
+            "ban_ip": "banip",
         }
         for attr, pkg_name in mapping.items():
             if getattr(packages, attr) is not True:
