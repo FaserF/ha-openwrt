@@ -1211,6 +1211,10 @@ class OpenWrtClient(abc.ABC):
         """Execute a binary via rpcd file.exec. Returns {} if unsupported by this client."""
         return {}
 
+    async def read_file(self, path: str) -> str | None:
+        """Read a file's contents. None if unsupported by this client or on error."""
+        return None
+
     async def kick_device(self, mac_address: str, interface: str) -> bool:
         """Kick a wireless device from the network using hostapd."""
         cmd_ubus = f'ubus call hostapd.{interface} del_client \'{{"addr":"{mac_address}","reason":5,"deauth":true,"ban_time":60000}}\''

@@ -257,6 +257,13 @@ class LuciRpcClient(
             return {"code": rc or 1, "stdout": "", "stderr": stdout}
         return {"code": rc, "stdout": stdout, "stderr": ""}
 
+    async def read_file(self, path: str) -> str | None:
+        """Read a file via LuCI RPC (cat through sys.exec)."""
+        import shlex
+
+        out = await self.execute_command(f"cat {shlex.quote(path)} 2>/dev/null")
+        return out if out else None
+
     async def user_exists(self, username: str) -> bool:
         """Check if a system user exists on the device."""
         # 1. Try via LuCI RPC (often more restricted than ubus, but let's try reading passwd)

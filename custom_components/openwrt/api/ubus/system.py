@@ -575,6 +575,16 @@ class UbusSystemMixin:
         except UbusError:
             raise
 
+    async def read_file(self, path: str) -> str | None:
+        """Read a file via rpcd file.read (needs only 'read' ACL on the path)."""
+        try:
+            res = await self._call("file", "read", {"path": path})
+            if isinstance(res, dict) and res.get("data") is not None:
+                return str(res["data"])
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("file.read failed for %s: %s", path, err)
+        return None
+
     async def user_exists(self, username: str) -> bool:
         """Check if a system user exists on the device."""
         # 1. Try via ubus file.read (more robust/standard than exec)

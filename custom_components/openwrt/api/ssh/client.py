@@ -154,6 +154,11 @@ class SshClient(
             return {"code": rc, "stdout": "", "stderr": stdout}
         return {"code": rc, "stdout": stdout, "stderr": ""}
 
+    async def read_file(self, path: str) -> str | None:
+        """Read a file over SSH via cat (SSH is inherently a shell session)."""
+        out = await self._exec(f"cat {shlex.quote(path)} 2>/dev/null")
+        return out if out else None
+
     async def provision_user(
         self,
         username: str,
