@@ -115,8 +115,7 @@ async def test_ubus_wireguard_4_columns(ubus_client: UbusClient):
             {"interface": [{"interface": "wg0", "proto": "wireguard", "up": True}]}
         ]
         mock_exec.return_value = (
-            "wg0\tPUBKEY0\t51820\t0\n"
-            "wg0\tPEER_A\t(none)\t(none)\t(none)\t0\t0\t0\t0\n"
+            "wg0\tPUBKEY0\t51820\t0\nwg0\tPEER_A\t(none)\t(none)\t(none)\t0\t0\t0\t0\n"
         )
 
         interfaces = await ubus_client.get_wireguard_interfaces()
@@ -130,4 +129,3 @@ async def test_ubus_wireguard_4_columns(ubus_client: UbusClient):
         assert len(wg0.peers) == 1
         peer = wg0.peers[0]
         assert peer.public_key == "PEER_A"
-
