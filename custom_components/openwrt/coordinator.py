@@ -1867,7 +1867,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         if not target:
             return
 
-        url = f"https://downloads.openwrt.org/snapshots/targets/{target}/profiles.json"
+        import re
+        current_version = data.device_info.release_version or ""
+        match = re.search(r"(\d+\.\d+)-SNAPSHOT", current_version, re.IGNORECASE)
+        if match:
+            branch = f"{match.group(1)}-SNAPSHOT"
+            base_url = f"https://downloads.openwrt.org/releases/{branch}/targets/{target}/"
+        else:
+            base_url = f"https://downloads.openwrt.org/snapshots/targets/{target}/"
+
+        url = f"{base_url}profiles.json"
 
         with contextlib.suppress(Exception):
             async with session.get(
@@ -1883,7 +1892,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 if not version_code:
                     return
 
-                latest_snapshot = f"SNAPSHOT ({version_code})"
+                if match:
+                    latest_snapshot = f"{branch} ({version_code})"
+                else:
+                    latest_snapshot = f"SNAPSHOT ({version_code})"
+
                 _LOGGER.info(
                     "Comparing snapshot versions: current=%s, latest=%s",
                     data.firmware_current_version,
@@ -1897,9 +1910,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     _LOGGER.info(
                         "Newer snapshot found for %s: %s", target, latest_snapshot
                     )
-                    data.firmware_release_url = (
-                        f"https://downloads.openwrt.org/snapshots/targets/{target}/"
-                    )
+                    data.firmware_release_url = base_url
                 else:
                     data.firmware_upgradable = False
                     _LOGGER.debug("Snapshot is up-to-date: %s", latest_snapshot)
@@ -1912,7 +1923,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 if board_profile:
                     for img in board_profile.get("images", []):
                         if "sysupgrade" in img.get("name", ""):
-                            data.firmware_install_url = f"https://downloads.openwrt.org/snapshots/targets/{target}/{img.get('name')}"
+                            data.firmware_install_url = f"{base_url}{img.get('name')}"
                             break
 
     async def _check_stable_release_update(

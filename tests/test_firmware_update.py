@@ -83,3 +83,59 @@ async def test_async_set_stable_release_urls(hass: HomeAssistant) -> None:
         data.firmware_install_url
         == "https://downloads.openwrt.org/releases/25.12.5/targets/mediatek/filogic/openwrt-25.12.5-mediatek-filogic-xiaomi_mi-router-ax3000t-ubootmod-squashfs-sysupgrade.itb"
     )
+
+
+@pytest.mark.asyncio
+async def test_check_snapshot_update_release_branch(hass: HomeAssistant) -> None:
+    """Test that _check_snapshot_update correctly targets release branch snapshots."""
+    entry = MagicMock()
+    entry.entry_id = "test_entry_id"
+    entry.options = {"update_interval": 30}
+    entry.data = {"host": "192.168.1.1"}
+
+    mock_client = AsyncMock()
+    coordinator = OpenWrtDataCoordinator(hass, entry, mock_client)
+
+    data = OpenWrtData()
+    data.device_info.target = "x86/64"
+    data.device_info.board_name = "qemu-standard-pc-q35-ich9-2009"
+    data.device_info.release_version = "25.12-SNAPSHOT"
+    data.firmware_current_version = "25.12-SNAPSHOT (r33058-949e61ec65)"
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.json = AsyncMock(
+        return_value={
+            "version_code": "r35287-b519bc3b76",
+            "profiles": {
+                "qemu_standard_pc_q35_ich9_2009": {
+                    "images": [
+                        {
+                            "name": "openwrt-25.12-SNAPSHOT-x86-64-generic-ext4-combined.img.gz",
+                            "type": "combined",
+                        },
+                        {
+                            "name": "openwrt-25.12-SNAPSHOT-x86-64-generic-squashfs-sysupgrade.img.gz",
+                            "type": "sysupgrade",
+                        }
+                    ]
+                }
+            }
+        }
+    )
+
+    mock_session = MagicMock(spec=aiohttp.ClientSession)
+    mock_session.get.return_value.__aenter__.return_value = mock_resp
+
+    await coordinator._check_snapshot_update(data, mock_session)
+
+    assert data.firmware_latest_version == "25.12-SNAPSHOT (r35287-b519bc3b76)"
+    assert data.firmware_upgradable is True
+    assert (
+        data.firmware_release_url
+        == "https://downloads.openwrt.org/releases/25.12-SNAPSHOT/targets/x86/64/"
+    )
+    assert (
+        data.firmware_install_url
+        == "https://downloads.openwrt.org/releases/25.12-SNAPSHOT/targets/x86/64/openwrt-25.12-SNAPSHOT-x86-64-generic-squashfs-sysupgrade.img.gz"
+    )
