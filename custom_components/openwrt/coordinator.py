@@ -718,9 +718,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     async def _async_fetch_snort_data(self, data: OpenWrtData) -> None:
         """Fetch Snort IDS status and latest alert via rpcd file.exec.
 
-        Reads snort's alert_json log (/var/log/alert_json.txt) for the alert
-        count and most recent alert, plus the service running state. Note the
-        log lives on tmpfs, so the count resets on reboot (alerts since boot).
+        Reads snort's alert_json log(s) for the alert count and most recent
+        alert, plus the service running state. Multi-threaded snort writes one
+        file per packet thread (/var/log/<tid>_alert_json.txt), so the counts
+        are aggregated across all of them. Note the log lives on tmpfs, so the
+        count resets on reboot (alerts since boot).
         """
         empty: dict[str, Any] = {
             "installed": False,
@@ -745,24 +747,46 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             data.snort_status = empty
             return
 
-        # tail/wc rather than file.read: rpcd file.read truncates past ~256KB,
-        # which would blind the sensor on a large IDS log.
-        log_path = "/var/log/alert_json.txt"
+        # Snort 3 writes one alert file per packet thread when running
+        # multi-threaded (e.g. multi-queue NFQ): /var/log/<tid>_alert_json.txt.
+        # Single-thread setups write the unprefixed /var/log/alert_json.txt.
+        # Aggregate across whichever exist so the sensor works on any config.
+        # rpcd file.exec runs the binary directly (no shell), so we pass an
+        # explicit candidate list rather than a glob. tail/wc rather than
+        # file.read: rpcd file.read truncates past ~256KB, which would blind
+        # the sensor on a large IDS log.
+        log_dir = "/var/log"
+        candidates = [
+            f"{log_dir}/alert_json.txt",
+            *(f"{log_dir}/{tid}_alert_json.txt" for tid in range(16)),
+        ]
+        present: list[str] = []
         alerts: list[dict[str, Any]] = []
         count = 0
         try:
-            res = await self.client.file_exec("/usr/bin/wc", ["-l", log_path])
+            res = await self.client.file_exec("/usr/bin/wc", ["-l", *candidates])
             out = res.get("stdout", "") if isinstance(res, dict) else ""
-            m = re.search(r"\d+", out)
-            if m:
-                count = int(m.group(0))
+            # Lines look like "  <count> /var/log/<name>"; missing files only
+            # error on stderr, and the trailing "total" line (emitted only for
+            # >1 file) has no path so it fails this match and is skipped.
+            for ln in out.splitlines():
+                # Matches "<count> /path/alert_json.txt" and the per-thread
+                # "<count> /path/<tid>_alert_json.txt"; the "total" summary line
+                # has no such path and is skipped.
+                m = re.match(r"\s*(\d+)\s+(\S*alert_json\.txt)\s*$", ln)
+                if not m:
+                    continue
+                count += int(m.group(1))
+                present.append(m.group(2))
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("snort: wc failed: %s", err)
 
-        if count:
+        if present:
             try:
+                # -q suppresses the "==> file <==" headers busybox prints for
+                # multiple files, keeping the stream pure JSONL.
                 res = await self.client.file_exec(
-                    "/usr/bin/tail", ["-n", "20", log_path]
+                    "/usr/bin/tail", ["-q", "-n", "20", *present]
                 )
                 body = res.get("stdout", "") if isinstance(res, dict) else ""
                 for ln in body.splitlines():
@@ -775,6 +799,17 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                         continue
                     if isinstance(obj, dict):
                         alerts.append(obj)
+                # Per-thread files aren't globally ordered once merged; sort by
+                # snort's epoch "seconds" field (best effort) so last_alert and
+                # recent_alerts reflect true recency, then keep the newest 20.
+                alerts.sort(
+                    key=lambda a: (
+                        a["seconds"]
+                        if isinstance(a.get("seconds"), (int, float))
+                        else 0
+                    )
+                )
+                alerts = alerts[-20:]
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("snort: tail failed: %s", err)
 

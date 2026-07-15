@@ -59,6 +59,37 @@ async def test_snort_parses_alerts():
 
 
 @pytest.mark.asyncio
+async def test_snort_aggregates_thread_files():
+    """Multi-threaded snort writes one file per packet thread; counts sum."""
+    # busybox `wc -l` over the candidate list: two present files + total line
+    # (missing candidates only error on stderr, which file_exec drops).
+    wc = (
+        "       1 /var/log/0_alert_json.txt\n"
+        "       1 /var/log/2_alert_json.txt\n"
+        "       2 total\n"
+    )
+    # `tail -q` streams the merged JSONL from both threads, out of order;
+    # coordinator sorts by the epoch "seconds" field.
+    a_old = _A1.replace("}", ',"seconds":1000}')
+    a_new = _A2.replace("}", ',"seconds":2000}')
+    coord = SimpleNamespace(
+        client=SimpleNamespace(
+            file_exec=AsyncMock(
+                side_effect=_make_exec(wc=wc, tail=a_new + "\n" + a_old + "\n")
+            )
+        )
+    )
+    data = OpenWrtData()
+    await OpenWrtDataCoordinator._async_fetch_snort_data(coord, data)
+    s = data.snort_status
+    assert s["alert_count"] == 2  # summed across threads, "total" line ignored
+    assert len(s["recent_alerts"]) == 2
+    # sorted by seconds despite reversed input; newest first for display
+    assert s["last_alert"]["message"] == "SECOND | ALERT"
+    assert s["recent_alerts"][0]["message"] == "SECOND | ALERT"
+
+
+@pytest.mark.asyncio
 async def test_snort_not_installed():
     coord = SimpleNamespace(
         client=SimpleNamespace(

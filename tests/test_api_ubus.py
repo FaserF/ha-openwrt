@@ -20,9 +20,10 @@ def ubus_client() -> UbusClient:
 
 
 class MockResponse:
-    def __init__(self, status, json_data):
+    def __init__(self, status, json_data, headers=None):
         self.status = status
         self._json_data = json_data
+        self.headers = headers or {}
 
     async def __aenter__(self):
         return self
@@ -40,6 +41,8 @@ class MockResponse:
 @pytest.mark.asyncio
 async def test_ubus_connect_success(ubus_client: UbusClient):
     """Test successful connection and login."""
+    # No forced-HTTPS redirect: endpoint probe sees a plain 200, stays http.
+    ubus_client.session.get = MagicMock(return_value=MockResponse(200, {}))
     mock_post = MagicMock()
     ubus_client.session.post = mock_post
     mock_post.return_value = MockResponse(
@@ -60,6 +63,7 @@ async def test_ubus_connect_success(ubus_client: UbusClient):
 @pytest.mark.asyncio
 async def test_ubus_connect_auth_error(ubus_client: UbusClient):
     """Test auth error handling."""
+    ubus_client.session.get = MagicMock(return_value=MockResponse(200, {}))
     mock_post = MagicMock()
     ubus_client.session.post = mock_post
     mock_post.return_value = MockResponse(
@@ -71,6 +75,71 @@ async def test_ubus_connect_auth_error(ubus_client: UbusClient):
 
     with pytest.raises(UbusAuthError):
         await ubus_client.connect()
+
+
+@pytest.mark.asyncio
+async def test_ubus_connect_upgrades_on_https_redirect(ubus_client: UbusClient):
+    """A forced-HTTPS redirect upgrades scheme/port before login (no cleartext)."""
+    ubus_client.session.get = MagicMock(
+        return_value=MockResponse(
+            307, {}, {"Location": "https://192.168.1.1:8443/ubus"}
+        )
+    )
+    mock_post = MagicMock(
+        return_value=MockResponse(
+            200,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": [0, {"ubus_rpc_session": "test_token"}],
+            },
+        )
+    )
+    ubus_client.session.post = mock_post
+
+    await ubus_client.connect()
+
+    assert ubus_client.use_ssl is True
+    assert ubus_client.port == 8443
+    assert ubus_client._base_url == "https://192.168.1.1:8443/ubus"
+    # login POST went to the upgraded https URL, not the original http one
+    assert mock_post.call_args.args[0] == "https://192.168.1.1:8443/ubus"
+
+
+@pytest.mark.asyncio
+async def test_ubus_upgrade_preserves_ipv6_brackets(ubus_client: UbusClient):
+    """An IPv6 redirect target keeps its brackets so _base_url stays valid."""
+    ubus_client.session.get = MagicMock(
+        return_value=MockResponse(307, {}, {"Location": "https://[fd00::1]:8443/ubus"})
+    )
+    ubus_client.session.post = MagicMock(
+        return_value=MockResponse(
+            200,
+            {"jsonrpc": "2.0", "id": 1, "result": [0, {"ubus_rpc_session": "t"}]},
+        )
+    )
+
+    await ubus_client.connect()
+
+    assert ubus_client.host == "[fd00::1]"
+    assert ubus_client._base_url == "https://[fd00::1]:8443/ubus"
+
+
+@pytest.mark.asyncio
+async def test_ubus_probe_skipped_when_ssl_configured(ubus_client: UbusClient):
+    """When the entry is already SSL, no redirect probe GET is issued."""
+    ubus_client.use_ssl = True
+    ubus_client.session.get = MagicMock()
+    ubus_client.session.post = MagicMock(
+        return_value=MockResponse(
+            200,
+            {"jsonrpc": "2.0", "id": 1, "result": [0, {"ubus_rpc_session": "t"}]},
+        )
+    )
+
+    await ubus_client.connect()
+
+    ubus_client.session.get.assert_not_called()
 
 
 @pytest.mark.asyncio
