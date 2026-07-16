@@ -85,47 +85,6 @@ jobs:
           name: release-body
           path: release_body.md
 
-      - name: Prepare Initial Draft Body
-        shell: bash
-        run: |
-          cp release_body.md initial_draft_body.md
-
-      - name: Check and Delete Existing Draft Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          TAG: ${{ steps.get_version.outputs.tag }}
-          VERSION: ${{ steps.get_version.outputs.version }}
-        shell: bash
-        run: |
-          # Find and delete any existing draft release with same tag or title
-          release_id=$(gh api "repos/$REPO/releases" --jq '.[] | select(.tag_name=="'$TAG'" or .name=="Release '$VERSION'") | select(.draft==true) | .id')
-          if [ -n "$release_id" ]; then
-            gh api -X DELETE "repos/$REPO/releases/$release_id"
-          fi
-          # Also check if the git tag already exists locally or remotely, delete it so we can re-create it
-          git tag -d "$TAG" 2>/dev/null || true
-          git push --delete origin "$TAG" 2>/dev/null || true
-
-      - name: Create Initial Draft Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.get_version.outputs.tag }}
-          VERSION: ${{ steps.get_version.outputs.version }}
-          IS_PRERELEASE: ${{ steps.get_version.outputs.is_prerelease }}
-        shell: bash
-        run: |
-          prerelease_arg=""
-          if [ "$IS_PRERELEASE" = "true" ]; then
-            prerelease_arg="--prerelease"
-          fi
-          gh release create "$TAG" \
-            --target "${{ github.ref_name }}" \
-            --title "Release $VERSION" \
-            --notes-file "initial_draft_body.md" \
-            --draft \
-            $prerelease_arg
-
   sync-version:
     name: Sync Repository Version
     needs: versioning
@@ -159,6 +118,13 @@ jobs:
             python .github/scripts/update_templates.py "${{ needs.versioning.outputs.version }}"
           fi
 
+      - name: Upload Updated Components
+        uses: actions/upload-artifact@v7
+        with:
+          name: updated-components
+          path: custom_components/
+          retention-days: 1
+
       - name: Commit and Push
         run: |
           git add custom_components/*/manifest.json .github/ISSUE_TEMPLATE/*.yml .github/ISSUE_TEMPLATE/*.yaml 2>/dev/null || true
@@ -177,7 +143,7 @@ jobs:
         run: |
           cp release_body.md updated_draft_body.md
 
-      - name: Update Draft Release on GitHub
+      - name: Create Draft Release on GitHub
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -188,14 +154,21 @@ jobs:
         run: |
           release_id=$(gh api "repos/$REPO/releases" --jq '.[] | select(.tag_name=="'$TAG'" or .name=="Release '$VERSION'") | select(.draft==true) | .id')
           if [ -n "$release_id" ]; then
-            gh api -X PATCH "repos/$REPO/releases/$release_id" \
-              -f tag_name="$TAG" \
-              -f target_commitish="${{ github.ref_name }}" \
-              -f name="Release $VERSION" \
-              -f body_path="updated_draft_body.md" \
-              -F draft=true \
-              -F prerelease=$( [ "$IS_PRERELEASE" = "true" ] && echo "true" || echo "false" )
+            gh api -X DELETE "repos/$REPO/releases/$release_id"
           fi
+          git tag -d "$TAG" 2>/dev/null || true
+          git push --delete origin "$TAG" 2>/dev/null || true
+
+          prerelease_arg=""
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            prerelease_arg="--prerelease"
+          fi
+          gh release create "$TAG" \
+            --target "${{ github.ref_name }}" \
+            --title "Release $VERSION" \
+            --notes-file "updated_draft_body.md" \
+            --draft \
+            $prerelease_arg
 
   gh-release:
     needs: [versioning, sync-version]
@@ -204,6 +177,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -213,6 +187,12 @@ jobs:
       - name: Pull latest changes
         run: |
           git pull --rebase origin ${{ github.ref_name }}
+
+      - name: Download Updated Components
+        uses: actions/download-artifact@v8
+        with:
+          name: updated-components
+          path: custom_components/
 
       - name: 📦 Zip Component
         run: |
@@ -235,13 +215,13 @@ jobs:
         run: |
           # Find existing draft release
           release_id=$(gh api "repos/$REPO/releases" --jq '.[] | select(.tag_name=="'$TAG'" or .name=="Release '$VERSION'") | select(.draft==true) | .id')
-          
+
           # Set prerelease argument
           prerelease_arg=""
           if [ "$IS_PRERELEASE" = "true" ]; then
             prerelease_arg="--prerelease"
           fi
-          
+
           if [ -n "$release_id" ]; then
             # Update the existing draft release to publish it
             gh api -X PATCH "repos/$REPO/releases/$release_id" \
@@ -251,7 +231,7 @@ jobs:
               -f body_path="release_body.md" \
               -F draft=false \
               -F prerelease=$( [ "$IS_PRERELEASE" = "true" ] && echo "true" || echo "false" )
-              
+
             # Upload the assets to the published release
             gh release upload "$TAG" openwrt.zip --clobber
           else
@@ -263,7 +243,7 @@ jobs:
               $prerelease_arg \
               openwrt.zip
           fi
- 
+
       - name: Post-Release Dev Bump
         run: |
           git config --global user.name "github-actions[bot]"
@@ -300,3 +280,21 @@ jobs:
             gh api -X DELETE "repos/$REPO/releases/$release_id"
             gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
           fi
+
+      - name: Delete Component Artifact
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            const target = artifacts.artifacts.find(a => a.name === "updated-components");
+            if (target) {
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: target.id,
+              });
+            }
