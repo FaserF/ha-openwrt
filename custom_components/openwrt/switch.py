@@ -850,16 +850,6 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         )
 
         name_label = format_ap_name(ssid or iface_name, frequency)
-        if (
-            sum(
-                1
-                for sid in coordinator.interface_to_stable_id.values()
-                if sid == stable_id
-            )
-            > 1
-        ):
-            name_label = f"{name_label} [{iface_name}]"
-            self._attr_name = f"SSID {ssid or iface_name} [{iface_name}]"
 
         via_device = (DOMAIN, _router_id(entry))
         if radio:

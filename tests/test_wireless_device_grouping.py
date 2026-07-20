@@ -238,8 +238,8 @@ def test_ap_stable_id_consistency() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ap_deduplication_and_naming() -> None:
-    """Verify AP deduplication and disambiguation naming logic."""
+async def test_ap_deduplication_keeps_user_facing_names_clean() -> None:
+    """Hide runtime interface IDs when equal SSIDs share an AP device."""
     from custom_components.openwrt.api.base import WirelessInterface
     from custom_components.openwrt.sensor import OpenWrtWifiSensorEntity
     from custom_components.openwrt.switch import OpenWrtWirelessSwitch
@@ -272,23 +272,31 @@ async def test_ap_deduplication_and_naming() -> None:
     desc = MagicMock()
     desc.key = "signal"
     desc.name = "Signal"
-    s1 = OpenWrtWifiSensorEntity(
-        coordinator, config_entry, desc, "phy1-ap1", "MyNet", "2.4 GHz"
-    )
-    s2 = OpenWrtWifiSensorEntity(
-        coordinator, config_entry, desc, "phy1-ap2", "MyNet", "2.4 GHz"
-    )
-    assert "phy1-ap1" in s1._attr_name
-    assert "phy1-ap2" in s2._attr_name
+    with (
+        patch("custom_components.openwrt.sensor.DeviceInfo", side_effect=dict),
+        patch("custom_components.openwrt.switch.DeviceInfo", side_effect=dict),
+    ):
+        s1 = OpenWrtWifiSensorEntity(
+            coordinator, config_entry, desc, "phy1-ap1", "MyNet", "2.4 GHz"
+        )
+        s2 = OpenWrtWifiSensorEntity(
+            coordinator, config_entry, desc, "phy1-ap2", "MyNet", "2.4 GHz"
+        )
+        sw1 = OpenWrtWirelessSwitch(
+            coordinator, config_entry, MagicMock(), "phy1-ap1", "MyNet", "2.4 GHz"
+        )
+        sw2 = OpenWrtWirelessSwitch(
+            coordinator, config_entry, MagicMock(), "phy1-ap2", "MyNet", "2.4 GHz"
+        )
+    assert getattr(s1, "_attr_name", None) is None
+    assert getattr(s2, "_attr_name", None) is None
+    assert s1._attr_device_info["name"] == "SSID MyNet"
+    assert s2._attr_device_info["name"] == "SSID MyNet"
 
-    sw1 = OpenWrtWirelessSwitch(
-        coordinator, config_entry, MagicMock(), "phy1-ap1", "MyNet", "2.4 GHz"
-    )
-    sw2 = OpenWrtWirelessSwitch(
-        coordinator, config_entry, MagicMock(), "phy1-ap2", "MyNet", "2.4 GHz"
-    )
-    assert "phy1-ap1" in sw1._attr_name
-    assert "phy1-ap2" in sw2._attr_name
+    assert sw1._attr_name == "SSID MyNet"
+    assert sw2._attr_name == "SSID MyNet"
+    assert sw1._attr_device_info["name"] == "SSID MyNet"
+    assert sw2._attr_device_info["name"] == "SSID MyNet"
 
 
 def test_wireless_switch_status_matching() -> None:
