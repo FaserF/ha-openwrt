@@ -301,7 +301,7 @@ def _add_wireless_switches(
                         client,
                         wifi.name,
                         wifi.ssid,
-                        wifi.frequency,
+                        wifi.frequency or wifi.band,
                         wifi.section,
                         wifi.radio,
                     ),
@@ -854,15 +854,25 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             # Since this entity's name defaults to None (using device name), we need to set it explicitly
             self._attr_name = f"Radio [{iface_name}]"
 
-        self._attr_device_info = DeviceInfo(
-            identifiers={
-                (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
-            },
-            name=name_label,
-            manufacturer="OpenWrt",
-            model="Access Point",
-            via_device=(DOMAIN, _router_id(entry)),
-        )
+        if radio:
+            radio_label = f"{radio} ({band})" if band else radio
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, f"{entry.unique_id}_radio_{radio}")},
+                name=f"Radio {radio_label}",
+                manufacturer="OpenWrt",
+                model="Wireless Radio",
+                via_device=(DOMAIN, _router_id(entry)),
+            )
+        else:
+            self._attr_device_info = DeviceInfo(
+                identifiers={
+                    (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
+                },
+                name=name_label,
+                manufacturer="OpenWrt",
+                model="Access Point",
+                via_device=(DOMAIN, _router_id(entry)),
+            )
 
     @property
     def is_on(self) -> bool | None:

@@ -1,6 +1,6 @@
 """Tests for physical wireless radio switches."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -49,7 +49,8 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
     client.set_radio_enabled = AsyncMock(return_value=True)
     entities = []
 
-    _add_wireless_switches(coordinator, entry, client, entities, set())
+    with patch("custom_components.openwrt.switch.DeviceInfo", side_effect=dict):
+        _add_wireless_switches(coordinator, entry, client, entities, set())
 
     radios = [entity for entity in entities if isinstance(entity, OpenWrtRadioSwitch)]
     assert [entity._attr_unique_id for entity in radios] == [
@@ -57,6 +58,18 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         "test_entry_radio_radio1",
     ]
     assert [entity.is_on for entity in radios] == [True, False]
+
+    radio0_entities = [
+        entity
+        for entity in entities
+        if isinstance(entity, (OpenWrtRadioSwitch, OpenWrtWirelessSwitch))
+        and getattr(entity, "_radio", None) == "radio0"
+    ]
+    assert len(radio0_entities) == 3
+    assert {
+        next(iter(entity._attr_device_info["identifiers"]))
+        for entity in radio0_entities
+    } == {("openwrt", "router_id_radio_radio0")}
 
     await radios[1].async_turn_on()
 
