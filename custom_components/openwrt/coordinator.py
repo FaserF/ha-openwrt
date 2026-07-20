@@ -101,6 +101,7 @@ from .helpers import (
     format_ap_name,
     format_radio_device_id,
     format_radio_name,
+    get_via_device,
     is_random_mac,
     normalize_band,
 )
@@ -1733,6 +1734,42 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 own_macs.add(wifi_iface.mac_address.lower())
         return own_macs
 
+    def _async_reparent_connected_devices(
+        self,
+        data: OpenWrtData,
+        device_registry: dr.DeviceRegistry,
+    ) -> None:
+        """Move existing wireless client devices below their current SSID."""
+        for connected in data.connected_devices:
+            if not connected.mac or not connected.connected or not connected.is_wireless:
+                continue
+
+            mac = connected.mac.lower()
+            client_device = device_registry.async_get_device(
+                identifiers={(DOMAIN, mac)},
+                connections={(dr.CONNECTION_NETWORK_MAC, mac)},
+            )
+            if client_device is None:
+                continue
+
+            parent_identifier = get_via_device(
+                self.hass,
+                self,
+                self.config_entry,
+                mac,
+            )
+            parent_device = device_registry.async_get_device(
+                identifiers={parent_identifier}
+            )
+            if (
+                parent_device is not None
+                and client_device.via_device_id != parent_device.id
+            ):
+                device_registry.async_update_device(
+                    client_device.id,
+                    via_device_id=parent_device.id,
+                )
+
     async def _async_update_device_registry(self, data: OpenWrtData) -> None:
         """Update the device registry with fresh device information."""
         if not data.device_info:
@@ -1885,6 +1922,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # Use SSID and Band as stable identifier to group virtual interfaces
             stable_id = f"{wifi.ssid}_{band}"
             self.interface_to_stable_id[wifi.name] = stable_id
+            if wifi.section:
+                self.interface_to_stable_id[wifi.section] = stable_id
+            if wifi.ifname:
+                self.interface_to_stable_id[wifi.ifname] = stable_id
             ap_info[stable_id] = (label, wifi.radio)
 
         for stable_id, (label, radio) in ap_info.items():
@@ -1910,6 +1951,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     model="Wireless SSID",
                     via_device_id=radio_devices[radio].id,
                 )
+
+        self._async_reparent_connected_devices(data, device_registry)
 
         # 3. Retroactively update manufacturer/model for already-registered tracked devices.
         # HA only writes manufacturer/model at first creation; subsequent coordinator polls

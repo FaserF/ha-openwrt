@@ -514,3 +514,40 @@ async def test_coordinator_preserves_active_radio_device(hass):
         DOMAIN,
         "router_mac_radio_radio0",
     )
+
+
+def test_coordinator_reparents_existing_wireless_client_to_ssid(hass) -> None:
+    """Move an existing client device below its currently associated SSID."""
+    from custom_components.openwrt.api.base import ConnectedDevice, OpenWrtData
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "router_mac"
+    config_entry.data = {"host": "192.0.2.1"}
+    config_entry.options = {}
+    coordinator = OpenWrtDataCoordinator(hass, config_entry, MagicMock())
+
+    client = MagicMock(id="client_id", via_device_id="router_id")
+    ssid = MagicMock(id="ssid_id")
+    registry = MagicMock()
+    registry.async_get_device.side_effect = [client, ssid]
+    data = OpenWrtData(
+        connected_devices=[
+            ConnectedDevice(
+                mac="02:00:00:00:00:01",
+                interface="phy0-ap0",
+                is_wireless=True,
+                connected=True,
+            )
+        ]
+    )
+
+    with patch(
+        "custom_components.openwrt.coordinator.get_via_device",
+        return_value=(DOMAIN, "router_mac_ap_Main_2.4 GHz"),
+    ):
+        coordinator._async_reparent_connected_devices(data, registry)
+
+    registry.async_update_device.assert_called_once_with(
+        "client_id", via_device_id="ssid_id"
+    )

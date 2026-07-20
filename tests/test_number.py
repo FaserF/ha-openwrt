@@ -162,9 +162,26 @@ async def test_unknown_zero_txpower_does_not_create_entity() -> None:
     hass.data = {"openwrt": {"test_entry": {"coordinator": coordinator}}}
     added_entities = []
 
-    await async_setup_entry(hass, entry, added_entities.extend)
+    stale = MagicMock(
+        entity_id="number.radio1_tx_power",
+        domain="number",
+        unique_id="test_entry_txpower_radio1",
+    )
+    registry = MagicMock()
+    with (
+        patch(
+            "custom_components.openwrt.number.er.async_get",
+            return_value=registry,
+        ),
+        patch(
+            "custom_components.openwrt.number.er.async_entries_for_config_entry",
+            return_value=[stale],
+        ),
+    ):
+        await async_setup_entry(hass, entry, added_entities.extend)
 
     assert added_entities == []
+    registry.async_remove.assert_called_once_with("number.radio1_tx_power")
 
 
 @pytest.mark.asyncio

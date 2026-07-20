@@ -13,6 +13,7 @@ from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -95,27 +96,22 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
     _async_add_new_entities()
 
-    def _async_cleanup_entities() -> None:
-        """Remove orphaned number entities when radios/interfaces vanish."""
-        from homeassistant.helpers import entity_registry as er
-
-        ent_reg = er.async_get(hass)
-        entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
-
-        for ent in entries:
-            if ent.domain != "number":
-                continue
-
-            unique_id = ent.unique_id
-            if "_txpower_" in unique_id and coordinator.data:
-                radio = unique_id.split("_txpower_")[-1]
-                if not any(
-                    w.radio == radio
-                    for w in coordinator.data.wireless_interfaces
-                ):
-                    ent_reg.async_remove(ent.entity_id)
-
-    hass.add_job(_async_cleanup_entities)
+    # Remove legacy or invalid TX-power sliders. A zero reading means OpenWrt did
+    # not provide a usable value; keeping the old registry entry would display a
+    # fabricated 0 dBm control after upgrades.
+    valid_txpower_ids = {
+        f"{entry.entry_id}_txpower_{wifi.radio}"
+        for wifi in coordinator.data.wireless_interfaces
+        if wifi.radio and wifi.txpower > 0
+    }
+    entity_registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if (
+            entity.domain == "number"
+            and "_txpower_" in entity.unique_id
+            and entity.unique_id not in valid_txpower_ids
+        ):
+            entity_registry.async_remove(entity.entity_id)
 
 
 class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEntity):
