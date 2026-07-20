@@ -405,6 +405,7 @@ def test_router_id_mac_formatting_prevents_duplicate_ap():
         _router_id,
         format_ap_device_id,
         format_radio_device_id,
+        format_radio_name,
     )
 
     # 1. Test helper extraction formatting
@@ -424,6 +425,8 @@ def test_router_id_mac_formatting_prevents_duplicate_ap():
         format_radio_device_id(config_entry, "radio0")
         == "94:83:c4:ac:7a:13_radio_radio0"
     )
+    assert format_radio_name("radio0", "2.4 GHz") == "2.4 GHz"
+    assert format_radio_name("radio0", "") == "radio0"
 
 
 @pytest.mark.asyncio
@@ -449,7 +452,7 @@ async def test_coordinator_preserves_active_radio_device(hass):
 
     radio_dev = MagicMock()
     radio_dev.id = "radio_dev_id"
-    radio_dev.name = "Radio radio0 (2.4 GHz)"
+    radio_dev.name = "2.4 GHz"
     radio_dev.identifiers = {(DOMAIN, "router_mac_radio_radio0")}
     radio_dev.config_entries = {"test_entry"}
     radio_dev.via_device_id = "router_dev_id"

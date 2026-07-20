@@ -53,6 +53,12 @@ def format_radio_device_id(
     return f"{router_id}_radio_{radio}"
 
 
+def format_radio_name(radio: str, band: str | None) -> str:
+    """Return a concise radio display name with a stable fallback."""
+    normalized_band = normalize_band(band) if band else "unknown"
+    return normalized_band if normalized_band != "unknown" else radio
+
+
 def normalize_band(band: str | None) -> str:
     """Normalize raw frequency or band strings to a standard format.
 

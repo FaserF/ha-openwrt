@@ -40,6 +40,7 @@ from .helpers import (
     format_ap_device_id,
     format_ap_name,
     format_radio_device_id,
+    format_radio_name,
     normalize_band,
 )
 
@@ -756,12 +757,12 @@ class OpenWrtRadioSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
         super().__init__(coordinator)
         self._client = client
         self._radio = radio
-        label = f"{radio} ({band})" if band else radio
-        self._attr_name = f"Radio {label}"
+        label = format_radio_name(radio, band)
+        self._attr_name = "Radio"
         self._attr_unique_id = f"{entry.entry_id}_radio_{radio}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
-            name=f"Radio {label}",
+            name=label,
             manufacturer="OpenWrt",
             model="Wireless Radio",
             via_device=(DOMAIN, _router_id(entry)),
@@ -861,10 +862,10 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             self._attr_name = f"Radio [{iface_name}]"
 
         if radio:
-            radio_label = f"{radio} ({band})" if band else radio
+            radio_label = format_radio_name(radio, band)
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
-                name=f"Radio {radio_label}",
+                name=radio_label,
                 manufacturer="OpenWrt",
                 model="Wireless Radio",
                 via_device=(DOMAIN, _router_id(entry)),

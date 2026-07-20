@@ -58,6 +58,10 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         "test_entry_radio_radio1",
     ]
     assert [entity.is_on for entity in radios] == [True, False]
+    assert {entity._attr_device_info["name"] for entity in radios} == {
+        "2.4 GHz",
+        "5 GHz",
+    }
 
     radio0_entities = [
         entity

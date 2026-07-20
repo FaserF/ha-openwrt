@@ -100,6 +100,7 @@ from .helpers import (
     format_ap_device_id,
     format_ap_name,
     format_radio_device_id,
+    format_radio_name,
     is_random_mac,
     normalize_band,
 )
@@ -1836,13 +1837,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             radio_info.setdefault(wifi.radio, band)
 
         for radio, band in radio_info.items():
-            label = f"{radio} ({band})" if band != "unknown" else radio
+            label = format_radio_name(radio, band)
             device_registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
                 identifiers={
                     (DOMAIN, format_radio_device_id(self.router_id, radio))
                 },
-                name=f"Radio {label}",
+                name=label,
                 manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
                 model="Wireless Radio",
                 via_device=(DOMAIN, self.router_id),
