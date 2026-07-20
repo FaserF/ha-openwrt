@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN
 from .coordinator import OpenWrtDataCoordinator
+from .helpers import format_radio_device_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -144,7 +145,7 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         self._attr_name = f"{label} TX Power"
         self._attr_unique_id = f"{entry.entry_id}_txpower_{radio}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.unique_id}_radio_{radio}")},
+            identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
             name=f"Radio {label}",
             manufacturer="OpenWrt",
             model="Wireless Radio",

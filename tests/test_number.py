@@ -1,6 +1,6 @@
 """Tests for the number platform of the OpenWrt integration."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.const import CONF_HOST
@@ -180,14 +180,15 @@ async def test_txpower_number_is_created_once_per_radio() -> None:
 
     entry = MagicMock()
     entry.entry_id = "test_entry"
-    entry.unique_id = "router_mac"
+    entry.unique_id = "9483c4ac7a13"
     entry.async_on_unload = MagicMock()
 
     added_entities: list[OpenWrtTxPowerNumber] = []
     hass = MagicMock()
     hass.data = {"openwrt": {"test_entry": {"coordinator": coordinator}}}
 
-    await async_setup_entry(hass, entry, added_entities.extend)
+    with patch("custom_components.openwrt.number.DeviceInfo", side_effect=dict):
+        await async_setup_entry(hass, entry, added_entities.extend)
 
     assert len(added_entities) == 2
     assert {entity._attr_unique_id for entity in added_entities} == {
@@ -196,3 +197,10 @@ async def test_txpower_number_is_created_once_per_radio() -> None:
     }
     assert all(entity.entity_registry_enabled_default for entity in added_entities)
     assert {entity.native_value for entity in added_entities} == {20, 23}
+    assert {
+        next(iter(entity._attr_device_info["identifiers"]))
+        for entity in added_entities
+    } == {
+        ("openwrt", "94:83:c4:ac:7a:13_radio_radio0"),
+        ("openwrt", "94:83:c4:ac:7a:13_radio_radio1"),
+    }
