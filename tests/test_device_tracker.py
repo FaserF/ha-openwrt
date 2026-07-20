@@ -164,7 +164,9 @@ def test_wireless_client_is_grouped_under_its_ssid(
         connected_devices=[
             ConnectedDevice(
                 mac=mac,
-                interface="phy0-ap0",
+                # OpenWrt may report the UCI section instead of the runtime
+                # interface name for an associated wireless client.
+                interface="default_radio0",
                 is_wireless=True,
                 connected=True,
             )

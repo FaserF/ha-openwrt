@@ -194,6 +194,8 @@ def get_via_device(
                     None,
                 )
                 stable_id = coordinator.interface_to_stable_id.get(device.interface)
+                if not stable_id and wifi:
+                    stable_id = coordinator.interface_to_stable_id.get(wifi.name)
                 if stable_id:
                     ap_id = format_ap_device_id(router_id, stable_id)
                     if dev_reg.async_get_device(identifiers={(DOMAIN, ap_id)}):
