@@ -19,7 +19,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import _router_id, format_ap_device_id, format_ap_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,21 +44,19 @@ async def async_setup_entry(
         perms = coordinator.data.permissions
         pkgs = coordinator.data.packages
 
-        # TX Power per wireless interface
+        # TX Power is configured on the physical radio, not on an SSID interface.
         if perms.write_wireless:
             for wifi in coordinator.data.wireless_interfaces:
-                if wifi.name and wifi.txpower >= 0:
-                    key = f"txpower_{wifi.section or wifi.name}"
+                if wifi.radio and wifi.txpower >= 0:
+                    key = f"txpower_{wifi.radio}"
                     if key not in tracked_keys:
                         tracked_keys.add(key)
                         new_entities.append(
                             OpenWrtTxPowerNumber(
                                 coordinator,
                                 entry,
-                                wifi.name,
-                                wifi.ssid,
-                                wifi.frequency,
-                                wifi.section,
+                                wifi.radio,
+                                wifi.band,
                             ),
                         )
 
@@ -110,9 +107,9 @@ async def async_setup_entry(
 
             unique_id = ent.unique_id
             if "_txpower_" in unique_id and coordinator.data:
-                iface_name = unique_id.split("_txpower_")[-1]
+                radio = unique_id.split("_txpower_")[-1]
                 if not any(
-                    w.name == iface_name or w.section == iface_name
+                    w.radio == radio
                     for w in coordinator.data.wireless_interfaces
                 ):
                     ent_reg.async_remove(ent.entity_id)
@@ -130,50 +127,28 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "dBm"
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_entity_registry_enabled_default = False
     _attr_translation_key = "wifi_txpower_control"
 
     def __init__(
         self,
         coordinator: OpenWrtDataCoordinator,
         entry: ConfigEntry,
-        iface_name: str,
-        ssid: str,
-        frequency: str = "",
-        section_id: str | None = None,
+        radio: str,
+        band: str,
     ) -> None:
         """Initialize the TX Power number entity."""
         super().__init__(coordinator)
-        self._iface_name = iface_name
-        self._section_id = section_id
+        self._radio = radio
         self._entry = entry
-        self._attr_unique_id = f"{entry.entry_id}_txpower_{section_id or iface_name}"
-
-        stable_id = coordinator.interface_to_stable_id.get(
-            iface_name, section_id if section_id else iface_name
-        )
-        name_label = format_ap_name(ssid or iface_name, frequency)
-        if (
-            sum(
-                1
-                for sid in coordinator.interface_to_stable_id.values()
-                if sid == stable_id
-            )
-            > 1
-        ):
-            name_label = f"{name_label} [{iface_name}]"
-            self._attr_name = f"TX Power [{iface_name}]"
-        else:
-            self._attr_name = "TX Power"
-
+        label = f"{radio} ({band})" if band else radio
+        self._attr_name = f"{label} TX Power"
+        self._attr_unique_id = f"{entry.entry_id}_txpower_{radio}"
         self._attr_device_info = DeviceInfo(
-            identifiers={
-                (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
-            },
-            name=name_label,
+            identifiers={(DOMAIN, f"{entry.unique_id}_radio_{radio}")},
+            name=f"Radio {label}",
             manufacturer="OpenWrt",
-            model="Access Point",
-            via_device=(DOMAIN, _router_id(entry)),
+            model="Wireless Radio",
+            via_device=(DOMAIN, cast(str, entry.unique_id)),
         )
 
     @property
@@ -181,9 +156,7 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         """Return the maximum supported TX power limit."""
         if self.coordinator.data:
             for wifi in self.coordinator.data.wireless_interfaces:
-                if wifi.name == self._iface_name or (
-                    self._section_id and wifi.section == self._section_id
-                ):
+                if wifi.radio == self._radio:
                     if wifi.txpower_offset and wifi.txpower_offset > 0:
                         return float(wifi.txpower_offset)
                     if wifi.txpower > 30:
@@ -195,9 +168,7 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         """Return the current TX power."""
         if self.coordinator.data:
             for wifi in self.coordinator.data.wireless_interfaces:
-                if wifi.name == self._iface_name or (
-                    self._section_id and wifi.section == self._section_id
-                ):
+                if wifi.radio == self._radio and wifi.txpower >= 0:
                     return wifi.txpower
         return None
 
@@ -206,29 +177,18 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         client = self.hass.data[DOMAIN][self._entry.entry_id][DATA_CLIENT]
         txpower = int(value)
 
-        # Find the radio for this interface
-        radio = None
-        if self.coordinator.data:
-            for wifi in self.coordinator.data.wireless_interfaces:
-                if wifi.name == self._iface_name or (
-                    self._section_id and wifi.section == self._section_id
-                ):
-                    radio = wifi.radio
-                    break
-
-        if radio:
-            try:
-                await client.execute_command(
-                    f"uci set wireless.{radio}.txpower='{txpower}' && "
-                    f"uci commit wireless && wifi reload",
-                )
-            except Exception as err:
-                _LOGGER.exception(
-                    "Failed to set TX power for %s: %s",
-                    self._iface_name,
-                    err,
-                )
-                raise
+        try:
+            await client.execute_command(
+                f"uci set wireless.{self._radio}.txpower='{txpower}' && "
+                f"uci commit wireless && wifi reload",
+            )
+        except Exception as err:
+            _LOGGER.exception(
+                "Failed to set TX power for %s: %s",
+                self._radio,
+                err,
+            )
+            raise
 
         await self.coordinator.async_request_refresh()
 

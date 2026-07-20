@@ -82,7 +82,7 @@ async def test_txpower_number_creation_and_control() -> None:
 
 
 def test_txpower_number_status_matching() -> None:
-    """Verify OpenWrtTxPowerNumber matches txpower using section when iface name differs."""
+    """Verify OpenWrtTxPowerNumber matches TX power by physical radio."""
     from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
     from custom_components.openwrt.number import OpenWrtTxPowerNumber
 
@@ -102,10 +102,8 @@ def test_txpower_number_status_matching() -> None:
     num = OpenWrtTxPowerNumber(
         coordinator,
         config_entry,
-        "default_radio0",
-        "MyNet",
+        "radio0",
         "2.4 GHz",
-        section_id="default_radio0",
     )
     assert num.native_value == 20
 
@@ -138,9 +136,63 @@ def test_txpower_number_max_value() -> None:
     num = OpenWrtTxPowerNumber(
         coordinator,
         config_entry,
-        "default_radio0",
-        "MyNet",
+        "radio0",
         "2.4 GHz",
-        section_id="default_radio0",
     )
     assert num.native_max_value == 9.0
+
+
+@pytest.mark.asyncio
+async def test_txpower_number_is_created_once_per_radio() -> None:
+    """Create one TX power control for a radio shared by multiple SSIDs."""
+    wireless_interfaces = [
+        WirelessInterface(
+            name="phy0-ap0",
+            section="main_24g",
+            ssid="Main",
+            radio="radio0",
+            band="2.4 GHz",
+            txpower=20,
+        ),
+        WirelessInterface(
+            name="phy0-ap1",
+            section="guest_24g",
+            ssid="Guest",
+            radio="radio0",
+            band="2.4 GHz",
+            txpower=20,
+        ),
+        WirelessInterface(
+            name="phy1-ap0",
+            section="main_5g",
+            ssid="Main",
+            radio="radio1",
+            band="5 GHz",
+            txpower=23,
+        ),
+    ]
+    coordinator = MagicMock()
+    coordinator.data = OpenWrtData(
+        wireless_interfaces=wireless_interfaces,
+        permissions=OpenWrtPermissions(write_wireless=True),
+    )
+    coordinator.async_add_listener = MagicMock()
+
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.unique_id = "router_mac"
+    entry.async_on_unload = MagicMock()
+
+    added_entities: list[OpenWrtTxPowerNumber] = []
+    hass = MagicMock()
+    hass.data = {"openwrt": {"test_entry": {"coordinator": coordinator}}}
+
+    await async_setup_entry(hass, entry, added_entities.extend)
+
+    assert len(added_entities) == 2
+    assert {entity._attr_unique_id for entity in added_entities} == {
+        "test_entry_txpower_radio0",
+        "test_entry_txpower_radio1",
+    }
+    assert all(entity.entity_registry_enabled_default for entity in added_entities)
+    assert {entity.native_value for entity in added_entities} == {20, 23}
