@@ -144,6 +144,7 @@ class WirelessInterface:
     encryption: str = ""
     clients_count: int = 0
     enabled: bool = True
+    interface_enabled: bool = True
     up: bool = False
     radio: str = ""
     radio_enabled: bool = True
@@ -211,6 +212,11 @@ class WirelessInterface:
             if 5.9 < freq <= 7.2:
                 return "6 GHz"
         return ""
+
+    @staticmethod
+    def _uci_disabled(value: Any) -> bool:
+        """Return whether a UCI disabled option is active."""
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
     def __post_init__(self) -> None:
         """Post-process wireless data."""
@@ -1407,6 +1413,23 @@ class OpenWrtClient(abc.ABC):
     async def set_radio_enabled(self, radio: str, enabled: bool) -> bool:
         """Physically enable or disable a wireless radio."""
         return await self.set_wireless_enabled(radio, enabled)
+
+    async def set_wireless_network_enabled(
+        self,
+        interface: str,
+        radio: str,
+        enabled: bool,
+        *,
+        disable_radio: bool,
+    ) -> bool:
+        """Set an SSID and coordinate its physical radio."""
+        if enabled and not await self.set_radio_enabled(radio, True):
+            return False
+        if not await self.set_wireless_enabled(interface, enabled):
+            return False
+        if disable_radio:
+            return await self.set_radio_enabled(radio, False)
+        return True
 
     async def manage_interface(self, name: str, action: str) -> bool:
         """Manage a network interface (up/down/reconnect)."""

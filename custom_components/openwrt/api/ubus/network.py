@@ -71,12 +71,16 @@ class UbusNetworkMixin:
                                 continue
 
                             iface_config = iface.get("config", {})
+                            iface_disabled = WirelessInterface._uci_disabled(
+                                iface_config.get("disabled", False)
+                            )
                             wifi = WirelessInterface(
                                 name=iface_name,
                                 ssid=iface_config.get("ssid", ""),
                                 mode=iface_config.get("mode", ""),
                                 encryption=iface_config.get("encryption", ""),
                                 enabled=not radio_data.get("disabled", False),
+                                interface_enabled=not iface_disabled,
                                 up=not radio_data.get("disabled", False),
                                 radio=radio_name,
                                 radio_enabled=not radio_data.get("disabled", False),
@@ -134,6 +138,7 @@ class UbusNetworkMixin:
                             mode=sect_data.get("mode", ""),
                             encryption=sect_data.get("encryption", ""),
                             enabled=not (radio_disabled or iface_disabled),
+                            interface_enabled=not iface_disabled,
                             up=not (radio_disabled or iface_disabled),
                             radio=radio_name,
                             radio_enabled=not radio_disabled,

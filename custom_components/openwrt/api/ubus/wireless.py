@@ -125,6 +125,52 @@ class UbusWirelessMixin:
         except UbusError:
             return False
 
+    async def set_wireless_network_enabled(
+        self,
+        interface: str,
+        radio: str,
+        enabled: bool,
+        *,
+        disable_radio: bool,
+    ) -> bool:
+        """Set an SSID and its radio in one UCI transaction."""
+        try:
+            if enabled:
+                await self._call(
+                    "uci",
+                    "set",
+                    {
+                        "config": "wireless",
+                        "section": radio,
+                        "values": {"disabled": "0"},
+                    },
+                )
+            await self._call(
+                "uci",
+                "set",
+                {
+                    "config": "wireless",
+                    "section": interface,
+                    "values": {"disabled": "0" if enabled else "1"},
+                },
+            )
+            if disable_radio:
+                await self._call(
+                    "uci",
+                    "set",
+                    {
+                        "config": "wireless",
+                        "section": radio,
+                        "values": {"disabled": "1"},
+                    },
+                )
+            await self._call("uci", "commit", {"config": "wireless"})
+            await self._call("network.wireless", "notify")
+            self._last_full_poll = 0
+            return True
+        except UbusError:
+            return False
+
     async def get_wifi_credentials(self) -> list[WifiCredentials]:
         """Get wifi credentials via UCI."""
         try:

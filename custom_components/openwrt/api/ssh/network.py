@@ -121,12 +121,16 @@ class SshNetworkMixin:
                         if not iface_name or iface_name in iface_names:
                             continue
 
+                        iface_disabled = WirelessInterface._uci_disabled(
+                            config.get("disabled", False)
+                        )
                         wifi = WirelessInterface(
                             name=iface_name,
                             ssid=config.get("ssid", ""),
                             mode=config.get("mode", ""),
                             encryption=config.get("encryption", ""),
                             enabled=not radio_data.get("disabled", False),
+                            interface_enabled=not iface_disabled,
                             up=radio_data.get("up", False),
                             radio=radio_name,
                             radio_enabled=not radio_data.get("disabled", False),
@@ -201,6 +205,7 @@ class SshNetworkMixin:
                             mode=sect_data.get("mode", ""),
                             encryption=sect_data.get("encryption", ""),
                             enabled=not is_disabled,
+                            interface_enabled=not iface_disabled,
                             up=not is_disabled,
                             radio=radio_name,
                             radio_enabled=not radio_disabled,
@@ -208,14 +213,12 @@ class SshNetworkMixin:
                             section=sect_name,
                             ifname=ifname_val or "",
                         )
-                        # Only add if not explicitly disabled or if we have no other choice
-                        if not is_disabled:
-                            interfaces.append(wifi)
-                            iface_names.add(iface_name)
-                            if sect_name and sect_name != iface_name:
-                                iface_names.add(sect_name)
-                            if ifname_val and ifname_val != iface_name:
-                                iface_names.add(ifname_val)
+                        interfaces.append(wifi)
+                        iface_names.add(iface_name)
+                        if sect_name and sect_name != iface_name:
+                            iface_names.add(sect_name)
+                        if ifname_val and ifname_val != iface_name:
+                            iface_names.add(ifname_val)
             except Exception as e:
                 _LOGGER.debug("UCI wireless fallback failed via SSH: %s", e)
 
@@ -520,6 +523,31 @@ class SshNetworkMixin:
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set wireless %s: %s", interface, err)
+            return False
+
+    async def set_wireless_network_enabled(
+        self,
+        interface: str,
+        radio: str,
+        enabled: bool,
+        *,
+        disable_radio: bool,
+    ) -> bool:
+        """Set an SSID and its radio in one UCI transaction."""
+        try:
+            assignments = []
+            if enabled:
+                assignments.append(f"wireless.{radio}.disabled=0")
+            assignments.append(f"wireless.{interface}.disabled={0 if enabled else 1}")
+            if disable_radio:
+                assignments.append(f"wireless.{radio}.disabled=1")
+            commands = [f"uci set {shlex.quote(value)}" for value in assignments]
+            commands.extend(("uci commit wireless", "wifi reload"))
+            await self._exec(" && ".join(commands))
+            self._last_full_poll = 0
+            return True
+        except Exception as err:
+            _LOGGER.exception("Failed to coordinate wireless network: %s", err)
             return False
 
     async def manage_interface(self, name: str, action: str) -> bool:

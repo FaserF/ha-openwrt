@@ -1,6 +1,6 @@
 """Test the OpenWrt Ubus API client."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -585,6 +585,51 @@ async def test_ubus_wireless_skips_info_for_luci_admin_proxy(
     assert len(interfaces) == 1
     assert interfaces[0].name == "wlan06"
     assert interfaces[0].clients_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("enabled", "disable_radio", "radio_state"),
+    [(True, False, "0"), (False, True, "1")],
+)
+async def test_ubus_coordinates_ssid_and_radio_in_one_transaction(
+    ubus_client: UbusClient,
+    enabled: bool,
+    disable_radio: bool,
+    radio_state: str,
+) -> None:
+    """Commit the SSID and required radio state together."""
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        result = await ubus_client.set_wireless_network_enabled(
+            "main",
+            "radio0",
+            enabled,
+            disable_radio=disable_radio,
+        )
+
+    assert result is True
+    assert mock_call.await_args_list[-2:] == [
+        call("uci", "commit", {"config": "wireless"}),
+        call("network.wireless", "notify"),
+    ]
+    assert call(
+        "uci",
+        "set",
+        {
+            "config": "wireless",
+            "section": "main",
+            "values": {"disabled": "0" if enabled else "1"},
+        },
+    ) in mock_call.await_args_list
+    assert call(
+        "uci",
+        "set",
+        {
+            "config": "wireless",
+            "section": "radio0",
+            "values": {"disabled": radio_state},
+        },
+    ) in mock_call.await_args_list
 
 
 @pytest.mark.asyncio

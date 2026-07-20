@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import shlex
 
 from ..base import (
     LldpNeighbor,
@@ -123,12 +124,16 @@ class LuciRpcNetworkMixin:
                                 continue
 
                             iface_config = iface.get("config", {})
+                            iface_disabled = WirelessInterface._uci_disabled(
+                                iface_config.get("disabled", False)
+                            )
                             wifi = WirelessInterface(
                                 name=iface_name,
                                 ssid=iface_config.get("ssid", ""),
                                 mode=iface_config.get("mode", ""),
                                 encryption=iface_config.get("encryption", ""),
                                 enabled=not radio_data.get("disabled", False),
+                                interface_enabled=not iface_disabled,
                                 up=radio_data.get("up", False),
                                 radio=radio_name,
                                 radio_enabled=not radio_data.get("disabled", False),
@@ -185,6 +190,7 @@ class LuciRpcNetworkMixin:
                                 mode=sect_data.get("mode", ""),
                                 encryption=sect_data.get("encryption", ""),
                                 enabled=not (radio_disabled or iface_disabled),
+                                interface_enabled=not iface_disabled,
                                 up=not (radio_disabled or iface_disabled),
                                 radio=radio_name,
                                 radio_enabled=not radio_disabled,
@@ -688,6 +694,30 @@ class LuciRpcNetworkMixin:
                 "wifi reload"
             )
             await self.execute_command(cmd)
+            self._last_full_poll = 0
+            return True
+        except Exception:
+            return False
+
+    async def set_wireless_network_enabled(
+        self,
+        interface: str,
+        radio: str,
+        enabled: bool,
+        *,
+        disable_radio: bool,
+    ) -> bool:
+        """Set an SSID and its radio in one UCI transaction."""
+        try:
+            assignments = []
+            if enabled:
+                assignments.append(f"wireless.{radio}.disabled=0")
+            assignments.append(f"wireless.{interface}.disabled={0 if enabled else 1}")
+            if disable_radio:
+                assignments.append(f"wireless.{radio}.disabled=1")
+            commands = [f"uci set {shlex.quote(value)}" for value in assignments]
+            commands.extend(("uci commit wireless", "wifi reload"))
+            await self.execute_command(" && ".join(commands))
             self._last_full_poll = 0
             return True
         except Exception:
