@@ -1838,16 +1838,31 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         for radio, band in radio_info.items():
             label = format_radio_name(radio, band)
-            device_registry.async_get_or_create(
+            manufacturer = device_info.release_distribution or ATTR_MANUFACTURER
+            radio_device = device_registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
                 identifiers={
                     (DOMAIN, format_radio_device_id(self.router_id, radio))
                 },
                 name=label,
-                manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
+                manufacturer=manufacturer,
                 model="Wireless Radio",
                 via_device=(DOMAIN, self.router_id),
             )
+            # async_get_or_create() preserves an existing device name. Explicitly
+            # migrate names created by earlier integration versions while leaving a
+            # user's name_by_user override untouched.
+            if (
+                radio_device.name != label
+                or radio_device.manufacturer != manufacturer
+                or radio_device.model != "Wireless Radio"
+            ):
+                device_registry.async_update_device(
+                    radio_device.id,
+                    name=label,
+                    manufacturer=manufacturer,
+                    model="Wireless Radio",
+                )
 
         # Ensure stable_id is based on SSID and Band to prevent duplicates
         # for mesh routers that spawn multiple virtual interfaces per radio.

@@ -452,7 +452,7 @@ async def test_coordinator_preserves_active_radio_device(hass):
 
     radio_dev = MagicMock()
     radio_dev.id = "radio_dev_id"
-    radio_dev.name = "2.4 GHz"
+    radio_dev.name = "Radio radio0 (2.4 GHz)"
     radio_dev.identifiers = {(DOMAIN, "router_mac_radio_radio0")}
     radio_dev.config_entries = {"test_entry"}
     radio_dev.via_device_id = "router_dev_id"
@@ -467,6 +467,7 @@ async def test_coordinator_preserves_active_radio_device(hass):
         radio_dev.id: radio_dev,
     }
     device_registry.async_get_device.return_value = router_dev
+    device_registry.async_get_or_create.return_value = radio_dev
 
     data = OpenWrtData(
         device_info=DeviceInfo(mac_address="router_mac"),
@@ -487,3 +488,9 @@ async def test_coordinator_preserves_active_radio_device(hass):
         await coordinator._async_update_device_registry(data)
 
     device_registry.async_remove_device.assert_not_called()
+    device_registry.async_update_device.assert_any_call(
+        "radio_dev_id",
+        name="2.4 GHz",
+        manufacturer="OpenWrt",
+        model="Wireless Radio",
+    )
