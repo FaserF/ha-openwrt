@@ -5,7 +5,11 @@ from unittest.mock import MagicMock, patch
 
 from homeassistant.components.sensor import SensorDeviceClass
 
-from custom_components.openwrt.api.base import OpenWrtData, SystemResources
+from custom_components.openwrt.api.base import (
+    OpenWrtData,
+    SystemResources,
+    WirelessInterface,
+)
 from custom_components.openwrt.sensor import OpenWrtSensorEntity, _get_system_sensors
 
 
@@ -82,6 +86,42 @@ def test_wifi_sensor_ap_mode_suppression() -> None:
     assert "wifi_wlan1_signal" in keys_sta
     assert "wifi_wlan1_quality" in keys_sta
     assert "wifi_wlan1_bitrate" in keys_sta
+
+
+def test_wifi_sensors_are_grouped_under_their_physical_radio() -> None:
+    """Put SSID metrics on the radio device instead of a separate AP device."""
+    from custom_components.openwrt.sensor import _create_wifi_sensors
+
+    coordinator = MagicMock()
+    coordinator.router_id = "router_mac"
+    coordinator.interface_to_stable_id = {"phy0-ap0": "Main_2.4 GHz"}
+    coordinator.data = OpenWrtData(
+        wireless_interfaces=[
+            WirelessInterface(
+                name="phy0-ap0",
+                ssid="Main",
+                radio="radio0",
+                band="2.4 GHz",
+            )
+        ]
+    )
+    entry = MagicMock(entry_id="test", unique_id="router_mac")
+
+    with patch("custom_components.openwrt.sensor.DeviceInfo", side_effect=dict):
+        sensors = _create_wifi_sensors(
+            coordinator,
+            entry,
+            "phy0-ap0",
+            "Main",
+            "ap",
+            "2.4 GHz",
+        )
+
+    assert sensors
+    assert {
+        next(iter(sensor._attr_device_info["identifiers"])) for sensor in sensors
+    } == {("openwrt", "router_mac_radio_radio0")}
+    assert {sensor._attr_device_info["name"] for sensor in sensors} == {"2.4 GHz"}
 
 
 def test_device_sensor_case_insensitivity() -> None:

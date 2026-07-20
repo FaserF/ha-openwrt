@@ -60,8 +60,11 @@ from .coordinator import OpenWrtDataCoordinator
 from .helpers import (
     format_ap_device_id,
     format_ap_name,
+    format_radio_device_id,
+    format_radio_name,
     get_via_device,
     is_random_mac,
+    normalize_band,
     resolve_client_name,
 )
 
@@ -182,15 +185,38 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
             elif description.name:
                 self._attr_name = f"{description.name} [{iface_name}]"
 
-        self._attr_device_info = DeviceInfo(
-            identifiers={
-                (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
-            },
-            name=name_label,
-            manufacturer="OpenWrt",
-            model="Access Point",
-            via_device=(DOMAIN, coordinator.router_id),
+        wifi = next(
+            (
+                item
+                for item in coordinator.data.wireless_interfaces
+                if item.name == iface_name
+            ),
+            None,
         )
+        if wifi and wifi.radio:
+            band = normalize_band(wifi.band or frequency or wifi.frequency)
+            self._attr_device_info = DeviceInfo(
+                identifiers={
+                    (
+                        DOMAIN,
+                        format_radio_device_id(coordinator.router_id, wifi.radio),
+                    )
+                },
+                name=format_radio_name(wifi.radio, band),
+                manufacturer="OpenWrt",
+                model="Wireless Radio",
+                via_device=(DOMAIN, coordinator.router_id),
+            )
+        else:
+            self._attr_device_info = DeviceInfo(
+                identifiers={
+                    (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
+                },
+                name=name_label,
+                manufacturer="OpenWrt",
+                model="Access Point",
+                via_device=(DOMAIN, coordinator.router_id),
+            )
         self._attr_translation_placeholders = {"iface": iface_name}
 
 

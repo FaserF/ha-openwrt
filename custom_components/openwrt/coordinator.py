@@ -1882,8 +1882,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
             # Use SSID and Band as stable identifier to group virtual interfaces
             stable_id = f"{wifi.ssid}_{band}"
-            ap_info[stable_id] = label
             self.interface_to_stable_id[wifi.name] = stable_id
+            # Interfaces with a known physical radio are represented by that radio
+            # device. Keep a legacy AP device only when OpenWrt cannot identify the
+            # owning radio.
+            if not wifi.radio:
+                ap_info[stable_id] = label
 
         for stable_id, label in ap_info.items():
             device_registry.async_get_or_create(

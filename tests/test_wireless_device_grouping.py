@@ -494,3 +494,10 @@ async def test_coordinator_preserves_active_radio_device(hass):
         manufacturer="OpenWrt",
         model="Wireless Radio",
     )
+    created_identifiers = [
+        identifier
+        for call in device_registry.async_get_or_create.call_args_list
+        for identifier in call.kwargs.get("identifiers", set())
+    ]
+    assert (DOMAIN, "router_mac_radio_radio0") in created_identifiers
+    assert not any("_ap_" in identifier for _domain, identifier in created_identifiers)
