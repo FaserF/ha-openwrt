@@ -204,3 +204,7 @@ async def test_txpower_number_is_created_once_per_radio() -> None:
         ("openwrt", "94:83:c4:ac:7a:13_radio_radio0"),
         ("openwrt", "94:83:c4:ac:7a:13_radio_radio1"),
     }
+    assert {entity._attr_device_info["name"] for entity in added_entities} == {
+        "2.4 GHz",
+        "5 GHz",
+    }
