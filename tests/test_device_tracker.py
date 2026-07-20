@@ -13,7 +13,11 @@ from homeassistant.helpers import (
     device_registry as dr,
 )
 
-from custom_components.openwrt.api.base import ConnectedDevice, OpenWrtData
+from custom_components.openwrt.api.base import (
+    ConnectedDevice,
+    OpenWrtData,
+    WirelessInterface,
+)
 from custom_components.openwrt.const import (
     CONF_CONSIDER_HOME,
     CONF_TRUST_STALE_ARP,
@@ -149,6 +153,59 @@ def test_device_tracker_stable_device_info(
         assert device_info["via_device"][1] == "11:22:33:44:55:66"
         assert (dr.CONNECTION_NETWORK_MAC, mac.lower()) in device_info["connections"]
         assert any(ident[1] == mac.lower() for ident in device_info["identifiers"])
+
+
+def test_wireless_client_is_grouped_under_its_ssid(
+    mock_coordinator: MagicMock, mock_config_entry: MagicMock
+) -> None:
+    """Resolve a wireless client's interface to its nested SSID device."""
+    mac = "aa:bb:cc:dd:ee:ff"
+    mock_coordinator.data = OpenWrtData(
+        connected_devices=[
+            ConnectedDevice(
+                mac=mac,
+                interface="phy0-ap0",
+                is_wireless=True,
+                connected=True,
+            )
+        ],
+        wireless_interfaces=[
+            WirelessInterface(
+                name="phy0-ap0",
+                section="default_radio0",
+                ssid="Main",
+                radio="radio0",
+                band="2.4 GHz",
+            )
+        ],
+    )
+    mock_coordinator.interface_to_stable_id = {"phy0-ap0": "Main_2.4 GHz"}
+    radio_device = MagicMock()
+    registry = MagicMock()
+    registry.async_get_device.return_value = radio_device
+
+    with (
+        patch(
+            "homeassistant.helpers.device_registry.async_get",
+            return_value=registry,
+        ),
+        patch(
+            "custom_components.openwrt.device_tracker.DeviceInfo",
+            side_effect=lambda **kwargs: kwargs,
+        ),
+    ):
+        tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
+        device_info = tracker.device_info
+
+    assert device_info["via_device"] == (
+        "openwrt",
+        "11:22:33:44:55:66_ap_Main_2.4 GHz",
+    )
+    registry.async_get_device.assert_called_with(
+        identifiers={
+            ("openwrt", "11:22:33:44:55:66_ap_Main_2.4 GHz")
+        }
+    )
 
 
 def test_device_tracker_randomized_mac(

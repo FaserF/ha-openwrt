@@ -404,6 +404,7 @@ def test_router_id_mac_formatting_prevents_duplicate_ap():
     from custom_components.openwrt.helpers import (
         _router_id,
         format_ap_device_id,
+        format_ap_name,
         format_radio_device_id,
         format_radio_name,
     )
@@ -427,6 +428,7 @@ def test_router_id_mac_formatting_prevents_duplicate_ap():
     )
     assert format_radio_name("radio0", "2.4 GHz") == "2.4 GHz"
     assert format_radio_name("radio0", "") == "radio0"
+    assert format_ap_name("Main", "2.4 GHz") == "SSID Main"
 
 
 @pytest.mark.asyncio
@@ -500,4 +502,15 @@ async def test_coordinator_preserves_active_radio_device(hass):
         for identifier in call.kwargs.get("identifiers", set())
     ]
     assert (DOMAIN, "router_mac_radio_radio0") in created_identifiers
-    assert not any("_ap_" in identifier for _domain, identifier in created_identifiers)
+    assert (DOMAIN, "router_mac_ap_Test_2.4 GHz") in created_identifiers
+    ap_call = next(
+        call
+        for call in device_registry.async_get_or_create.call_args_list
+        if (DOMAIN, "router_mac_ap_Test_2.4 GHz")
+        in call.kwargs.get("identifiers", set())
+    )
+    assert ap_call.kwargs["name"] == "SSID Test"
+    assert ap_call.kwargs["via_device"] == (
+        DOMAIN,
+        "router_mac_radio_radio0",
+    )

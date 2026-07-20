@@ -39,6 +39,7 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         ]
     )
     coordinator.interface_to_stable_id = {}
+    coordinator.router_id = "router_id"
     coordinator.async_request_refresh = AsyncMock()
     coordinator.hass.async_create_task = MagicMock(
         side_effect=lambda task: task.close()
@@ -71,14 +72,21 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         and getattr(entity, "_radio", None) == "radio0"
     ]
     assert len(radio0_entities) == 3
+    assert next(iter(radios[0]._attr_device_info["identifiers"])) == (
+        "openwrt",
+        "router_id_radio_radio0",
+    )
+    ssid_entities = [
+        entity for entity in radio0_entities if isinstance(entity, OpenWrtWirelessSwitch)
+    ]
     assert {
-        next(iter(entity._attr_device_info["identifiers"]))
-        for entity in radio0_entities
-    } == {("openwrt", "router_id_radio_radio0")}
-    assert {entity._attr_name for entity in radio0_entities} == {
-        "Physical radio",
-        "SSID phy0-ap0",
-        "SSID phy0-ap1",
+        next(iter(entity._attr_device_info["identifiers"])) for entity in ssid_entities
+    } == {
+        ("openwrt", "router_id_ap_phy0-ap0"),
+        ("openwrt", "router_id_ap_phy0-ap1"),
+    }
+    assert {entity._attr_device_info["via_device"] for entity in ssid_entities} == {
+        ("openwrt", "router_id_radio_radio0")
     }
 
     await radios[1].async_turn_on()

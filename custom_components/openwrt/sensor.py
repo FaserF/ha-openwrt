@@ -61,7 +61,6 @@ from .helpers import (
     format_ap_device_id,
     format_ap_name,
     format_radio_device_id,
-    format_radio_name,
     get_via_device,
     is_random_mac,
     normalize_band,
@@ -193,30 +192,21 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
             ),
             None,
         )
+        via_device = (DOMAIN, coordinator.router_id)
         if wifi and wifi.radio:
-            band = normalize_band(wifi.band or frequency or wifi.frequency)
-            self._attr_device_info = DeviceInfo(
-                identifiers={
-                    (
-                        DOMAIN,
-                        format_radio_device_id(coordinator.router_id, wifi.radio),
-                    )
-                },
-                name=format_radio_name(wifi.radio, band),
-                manufacturer="OpenWrt",
-                model="Wireless Radio",
-                via_device=(DOMAIN, coordinator.router_id),
+            via_device = (
+                DOMAIN,
+                format_radio_device_id(coordinator.router_id, wifi.radio),
             )
-        else:
-            self._attr_device_info = DeviceInfo(
-                identifiers={
-                    (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
-                },
-                name=name_label,
-                manufacturer="OpenWrt",
-                model="Access Point",
-                via_device=(DOMAIN, coordinator.router_id),
-            )
+        self._attr_device_info = DeviceInfo(
+            identifiers={
+                (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
+            },
+            name=name_label,
+            manufacturer="OpenWrt",
+            model="Wireless SSID",
+            via_device=via_device,
+        )
         self._attr_translation_placeholders = {"iface": iface_name}
 
 

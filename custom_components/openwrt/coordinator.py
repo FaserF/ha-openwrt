@@ -1836,6 +1836,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             band = normalize_band(wifi.band or wifi.frequency or wifi.radio)
             radio_info.setdefault(wifi.radio, band)
 
+        radio_devices: dict[str, dr.DeviceEntry] = {}
         for radio, band in radio_info.items():
             label = format_radio_name(radio, band)
             manufacturer = device_info.release_distribution or ATTR_MANUFACTURER
@@ -1849,6 +1850,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 model="Wireless Radio",
                 via_device=(DOMAIN, self.router_id),
             )
+            radio_devices[radio] = radio_device
             # async_get_or_create() preserves an existing device name. Explicitly
             # migrate names created by earlier integration versions while leaving a
             # user's name_by_user override untouched.
@@ -1866,7 +1868,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         # Ensure stable_id is based on SSID and Band to prevent duplicates
         # for mesh routers that spawn multiple virtual interfaces per radio.
-        ap_info: dict[str, str] = {}
+        ap_info: dict[str, tuple[str, str]] = {}
 
         for wifi in data.wireless_interfaces:
             # Skip interfaces without name or SSID
@@ -1883,21 +1885,31 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # Use SSID and Band as stable identifier to group virtual interfaces
             stable_id = f"{wifi.ssid}_{band}"
             self.interface_to_stable_id[wifi.name] = stable_id
-            # Interfaces with a known physical radio are represented by that radio
-            # device. Keep a legacy AP device only when OpenWrt cannot identify the
-            # owning radio.
-            if not wifi.radio:
-                ap_info[stable_id] = label
+            ap_info[stable_id] = (label, wifi.radio)
 
-        for stable_id, label in ap_info.items():
-            device_registry.async_get_or_create(
+        for stable_id, (label, radio) in ap_info.items():
+            ssid_device = device_registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
                 identifiers={(DOMAIN, format_ap_device_id(self.router_id, stable_id))},
                 name=label,
                 manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
-                model="Access Point",
-                via_device=(DOMAIN, self.router_id),
+                model="Wireless SSID",
+                via_device=(
+                    DOMAIN,
+                    format_radio_device_id(self.router_id, radio),
+                )
+                if radio
+                else (DOMAIN, self.router_id),
             )
+            if radio and radio in radio_devices:
+                device_registry.async_update_device(
+                    ssid_device.id,
+                    name=label,
+                    manufacturer=device_info.release_distribution
+                    or ATTR_MANUFACTURER,
+                    model="Wireless SSID",
+                    via_device_id=radio_devices[radio].id,
+                )
 
         # 3. Retroactively update manufacturer/model for already-registered tracked devices.
         # HA only writes manufacturer/model at first creation; subsequent coordinator polls

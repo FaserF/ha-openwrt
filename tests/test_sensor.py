@@ -88,8 +88,8 @@ def test_wifi_sensor_ap_mode_suppression() -> None:
     assert "wifi_wlan1_bitrate" in keys_sta
 
 
-def test_wifi_sensors_are_grouped_under_their_physical_radio() -> None:
-    """Put SSID metrics on the radio device instead of a separate AP device."""
+def test_wifi_sensors_are_grouped_under_their_ssid_below_the_radio() -> None:
+    """Put SSID metrics on an SSID device nested below its physical radio."""
     from custom_components.openwrt.sensor import _create_wifi_sensors
 
     coordinator = MagicMock()
@@ -120,8 +120,11 @@ def test_wifi_sensors_are_grouped_under_their_physical_radio() -> None:
     assert sensors
     assert {
         next(iter(sensor._attr_device_info["identifiers"])) for sensor in sensors
-    } == {("openwrt", "router_mac_radio_radio0")}
-    assert {sensor._attr_device_info["name"] for sensor in sensors} == {"2.4 GHz"}
+    } == {("openwrt", "router_mac_ap_Main_2.4 GHz")}
+    assert {sensor._attr_device_info["name"] for sensor in sensors} == {"SSID Main"}
+    assert {sensor._attr_device_info["via_device"] for sensor in sensors} == {
+        ("openwrt", "router_mac_radio_radio0")
+    }
 
 
 def test_device_sensor_case_insensitivity() -> None:

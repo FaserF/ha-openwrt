@@ -861,25 +861,18 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             name_label = f"{name_label} [{iface_name}]"
             self._attr_name = f"SSID {ssid or iface_name} [{iface_name}]"
 
+        via_device = (DOMAIN, _router_id(entry))
         if radio:
-            radio_label = format_radio_name(radio, band)
-            self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
-                name=radio_label,
-                manufacturer="OpenWrt",
-                model="Wireless Radio",
-                via_device=(DOMAIN, _router_id(entry)),
-            )
-        else:
-            self._attr_device_info = DeviceInfo(
-                identifiers={
-                    (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
-                },
-                name=name_label,
-                manufacturer="OpenWrt",
-                model="Access Point",
-                via_device=(DOMAIN, _router_id(entry)),
-            )
+            via_device = (DOMAIN, format_radio_device_id(entry, radio))
+        self._attr_device_info = DeviceInfo(
+            identifiers={
+                (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
+            },
+            name=name_label,
+            manufacturer="OpenWrt",
+            model="Wireless SSID",
+            via_device=via_device,
+        )
 
     @property
     def is_on(self) -> bool | None:
