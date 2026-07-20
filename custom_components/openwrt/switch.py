@@ -35,7 +35,13 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import _router_id, format_ap_device_id, format_ap_name, normalize_band
+from .helpers import (
+    _router_id,
+    format_ap_device_id,
+    format_ap_name,
+    format_radio_device_id,
+    normalize_band,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -754,7 +760,7 @@ class OpenWrtRadioSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
         self._attr_name = f"Radio {label}"
         self._attr_unique_id = f"{entry.entry_id}_radio_{radio}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.unique_id}_radio_{radio}")},
+            identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
             name=f"Radio {label}",
             manufacturer="OpenWrt",
             model="Wireless Radio",
@@ -857,7 +863,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         if radio:
             radio_label = f"{radio} ({band})" if band else radio
             self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, f"{entry.unique_id}_radio_{radio}")},
+                identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
                 name=f"Radio {radio_label}",
                 manufacturer="OpenWrt",
                 model="Wireless Radio",

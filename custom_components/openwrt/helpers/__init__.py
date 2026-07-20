@@ -40,6 +40,19 @@ def format_ap_device_id(entry_or_router_id: ConfigEntry | str, iface_name: str) 
     return format_ap_identifier(entry_or_router_id, iface_name)
 
 
+def format_radio_device_id(
+    entry_or_router_id: ConfigEntry | str,
+    radio: str,
+) -> str:
+    """Return the canonical device registry identifier for a physical radio."""
+    router_id = (
+        entry_or_router_id
+        if isinstance(entry_or_router_id, str)
+        else _router_id(entry_or_router_id)
+    )
+    return f"{router_id}_radio_{radio}"
+
+
 def normalize_band(band: str | None) -> str:
     """Normalize raw frequency or band strings to a standard format.
 

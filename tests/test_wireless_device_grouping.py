@@ -401,7 +401,11 @@ async def test_coordinator_orphan_cleanup_ghost_sections(hass):
 
 def test_router_id_mac_formatting_prevents_duplicate_ap():
     """Verify that MAC address formatting in unique_id ensures stable router and AP device identification."""
-    from custom_components.openwrt.helpers import _router_id, format_ap_device_id
+    from custom_components.openwrt.helpers import (
+        _router_id,
+        format_ap_device_id,
+        format_radio_device_id,
+    )
 
     # 1. Test helper extraction formatting
     config_entry = MagicMock()
@@ -416,3 +420,67 @@ def test_router_id_mac_formatting_prevents_duplicate_ap():
         format_ap_device_id(config_entry, "stable_ssid_5 GHz")
         == "94:83:c4:ac:7a:13_ap_stable_ssid_5 GHz"
     )
+    assert (
+        format_radio_device_id(config_entry, "radio0")
+        == "94:83:c4:ac:7a:13_radio_radio0"
+    )
+
+
+@pytest.mark.asyncio
+async def test_coordinator_preserves_active_radio_device(hass):
+    """Keep a configured physical radio during registry cleanup."""
+    from custom_components.openwrt.api.base import (
+        DeviceInfo,
+        OpenWrtData,
+        WirelessInterface,
+    )
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "router_mac"
+    config_entry.data = {"host": "192.0.2.1"}
+    config_entry.options = {}
+    coordinator = OpenWrtDataCoordinator(hass, config_entry, MagicMock())
+    coordinator.router_id = "router_mac"
+
+    router_dev = MagicMock()
+    router_dev.id = "router_dev_id"
+    router_dev.identifiers = {(DOMAIN, "router_mac")}
+
+    radio_dev = MagicMock()
+    radio_dev.id = "radio_dev_id"
+    radio_dev.name = "Radio radio0 (2.4 GHz)"
+    radio_dev.identifiers = {(DOMAIN, "router_mac_radio_radio0")}
+    radio_dev.config_entries = {"test_entry"}
+    radio_dev.via_device_id = "router_dev_id"
+    radio_dev.disabled_by = None
+    radio_dev.entry_type = None
+    radio_dev.manufacturer = "OpenWrt"
+    radio_dev.model = "Wireless Radio"
+
+    device_registry = MagicMock()
+    device_registry.devices = {
+        router_dev.id: router_dev,
+        radio_dev.id: radio_dev,
+    }
+    device_registry.async_get_device.return_value = router_dev
+
+    data = OpenWrtData(
+        device_info=DeviceInfo(mac_address="router_mac"),
+        wireless_interfaces=[
+            WirelessInterface(
+                name="phy0-ap0",
+                ssid="Test",
+                radio="radio0",
+                band="2.4 GHz",
+            )
+        ],
+    )
+
+    with patch(
+        "homeassistant.helpers.device_registry.async_get",
+        return_value=device_registry,
+    ):
+        await coordinator._async_update_device_registry(data)
+
+    device_registry.async_remove_device.assert_not_called()

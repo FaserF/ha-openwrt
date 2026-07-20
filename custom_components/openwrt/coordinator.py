@@ -99,7 +99,9 @@ from .const import (
 from .helpers import (
     format_ap_device_id,
     format_ap_name,
+    format_radio_device_id,
     is_random_mac,
+    normalize_band,
 )
 from .helpers.mac_vendor import get_mac_vendor_info
 from .repairs import (
@@ -1825,7 +1827,27 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             configuration_url=f"http://{self.config_entry.data[CONF_HOST]}",
         )
 
-        # 2. Register/Update AP devices for wireless interfaces
+        # 2. Register physical radios and AP devices for wireless interfaces.
+        radio_info: dict[str, str] = {}
+        for wifi in data.wireless_interfaces:
+            if not wifi.radio:
+                continue
+            band = normalize_band(wifi.band or wifi.frequency or wifi.radio)
+            radio_info.setdefault(wifi.radio, band)
+
+        for radio, band in radio_info.items():
+            label = f"{radio} ({band})" if band != "unknown" else radio
+            device_registry.async_get_or_create(
+                config_entry_id=self.config_entry.entry_id,
+                identifiers={
+                    (DOMAIN, format_radio_device_id(self.router_id, radio))
+                },
+                name=f"Radio {label}",
+                manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
+                model="Wireless Radio",
+                via_device=(DOMAIN, self.router_id),
+            )
+
         # Ensure stable_id is based on SSID and Band to prevent duplicates
         # for mesh routers that spawn multiple virtual interfaces per radio.
         ap_info: dict[str, str] = {}
@@ -1839,8 +1861,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # than the raw frequency in MHz. This groups all virtual interfaces on
             # the same radio+SSID combination under one stable AP device, even
             # when different channels are reported across updates.
-            from .helpers import normalize_band
-
             band = normalize_band(wifi.band or wifi.frequency or wifi.radio)
             label = format_ap_name(wifi.ssid, band)
 
@@ -1921,6 +1941,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         for stable_id in ap_info.keys():
             active_identifiers.add(
                 (DOMAIN, format_ap_device_id(self.router_id, stable_id))
+            )
+        for radio in radio_info:
+            active_identifiers.add(
+                (DOMAIN, format_radio_device_id(self.router_id, radio))
             )
 
         _LOGGER.debug(
