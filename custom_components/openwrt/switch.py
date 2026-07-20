@@ -758,7 +758,7 @@ class OpenWrtRadioSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
         self._client = client
         self._radio = radio
         label = format_radio_name(radio, band)
-        self._attr_name = "Radio"
+        self._attr_name = "Physical radio"
         self._attr_unique_id = f"{entry.entry_id}_radio_{radio}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
@@ -843,6 +843,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             "ssid": ssid or iface_name,
             "band": band,
         }
+        self._attr_name = f"SSID {ssid or iface_name}"
         # Use section ID as stable identifier if available
         stable_id = coordinator.interface_to_stable_id.get(
             iface_name, section_id if section_id else iface_name
@@ -858,8 +859,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             > 1
         ):
             name_label = f"{name_label} [{iface_name}]"
-            # Since this entity's name defaults to None (using device name), we need to set it explicitly
-            self._attr_name = f"Radio [{iface_name}]"
+            self._attr_name = f"SSID {ssid or iface_name} [{iface_name}]"
 
         if radio:
             radio_label = format_radio_name(radio, band)

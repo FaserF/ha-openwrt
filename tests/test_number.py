@@ -18,12 +18,12 @@ from custom_components.openwrt.number import (
 
 @pytest.mark.asyncio
 async def test_txpower_number_creation_and_control() -> None:
-    """Test wireless TX Power number entities are created and work when txpower is 0 or greater."""
+    """Test a valid wireless TX power creates a controllable entity."""
     wifi = WirelessInterface(
         name="phy0-ap0",
         ssid="MyNet",
         radio="radio0",
-        txpower=0,
+        txpower=20,
     )
 
     coordinator = MagicMock()
@@ -71,7 +71,9 @@ async def test_txpower_number_creation_and_control() -> None:
     # Mock hass.data for set_native_value
     entity.hass = hass
 
-    assert entity.native_value == 0
+    assert entity.native_value == 20
+    assert entity._attr_name == "Transmit power"
+    assert entity._attr_native_min_value == 1
 
     # Test setting native value
     await entity.async_set_native_value(15)
@@ -140,6 +142,29 @@ def test_txpower_number_max_value() -> None:
         "2.4 GHz",
     )
     assert num.native_max_value == 9.0
+
+
+@pytest.mark.asyncio
+async def test_unknown_zero_txpower_does_not_create_entity() -> None:
+    """Do not expose a fabricated 0 dBm value when OpenWrt reports no power."""
+    coordinator = MagicMock()
+    coordinator.data = OpenWrtData(
+        wireless_interfaces=[
+            WirelessInterface(name="phy0-ap0", radio="radio0", txpower=0)
+        ],
+        permissions=OpenWrtPermissions(write_wireless=True),
+    )
+    coordinator.async_add_listener = MagicMock()
+
+    entry = MagicMock(entry_id="test_entry", unique_id="router_mac")
+    entry.async_on_unload = MagicMock()
+    hass = MagicMock()
+    hass.data = {"openwrt": {"test_entry": {"coordinator": coordinator}}}
+    added_entities = []
+
+    await async_setup_entry(hass, entry, added_entities.extend)
+
+    assert added_entities == []
 
 
 @pytest.mark.asyncio

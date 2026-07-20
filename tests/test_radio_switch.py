@@ -62,6 +62,7 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         "2.4 GHz",
         "5 GHz",
     }
+    assert {entity._attr_name for entity in radios} == {"Physical radio"}
 
     radio0_entities = [
         entity
@@ -74,6 +75,11 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         next(iter(entity._attr_device_info["identifiers"]))
         for entity in radio0_entities
     } == {("openwrt", "router_id_radio_radio0")}
+    assert {entity._attr_name for entity in radio0_entities} == {
+        "Physical radio",
+        "SSID phy0-ap0",
+        "SSID phy0-ap1",
+    }
 
     await radios[1].async_turn_on()
 

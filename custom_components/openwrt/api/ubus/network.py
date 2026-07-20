@@ -22,6 +22,15 @@ UBUS_ID_AUTH = 1
 UBUS_ID_CALL = 2
 
 
+def _valid_txpower(value: Any) -> int:
+    """Return a positive dBm value, or zero when OpenWrt has no reading."""
+    try:
+        power = int(float(value))
+    except (TypeError, ValueError):
+        return 0
+    return power if power > 0 else 0
+
+
 class UbusNetworkMixin:
     """Network methods for UbusClient."""
 
@@ -90,7 +99,9 @@ class UbusNetworkMixin:
                                 ),
                                 htmode=radio_data.get("config", {}).get("htmode", ""),
                                 hwmode=radio_data.get("config", {}).get("hwmode", ""),
-                                txpower=radio_data.get("config", {}).get("txpower", 0),
+                                txpower=_valid_txpower(
+                                    radio_data.get("config", {}).get("txpower")
+                                ),
                                 mesh_id=iface_config.get("mesh_id", ""),
                                 mesh_fwding=iface_config.get("mesh_fwding", False),
                                 section=section,
@@ -147,6 +158,9 @@ class UbusNetworkMixin:
                                 or vals.get(radio_name, {}).get("hwmode", "")
                             ),
                             hwmode=vals.get(radio_name, {}).get("hwmode", ""),
+                            txpower=_valid_txpower(
+                                vals.get(radio_name, {}).get("txpower")
+                            ),
                             section=sect_name,
                             ifname=sect_data.get("ifname"),
                         )
@@ -218,6 +232,9 @@ class UbusNetworkMixin:
                         wifi.ssid = iwinfo.get("ssid", "")
                     wifi.mac_address = iwinfo.get("bssid", "").upper()
                     wifi.channel = iwinfo.get("channel", 0)
+                    reported_txpower = _valid_txpower(iwinfo.get("txpower"))
+                    if reported_txpower:
+                        wifi.txpower = reported_txpower
                     wifi.frequency = str(iwinfo.get("frequency", ""))
                     # Re-resolve band from frequency if not already set
                     if not wifi.band and wifi.frequency:

@@ -480,6 +480,7 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
                         "frequency": 5180,
                         "bssid": "00:11:22:33:44:55",
                         "channel": 36,
+                        "txpower": 23,
                     }
                 if device == "wlan0":
                     return {
@@ -487,6 +488,7 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
                         "frequency": 2412,
                         "bssid": "00:11:22:33:44:66",
                         "channel": 1,
+                        "txpower": 20,
                     }
             return {}
 
@@ -500,6 +502,7 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
         assert wifi2g.ifname == "wlan0"
         assert wifi2g.band == "2.4 GHz"
         assert wifi2g.channel == 1
+        assert wifi2g.txpower == 20
         assert wifi2g.radio_enabled is True
 
         wifi5g = next(w for w in interfaces if w.section == "default_radio1")
@@ -507,6 +510,7 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
         assert wifi5g.ifname == "wlan1"
         assert wifi5g.band == "5 GHz"
         assert wifi5g.channel == 36
+        assert wifi5g.txpower == 23
         assert wifi5g.radio_enabled is False
 
 

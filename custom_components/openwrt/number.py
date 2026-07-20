@@ -48,7 +48,7 @@ async def async_setup_entry(
         # TX Power is configured on the physical radio, not on an SSID interface.
         if perms.write_wireless:
             for wifi in coordinator.data.wireless_interfaces:
-                if wifi.radio and wifi.txpower >= 0:
+                if wifi.radio and wifi.txpower > 0:
                     key = f"txpower_{wifi.radio}"
                     if key not in tracked_keys:
                         tracked_keys.add(key)
@@ -123,7 +123,7 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
 
     _attr_has_entity_name = True
     _attr_mode = NumberMode.SLIDER
-    _attr_native_min_value = 0
+    _attr_native_min_value = 1
     _attr_native_max_value = 30
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "dBm"
@@ -142,7 +142,7 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         self._radio = radio
         self._entry = entry
         label = format_radio_name(radio, band)
-        self._attr_name = "TX Power"
+        self._attr_name = "Transmit power"
         self._attr_unique_id = f"{entry.entry_id}_txpower_{radio}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
@@ -169,7 +169,7 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         """Return the current TX power."""
         if self.coordinator.data:
             for wifi in self.coordinator.data.wireless_interfaces:
-                if wifi.radio == self._radio and wifi.txpower >= 0:
+                if wifi.radio == self._radio and wifi.txpower > 0:
                     return wifi.txpower
         return None
 
