@@ -79,6 +79,7 @@ class UbusNetworkMixin:
                                 enabled=not radio_data.get("disabled", False),
                                 up=not radio_data.get("disabled", False),
                                 radio=radio_name,
+                                radio_enabled=not radio_data.get("disabled", False),
                                 band=WirelessInterface._band_from_raw(
                                     radio_data.get("config", {}).get("band", "")
                                     or radio_data.get("config", {}).get("hwmode", "")
@@ -135,6 +136,7 @@ class UbusNetworkMixin:
                             enabled=not (radio_disabled or iface_disabled),
                             up=not (radio_disabled or iface_disabled),
                             radio=radio_name,
+                            radio_enabled=not radio_disabled,
                             band=WirelessInterface._band_from_raw(
                                 vals.get(radio_name, {}).get("band", "")
                                 or vals.get(radio_name, {}).get("hwmode", "")

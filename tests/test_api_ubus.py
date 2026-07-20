@@ -459,6 +459,7 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
                         ],
                     },
                     "radio1": {
+                        "disabled": True,
                         "config": {"band": "5g", "hwmode": "11a"},
                         "interfaces": [
                             {
@@ -499,12 +500,14 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
         assert wifi2g.ifname == "wlan0"
         assert wifi2g.band == "2.4 GHz"
         assert wifi2g.channel == 1
+        assert wifi2g.radio_enabled is True
 
         wifi5g = next(w for w in interfaces if w.section == "default_radio1")
         assert wifi5g.name == "wlan1"
         assert wifi5g.ifname == "wlan1"
         assert wifi5g.band == "5 GHz"
         assert wifi5g.channel == 36
+        assert wifi5g.radio_enabled is False
 
 
 @pytest.mark.asyncio

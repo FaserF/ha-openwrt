@@ -146,6 +146,7 @@ class WirelessInterface:
     enabled: bool = True
     up: bool = False
     radio: str = ""
+    radio_enabled: bool = True
     htmode: str = ""
     txpower: int = 0
     txpower_offset: int = 0
@@ -1402,6 +1403,10 @@ class OpenWrtClient(abc.ABC):
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable or disable a wireless interface."""
         return False
+
+    async def set_radio_enabled(self, radio: str, enabled: bool) -> bool:
+        """Physically enable or disable a wireless radio."""
+        return await self.set_wireless_enabled(radio, enabled)
 
     async def manage_interface(self, name: str, action: str) -> bool:
         """Manage a network interface (up/down/reconnect)."""

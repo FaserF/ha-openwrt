@@ -129,6 +129,7 @@ class SshNetworkMixin:
                             enabled=not radio_data.get("disabled", False),
                             up=radio_data.get("up", False),
                             radio=radio_name,
+                            radio_enabled=not radio_data.get("disabled", False),
                             band=WirelessInterface._band_from_raw(
                                 radio_data.get("config", {}).get("band", "")
                                 or radio_data.get("config", {}).get("hwmode", "")
@@ -202,6 +203,7 @@ class SshNetworkMixin:
                             enabled=not is_disabled,
                             up=not is_disabled,
                             radio=radio_name,
+                            radio_enabled=not radio_disabled,
                             hwmode=sections.get(radio_name, {}).get("hwmode", ""),
                             section=sect_name,
                             ifname=ifname_val or "",

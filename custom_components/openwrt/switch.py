@@ -276,6 +276,20 @@ def _add_wireless_switches(
         tracked_keys.add("wps")
         entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
     for wifi in coordinator.data.wireless_interfaces:
+        if wifi.radio:
+            key = f"radio_{wifi.radio}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.append(
+                    OpenWrtRadioSwitch(
+                        coordinator,
+                        entry,
+                        client,
+                        wifi.radio,
+                        wifi.band,
+                    )
+                )
+    for wifi in coordinator.data.wireless_interfaces:
         if wifi.name:
             key = f"wireless_{wifi.section or wifi.name}"
             if key not in tracked_keys:
@@ -714,6 +728,75 @@ class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
         self.coordinator.hass.async_create_task(
             self.coordinator.async_request_refresh()
         )
+
+
+class OpenWrtRadioSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
+    """Switch to physically enable or disable a wireless radio."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = SwitchDeviceClass.SWITCH
+
+    def __init__(
+        self,
+        coordinator: OpenWrtDataCoordinator,
+        entry: ConfigEntry,
+        client: OpenWrtClient,
+        radio: str,
+        band: str,
+    ) -> None:
+        """Initialize the physical radio switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._radio = radio
+        label = f"{radio} ({band})" if band else radio
+        self._attr_name = f"Radio {label}"
+        self._attr_unique_id = f"{entry.entry_id}_radio_{radio}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.unique_id}_radio_{radio}")},
+            name=f"Radio {label}",
+            manufacturer="OpenWrt",
+            model="Wireless Radio",
+            via_device=(DOMAIN, _router_id(entry)),
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return the configured physical radio state."""
+        if self.coordinator.data is None:
+            return None
+        for wifi in self.coordinator.data.wireless_interfaces:
+            if wifi.radio == self._radio:
+                return wifi.radio_enabled
+        return None
+
+    async def _async_set_enabled(self, enabled: bool) -> None:
+        """Set the configured physical radio state."""
+        try:
+            if not await self._client.set_radio_enabled(self._radio, enabled):
+                msg = f"OpenWrt rejected radio state change for {self._radio}"
+                raise HomeAssistantError(msg)
+            if self.coordinator.data:
+                for wifi in self.coordinator.data.wireless_interfaces:
+                    if wifi.radio == self._radio:
+                        wifi.radio_enabled = enabled
+            self.async_write_ha_state()
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            msg = f"Failed to change physical radio {self._radio}: {err}"
+            raise HomeAssistantError(msg) from err
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Physically enable the radio."""
+        await self._async_set_enabled(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Physically disable the radio."""
+        await self._async_set_enabled(False)
 
 
 class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):

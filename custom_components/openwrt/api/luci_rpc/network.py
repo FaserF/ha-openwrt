@@ -131,6 +131,7 @@ class LuciRpcNetworkMixin:
                                 enabled=not radio_data.get("disabled", False),
                                 up=radio_data.get("up", False),
                                 radio=radio_name,
+                                radio_enabled=not radio_data.get("disabled", False),
                                 hwmode=radio_data.get("config", {}).get("hwmode", ""),
                                 section=section,
                                 ifname=ifname,
@@ -186,6 +187,7 @@ class LuciRpcNetworkMixin:
                                 enabled=not (radio_disabled or iface_disabled),
                                 up=not (radio_disabled or iface_disabled),
                                 radio=radio_name,
+                                radio_enabled=not radio_disabled,
                                 hwmode=sections.get(radio_name, {}).get("hwmode", ""),
                                 section=sect_name,
                             )
