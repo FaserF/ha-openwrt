@@ -134,6 +134,14 @@ class UbusClient(
                         and data["result"][0] == 6  # Permission denied/Session expired
                     ):
                         reauth_needed = True
+                    elif (
+                        isinstance(data.get("error"), dict)
+                        and data["error"].get("code") == -32002
+                    ):
+                        # The ubus JSON-RPC gateway reports an invalid/expired session this way
+                        # on some rpcd/uhttpd-mod-ubus versions, instead of embedding code 6 in
+                        # a "result" array. Treat it the same as a session expiry.
+                        reauth_needed = True
 
             if reauth_needed and not reauthenticated:
                 if self._session_id == failed_session:
@@ -195,6 +203,19 @@ class UbusClient(
                 raise
             msg = f"Unexpected error communicating with {self.host}: {err}"
             raise UbusError(msg) from err
+
+        if isinstance(data.get("error"), dict):
+            err_obj = data["error"]
+            code = err_obj.get("code")
+            message = err_obj.get("message", "unknown error")
+            if code == -32002:
+                msg = (
+                    f"Access denied to ubus on {self.host} (session invalid even "
+                    "after re-authentication - check credentials/ACL)"
+                )
+                raise UbusPermissionError(msg)
+            msg = f"Ubus JSON-RPC error {code} from {self.host}: {message}"
+            raise UbusError(msg)
 
         if "result" not in data:
             msg = f"Unexpected response: {data}"

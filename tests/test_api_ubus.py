@@ -600,3 +600,86 @@ async def test_ubus_get_ip_neighbors_filters_ipv6_link_local(ubus_client: UbusCl
         assert "192.168.1.5" in ips
         assert "2001:db8::1" in ips
         assert "fe80::1" not in ips
+
+
+@pytest.mark.asyncio
+async def test_ubus_call_session_expiry_jsonrpc_32002(ubus_client: UbusClient):
+    """Test session expiry handling when ubus returns a JSON-RPC -32002 error."""
+    from custom_components.openwrt.api.ubus import UbusPermissionError
+
+    ubus_client._session_id = "expired_token"
+    ubus_client.session = MagicMock()
+
+    expired_resp = MockResponse(
+        200,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "error": {"code": -32002, "message": "Access denied"},
+        },
+    )
+    success_resp = MockResponse(
+        200,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": [0, {"status": "ok"}],
+        },
+    )
+
+    ubus_client.session.post = MagicMock(side_effect=[expired_resp, success_resp])
+
+    with patch.object(ubus_client, "connect", new_callable=AsyncMock) as mock_connect:
+
+        def connect_side_effect():
+            ubus_client._session_id = "new_token"
+
+        mock_connect.side_effect = connect_side_effect
+
+        result = await ubus_client._call("system", "board")
+        assert result == {"status": "ok"}
+        assert mock_connect.call_count == 1
+
+    # Now test when second call after connect also fails with -32002
+    ubus_client._session_id = "expired_token"
+    ubus_client.session.post = MagicMock(side_effect=[expired_resp, expired_resp])
+
+    with (
+        patch.object(ubus_client, "connect", new_callable=AsyncMock) as mock_connect,
+        pytest.raises(UbusPermissionError) as exc_info,
+    ):
+        await ubus_client._call("system", "board")
+
+    assert "Access denied to ubus" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_set_firewall_rule_enabled_propagates_ubus_error(ubus_client: UbusClient):
+    """Test set_firewall_rule_enabled propagates UbusError when _call fails."""
+    from custom_components.openwrt.api.ubus import UbusError
+
+    with patch.object(
+        ubus_client, "_call", new_callable=AsyncMock, side_effect=UbusError("UCI error")
+    ):
+        with pytest.raises(UbusError):
+            await ubus_client.set_firewall_rule_enabled("rule_1", True)
+
+
+@pytest.mark.asyncio
+async def test_set_firewall_rule_enabled_reload_failure(ubus_client: UbusClient):
+    """Test set_firewall_rule_enabled raises UbusError when firewall reload fails."""
+    from custom_components.openwrt.api.ubus import UbusError
+
+    with (
+        patch.object(ubus_client, "_call", new_callable=AsyncMock, return_value={}),
+        patch.object(
+            ubus_client,
+            "execute_command",
+            new_callable=AsyncMock,
+            return_value="RC=1",
+        ),
+        pytest.raises(UbusError) as exc_info,
+    ):
+        await ubus_client.set_firewall_rule_enabled("rule_1", True)
+
+    assert "firewall reload failed" in str(exc_info.value)

@@ -1154,16 +1154,24 @@ class OpenWrtFirewallRuleSwitch(
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable the firewall rule."""
         try:
-            await self._client.set_firewall_rule_enabled(self._section_id, True)
-            # Optimistic update
-            if self.coordinator.data:
-                for rule in self.coordinator.data.firewall_rules:
-                    if rule.section_id == self._section_id:
-                        rule.enabled = True
-            self.async_write_ha_state()
+            success = await self._client.set_firewall_rule_enabled(
+                self._section_id, True
+            )
         except Exception as err:
             msg = f"Failed to enable firewall rule {self._section_id}: {err}"
             raise HomeAssistantError(msg) from err
+
+        if not success:
+            raise HomeAssistantError(
+                f"Router rejected request to enable firewall rule {self._section_id} "
+                "(no exception raised, but result was falsy)"
+            )
+
+        if self.coordinator.data:
+            for rule in self.coordinator.data.firewall_rules:
+                if rule.section_id == self._section_id:
+                    rule.enabled = True
+        self.async_write_ha_state()
         self.coordinator.hass.async_create_task(
             self.coordinator.async_request_refresh()
         )
@@ -1171,16 +1179,24 @@ class OpenWrtFirewallRuleSwitch(
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the firewall rule."""
         try:
-            await self._client.set_firewall_rule_enabled(self._section_id, False)
-            # Optimistic update
-            if self.coordinator.data:
-                for rule in self.coordinator.data.firewall_rules:
-                    if rule.section_id == self._section_id:
-                        rule.enabled = False
-            self.async_write_ha_state()
+            success = await self._client.set_firewall_rule_enabled(
+                self._section_id, False
+            )
         except Exception as err:
             msg = f"Failed to disable firewall rule {self._section_id}: {err}"
             raise HomeAssistantError(msg) from err
+
+        if not success:
+            raise HomeAssistantError(
+                f"Router rejected request to disable firewall rule {self._section_id} "
+                "(no exception raised, but result was falsy)"
+            )
+
+        if self.coordinator.data:
+            for rule in self.coordinator.data.firewall_rules:
+                if rule.section_id == self._section_id:
+                    rule.enabled = False
+        self.async_write_ha_state()
         self.coordinator.hass.async_create_task(
             self.coordinator.async_request_refresh()
         )

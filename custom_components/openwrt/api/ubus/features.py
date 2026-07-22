@@ -26,8 +26,8 @@ class UbusFeaturesMixin:
 
     async def set_firewall_rule_enabled(self, section_id: str, enabled: bool) -> bool:
         """Enable or disable a firewall rule via UCI."""
+        action = "1" if enabled else "0"
         try:
-            action = "1" if enabled else "0"
             await self._call(
                 "uci",
                 "set",
@@ -38,11 +38,29 @@ class UbusFeaturesMixin:
                 },
             )
             await self._call("uci", "commit", {"config": "firewall"})
-            await self.execute_command("/etc/init.d/firewall reload")
-            self._last_full_poll = 0
-            return True
-        except UbusError:
-            return False
+        except UbusError as err:
+            _LOGGER.error(
+                "uci set/commit failed for firewall rule %s (enabled=%s): %s",
+                section_id,
+                enabled,
+                err,
+            )
+            raise
+
+        reload_result = await self.execute_command(
+            "/etc/init.d/firewall reload; echo RC=$?"
+        )
+        if "RC=0" not in (reload_result or ""):
+            _LOGGER.error(
+                "firewall reload failed after setting rule %s (enabled=%s): %s",
+                section_id,
+                enabled,
+                reload_result,
+            )
+            raise UbusError(f"firewall reload failed after updating rule {section_id}")
+
+        self._last_full_poll = 0
+        return True
 
     async def get_firewall_rules(self) -> list[FirewallRule]:
         """Get general firewall rules via UCI."""
