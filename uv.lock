@@ -1,8 +1,8 @@
 version = 1
 revision = 3
-requires-python = ">=3.13"
+requires-python = "==3.14.6"
 
 [[package]]
 name = "ha-openwrt"
-version = "2.4.1.dev0"
+version = "2.4.2.dev0"
 source = { virtual = "." }
