@@ -18,7 +18,7 @@ body:
     attributes:
       label: Integration Version
       description: Which version of ha-openwrt are you running? (HACS or integration page)
-      placeholder: e.g. v2.4.1b0
+      placeholder: e.g. v2.4.1
     validations:
       required: true
 
