@@ -299,6 +299,8 @@ def test_wireless_switch_status_matching() -> None:
     config_entry = MagicMock()
     config_entry.entry_id = "test_entry"
     config_entry.unique_id = "test_router"
+    config_entry.options = {"update_interval": 60}
+    config_entry.data = {"host": "192.168.1.1", "update_interval": 60}
 
     coordinator = OpenWrtDataCoordinator(MagicMock(), config_entry, MagicMock())
     coordinator.data = MagicMock()

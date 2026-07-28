@@ -227,6 +227,7 @@ async def test_luci_get_connected_devices_fdb(luci_client: LuciRpcClient):
     """Test get_connected_devices parses FDB age properly in LuCI RPC."""
     luci_client._auth_token = "luci_test_token"
     luci_client._get_wireless_mapping = AsyncMock()
+    luci_client._rpc_call = AsyncMock(return_value=None)
     luci_client.trust_bridge_fdb = True
     luci_client.trust_stale_arp = False
 
@@ -307,6 +308,7 @@ async def test_luci_get_connected_devices_iwinfo_rates(
     """Test LuCI RPC client parses rates and noise correctly from JSON iwinfo and hostapd fallback."""
     luci_client._auth_token = "luci_test_token"
     luci_client._get_wireless_mapping = AsyncMock()
+    luci_client._rpc_call = AsyncMock(return_value=None)
     luci_client.packages.wireless = True
 
     with patch.object(
@@ -346,6 +348,7 @@ async def test_luci_get_connected_devices_iwinfo_fallback_rates(
     """Test that fallback interface names from hostapd are queried via iwinfo assoclist if iwinfo CLI does not report them."""
     luci_client._auth_token = "luci_test_token"
     luci_client._get_wireless_mapping = AsyncMock()
+    luci_client._rpc_call = AsyncMock(return_value=None)
     luci_client.packages.wireless = True
 
     with patch.object(

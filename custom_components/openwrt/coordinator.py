@@ -2227,12 +2227,21 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     data, owner, repo, router_hash, headers, session
                 )
 
-            # 3. Determine latest version and meta
-            latest_tag = latest_release.get("tag_name", "")
-            latest_version = self._get_latest_version_string(latest_release)
+            # 3. Find the latest release that contains a matching sysupgrade image for this router
+            matching_release = None
+            for release in releases:
+                if self._release_has_matching_asset(data, release):
+                    matching_release = release
+                    break
+
+            # Fallback to the first release if no specific asset match is found
+            target_release = matching_release or releases[0]
+
+            latest_tag = target_release.get("tag_name", "")
+            latest_version = self._get_latest_version_string(target_release)
 
             data.firmware_latest_version = latest_version
-            data.firmware_release_url = latest_release.get("html_url", "")
+            data.firmware_release_url = target_release.get("html_url", "")
 
             # 4. Check if upgradable
             is_upgradable = self._version_is_newer(
@@ -2244,8 +2253,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 )
             data.firmware_upgradable = is_upgradable
 
-            # 5. Find sysupgrade image and checksum
-            await self._process_custom_release_assets(data, latest_release, session)
+            # 5. Find sysupgrade image and checksum from the target release
+            await self._process_custom_release_assets(data, target_release, session)
 
     def _get_router_hash(self, data: OpenWrtData) -> str:
         """Extract commit hash from revision string."""
@@ -2290,6 +2299,22 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         if published:
             return f"{tag} ({published.split('T')[0]})"
         return tag
+
+    def _release_has_matching_asset(self, data: OpenWrtData, release: dict[str, Any]) -> bool:
+        """Check if a release contains a sysupgrade asset matching the router."""
+        assets = release.get("assets", [])
+        pattern = self._build_sysupgrade_pattern(data)
+        board_name = data.device_info.board_name or ""
+        board = board_name.replace(",", "_").replace(" ", "_")
+
+        for asset in assets:
+            name = asset.get("name", "")
+            if pattern and re.match(pattern, name, re.IGNORECASE):
+                return True
+            if board and board in name and "sysupgrade" in name:
+                return True
+
+        return False
 
     async def _process_custom_release_assets(
         self, data: OpenWrtData, release: dict[str, Any], session: aiohttp.ClientSession
@@ -2353,13 +2378,28 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     @staticmethod
     def _build_sysupgrade_pattern(data: OpenWrtData) -> str | None:
-        """Build regex pattern for sysupgrade matching."""
+        """Build regex pattern for sysupgrade matching.
+
+        OpenWrt firmware filenames use the format:
+          openwrt-{subtarget}-{arch}-{board}-sysupgrade.bin
+        but the router reports target as "{arch}/{subtarget}" (e.g.
+        "qualcommax/ipq807x"). The two parts can appear in either order in the
+        filename, so we use lookaheads to require both parts independently.
+        """
         info = data.device_info
         if not info.target or not info.board_name:
             return None
-        target = info.target.replace("/", "-")
+        # Split "arch/subtarget" into its two components so we can match them
+        # regardless of their order in the filename.
+        target_parts = info.target.split("/")
         board = info.board_name.replace(",", "_").replace(" ", "_")
-        return rf".*{re.escape(target)}.*{re.escape(board)}.*sysupgrade\.bin$"
+        # Build a lookahead for every target part + the board name
+        lookaheads = "".join(
+            rf"(?=.*{re.escape(part)})" for part in target_parts if part
+        )
+        lookaheads += rf"(?=.*{re.escape(board)})"
+        lookaheads += r"(?=.*sysupgrade\.bin)"
+        return rf"^{lookaheads}.*$"
 
     @staticmethod
     def _version_is_newer(current: str, latest: str) -> bool:
