@@ -426,7 +426,9 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 # Mark coordinator that a reboot/sysupgrade is expected
                 self.coordinator.in_reboot_installation = True
                 # We assume keep_settings=True for official updates from HA
-                await self.coordinator.client.install_firmware(url, keep_settings=True)
+                await self.coordinator.client.install_firmware(
+                    url, keep_settings=True, force=data.is_custom_build
+                )
             except Exception as err:
                 msg = f"Failed to initiate firmware installation: {err}"
                 raise HomeAssistantError(msg) from err

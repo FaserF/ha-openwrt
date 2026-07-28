@@ -376,7 +376,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     err,
                     self._current_backoff_interval,
                 )
-            raise
+            raise UpdateFailed(f"Error fetching data: {err}") from err
 
         async_delete_connection_lost_repair(self.hass, self.config_entry)
 
@@ -2235,9 +2235,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
             # 2. Try to identify current version by commit hash if unknown
             if router_hash:
-                await self._find_tag_by_hash(
-                    data, owner, repo, router_hash, headers, session
+                tag_name = await self._find_tag_by_hash(
+                    owner, repo, router_hash, headers, session
                 )
+                if tag_name:
+                    data.firmware_current_version = tag_name
 
             # 3. Find the latest release that contains a matching sysupgrade image for this router
             matching_release = None
@@ -2256,13 +2258,19 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             data.firmware_release_url = target_release.get("html_url", "")
 
             # 4. Check if upgradable
-            is_upgradable = self._version_is_newer(
-                data.firmware_current_version or "", latest_tag
-            )
-            if not is_upgradable and latest_version != latest_tag:
+            if (
+                data.firmware_current_version == latest_tag
+                or data.firmware_current_version == target_release.get("name")
+            ):
+                is_upgradable = False
+            else:
                 is_upgradable = self._version_is_newer(
-                    data.firmware_current_version or "", latest_version
+                    data.firmware_current_version or "", latest_tag
                 )
+                if not is_upgradable and latest_version != latest_tag:
+                    is_upgradable = self._version_is_newer(
+                        data.firmware_current_version or "", latest_version
+                    )
             data.firmware_upgradable = is_upgradable
 
             # 5. Find sysupgrade image and checksum from the target release
@@ -2277,13 +2285,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     async def _find_tag_by_hash(
         self,
-        data: OpenWrtData,
         owner: str,
         repo: str,
         router_hash: str,
         headers: dict,
         session: aiohttp.ClientSession,
-    ) -> None:
+    ) -> str | None:
         """Find a GitHub tag that matches the router's commit hash."""
         with contextlib.suppress(Exception):
             url = f"https://api.github.com/repos/{owner}/{repo}/tags"
@@ -2295,8 +2302,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     for tag in tags:
                         sha = tag.get("commit", {}).get("sha", "")
                         if sha.startswith(router_hash):
-                            data.firmware_current_version = tag.get("name")
-                            break
+                            return str(tag.get("name"))
+        return None
 
     def _get_latest_version_string(self, release: dict[str, Any]) -> str:
         """Format the latest version string from release info."""
@@ -2419,6 +2426,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     def _version_is_newer(current: str, latest: str) -> bool:
         """Compare firmware versions (e.g., '24.10.1' vs '25.12.0')."""
         import re
+
+        if current and latest and current == latest:
+            return False
 
         if "SNAPSHOT" in current.upper() or "SNAPSHOT" in latest.upper():
             # For snapshots, we always prefer revision comparison if possible

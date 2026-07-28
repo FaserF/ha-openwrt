@@ -1389,7 +1389,9 @@ class OpenWrtClient(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
+    async def install_firmware(
+        self, url: str, keep_settings: bool = True, force: bool = False
+    ) -> None:
         """Install firmware from the given URL."""
         raise NotImplementedError
 

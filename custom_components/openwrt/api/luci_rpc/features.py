@@ -59,9 +59,12 @@ class LuciRpcFeaturesMixin:
                     )
         return leds
 
-    async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
+    async def install_firmware(
+        self, url: str, keep_settings: bool = True, force: bool = False
+    ) -> None:
         """Install firmware from the given URL via LuCI RPC."""
         keep = "" if keep_settings else "-n"
+        force_flag = "-F " if force else ""
         cmd = (
             f"if command -v uclient-fetch >/dev/null 2>&1; then "
             f"  uclient-fetch --no-check-certificate -O /tmp/firmware.bin '{url}'; "
@@ -69,7 +72,7 @@ class LuciRpcFeaturesMixin:
             f"  curl -k -L -o /tmp/firmware.bin '{url}'; "
             f"else "
             f"  wget --no-check-certificate -O /tmp/firmware.bin '{url}'; "
-            f"fi && sysupgrade {keep} /tmp/firmware.bin; rm -f /tmp/firmware.bin"
+            f"fi && sysupgrade {force_flag}{keep} /tmp/firmware.bin; rm -f /tmp/firmware.bin"
         )
         try:
             _LOGGER.info("Initiating firmware installation via LuCI RPC from: %s", url)
