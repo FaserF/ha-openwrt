@@ -784,7 +784,9 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         if self.coordinator.data is None:
             return None
         for wifi in self.coordinator.data.wireless_interfaces:
-            if wifi.name == self._iface_name:
+            if wifi.name == self._iface_name or (
+                self._section_id and wifi.section == self._section_id
+            ):
                 return wifi.enabled
         return None
 
@@ -797,7 +799,9 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             # Optimistic update
             if self.coordinator.data:
                 for wifi in self.coordinator.data.wireless_interfaces:
-                    if wifi.name == self._iface_name:
+                    if wifi.name == self._iface_name or (
+                        self._section_id and wifi.section == self._section_id
+                    ):
                         wifi.enabled = True
             self.async_write_ha_state()
         except Exception as err:
@@ -816,7 +820,9 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             # Optimistic update
             if self.coordinator.data:
                 for wifi in self.coordinator.data.wireless_interfaces:
-                    if wifi.name == self._iface_name:
+                    if wifi.name == self._iface_name or (
+                        self._section_id and wifi.section == self._section_id
+                    ):
                         wifi.enabled = False
             self.async_write_ha_state()
         except Exception as err:

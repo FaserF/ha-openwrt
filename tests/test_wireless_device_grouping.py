@@ -291,6 +291,35 @@ async def test_ap_deduplication_and_naming() -> None:
     assert "phy1-ap2" in sw2._attr_name
 
 
+def test_wireless_switch_status_matching() -> None:
+    """Verify OpenWrtWirelessSwitch matches status using section when iface name differs."""
+    from custom_components.openwrt.api.base import WirelessInterface
+    from custom_components.openwrt.switch import OpenWrtWirelessSwitch
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "test_router"
+
+    coordinator = OpenWrtDataCoordinator(MagicMock(), config_entry, MagicMock())
+    coordinator.data = MagicMock()
+    wifi_iface = WirelessInterface(name="wlan0", section="default_radio0", enabled=True)
+    coordinator.data.wireless_interfaces = [wifi_iface]
+
+    sw = OpenWrtWirelessSwitch(
+        coordinator,
+        config_entry,
+        MagicMock(),
+        "default_radio0",
+        "MyNet",
+        "2.4 GHz",
+        section_id="default_radio0",
+    )
+    assert sw.is_on is True
+
+    wifi_iface.enabled = False
+    assert sw.is_on is False
+
+
 def test_wireless_interface_band_population():
     """Verify that WirelessInterface correctly populates band from frequency or hwmode."""
     from custom_components.openwrt.api.base import WirelessInterface
