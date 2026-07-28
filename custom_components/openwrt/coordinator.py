@@ -2299,7 +2299,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             return f"{tag} ({published.split('T')[0]})"
         return tag
 
-    def _release_has_matching_asset(self, data: OpenWrtData, release: dict[str, Any]) -> bool:
+    def _release_has_matching_asset(
+        self, data: OpenWrtData, release: dict[str, Any]
+    ) -> bool:
         """Check if a release contains a sysupgrade asset matching the router."""
         assets = release.get("assets", [])
         pattern = self._build_sysupgrade_pattern(data)
