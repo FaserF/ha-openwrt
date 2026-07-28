@@ -1,6 +1,7 @@
 # mypy: disable-error-code="attr-defined"
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -61,7 +62,15 @@ class LuciRpcFeaturesMixin:
     async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
         """Install firmware from the given URL via LuCI RPC."""
         keep = "" if keep_settings else "-n"
-        cmd = f"wget --no-check-certificate -O /tmp/firmware.bin '{url}' && sysupgrade {keep} /tmp/firmware.bin; rm -f /tmp/firmware.bin"
+        cmd = (
+            f"if command -v uclient-fetch >/dev/null 2>&1; then "
+            f"  uclient-fetch --no-check-certificate -O /tmp/firmware.bin '{url}'; "
+            f"elif command -v curl >/dev/null 2>&1; then "
+            f"  curl -k -L -o /tmp/firmware.bin '{url}'; "
+            f"else "
+            f"  wget --no-check-certificate -O /tmp/firmware.bin '{url}'; "
+            f"fi && sysupgrade {keep} /tmp/firmware.bin; rm -f /tmp/firmware.bin"
+        )
         try:
             _LOGGER.info("Initiating firmware installation via LuCI RPC from: %s", url)
             await self.execute_command(cmd)
@@ -102,8 +111,9 @@ class LuciRpcFeaturesMixin:
             try:
                 res = await self._rpc_call("file", "read", [remote_path])
                 if res and isinstance(res, str):
-                    with open(local_path, "wb") as f:
-                        f.write(base64.b64decode(res))
+                    await asyncio.to_thread(
+                        self._write_bytes, local_path, base64.b64decode(res)
+                    )
                     return True
             except (
                 LuciRpcTimeoutError,
@@ -118,10 +128,8 @@ class LuciRpcFeaturesMixin:
                 cmd = f"openssl base64 -in {remote_path} || base64 {remote_path} || cat {remote_path} | base64"
                 output = await self.execute_command(cmd)
                 if output:
-                    with open(local_path, "wb") as f:
-                        f.write(
-                            base64.b64decode(output.replace("\n", "").replace("\r", ""))
-                        )
+                    data = base64.b64decode(output.replace("\n", "").replace("\r", ""))
+                    await asyncio.to_thread(self._write_bytes, local_path, data)
                     return True
         except (
             LuciRpcTimeoutError,

@@ -219,6 +219,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self.client.coordinator = self
         self.hass = hass
         self.config_entry = config_entry
+        self.in_reboot_installation = False
         self._firmware_checked = False
         self._last_firmware_check: float = -86400.0  # Force check on startup
         self._last_gps_check: float = -86400.0  # Force check on startup
@@ -342,6 +343,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         try:
             data = await self._async_fetch_all_data()
             await self._async_resolve_reverse_dns(data)
+            if self.in_reboot_installation:
+                _LOGGER.info(
+                    "Device rebooted successfully after firmware update, connection restored."
+                )
+                self.in_reboot_installation = False
             # Reset backoff on success
             if self._current_backoff_interval != self._configured_update_interval:
                 self._current_backoff_interval = self._configured_update_interval
@@ -358,11 +364,18 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 self._current_backoff_interval * 2, 600
             )
             self.update_interval = timedelta(seconds=self._current_backoff_interval)
-            _LOGGER.warning(
-                "Update failed: %s. Backing off next poll to %s seconds",
-                err,
-                self._current_backoff_interval,
-            )
+            if self.in_reboot_installation:
+                _LOGGER.info(
+                    "Device is rebooting due to firmware update (%s). Polling again in %s seconds.",
+                    err,
+                    self._current_backoff_interval,
+                )
+            else:
+                _LOGGER.warning(
+                    "Update failed: %s. Backing off next poll to %s seconds",
+                    err,
+                    self._current_backoff_interval,
+                )
             raise
 
         async_delete_connection_lost_repair(self.hass, self.config_entry)
@@ -2430,6 +2443,22 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if rev_current >= 0 and rev_latest >= 0:
                 if rev_latest != rev_current:
                     return rev_latest > rev_current
+
+            # Check for embedded date strings (e.g. 2026-07-13-2054 or 2026-07-13) in latest/current
+            date_match_current = re.search(
+                r"(\d{4}[-._]\d{2}[-._]\d{2}(?:[-._]\d{4})?)", current
+            )
+            date_match_latest = re.search(
+                r"(\d{4}[-._]\d{2}[-._]\d{2}(?:[-._]\d{4})?)", latest
+            )
+            if date_match_latest and not date_match_current:
+                # Latest has a date tag (e.g. 2026-07-13) and current is generic SNAPSHOT -> latest is newer
+                return True
+            if date_match_current and date_match_latest:
+                c_str = date_match_current.group(1).replace(".", "-").replace("_", "-")
+                l_str = date_match_latest.group(1).replace(".", "-").replace("_", "-")
+                if c_str != l_str:
+                    return l_str > c_str
 
             # Fallback to string comparison if revisions aren't numeric/comparable
             # but strip "SNAPSHOT" and extra chars for a cleaner comparison

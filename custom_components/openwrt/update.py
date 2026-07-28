@@ -6,6 +6,7 @@ OpenWrt releases and custom repository sources.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -399,6 +400,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                         "ASU build complete. Flashing image from: %s",
                         download_url,
                     )
+                    self.coordinator.in_reboot_installation = True
                     # ASU builds always keep settings by default in OpenWrt logic,
                     # but we pass it anyway.
                     await self.coordinator.client.install_firmware(
@@ -421,6 +423,8 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 raise ValueError(msg)
 
             try:
+                # Mark coordinator that a reboot/sysupgrade is expected
+                self.coordinator.in_reboot_installation = True
                 # We assume keep_settings=True for official updates from HA
                 await self.coordinator.client.install_firmware(url, keep_settings=True)
             except Exception as err:
@@ -444,8 +448,7 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             from pathlib import Path
 
             backup_dir = Path(self.hass.config.path("backups", "openwrt"))
-            if not backup_dir.exists():
-                backup_dir.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(backup_dir.mkdir, parents=True, exist_ok=True)
 
             local_filename = Path(remote_path).name
             local_path = str(backup_dir / local_filename)

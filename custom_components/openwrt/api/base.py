@@ -1780,6 +1780,12 @@ class OpenWrtClient(abc.ABC):
             _LOGGER.exception("Backup creation failed: %s", err)
             raise
 
+    @staticmethod
+    def _write_bytes(local_path: str, data: bytes) -> None:
+        """Write bytes to a file synchronously in a thread."""
+        with open(local_path, "wb") as f:
+            f.write(data)
+
     @abc.abstractmethod
     async def download_file(self, remote_path: str, local_path: str) -> bool:
         """Download a file from the router to a local path."""
