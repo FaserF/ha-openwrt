@@ -2219,7 +2219,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 releases = await resp.json()
                 if not releases:
                     return
-                latest_release = releases[0]
 
             # 2. Try to identify current version by commit hash if unknown
             if router_hash:
