@@ -447,3 +447,26 @@ async def test_reconfigure_flow(hass) -> None:
                 assert result["reason"] == "reconfigure_successful"
                 mock_update.assert_called_once()
                 mock_reload.assert_called_once_with("test_entry_id")
+
+
+async def test_provision_failed_step(hass) -> None:
+    """Test provision_failed step display and form submission."""
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    flow._provision_error = "Provisioning error test"
+
+    # Display form
+    result = await flow.async_step_provision_failed()
+    assert result["type"].lower() == "form"
+    assert result["step_id"] == "provision_failed"
+
+    # Submitting form proceeds to permissions
+    with patch.object(
+        flow, "async_step_permissions", new_callable=AsyncMock
+    ) as mock_disp:
+        mock_disp.return_value = {"type": "form", "step_id": "permissions_ubus"}
+        result = await flow.async_step_provision_failed({})
+        mock_disp.assert_called_once()
+        assert result["step_id"] == "permissions_ubus"

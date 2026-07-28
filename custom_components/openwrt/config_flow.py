@@ -1516,8 +1516,17 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             await asyncio.sleep(5)
             return await self.async_step_display_new_user()
 
-        tip = self._analyze_provision_error(self._provision_error or "")
+        return await self.async_step_provision_failed()
 
+    async def async_step_provision_failed(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Handle provisioning failure step."""
+        if user_input is not None:
+            return await self.async_step_permissions()
+
+        tip = self._analyze_provision_error(self._provision_error or "")
         return self.async_show_form(
             step_id="provision_failed",
             errors={"base": "provision_failed"},
