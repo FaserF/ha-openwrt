@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN
 from .coordinator import OpenWrtDataCoordinator
+from .helpers import _router_id, format_ap_device_id, format_ap_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,12 +49,17 @@ async def async_setup_entry(
         if perms.write_wireless:
             for wifi in coordinator.data.wireless_interfaces:
                 if wifi.name and wifi.txpower >= 0:
-                    key = f"txpower_{wifi.name}"
+                    key = f"txpower_{wifi.section or wifi.name}"
                     if key not in tracked_keys:
                         tracked_keys.add(key)
                         new_entities.append(
                             OpenWrtTxPowerNumber(
-                                coordinator, entry, wifi.name, wifi.ssid
+                                coordinator,
+                                entry,
+                                wifi.name,
+                                wifi.ssid,
+                                wifi.frequency,
+                                wifi.section,
                             ),
                         )
 
@@ -91,6 +97,28 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
     _async_add_new_entities()
 
+    def _async_cleanup_entities() -> None:
+        """Remove orphaned number entities when radios/interfaces vanish."""
+        from homeassistant.helpers import entity_registry as er
+
+        ent_reg = er.async_get(hass)
+        entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+
+        for ent in entries:
+            if ent.domain != "number":
+                continue
+
+            unique_id = ent.unique_id
+            if "_txpower_" in unique_id and coordinator.data:
+                iface_name = unique_id.split("_txpower_")[-1]
+                if not any(
+                    w.name == iface_name or w.section == iface_name
+                    for w in coordinator.data.wireless_interfaces
+                ):
+                    ent_reg.async_remove(ent.entity_id)
+
+    hass.add_job(_async_cleanup_entities)
+
 
 class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEntity):
     """Number entity for WiFi TX Power control."""
@@ -111,20 +139,41 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         entry: ConfigEntry,
         iface_name: str,
         ssid: str,
+        frequency: str = "",
+        section_id: str | None = None,
     ) -> None:
         """Initialize the TX Power number entity."""
         super().__init__(coordinator)
         self._iface_name = iface_name
+        self._section_id = section_id
         self._entry = entry
-        label = ssid or iface_name
-        self._attr_name = f"{label} TX Power"
-        self._attr_unique_id = f"{entry.entry_id}_txpower_{iface_name}"
+        self._attr_unique_id = f"{entry.entry_id}_txpower_{section_id or iface_name}"
+
+        stable_id = coordinator.interface_to_stable_id.get(
+            iface_name, section_id if section_id else iface_name
+        )
+        name_label = format_ap_name(ssid or iface_name, frequency)
+        if (
+            sum(
+                1
+                for sid in coordinator.interface_to_stable_id.values()
+                if sid == stable_id
+            )
+            > 1
+        ):
+            name_label = f"{name_label} [{iface_name}]"
+            self._attr_name = f"TX Power [{iface_name}]"
+        else:
+            self._attr_name = "TX Power"
+
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{entry.unique_id}_ap_{iface_name}")},
-            name=f"AP {label}",
+            identifiers={
+                (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
+            },
+            name=name_label,
             manufacturer="OpenWrt",
             model="Access Point",
-            via_device=(DOMAIN, cast(str, entry.unique_id)),
+            via_device=(DOMAIN, _router_id(entry)),
         )
 
     @property
@@ -132,7 +181,9 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         """Return the current TX power."""
         if self.coordinator.data:
             for wifi in self.coordinator.data.wireless_interfaces:
-                if wifi.name == self._iface_name:
+                if wifi.name == self._iface_name or (
+                    self._section_id and wifi.section == self._section_id
+                ):
                     return wifi.txpower
         return None
 
@@ -145,7 +196,9 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         radio = None
         if self.coordinator.data:
             for wifi in self.coordinator.data.wireless_interfaces:
-                if wifi.name == self._iface_name:
+                if wifi.name == self._iface_name or (
+                    self._section_id and wifi.section == self._section_id
+                ):
                     radio = wifi.radio
                     break
 

@@ -79,3 +79,35 @@ async def test_txpower_number_creation_and_control() -> None:
         "uci set wireless.radio0.txpower='15' && uci commit wireless && wifi reload"
     )
     coordinator.async_request_refresh.assert_called()
+
+
+def test_txpower_number_status_matching() -> None:
+    """Verify OpenWrtTxPowerNumber matches txpower using section when iface name differs."""
+    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
+    from custom_components.openwrt.number import OpenWrtTxPowerNumber
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "test_router"
+    config_entry.options = {"update_interval": 60}
+    config_entry.data = {CONF_HOST: "192.168.1.1"}
+
+    coordinator = OpenWrtDataCoordinator(MagicMock(), config_entry, MagicMock())
+    coordinator.data = MagicMock()
+    wifi_iface = WirelessInterface(
+        name="wlan0", section="default_radio0", radio="radio0", txpower=20
+    )
+    coordinator.data.wireless_interfaces = [wifi_iface]
+
+    num = OpenWrtTxPowerNumber(
+        coordinator,
+        config_entry,
+        "default_radio0",
+        "MyNet",
+        "2.4 GHz",
+        section_id="default_radio0",
+    )
+    assert num.native_value == 20
+
+    wifi_iface.txpower = 14
+    assert num.native_value == 14
