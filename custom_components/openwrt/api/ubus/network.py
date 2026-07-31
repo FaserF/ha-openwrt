@@ -202,10 +202,10 @@ class UbusNetworkMixin:
 
         # 3. Populate metrics for all discovered interfaces in parallel
         async def _fetch_metrics(wifi: WirelessInterface) -> None:
-            if skip_iwinfo_info:
-                return
             try:
-                iwinfo = await self._call("iwinfo", "info", {"device": wifi.name})
+                iwinfo = {}
+                if not skip_iwinfo_info:
+                    iwinfo = await self._call("iwinfo", "info", {"device": wifi.name})
                 if iwinfo:
                     if not wifi.ssid:
                         wifi.ssid = iwinfo.get("ssid", "")

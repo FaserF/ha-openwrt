@@ -571,6 +571,8 @@ async def test_ubus_wireless_skips_info_for_luci_admin_proxy(
                 return ["wifi0", "wlan06"]
             if object_name == "iwinfo" and method == "info":
                 pytest.fail("iwinfo info must not be called through this proxy")
+            if object_name == "iwinfo" and method == "assoclist":
+                return {"results": [{"mac": "00:11:22:33:44:55"}]}
             return {}
 
         mock_call.side_effect = call_side_effect
@@ -579,6 +581,7 @@ async def test_ubus_wireless_skips_info_for_luci_admin_proxy(
 
     assert len(interfaces) == 1
     assert interfaces[0].name == "wlan06"
+    assert interfaces[0].clients_count == 1
 
 
 @pytest.mark.asyncio
