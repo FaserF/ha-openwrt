@@ -40,12 +40,15 @@ class UbusNetworkMixin:
         """Get wireless interface information."""
         interfaces: list[WirelessInterface] = []
         iface_names: set[str] = set()
+        radio_names: set[str] = set()
+        skip_iwinfo_info = self._ubus_path.rstrip("/") == "/cgi-bin/luci/admin/ubus"
 
         # 1. Primary source: network.wireless status
         if self.packages.wireless is not False:
             try:
                 wireless_data = await self._call("network.wireless", "status")
                 if wireless_data and isinstance(wireless_data, dict):
+                    radio_names.update(wireless_data)
                     for radio_name, radio_data in wireless_data.items():
                         if not isinstance(radio_data, dict):
                             continue
@@ -160,7 +163,7 @@ class UbusNetworkMixin:
                 candidates = iw_devs["devices"]
 
             for name in candidates:
-                if name in iface_names:
+                if skip_iwinfo_info or name in iface_names or name in radio_names:
                     continue
 
                 # Check if any existing interface from UCI matches this physical device
@@ -199,6 +202,8 @@ class UbusNetworkMixin:
 
         # 3. Populate metrics for all discovered interfaces in parallel
         async def _fetch_metrics(wifi: WirelessInterface) -> None:
+            if skip_iwinfo_info:
+                return
             try:
                 iwinfo = await self._call("iwinfo", "info", {"device": wifi.name})
                 if iwinfo:

@@ -143,6 +143,52 @@ async def test_ubus_probe_skipped_when_ssl_configured(ubus_client: UbusClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        ([{"system": {}, "uci": {}}], ["system", "uci"]),
+        ({"system": {}, "uci": {}}, ["system", "uci"]),
+    ],
+)
+async def test_ubus_list_objects_response_formats(
+    ubus_client: UbusClient, result, expected
+):
+    """Test standard and direct object-map list responses."""
+    ubus_client._connected = True
+    ubus_client.session.post = MagicMock(
+        return_value=MockResponse(200, {"result": result})
+    )
+
+    assert await ubus_client._list_objects() == expected
+
+
+@pytest.mark.asyncio
+async def test_ubus_list_objects_literal_wildcard(ubus_client: UbusClient):
+    """Test probing core objects when a proxy treats the wildcard literally."""
+    ubus_client._connected = True
+    ubus_client.session.post = MagicMock(
+        return_value=MockResponse(200, {"result": {"*": {}}})
+    )
+    ubus_client._get_object_methods = AsyncMock(
+        side_effect=lambda name: {"methods": {}} if name in {"system", "uci"} else {}
+    )
+
+    assert await ubus_client._list_objects() == ["system", "uci"]
+
+
+@pytest.mark.asyncio
+async def test_ubus_get_object_methods_direct_response(ubus_client: UbusClient):
+    """Test method discovery through a direct object-map response."""
+    ubus_client.session.post = MagicMock(
+        return_value=MockResponse(
+            200, {"result": {"uci": {"get": {"config": "String"}}}}
+        )
+    )
+
+    assert await ubus_client._get_object_methods("uci") == {"get": {"config": "String"}}
+
+
+@pytest.mark.asyncio
 async def test_ubus_get_device_info(ubus_client: UbusClient):
     """Test fetching device info."""
     ubus_client._session_id = "test_token"
@@ -459,6 +505,80 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
         assert wifi5g.ifname == "wlan1"
         assert wifi5g.band == "5 GHz"
         assert wifi5g.channel == 36
+
+
+@pytest.mark.asyncio
+async def test_ubus_wireless_skips_radio_info(ubus_client: UbusClient):
+    """Test that physical radio names are not queried as iwinfo interfaces."""
+    ubus_client.packages.wireless = True
+
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+
+        def call_side_effect(object_name, method, params=None, *args, **kwargs):
+            if object_name == "network.wireless" and method == "status":
+                return {
+                    "radio0": {
+                        "config": {"band": "2g"},
+                        "interfaces": [
+                            {
+                                "section": "default_radio0",
+                                "ifname": "wlan0",
+                                "config": {"ssid": "Test"},
+                            }
+                        ],
+                    }
+                }
+            if object_name == "iwinfo" and method == "devices":
+                return ["radio0"]
+            if object_name == "iwinfo" and method == "info":
+                assert params == {"device": "wlan0"}
+                return {"channel": 1}
+            return {}
+
+        mock_call.side_effect = call_side_effect
+
+        interfaces = await ubus_client.get_wireless_interfaces()
+
+    assert len(interfaces) == 1
+    assert interfaces[0].channel == 1
+
+
+@pytest.mark.asyncio
+async def test_ubus_wireless_skips_info_for_luci_admin_proxy(
+    ubus_client: UbusClient,
+):
+    """Test avoiding iwinfo info calls that hang GL.iNet's LuCI proxy."""
+    ubus_client.packages.wireless = True
+    ubus_client._ubus_path = "/cgi-bin/luci/admin/ubus"
+
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+
+        def call_side_effect(object_name, method, *args, **kwargs):
+            if object_name == "network.wireless" and method == "status":
+                return {
+                    "wifi0": {
+                        "config": {"band": "2g", "hwmode": "11beg"},
+                        "interfaces": [
+                            {
+                                "section": "iot2g",
+                                "ifname": "wlan06",
+                                "config": {"ssid": "Test"},
+                            }
+                        ],
+                    }
+                }
+            if object_name == "iwinfo" and method == "devices":
+                return ["wifi0", "wlan06"]
+            if object_name == "iwinfo" and method == "info":
+                pytest.fail("iwinfo info must not be called through this proxy")
+            return {}
+
+        mock_call.side_effect = call_side_effect
+
+        interfaces = await ubus_client.get_wireless_interfaces()
+
+    assert len(interfaces) == 1
+    assert interfaces[0].name == "wlan06"
 
 
 @pytest.mark.asyncio
