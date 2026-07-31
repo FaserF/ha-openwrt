@@ -82,6 +82,44 @@ async def test_migration_v1_to_v2_exceptions(hass: HomeAssistant):
         mock_client.disconnect.assert_called_once()
 
 
+def test_enable_existing_device_rate_sensors(hass: HomeAssistant) -> None:
+    """Test that existing integration-disabled rate entities are enabled on setup."""
+    from custom_components.openwrt import _async_enable_device_rate_sensors
+
+    def make_entity(entity_id: str, unique_id: str) -> MagicMock:
+        ent = MagicMock()
+        ent.domain = "sensor"
+        ent.entity_id = entity_id
+        ent.unique_id = unique_id
+        ent.disabled_by = "integration"
+        return ent
+
+    ent_rx = make_entity("sensor.device_rx_rate", "entry_device_rx_rate")
+    ent_tx = make_entity("sensor.device_tx_rate", "entry_device_tx_rate")
+    ent_signal = make_entity("sensor.device_signal", "entry_device_signal")
+
+    ent_reg = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "entry"
+
+    with (
+        patch("custom_components.openwrt.er.async_get", return_value=ent_reg),
+        patch(
+            "custom_components.openwrt.er.async_entries_for_config_entry",
+            return_value=[ent_rx, ent_tx, ent_signal],
+        ),
+    ):
+        _async_enable_device_rate_sensors(hass, entry)
+
+    assert ent_reg.async_update_entity.call_count == 2
+    ent_reg.async_update_entity.assert_any_call(
+        ent_rx.entity_id, disabled_by=None
+    )
+    ent_reg.async_update_entity.assert_any_call(
+        ent_tx.entity_id, disabled_by=None
+    )
+
+
 @pytest.mark.asyncio
 async def test_coordinator_unique_id_migration_and_aliasing(hass) -> None:
     """Test that unique_id is migrated from IP/legacy MAC and aliased in identifiers."""

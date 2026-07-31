@@ -150,6 +150,23 @@ def _async_migrate_entity_units(hass: HomeAssistant, entry: ConfigEntry) -> None
                 )
 
 
+def _async_enable_device_rate_sensors(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Enable RX/TX rate sensors created as integration-disabled by older versions."""
+    ent_reg = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+
+    for ent in entries:
+        if ent.domain != "sensor":
+            continue
+        if ent.disabled_by is None:
+            continue
+        if getattr(ent.disabled_by, "value", ent.disabled_by) != "integration":
+            continue
+        uid = ent.unique_id or ""
+        if uid.endswith("_device_rx_rate") or uid.endswith("_device_tx_rate"):
+            ent_reg.async_update_entity(ent.entity_id, disabled_by=None)
+
+
 async def _async_cleanup_disabled_features(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> None:
@@ -294,6 +311,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Clear any stale unit_of_measurement overrides from previous versions
         _async_migrate_entity_units(hass, entry)
+        _async_enable_device_rate_sensors(hass, entry)
 
         # Clean up any entities or devices from disabled features
         await _async_cleanup_disabled_features(hass, entry)

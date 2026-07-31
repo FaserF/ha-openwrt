@@ -136,6 +136,24 @@ def test_device_sensor_case_insensitivity() -> None:
             assert sensor.native_value == -95
 
 
+def test_device_rate_sensors_enabled_by_default() -> None:
+    """Test that client RX/TX rate sensors are enabled for new installations."""
+    from custom_components.openwrt.api.base import ConnectedDevice
+    from custom_components.openwrt.sensor import _create_device_sensors
+
+    device = ConnectedDevice(mac="aa:bb:cc:dd:ee:ff", is_wireless=True)
+    entry = MagicMock()
+    entry.entry_id = "test"
+
+    sensors = _create_device_sensors(MagicMock(), entry, device)
+    by_key = {s.entity_description.key: s for s in sensors}
+
+    assert by_key["device_rx_rate"]._attr_entity_registry_enabled_default is True
+    assert by_key["device_tx_rate"]._attr_entity_registry_enabled_default is True
+    assert by_key["device_signal"]._attr_entity_registry_enabled_default is False
+    assert by_key["device_noise"]._attr_entity_registry_enabled_default is False
+
+
 def test_assoc_rate_robustness() -> None:
     """Test that _get_assoc_rate successfully parses multiple nested formats from iwinfo and hostapd."""
     from custom_components.openwrt.api.base import OpenWrtClient

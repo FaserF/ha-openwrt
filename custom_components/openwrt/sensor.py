@@ -1921,6 +1921,7 @@ def _create_device_sensors(
             "Signal Strength",
             "device_signal",
             "dBm",
+            False,
             lambda d, m=mac: next(
                 (x.signal for x in d.connected_devices if x.mac and x.mac.lower() == m),
                 None,
@@ -1935,6 +1936,7 @@ def _create_device_sensors(
             "RX Rate",
             "device_rx_rate",
             "Mbps",
+            True,
             lambda d, m=mac: next(
                 (
                     round(x.rx_rate / 1000, 1)
@@ -1953,6 +1955,7 @@ def _create_device_sensors(
             "TX Rate",
             "device_tx_rate",
             "Mbps",
+            True,
             lambda d, m=mac: next(
                 (
                     round(x.tx_rate / 1000, 1)
@@ -1971,6 +1974,7 @@ def _create_device_sensors(
             "Noise Level",
             "device_noise",
             "dBm",
+            False,
             lambda d, m=mac: next(
                 (x.noise for x in d.connected_devices if x.mac and x.mac.lower() == m),
                 None,
@@ -1994,13 +1998,13 @@ def _create_device_sensors(
                 native_unit_of_measurement=unit,
                 state_class=SensorStateClass.MEASUREMENT if unit else None,
                 entity_category=EntityCategory.DIAGNOSTIC,
-                entity_registry_enabled_default=False,
+                entity_registry_enabled_default=enabled_default,
             ),
             v_fn,
             a_fn,
             dev_name,
         )
-        for key, name, tkey, unit, v_fn, a_fn in descriptions
+        for key, name, tkey, unit, enabled_default, v_fn, a_fn in descriptions
     ]
 
 
