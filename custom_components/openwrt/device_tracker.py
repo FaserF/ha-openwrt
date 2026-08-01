@@ -351,9 +351,9 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         device_hist = getattr(self.coordinator, "_device_history", {})
         if not isinstance(device_hist, dict):
             device_hist = {}
-        was_ever_wireless = wireless_history.get(
-            self._mac
-        ) or device_hist.get(self._mac, {}).get("is_wireless", False)
+        was_ever_wireless = wireless_history.get(self._mac) or device_hist.get(
+            self._mac, {}
+        ).get("is_wireless", False)
 
         if was_ever_wireless and not device.is_wireless:
             return self._check_consider_home(False)
