@@ -360,32 +360,26 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
 
         def _config_get(key: str, default: Any = None) -> Any:
             entry = self._entry
-            opts = getattr(entry, "options", None)
-            if opts is not None:
-                if isinstance(opts, dict):
-                    if key in opts:
-                        return opts[key]
-                elif hasattr(opts, "get"):
-                    try:
-                        val = opts.get(key)
-                        if val is not None and type(val).__name__ != "MagicMock":
-                            return val
-                    except Exception:
-                        pass
-
-            dt = getattr(entry, "data", None)
-            if dt is not None:
-                if isinstance(dt, dict):
-                    if key in dt:
-                        return dt[key]
-                elif hasattr(dt, "get"):
-                    try:
-                        val = dt.get(key)
-                        if val is not None and type(val).__name__ != "MagicMock":
-                            return val
-                    except Exception:
-                        pass
-
+            options = getattr(entry, "options", None)
+            if isinstance(options, dict) and key in options:
+                return options[key]
+            data = getattr(entry, "data", None)
+            if isinstance(data, dict) and key in data:
+                return data[key]
+            if options is not None and hasattr(options, "get"):
+                try:
+                    val = options.get(key)
+                    if val is not None and type(val).__name__ != "MagicMock":
+                        return val
+                except Exception:
+                    pass
+            if data is not None and hasattr(data, "get"):
+                try:
+                    val = data.get(key)
+                    if val is not None and type(val).__name__ != "MagicMock":
+                        return val
+                except Exception:
+                    pass
             return default
 
         trust_stale = _config_get(CONF_TRUST_STALE_ARP, True)
