@@ -16,6 +16,7 @@ from homeassistant.helpers import (
 from custom_components.openwrt.api.base import ConnectedDevice, OpenWrtData
 from custom_components.openwrt.const import (
     CONF_CONSIDER_HOME,
+    CONF_TRUST_STALE_ARP,
 )
 from custom_components.openwrt.device_tracker import OpenWrtDeviceTracker
 
@@ -261,3 +262,29 @@ def test_device_tracker_multi_ap_attribution() -> None:
     assert tracker1.is_connected is True
     assert tracker1.extra_state_attributes["connected_ap"] == "AP-KG"
     assert tracker1.extra_state_attributes["signal_strength"] == -45
+
+
+def test_device_tracker_stale_arp_presence(
+    mock_coordinator: MagicMock, mock_config_entry: MagicMock
+) -> None:
+    """Test is_connected when a device is in STALE ARP state with trust_stale_arp setting."""
+    mac = "10:e1:8e:51:5a:4a"
+    tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
+
+    mock_coordinator.data.connected_devices = [
+        ConnectedDevice(
+            mac=mac,
+            interface="br-lan",
+            connected=True,
+            is_wireless=False,
+            neighbor_state="STALE",
+        )
+    ]
+
+    # By default trust_stale_arp is True (or enabled)
+    mock_config_entry.options = {CONF_TRUST_STALE_ARP: True}
+    assert tracker.is_connected is True
+
+    # When trust_stale_arp is disabled
+    mock_config_entry.options = {CONF_TRUST_STALE_ARP: False}
+    assert tracker.is_connected is False

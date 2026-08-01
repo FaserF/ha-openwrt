@@ -33,6 +33,7 @@ from .const import (
     CONF_SKIP_RANDOM_MAC,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED,
+    CONF_TRUST_STALE_ARP,
     DATA_COORDINATOR,
     DEFAULT_CONSIDER_HOME,
     DEFAULT_SKIP_RANDOM_MAC,
@@ -351,13 +352,18 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             return self._check_consider_home(False)
 
         # Handle wireless/forced-wireless devices tracked via ARP/FDB (external APs)
-        # to prevent stale ARP (STALE) or stale FDB entries from keeping them 'home'.
+        # to prevent stale ARP or stale FDB entries from keeping them 'home'.
         if device.is_wireless or was_ever_wireless:
-            active_arp = device.neighbor_state and device.neighbor_state.upper() in (
-                "REACHABLE",
-                "DELAY",
-                "PROBE",
-                "PERMANENT",
+            trust_stale = self._entry.options.get(
+                CONF_TRUST_STALE_ARP,
+                self._entry.data.get(CONF_TRUST_STALE_ARP, True),
+            )
+            valid_arp_states = ["REACHABLE", "DELAY", "PROBE", "PERMANENT"]
+            if trust_stale:
+                valid_arp_states.append("STALE")
+            active_arp = (
+                device.neighbor_state
+                and device.neighbor_state.upper() in valid_arp_states
             )
             if not active_arp:
                 return self._check_consider_home(False)
