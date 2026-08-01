@@ -358,23 +358,32 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             return self._check_consider_home(False)
 
         def _config_get(key: str, default: Any = None) -> Any:
-            options = getattr(self._entry, "options", None)
-            if isinstance(options, dict):
-                if key in options:
-                    return options[key]
-            elif options is not None and hasattr(options, "get"):
-                res = options.get(key)
-                if res is not None and type(res).__name__ != "MagicMock":
-                    return res
+            entry = self._entry
+            opts = getattr(entry, "options", None)
+            if opts is not None:
+                if isinstance(opts, dict):
+                    if key in opts:
+                        return opts[key]
+                elif hasattr(opts, "get"):
+                    try:
+                        val = opts.get(key)
+                        if val is not None and type(val).__name__ != "MagicMock":
+                            return val
+                    except Exception:
+                        pass
 
-            data = getattr(self._entry, "data", None)
-            if isinstance(data, dict):
-                if key in data:
-                    return data[key]
-            elif data is not None and hasattr(data, "get"):
-                res = data.get(key)
-                if res is not None and type(res).__name__ != "MagicMock":
-                    return res
+            dt = getattr(entry, "data", None)
+            if dt is not None:
+                if isinstance(dt, dict):
+                    if key in dt:
+                        return dt[key]
+                elif hasattr(dt, "get"):
+                    try:
+                        val = dt.get(key)
+                        if val is not None and type(val).__name__ != "MagicMock":
+                            return val
+                    except Exception:
+                        pass
 
             return default
 
