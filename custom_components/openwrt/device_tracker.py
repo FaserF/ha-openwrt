@@ -353,8 +353,12 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         if was_ever_wireless and not device.is_wireless:
             return self._check_consider_home(False)
 
-        options = getattr(self._entry, "options", {}) or {}
-        data = getattr(self._entry, "data", {}) or {}
+        options = getattr(self._entry, "options", {})
+        if not isinstance(options, dict):
+            options = {}
+        data = getattr(self._entry, "data", {})
+        if not isinstance(data, dict):
+            data = {}
         trust_stale = options.get(
             CONF_TRUST_STALE_ARP,
             data.get(CONF_TRUST_STALE_ARP, True),
