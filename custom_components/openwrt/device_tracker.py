@@ -263,8 +263,12 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
 
         # Initial device name fallback
         self._initial_name = hostname or mac
-        options = getattr(entry, "options", {}) or {}
-        data = getattr(entry, "data", {}) or {}
+        options = getattr(entry, "options", {})
+        if not hasattr(options, "get"):
+            options = {}
+        data = getattr(entry, "data", {})
+        if not hasattr(data, "get"):
+            data = {}
         self._consider_home = timedelta(
             seconds=options.get(
                 CONF_CONSIDER_HOME,
@@ -354,10 +358,10 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             return self._check_consider_home(False)
 
         options = getattr(self._entry, "options", {})
-        if not isinstance(options, dict):
+        if not hasattr(options, "get"):
             options = {}
         data = getattr(self._entry, "data", {})
-        if not isinstance(data, dict):
+        if not hasattr(data, "get"):
             data = {}
         trust_stale = options.get(
             CONF_TRUST_STALE_ARP,
