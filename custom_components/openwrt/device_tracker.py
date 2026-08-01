@@ -263,10 +263,12 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
 
         # Initial device name fallback
         self._initial_name = hostname or mac
+        options = getattr(entry, "options", {}) or {}
+        data = getattr(entry, "data", {}) or {}
         self._consider_home = timedelta(
-            seconds=entry.options.get(
+            seconds=options.get(
                 CONF_CONSIDER_HOME,
-                entry.data.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME),
+                data.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME),
             ),
         )
         self._last_seen: datetime | None = None
@@ -351,11 +353,11 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         if was_ever_wireless and not device.is_wireless:
             return self._check_consider_home(False)
 
-        # Handle wireless/forced-wireless devices tracked via ARP/FDB (external APs)
-        # to prevent stale ARP or stale FDB entries from keeping them 'home'.
-        trust_stale = self._entry.options.get(
+        options = getattr(self._entry, "options", {}) or {}
+        data = getattr(self._entry, "data", {}) or {}
+        trust_stale = options.get(
             CONF_TRUST_STALE_ARP,
-            self._entry.data.get(CONF_TRUST_STALE_ARP, True),
+            data.get(CONF_TRUST_STALE_ARP, True),
         )
         valid_arp_states = ["REACHABLE", "DELAY", "PROBE", "PERMANENT"]
         if trust_stale:
@@ -368,9 +370,9 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         elif (device.is_wireless or was_ever_wireless) and not trust_stale:
             return self._check_consider_home(False)
 
-        track_wired = self._entry.options.get(
+        track_wired = options.get(
             CONF_TRACK_WIRED,
-            self._entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
+            data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
         )
         if not track_wired and not device.is_wireless:
             return self._check_consider_home(False)
