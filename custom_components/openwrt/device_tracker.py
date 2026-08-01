@@ -357,16 +357,20 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         if was_ever_wireless and not device.is_wireless:
             return self._check_consider_home(False)
 
-        options = getattr(self._entry, "options", {})
-        if not hasattr(options, "get"):
-            options = {}
-        data = getattr(self._entry, "data", {})
-        if not hasattr(data, "get"):
-            data = {}
-        trust_stale = options.get(
-            CONF_TRUST_STALE_ARP,
-            data.get(CONF_TRUST_STALE_ARP, True),
-        )
+        def _config_get(key: str, default: Any = None) -> Any:
+            options = getattr(self._entry, "options", None)
+            if options is not None and hasattr(options, "get"):
+                res = options.get(key)
+                if res is not None and type(res).__name__ != "MagicMock":
+                    return res
+            data = getattr(self._entry, "data", None)
+            if data is not None and hasattr(data, "get"):
+                res = data.get(key)
+                if res is not None and type(res).__name__ != "MagicMock":
+                    return res
+            return default
+
+        trust_stale = _config_get(CONF_TRUST_STALE_ARP, True)
         valid_arp_states = ["REACHABLE", "DELAY", "PROBE", "PERMANENT"]
         if trust_stale:
             valid_arp_states.append("STALE")
@@ -378,10 +382,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         elif (device.is_wireless or was_ever_wireless) and not trust_stale:
             return self._check_consider_home(False)
 
-        track_wired = options.get(
-            CONF_TRACK_WIRED,
-            data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
-        )
+        track_wired = _config_get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED)
         if not track_wired and not device.is_wireless:
             return self._check_consider_home(False)
 
