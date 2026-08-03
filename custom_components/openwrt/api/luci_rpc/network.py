@@ -534,11 +534,16 @@ class LuciRpcNetworkMixin:
                 net_config = await self._rpc_call("uci", "get_all", ["network"])
                 if isinstance(net_config, dict):
                     for section, values in net_config.items():
-                        if isinstance(values, dict) and values.get(".type") == "interface":
+                        if (
+                            isinstance(values, dict)
+                            and values.get(".type") == "interface"
+                        ):
                             iface = NetworkInterface(
                                 name=section,
                                 protocol=values.get("proto", ""),
-                                device=str(values.get("device", values.get("ifname", ""))),
+                                device=str(
+                                    values.get("device", values.get("ifname", ""))
+                                ),
                             )
                             if iface.device:
                                 try:

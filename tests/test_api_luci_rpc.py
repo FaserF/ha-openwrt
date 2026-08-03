@@ -425,4 +425,3 @@ async def test_luci_get_network_interfaces_stats(luci_client: LuciRpcClient):
         eth3 = next(i for i in ifaces if i.name == "eth3")
         assert eth3.device == "eth3"
         assert eth3.rx_bytes == 0
-
