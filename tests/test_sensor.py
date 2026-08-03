@@ -197,4 +197,3 @@ def test_wifi_sensor_section_and_ifname_matching() -> None:
     # Verify channel sensor reads channel correctly via section fallback
     channel_sensor = next(s for s in sensors if "channel" in s.entity_description.key)
     assert channel_sensor.native_value == 1
-

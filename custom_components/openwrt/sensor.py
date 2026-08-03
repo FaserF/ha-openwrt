@@ -2104,15 +2104,17 @@ def _create_wifi_base_sensors(
                     native_unit_of_measurement="dBm" if key == "txpower" else None,
                     entity_category=cat,
                     entity_registry_enabled_default=enabled,
-                    value_fn=lambda data, n=iface_name, s=section_id, i=ifname, k=key: next(
-                        (
-                            getattr(w, k)
-                            for w in data.wireless_interfaces
-                            if w.name == n
-                            or (s and w.section == s)
-                            or (i and w.ifname == i)
-                        ),
-                        None,
+                    value_fn=lambda data, n=iface_name, s=section_id, i=ifname, k=key: (
+                        next(
+                            (
+                                getattr(w, k)
+                                for w in data.wireless_interfaces
+                                if w.name == n
+                                or (s and w.section == s)
+                                or (i and w.ifname == i)
+                            ),
+                            None,
+                        )
                     ),
                 ),
                 iface_name,
@@ -2160,11 +2162,7 @@ def _create_wifi_station_sensors(
                     None,
                 ),
                 available_fn=lambda data, n=iface_name, s=section_id, i=ifname: any(
-                    (
-                        w.name == n
-                        or (s and w.section == s)
-                        or (i and w.ifname == i)
-                    )
+                    (w.name == n or (s and w.section == s) or (i and w.ifname == i))
                     and w.signal != 0
                     for w in data.wireless_interfaces
                 ),
@@ -2224,15 +2222,17 @@ def _create_wifi_station_sensors(
                     state_class=sclass,
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
-                    value_fn=lambda data, n=iface_name, s=section_id, i=ifname, k=key: next(
-                        (
-                            getattr(w, k)
-                            for w in data.wireless_interfaces
-                            if w.name == n
-                            or (s and w.section == s)
-                            or (i and w.ifname == i)
-                        ),
-                        None,
+                    value_fn=lambda data, n=iface_name, s=section_id, i=ifname, k=key: (
+                        next(
+                            (
+                                getattr(w, k)
+                                for w in data.wireless_interfaces
+                                if w.name == n
+                                or (s and w.section == s)
+                                or (i and w.ifname == i)
+                            ),
+                            None,
+                        )
                     ),
                 ),
                 iface_name,

@@ -126,7 +126,11 @@ def test_txpower_number_max_value() -> None:
 
     coordinator = OpenWrtDataCoordinator(MagicMock(), config_entry, MagicMock())
     wifi_iface = WirelessInterface(
-        name="wlan0", section="default_radio0", radio="radio0", txpower=9, txpower_offset=9
+        name="wlan0",
+        section="default_radio0",
+        radio="radio0",
+        txpower=9,
+        txpower_offset=9,
     )
     coordinator.data = MagicMock()
     coordinator.data.wireless_interfaces = [wifi_iface]
@@ -140,4 +144,3 @@ def test_txpower_number_max_value() -> None:
         section_id="default_radio0",
     )
     assert num.native_max_value == 9.0
-
