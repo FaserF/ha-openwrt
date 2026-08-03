@@ -239,6 +239,11 @@ class UbusNetworkMixin:
                     if q_val is not None and q_max:
                         wifi.quality = round((q_val / q_max) * 100, 1)
 
+                    if iwinfo.get("txpower") is not None:
+                        wifi.txpower = iwinfo["txpower"]
+                    if iwinfo.get("txpower_offset") is not None:
+                        wifi.txpower_offset = iwinfo["txpower_offset"]
+
                     if "hwmode" in iwinfo and not wifi.hwmode:
                         if isinstance(iwinfo["hwmode"], list):
                             wifi.hwmode = "/".join(iwinfo["hwmode"])
@@ -294,6 +299,7 @@ class UbusNetworkMixin:
                             wifi.radio = prev_wifi.radio
                             wifi.htmode = prev_wifi.htmode
                             wifi.txpower = prev_wifi.txpower
+                            wifi.txpower_offset = prev_wifi.txpower_offset
                             wifi.mesh_id = prev_wifi.mesh_id
                             wifi.mesh_fwding = prev_wifi.mesh_fwding
                             wifi.ifname = prev_wifi.ifname

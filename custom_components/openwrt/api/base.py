@@ -148,6 +148,7 @@ class WirelessInterface:
     radio: str = ""
     htmode: str = ""
     txpower: int = 0
+    txpower_offset: int = 0
     mesh_id: str = ""
     mesh_fwding: bool = False
     ifname: str = ""

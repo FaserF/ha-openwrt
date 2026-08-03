@@ -2037,7 +2037,7 @@ def _create_wifi_sensors(
     # Station-specific quality sensors (STA/Mesh/etc)
     if mode.lower() not in ("ap", "master", "access point"):
         _create_wifi_station_sensors(
-            coordinator, entry, iface_name, ssid, frequency, section_id, sensors
+            coordinator, entry, iface_name, ssid, frequency, section_id, ifname, sensors
         )
 
     return sensors
@@ -2104,11 +2104,13 @@ def _create_wifi_base_sensors(
                     native_unit_of_measurement="dBm" if key == "txpower" else None,
                     entity_category=cat,
                     entity_registry_enabled_default=enabled,
-                    value_fn=lambda data, n=iface_name, k=key: next(
+                    value_fn=lambda data, n=iface_name, s=section_id, i=ifname, k=key: next(
                         (
                             getattr(w, k)
                             for w in data.wireless_interfaces
                             if w.name == n
+                            or (s and w.section == s)
+                            or (i and w.ifname == i)
                         ),
                         None,
                     ),
@@ -2128,6 +2130,7 @@ def _create_wifi_station_sensors(
     ssid: str,
     frequency: str,
     section_id: str | None,
+    ifname: str | None,
     sensors: list[OpenWrtWifiSensorEntity],
 ) -> None:
     """Create quality sensors for WiFi station interfaces."""
@@ -2146,14 +2149,26 @@ def _create_wifi_station_sensors(
                 device_class=SensorDeviceClass.SIGNAL_STRENGTH,
                 state_class=SensorStateClass.MEASUREMENT,
                 entity_category=EntityCategory.DIAGNOSTIC,
-                value_fn=lambda data, n=iface_name: next(
-                    (w.signal for w in data.wireless_interfaces if w.name == n),
+                value_fn=lambda data, n=iface_name, s=section_id, i=ifname: next(
+                    (
+                        w.signal
+                        for w in data.wireless_interfaces
+                        if w.name == n
+                        or (s and w.section == s)
+                        or (i and w.ifname == i)
+                    ),
                     None,
                 ),
-                available_fn=lambda data, n=iface_name: any(
-                    w.name == n and w.signal != 0 for w in data.wireless_interfaces
+                available_fn=lambda data, n=iface_name, s=section_id, i=ifname: any(
+                    (
+                        w.name == n
+                        or (s and w.section == s)
+                        or (i and w.ifname == i)
+                    )
+                    and w.signal != 0
+                    for w in data.wireless_interfaces
                 ),
-                attrs_fn=lambda data, n=iface_name: next(
+                attrs_fn=lambda data, n=iface_name, s=section_id, i=ifname: next(
                     (
                         {
                             "noise": w.noise,
@@ -2162,6 +2177,8 @@ def _create_wifi_station_sensors(
                         }
                         for w in data.wireless_interfaces
                         if w.name == n
+                        or (s and w.section == s)
+                        or (i and w.ifname == i)
                     ),
                     {},
                 ),
@@ -2169,6 +2186,7 @@ def _create_wifi_station_sensors(
             iface_name,
             ssid,
             frequency,
+            section_id,
         )
     )
 
@@ -2206,11 +2224,13 @@ def _create_wifi_station_sensors(
                     state_class=sclass,
                     entity_category=EntityCategory.DIAGNOSTIC,
                     entity_registry_enabled_default=False,
-                    value_fn=lambda data, n=iface_name, k=key: next(
+                    value_fn=lambda data, n=iface_name, s=section_id, i=ifname, k=key: next(
                         (
                             getattr(w, k)
                             for w in data.wireless_interfaces
                             if w.name == n
+                            or (s and w.section == s)
+                            or (i and w.ifname == i)
                         ),
                         None,
                     ),

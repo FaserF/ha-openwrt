@@ -111,3 +111,33 @@ def test_txpower_number_status_matching() -> None:
 
     wifi_iface.txpower = 14
     assert num.native_value == 14
+
+
+def test_txpower_number_max_value() -> None:
+    """Verify OpenWrtTxPowerNumber native_max_value respects txpower_offset."""
+    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
+    from custom_components.openwrt.number import OpenWrtTxPowerNumber
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "test_router"
+    config_entry.options = {"update_interval": 60}
+    config_entry.data = {CONF_HOST: "192.168.1.1"}
+
+    coordinator = OpenWrtDataCoordinator(MagicMock(), config_entry, MagicMock())
+    wifi_iface = WirelessInterface(
+        name="wlan0", section="default_radio0", radio="radio0", txpower=9, txpower_offset=9
+    )
+    coordinator.data = MagicMock()
+    coordinator.data.wireless_interfaces = [wifi_iface]
+
+    num = OpenWrtTxPowerNumber(
+        coordinator,
+        config_entry,
+        "default_radio0",
+        "MyNet",
+        "2.4 GHz",
+        section_id="default_radio0",
+    )
+    assert num.native_max_value == 9.0
+

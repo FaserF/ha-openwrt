@@ -156,3 +156,45 @@ def test_assoc_rate_robustness() -> None:
 
     # 5. Fallback/Direct number
     assert OpenWrtClient._get_assoc_rate(None, {"rx": 120100}, "rx") == 120100
+
+
+def test_wifi_sensor_section_and_ifname_matching() -> None:
+    """Test that wifi sensors match values using section or ifname when name differs."""
+    from custom_components.openwrt.api.base import WirelessInterface
+    from custom_components.openwrt.sensor import _create_wifi_sensors
+
+    coordinator = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test"
+
+    wifi_iface = WirelessInterface(
+        name="phy0-ap0",
+        section="default_radio0",
+        ifname="phy0-ap0",
+        ssid="MyNet",
+        mode="ap",
+        channel=1,
+        txpower=18,
+    )
+    coordinator.data = OpenWrtData(wireless_interfaces=[wifi_iface])
+
+    # Create wifi sensors initialized with iface_name="default_radio0" and section_id="default_radio0"
+    sensors = _create_wifi_sensors(
+        coordinator,
+        entry,
+        iface_name="default_radio0",
+        ssid="MyNet",
+        mode="ap",
+        frequency="2.4 GHz",
+        section_id="default_radio0",
+        ifname="phy0-ap0",
+    )
+
+    # Verify txpower diagnostic sensor reads txpower correctly via section fallback
+    tx_sensor = next(s for s in sensors if "txpower" in s.entity_description.key)
+    assert tx_sensor.native_value == 18
+
+    # Verify channel sensor reads channel correctly via section fallback
+    channel_sensor = next(s for s in sensors if "channel" in s.entity_description.key)
+    assert channel_sensor.native_value == 1
+

@@ -249,6 +249,11 @@ class SshNetworkMixin:
                     if q_val is not None and q_max:
                         wifi.quality = round((q_val / q_max) * 100, 1)
 
+                    if info.get("txpower") is not None:
+                        wifi.txpower = info["txpower"]
+                    if info.get("txpower_offset") is not None:
+                        wifi.txpower_offset = info["txpower_offset"]
+
                     # Association list for client count
                     assoc_str = await self._exec(
                         f"ubus call iwinfo assoclist {safe_arg} 2>/dev/null"
@@ -295,6 +300,7 @@ class SshNetworkMixin:
                             wifi.radio = prev_wifi.radio
                             wifi.htmode = prev_wifi.htmode
                             wifi.txpower = prev_wifi.txpower
+                            wifi.txpower_offset = prev_wifi.txpower_offset
                             wifi.mesh_id = prev_wifi.mesh_id
                             wifi.mesh_fwding = prev_wifi.mesh_fwding
                             wifi.ifname = prev_wifi.ifname

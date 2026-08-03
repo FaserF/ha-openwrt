@@ -177,6 +177,20 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         )
 
     @property
+    def native_max_value(self) -> float:
+        """Return the maximum supported TX power limit."""
+        if self.coordinator.data:
+            for wifi in self.coordinator.data.wireless_interfaces:
+                if wifi.name == self._iface_name or (
+                    self._section_id and wifi.section == self._section_id
+                ):
+                    if wifi.txpower_offset and wifi.txpower_offset > 0:
+                        return float(wifi.txpower_offset)
+                    if wifi.txpower > 30:
+                        return float(wifi.txpower)
+        return 30.0
+
+    @property
     def native_value(self) -> float | None:
         """Return the current TX power."""
         if self.coordinator.data:
