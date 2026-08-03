@@ -378,3 +378,51 @@ async def test_luci_get_connected_devices_iwinfo_fallback_rates(
         assert dev.tx_rate == 180100
         assert dev.rx_bytes == 1000
         assert dev.tx_bytes == 2000
+
+
+@pytest.mark.asyncio
+async def test_luci_get_network_interfaces_stats(luci_client: LuciRpcClient):
+    """Test fetching network interfaces and enriching logical interfaces with stats via LuCI RPC."""
+    luci_client._auth_token = "luci_test_token"
+
+    with patch.object(
+        luci_client, "execute_command", new_callable=AsyncMock
+    ) as mock_exec:
+
+        def exec_side_effect(command: str) -> str:
+            if "ubus call network.interface dump" in command:
+                return (
+                    '{"interface": ['
+                    '  {"interface": "lan", "up": true, "proto": "static", "l3_device": "br-lan", "uptime": 3600, "ipv4-address": [{"address": "192.168.1.1"}]},'
+                    '  {"interface": "wan", "up": true, "proto": "dhcp", "l3_device": "eth2", "uptime": 1800}'
+                    "]}"
+                )
+            if "ubus call network.device status" in command:
+                return (
+                    '{"br-lan": {"up": true, "link": true, "speed": 1000, "macaddr": "00:11:22:33:44:55", "statistics": {"rx_bytes": 1048576, "tx_bytes": 2097152, "rx_packets": 100, "tx_packets": 200}},'
+                    ' "eth2": {"up": true, "link": true, "speed": 1000, "macaddr": "00:11:22:33:44:56", "statistics": {"rx_bytes": 5242880, "tx_bytes": 10485760, "rx_packets": 500, "tx_packets": 1000}},'
+                    ' "eth3": {"up": false, "link": false, "speed": 0, "macaddr": "00:11:22:33:44:57", "statistics": {"rx_bytes": 0, "tx_bytes": 0}}}'
+                )
+            return ""
+
+        mock_exec.side_effect = exec_side_effect
+
+        ifaces = await luci_client.get_network_interfaces()
+        assert len(ifaces) == 3
+
+        lan = next(i for i in ifaces if i.name == "lan")
+        assert lan.device == "br-lan"
+        assert lan.rx_bytes == 1048576
+        assert lan.tx_bytes == 2097152
+        assert lan.rx_packets == 100
+        assert lan.tx_packets == 200
+
+        wan = next(i for i in ifaces if i.name == "wan")
+        assert wan.device == "eth2"
+        assert wan.rx_bytes == 5242880
+        assert wan.tx_bytes == 10485760
+
+        eth3 = next(i for i in ifaces if i.name == "eth3")
+        assert eth3.device == "eth3"
+        assert eth3.rx_bytes == 0
+

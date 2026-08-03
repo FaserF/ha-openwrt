@@ -69,6 +69,7 @@ class LuciRpcSystemMixin:
                 elif model:
                     info.model = str(model)
                 info.board_name = board_data.get("board_name", info.board_name)
+                info.kernel_version = board_data.get("kernel", info.kernel_version)
         except Exception:
             pass
 
