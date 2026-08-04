@@ -155,7 +155,7 @@ async def test_sysupgrade_command_has_no_trailing_rm() -> None:
         MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="pwd"
     )
     ssh_client = SshClient(
-        host="192.168.1.1", username="root", password="pwd", key_file=None, port=22
+        MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="pwd"
     )
 
     with patch.object(
