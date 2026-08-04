@@ -275,12 +275,24 @@ class UbusClient(
         if objects != ["*"]:
             return objects
 
-        core_objects = ("system", "network.interface", "uci", "file", "session")
-        return [
-            object_name
-            for object_name in core_objects
-            if await self._get_object_methods(object_name)
-        ]
+        core_objects = (
+            "system",
+            "network.interface",
+            "uci",
+            "file",
+            "session",
+            "network.device",
+            "network.wireless",
+            "luci",
+            "luci-rpc",
+            "service",
+            "hostapd.*",
+        )
+        found = []
+        for object_name in core_objects:
+            if await self._get_object_methods(object_name):
+                found.append(object_name)
+        return found
 
     @staticmethod
     def _unwrap_list_result(result: Any) -> dict[str, Any]:
