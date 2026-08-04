@@ -738,7 +738,7 @@ class UbusSystemMixin:
             f"  curl -k -L -o /tmp/firmware.bin '{url}'; "
             f"else "
             f"  wget --no-check-certificate -O /tmp/firmware.bin '{url}'; "
-            f"fi && sysupgrade {force_flag}{keep} /tmp/firmware.bin; rm -f /tmp/firmware.bin"
+            f"fi && sysupgrade {force_flag}{keep} /tmp/firmware.bin"
         )
         try:
             _LOGGER.info("Initiating firmware installation via ubus from: %s", url)

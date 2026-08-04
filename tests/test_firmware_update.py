@@ -139,3 +139,50 @@ async def test_check_snapshot_update_release_branch(hass: HomeAssistant) -> None
         data.firmware_install_url
         == "https://downloads.openwrt.org/releases/25.12-SNAPSHOT/targets/x86/64/openwrt-25.12-SNAPSHOT-x86-64-generic-squashfs-sysupgrade.img.gz"
     )
+
+
+@pytest.mark.asyncio
+async def test_sysupgrade_command_has_no_trailing_rm() -> None:
+    """Test that install_firmware does not append a trailing 'rm -f /tmp/firmware.bin'."""
+    from custom_components.openwrt.api.luci_rpc import LuciRpcClient
+    from custom_components.openwrt.api.ssh import SshClient
+    from custom_components.openwrt.api.ubus import UbusClient
+
+    ubus_client = UbusClient(
+        MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="pwd"
+    )
+    luci_client = LuciRpcClient(
+        MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="pwd"
+    )
+    ssh_client = SshClient(
+        host="192.168.1.1", username="root", password="pwd", key_file=None, port=22
+    )
+
+    with patch.object(
+        ubus_client, "execute_command", new_callable=AsyncMock
+    ) as mock_exec:
+        await ubus_client.install_firmware(
+            "http://example.com/firmware.bin", keep_settings=True, force=False
+        )
+        cmd = mock_exec.call_args[0][0]
+        assert "sysupgrade" in cmd
+        assert not cmd.endswith("rm -f /tmp/firmware.bin")
+
+    with patch.object(
+        luci_client, "execute_command", new_callable=AsyncMock
+    ) as mock_exec:
+        await luci_client.install_firmware(
+            "http://example.com/firmware.bin", keep_settings=True, force=False
+        )
+        cmd = mock_exec.call_args[0][0]
+        assert "sysupgrade" in cmd
+        assert not cmd.endswith("rm -f /tmp/firmware.bin")
+
+    with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
+        await ssh_client.install_firmware(
+            "http://example.com/firmware.bin", keep_settings=True, force=False
+        )
+        cmd = mock_exec.call_args[0][0]
+        assert "sysupgrade" in cmd
+        assert not cmd.endswith("rm -f /tmp/firmware.bin")
+

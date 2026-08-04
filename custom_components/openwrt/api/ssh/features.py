@@ -349,7 +349,7 @@ class SshFeaturesMixin:
             f"  curl -k -L -o /tmp/firmware.bin {safe_url}; "
             f"else "
             f"  wget --no-check-certificate -O /tmp/firmware.bin {safe_url}; "
-            f"fi && sysupgrade {force_flag}{keep} /tmp/firmware.bin; rm -f /tmp/firmware.bin"
+            f"fi && sysupgrade {force_flag}{keep} /tmp/firmware.bin"
         )
         try:
             _LOGGER.info("Initiating firmware installation via SSH from: %s", url)
