@@ -154,6 +154,7 @@ async def test_backup_retention_policy(hass: MagicMock) -> None:
 async def test_ubus_download_file_base64() -> None:
     """Test that UbusClient.download_file passes base64: True to file.read."""
     import base64
+
     from custom_components.openwrt.api.ubus import UbusClient
 
     ubus_client = UbusClient(
@@ -178,4 +179,3 @@ async def test_ubus_download_file_base64() -> None:
             "file", "read", {"path": "/tmp/backup.tar.gz", "base64": True}
         )
         mock_file_handle.write.assert_called_once_with(raw_content)
-

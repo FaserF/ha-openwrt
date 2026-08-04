@@ -185,4 +185,3 @@ async def test_sysupgrade_command_has_no_trailing_rm() -> None:
         cmd = mock_exec.call_args[0][0]
         assert "sysupgrade" in cmd
         assert not cmd.endswith("rm -f /tmp/firmware.bin")
-
