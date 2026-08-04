@@ -148,3 +148,34 @@ async def test_backup_retention_policy(hass: MagicMock) -> None:
         assert os.path.normpath(mock_remove.call_args[0][0]) == os.path.normpath(
             "/fake/config/my_backups/backup-ha-old.tar.gz"
         )
+
+
+@pytest.mark.asyncio
+async def test_ubus_download_file_base64() -> None:
+    """Test that UbusClient.download_file passes base64: True to file.read."""
+    import base64
+    from custom_components.openwrt.api.ubus import UbusClient
+
+    ubus_client = UbusClient(
+        MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="pwd"
+    )
+    raw_content = b"fake binary tarball content \x8b\x00"
+    b64_content = base64.b64encode(raw_content).decode("ascii")
+
+    with (
+        patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call,
+        patch("builtins.open", MagicMock()) as mock_file,
+    ):
+        mock_call.return_value = {"data": b64_content}
+        mock_file_handle = MagicMock()
+        mock_file.return_value.__enter__.return_value = mock_file_handle
+
+        success = await ubus_client.download_file(
+            "/tmp/backup.tar.gz", "/tmp/local_backup.tar.gz"
+        )
+        assert success is True
+        mock_call.assert_called_once_with(
+            "file", "read", {"path": "/tmp/backup.tar.gz", "base64": True}
+        )
+        mock_file_handle.write.assert_called_once_with(raw_content)
+

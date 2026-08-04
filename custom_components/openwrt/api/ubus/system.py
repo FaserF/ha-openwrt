@@ -776,8 +776,10 @@ class UbusSystemMixin:
         try:
             import base64
 
-            # ubus file.read returns base64 encoded data (in "data" key)
-            res = await self._call("file", "read", {"path": remote_path})
+            # ubus file.read returns base64 encoded data (in "data" key) when base64: True is passed
+            res = await self._call(
+                "file", "read", {"path": remote_path, "base64": True}
+            )
             if res and isinstance(res, dict) and "data" in res:
                 data = base64.b64decode(res["data"])
                 await asyncio.to_thread(self._write_bytes, local_path, data)
