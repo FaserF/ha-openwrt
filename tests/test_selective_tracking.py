@@ -367,3 +367,123 @@ async def test_device_history_records_hostname() -> None:
 
     assert coordinator._device_history["00:bb:cc:dd:ee:01"]["hostname"] == "device1"
     assert coordinator._device_history["00:bb:cc:dd:ee:02"]["hostname"] == "printer"
+
+
+@pytest.mark.asyncio
+async def test_device_history_ignores_placeholder_hostname() -> None:
+    """dnsmasq's "*" placeholder must never be stored or shown as a hostname."""
+    hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
+
+    config_entry = MagicMock()
+    config_entry.options = {}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "test_entry"
+
+    mock_client = AsyncMock()
+    mock_client.connected = True
+
+    def _data(device_hostname: str, lease_hostname: str) -> OpenWrtData:
+        return OpenWrtData(
+            system_resources=SystemResources(uptime=100),
+            connected_devices=[
+                ConnectedDevice(
+                    mac="00:bb:cc:dd:ee:01",
+                    hostname=device_hostname,
+                    interface="br-lan",
+                    is_wireless=True,
+                ),
+            ],
+            dhcp_leases=[
+                DhcpLease(
+                    mac="00:bb:cc:dd:ee:02",
+                    hostname=lease_hostname,
+                    ip="192.168.1.11",
+                ),
+            ],
+            network_interfaces=[],
+            wireless_interfaces=[],
+        )
+
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(return_value={})
+        mock_store.return_value.async_save = AsyncMock()
+        coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+
+    # First refresh: both report a real hostname.
+    mock_client.get_all_data.return_value = _data("device1", "printer")
+    await coordinator._async_update_data()
+
+    assert coordinator._device_history["00:bb:cc:dd:ee:01"]["hostname"] == "device1"
+    assert coordinator._device_history["00:bb:cc:dd:ee:02"]["hostname"] == "printer"
+
+    # Later refresh reports "*": the known hostname must survive.
+    # Reset the cached boot time first — with homeassistant.util.dt mocked out,
+    # the drift comparison on a second refresh would operate on MagicMocks.
+    coordinator._boot_time = None
+    mock_client.get_all_data.return_value = _data("*", "*")
+    await coordinator._async_update_data()
+
+    assert coordinator._device_history["00:bb:cc:dd:ee:01"]["hostname"] == "device1"
+    assert coordinator._device_history["00:bb:cc:dd:ee:02"]["hostname"] == "printer"
+
+
+@pytest.mark.asyncio
+async def test_device_history_never_stores_placeholder_hostname() -> None:
+    """A device first seen as "*" is stored without a hostname, not with "*"."""
+    hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
+
+    config_entry = MagicMock()
+    config_entry.options = {}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "test_entry"
+
+    mock_client = AsyncMock()
+    mock_client.connected = True
+    mock_client.get_all_data.return_value = OpenWrtData(
+        system_resources=SystemResources(uptime=100),
+        connected_devices=[
+            ConnectedDevice(
+                mac="00:bb:cc:dd:ee:01",
+                hostname="*",
+                interface="br-lan",
+                is_wireless=True,
+            ),
+        ],
+        dhcp_leases=[
+            DhcpLease(mac="00:bb:cc:dd:ee:02", hostname="*", ip="192.168.1.11"),
+        ],
+        network_interfaces=[],
+        wireless_interfaces=[],
+    )
+
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(return_value={})
+        mock_store.return_value.async_save = AsyncMock()
+        coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+
+    await coordinator._async_update_data()
+
+    assert coordinator._device_history["00:bb:cc:dd:ee:01"]["hostname"] == ""
+    assert coordinator._device_history["00:bb:cc:dd:ee:02"]["hostname"] == ""
+
+
+@pytest.mark.asyncio
+async def test_options_flow_falls_back_to_mac_for_placeholder_hostname() -> None:
+    """A "*" hostname must render as the MAC, not as a literal asterisk."""
+    flow = _make_options_flow(
+        all_connected_devices=[
+            ConnectedDevice(mac="00:BB:CC:DD:EE:02", hostname="*"),
+        ],
+        device_history={},
+        tracked=[],
+    )
+
+    with patch("custom_components.openwrt.config_flow.selector") as mock_selector:
+        await flow.async_step_options_select_devices()
+
+    options = _tracked_device_options(mock_selector.SelectSelectorConfig)
+    assert options["00:bb:cc:dd:ee:02"] == "00:BB:CC:DD:EE:02 (00:BB:CC:DD:EE:02)"

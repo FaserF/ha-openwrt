@@ -1267,12 +1267,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             if mac in forced_wireless:
                 device.is_wireless = True
 
+            # dnsmasq reports "*" for clients that sent no hostname; treat it as
+            # absent so it never ends up as a device label.
+            hostname = "" if device.hostname == "*" else device.hostname
+
             if mac not in self._device_history:
                 self._device_history[mac] = {
                     "initially_seen": current_time,
                     "last_seen": current_time,
                     "is_wireless": device.is_wireless,
-                    "hostname": device.hostname,
+                    "hostname": hostname,
                 }
                 history_updated = True
                 _LOGGER.debug("New device added to history: %s", mac)
@@ -1284,9 +1288,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 if device.is_wireless and not hist.get("is_wireless"):
                     hist["is_wireless"] = True
                 # Keep the last known hostname so offline devices stay readable
-                # in the options flow and MQTT discovery.
-                if device.hostname:
-                    hist["hostname"] = device.hostname
+                # in the options flow and MQTT discovery. Never overwrite a good
+                # hostname with a missing one.
+                if hostname:
+                    hist["hostname"] = hostname
                 history_updated = True
 
             # Sync with shared wireless history for multi-AP coordination
@@ -1332,6 +1337,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 lease.ip,
             )
 
+            # "*" means the client sent no hostname — see the connected device loop
+            lease_hostname = "" if lease.hostname == "*" else lease.hostname
+
             # Ensure lease devices are also in history so they are discovered as trackers
             if mac not in self._device_history:
                 is_wireless = is_random_mac(mac)
@@ -1339,7 +1347,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     "initially_seen": current_time,
                     "last_seen": current_time,
                     "is_wireless": is_wireless,
-                    "hostname": lease.hostname,
+                    "hostname": lease_hostname,
                 }
                 history_updated = True
                 _LOGGER.debug(
@@ -1349,8 +1357,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 )
             else:
                 self._device_history[mac]["last_seen"] = current_time
-                if lease.hostname:
-                    self._device_history[mac]["hostname"] = lease.hostname
+                if lease_hostname:
+                    self._device_history[mac]["hostname"] = lease_hostname
                 history_updated = True
 
             filtered_leases.append(lease)

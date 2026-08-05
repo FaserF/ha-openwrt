@@ -2362,7 +2362,9 @@ class OpenWrtOptionsFlow(OptionsFlow):
             for device in coordinator.data.all_connected_devices:
                 if not device.mac:
                     continue
-                name = device.hostname or device.mac
+                # "*" is dnsmasq's placeholder for a client that sent no hostname
+                hostname = "" if device.hostname == "*" else device.hostname
+                name = hostname or device.mac
                 device_options[device.mac.lower()] = f"{name} ({device.mac})"
 
         # History keeps devices that were seen before but are offline right now
