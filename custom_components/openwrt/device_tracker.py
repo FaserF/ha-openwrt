@@ -390,9 +390,9 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         if device.neighbor_state:
             active_arp = device.neighbor_state.upper() in valid_arp_states
             if not active_arp:
-                return False
+                return self._check_consider_home(False)
         elif (device.is_wireless or was_ever_wireless) and not trust_stale:
-            return False
+            return self._check_consider_home(False)
 
         track_wired = _config_get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED)
         if not track_wired and not device.is_wireless:

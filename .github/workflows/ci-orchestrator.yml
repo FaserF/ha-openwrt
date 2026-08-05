@@ -3,9 +3,21 @@ name: CI Orchestrator
 on:
   push:
     branches: [ main, master ]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.github/workflows/deploy_docs.yml'
+      - '.github/workflows/issue-orchestrator.yml'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
     branches: [ main, master ]
     types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.github/workflows/deploy_docs.yml'
+      - '.github/workflows/issue-orchestrator.yml'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
   workflow_call:
 permissions:
@@ -51,7 +63,7 @@ jobs:
 
       - name: Format and Fix with Ruff
         run: |
-          ruff check --fix .
+          ruff check --fix --unsafe-fixes .
           ruff format .
 
       - name: Commit and push changes
