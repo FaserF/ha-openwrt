@@ -1272,6 +1272,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     "initially_seen": current_time,
                     "last_seen": current_time,
                     "is_wireless": device.is_wireless,
+                    "hostname": device.hostname,
                 }
                 history_updated = True
                 _LOGGER.debug("New device added to history: %s", mac)
@@ -1282,6 +1283,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 # to avoid fake-wired entries from DHCP leases when offline.
                 if device.is_wireless and not hist.get("is_wireless"):
                     hist["is_wireless"] = True
+                # Keep the last known hostname so offline devices stay readable
+                # in the options flow and MQTT discovery.
+                if device.hostname:
+                    hist["hostname"] = device.hostname
                 history_updated = True
 
             # Sync with shared wireless history for multi-AP coordination
@@ -1334,6 +1339,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     "initially_seen": current_time,
                     "last_seen": current_time,
                     "is_wireless": is_wireless,
+                    "hostname": lease.hostname,
                 }
                 history_updated = True
                 _LOGGER.debug(
@@ -1343,6 +1349,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 )
             else:
                 self._device_history[mac]["last_seen"] = current_time
+                if lease.hostname:
+                    self._device_history[mac]["hostname"] = lease.hostname
                 history_updated = True
 
             filtered_leases.append(lease)
