@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 import logging
 import shlex
 from typing import Any
@@ -15,6 +17,7 @@ from ..base import (
     ServiceInfo,
     SimpleAdBlockStatus,
     SqmStatus,
+    classify_service,
 )
 from .exceptions import *
 
@@ -70,6 +73,16 @@ class SshFeaturesMixin:
         """Get init.d services."""
         services: list[ServiceInfo] = []
 
+        # 'service list' distinguishes daemons (which own procd instances) from
+        # one-shot scripts, whose 'running' check never succeeds.
+        service_map: dict[str, Any] = {}
+        with contextlib.suppress(Exception):
+            parsed = json.loads(
+                await self._exec("ubus call service list 2>/dev/null") or "{}"
+            )
+            if isinstance(parsed, dict):
+                service_map = parsed
+
         ls_output = await self._exec("ls /etc/init.d/ 2>/dev/null")
         for svc_name in ls_output.strip().split("\n"):
             svc_name = svc_name.strip()
@@ -87,22 +100,14 @@ class SshFeaturesMixin:
                     f"{safe_svc} running && echo yes || echo no",
                 )
                 running = "yes" in running_check
-
-                # Special handling for one-shot services that might be active but not "running"
-                if (
-                    not running
-                    and svc_name in ("adblock", "simple-adblock", "sysctl")
-                    and enabled
-                ):
-                    # For adblock, if ubus status says enabled, we consider it running
-                    # but we don't want to duplicate too much logic here, so we just
-                    # trust the 'enabled' state for these specific one-shot services
-                    # if they are enabled at boot and it's a known one-shot service.
-                    running = True
             except Exception:  # noqa: BLE001
                 pass
             services.append(
-                ServiceInfo(name=svc_name, enabled=enabled, running=running),
+                classify_service(
+                    svc_name,
+                    {"enabled": enabled, "running": running},
+                    service_map.get(svc_name),
+                ),
             )
         return services
 

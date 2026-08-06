@@ -10,6 +10,7 @@ from ..base import (
     OpenWrtPackages,
     OpenWrtPermissions,
     ServiceInfo,
+    classify_service,
 )
 from .exceptions import *
 
@@ -479,19 +480,18 @@ class UbusServicesMixin:
         """Get init.d services via the rc ubus interface."""
         services: list[ServiceInfo] = []
         result = await self._call("rc", "list")
+
+        # 'service list' distinguishes daemons (which own procd instances) from
+        # one-shot scripts, which procd always reports as not running.
+        try:
+            service_map = await self._call("service", "list")
+        except Exception:  # noqa: BLE001
+            service_map = {}
+        if not isinstance(service_map, dict):
+            service_map = {}
+
         for name, data in result.items():
-            services.append(
-                ServiceInfo(
-                    name=name,
-                    enabled=data.get("enabled", False),
-                    running=data.get("running", False)
-                    or (
-                        data.get("running") is False
-                        and data.get("exit_code") == 0
-                        and name in ("adblock", "simple-adblock", "sysctl")
-                    ),
-                ),
-            )
+            services.append(classify_service(name, data, service_map.get(name)))
         return services
 
     async def manage_service(self, name: str, action: str) -> bool:
