@@ -287,4 +287,6 @@ def test_device_tracker_stale_arp_presence(
 
     # When trust_stale_arp is disabled
     mock_config_entry.options = {CONF_TRUST_STALE_ARP: False}
+    tracker._last_seen = None
     assert tracker.is_connected is False
+
