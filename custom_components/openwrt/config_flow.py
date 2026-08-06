@@ -2346,17 +2346,39 @@ class OpenWrtOptionsFlow(OptionsFlow):
         coordinator = self.hass.data[DOMAIN][self._config_entry.entry_id][
             DATA_COORDINATOR
         ]
-        devices = coordinator._device_history
 
-        device_options = {}
-        for mac, info in devices.items():
-            if not isinstance(info, dict):
+        current = self._config_entry.options.get(CONF_TRACKED_DEVICES, [])
+        current_manual = self._config_entry.options.get(CONF_MANUAL_TRACKED_DEVICES, "")
+
+        # Candidates must come from the *unfiltered* device list. Only whitelisted
+        # devices are ever written to _device_history, so sourcing candidates from
+        # history alone makes them equal to the current selection — and a
+        # multi-select only offers unselected options, so the dropdown renders
+        # empty and the tracked set can never grow. all_connected_devices ignores
+        # the whitelist (see the all_devices/filtered_devices split in the
+        # coordinator) and carries real hostnames for readable labels.
+        device_options: dict[str, str] = {}
+        if coordinator.data:
+            for device in coordinator.data.all_connected_devices:
+                if not device.mac:
+                    continue
+                # "*" is dnsmasq's placeholder for a client that sent no hostname
+                hostname = "" if device.hostname == "*" else device.hostname
+                name = hostname or device.mac
+                device_options[device.mac.lower()] = f"{name} ({device.mac})"
+
+        # History keeps devices that were seen before but are offline right now
+        # selectable.
+        for mac, info in coordinator._device_history.items():
+            if not isinstance(info, dict) or mac in device_options:
                 continue
             name = info.get("hostname") or info.get("name") or mac
             device_options[mac] = f"{name} ({mac})"
 
-        current = self._config_entry.options.get(CONF_TRACKED_DEVICES, [])
-        current_manual = self._config_entry.options.get(CONF_MANUAL_TRACKED_DEVICES, "")
+        # An already tracked device that the coordinator has not seen yet must
+        # stay in the list, otherwise the stored selection is not a valid option.
+        for mac in current:
+            device_options.setdefault(mac, mac)
 
         # Prepare device options for selector
         options: list[selector.SelectOptionDict] = [
