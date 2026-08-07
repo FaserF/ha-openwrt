@@ -365,6 +365,7 @@ async def test_coordinator_orphan_cleanup_ghost_sections(hass):
     ghost_dev.id = "ghost_dev_id"
     ghost_dev.name = "AP default_radio0"
     ghost_dev.identifiers = {(DOMAIN, ghost_id)}
+    ghost_dev.config_entries = {config_entry.entry_id}
     ghost_dev.via_device_id = "router_dev_id"
     device_registry.devices["ghost_dev_id"] = ghost_dev
 
@@ -372,6 +373,7 @@ async def test_coordinator_orphan_cleanup_ghost_sections(hass):
     router_dev = MagicMock()
     router_dev.id = "router_dev_id"
     router_dev.identifiers = {(DOMAIN, "router_mac")}
+    router_dev.config_entries = {config_entry.entry_id}
     device_registry.devices["router_dev_id"] = router_dev
 
     device_registry.async_get_device.return_value = router_dev
