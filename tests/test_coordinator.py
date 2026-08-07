@@ -153,6 +153,7 @@ async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
     """Test that orphaned AP devices (model='Access Point' or name starting with 'AP ') are removed."""
     from custom_components.openwrt.api.base import WirelessInterface
     from custom_components.openwrt.const import DOMAIN
+    from custom_components.openwrt.helpers import format_ap_device_id
 
     hass = MagicMock()
     entry = MagicMock()
