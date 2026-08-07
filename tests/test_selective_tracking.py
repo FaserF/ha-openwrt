@@ -487,3 +487,389 @@ async def test_options_flow_falls_back_to_mac_for_placeholder_hostname() -> None
 
     options = _tracked_device_options(mock_selector.SelectSelectorConfig)
     assert options["00:bb:cc:dd:ee:02"] == "00:BB:CC:DD:EE:02 (00:BB:CC:DD:EE:02)"
+
+
+@pytest.mark.asyncio
+async def test_hostname_registry_shared_across_entries() -> None:
+    """A router with DHCP data must publish hostnames for every device it sees.
+
+    An access point runs no DHCP server, so its only route to a real name is the
+    registry another entry populated. The registry therefore has to be filled
+    before the whitelist filter, covering devices this entry does not track.
+    """
+    hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
+    hass.data = {}
+
+    config_entry = MagicMock()
+    # Only device1 is tracked here; device2's name must still be published.
+    config_entry.options = {CONF_TRACKED_DEVICES: ["00:bb:cc:dd:ee:01"]}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "router1"
+
+    mock_client = AsyncMock()
+    mock_client.connected = True
+    mock_client.get_all_data.return_value = OpenWrtData(
+        system_resources=SystemResources(uptime=100),
+        connected_devices=[
+            ConnectedDevice(
+                mac="00:bb:cc:dd:ee:01",
+                hostname="device1",
+                interface="br-lan",
+                is_wireless=True,
+            ),
+            ConnectedDevice(
+                mac="00:bb:cc:dd:ee:02",
+                hostname="roaming-phone",
+                interface="br-lan",
+                is_wireless=True,
+            ),
+        ],
+        dhcp_leases=[
+            DhcpLease(mac="00:bb:cc:dd:ee:03", hostname="printer", ip="192.168.1.13"),
+            # "*" placeholder must never be published as a name.
+            DhcpLease(mac="00:bb:cc:dd:ee:04", hostname="*", ip="192.168.1.14"),
+        ],
+        network_interfaces=[],
+        wireless_interfaces=[],
+    )
+
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(return_value={})
+        mock_store.return_value.async_save = AsyncMock()
+        coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+
+    await coordinator._async_update_data()
+
+    registry = hass.data[DOMAIN]["hostname_registry"]
+    # Untracked device: published anyway, which is the whole point.
+    assert registry["00:bb:cc:dd:ee:02"] == "roaming-phone"
+    assert registry["00:bb:cc:dd:ee:01"] == "device1"
+    # Lease harvested before the whitelist dropped it.
+    assert registry["00:bb:cc:dd:ee:03"] == "printer"
+    assert "00:bb:cc:dd:ee:04" not in registry
+
+
+@pytest.mark.asyncio
+async def test_options_flow_uses_shared_hostnames() -> None:
+    """An AP with no hostnames of its own labels devices from the registry."""
+    flow = _make_options_flow(
+        # An AP sees the association but has no name for it.
+        all_connected_devices=[
+            ConnectedDevice(mac="00:BB:CC:DD:EE:02", hostname=""),
+        ],
+        device_history={"00:bb:cc:dd:ee:09": {}},
+        tracked=[],
+    )
+    flow.hass.data[DOMAIN]["hostname_registry"] = {
+        "00:bb:cc:dd:ee:02": "roaming-phone",
+        "00:bb:cc:dd:ee:09": "old-laptop",
+    }
+
+    with patch("custom_components.openwrt.config_flow.selector") as mock_selector:
+        await flow.async_step_options_select_devices()
+
+    options = _tracked_device_options(mock_selector.SelectSelectorConfig)
+    assert options["00:bb:cc:dd:ee:02"] == "roaming-phone (00:BB:CC:DD:EE:02)"
+    # History entries with no stored hostname benefit too.
+    assert options["00:bb:cc:dd:ee:09"] == "old-laptop (00:bb:cc:dd:ee:09)"
+
+
+@pytest.mark.asyncio
+async def test_options_flow_prefers_local_hostname() -> None:
+    """A hostname this router knows itself wins over the shared registry."""
+    flow = _make_options_flow(
+        all_connected_devices=[
+            ConnectedDevice(mac="00:bb:cc:dd:ee:02", hostname="local-name"),
+        ],
+        device_history={},
+        tracked=[],
+    )
+    flow.hass.data[DOMAIN]["hostname_registry"] = {"00:bb:cc:dd:ee:02": "shared-name"}
+
+    with patch("custom_components.openwrt.config_flow.selector") as mock_selector:
+        await flow.async_step_options_select_devices()
+
+    options = _tracked_device_options(mock_selector.SelectSelectorConfig)
+    assert options["00:bb:cc:dd:ee:02"].startswith("local-name")
+
+
+@pytest.mark.asyncio
+async def test_tracker_name_falls_back_to_shared_hostname() -> None:
+    """An AP names its device from the registry, not the bare MAC.
+
+    Regression: DeviceInfo uses `self.name or self._initial_name`, and `name`
+    fell back to the MAC -- which is truthy -- so _initial_name was dead code
+    and the device registry entry was named after the MAC.
+    """
+    from custom_components.openwrt.device_tracker import OpenWrtDeviceTracker
+
+    mac = "00:bb:cc:dd:ee:20"
+    coordinator = MagicMock()
+    # The AP sees the association but resolved no hostname for it.
+    coordinator.data.connected_devices = [ConnectedDevice(mac=mac, hostname="")]
+    coordinator.data.dhcp_leases = []
+    coordinator.data.device_info.hostname = "Router3"
+    coordinator.hass.data = {
+        DOMAIN: {"hostname_registry": {mac: "roaming-phone"}},
+    }
+
+    entry = MagicMock()
+    entry.options = {}
+    entry.data = {}
+    entry.entry_id = "router3"
+    tracker = OpenWrtDeviceTracker(coordinator, entry, mac, None)
+
+    assert tracker.name == "roaming-phone"
+
+
+@pytest.mark.asyncio
+async def test_tracker_prefers_own_hostname_over_registry() -> None:
+    """A hostname this entry resolved itself still wins."""
+    from custom_components.openwrt.device_tracker import OpenWrtDeviceTracker
+
+    mac = "00:bb:cc:dd:ee:20"
+    coordinator = MagicMock()
+    coordinator.data.connected_devices = [
+        ConnectedDevice(mac=mac, hostname="roaming-phone.home")
+    ]
+    coordinator.data.dhcp_leases = []
+    coordinator.data.device_info.hostname = "Router1"
+    coordinator.hass.data = {DOMAIN: {"hostname_registry": {mac: "stale-name"}}}
+
+    entry = MagicMock()
+    entry.options = {}
+    entry.data = {}
+    entry.entry_id = "router1"
+    tracker = OpenWrtDeviceTracker(coordinator, entry, mac, "roaming-phone.home")
+
+    assert tracker.name == "roaming-phone.home"
+
+
+@pytest.mark.asyncio
+async def test_tracker_name_falls_back_to_mac_when_nothing_known() -> None:
+    """With no name anywhere, the MAC remains the fallback."""
+    from custom_components.openwrt.device_tracker import OpenWrtDeviceTracker
+
+    mac = "00:bb:cc:dd:ee:21"
+    coordinator = MagicMock()
+    coordinator.data.connected_devices = [ConnectedDevice(mac=mac, hostname="")]
+    coordinator.data.dhcp_leases = []
+    coordinator.data.device_info.hostname = "Router3"
+    coordinator.hass.data = {DOMAIN: {"hostname_registry": {}}}
+
+    entry = MagicMock()
+    entry.options = {}
+    entry.data = {}
+    entry.entry_id = "router3"
+    tracker = OpenWrtDeviceTracker(coordinator, entry, mac, None)
+
+    assert tracker.name == mac
+
+
+@pytest.mark.asyncio
+async def test_registry_seeded_from_persisted_history() -> None:
+    """Stored hostnames populate the registry before the first poll completes."""
+    hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
+    hass.data = {}
+
+    config_entry = MagicMock()
+    config_entry.options = {}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "router1"
+
+    mock_client = AsyncMock()
+    mock_client.connected = True
+    mock_client.get_all_data.return_value = OpenWrtData(
+        system_resources=SystemResources(uptime=100),
+        connected_devices=[],
+        dhcp_leases=[],
+        network_interfaces=[],
+        wireless_interfaces=[],
+    )
+
+    stored = {
+        "00:bb:cc:dd:ee:20": {"hostname": "roaming-phone", "last_seen": 1.0},
+        "00:11:22:33:44:55": {"hostname": "*", "last_seen": 1.0},
+        "aa:bb:cc:dd:ee:ff": "corrupt",
+    }
+
+    def _make_store(_hass, _ver, key):
+        # The per-entry history store and the shared hostname store are
+        # distinct; only the former holds this payload.
+        st = MagicMock()
+        st.async_load = AsyncMock(
+            return_value=None if key.endswith("_hostnames") else stored
+        )
+        st.async_save = AsyncMock()
+        return st
+
+    with patch(
+        "custom_components.openwrt.coordinator.storage.Store", side_effect=_make_store
+    ):
+        coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+
+    await coordinator._async_update_data()
+
+    registry = hass.data[DOMAIN]["hostname_registry"]
+    assert registry["00:bb:cc:dd:ee:20"] == "roaming-phone"
+    assert "00:11:22:33:44:55" not in registry
+    assert "aa:bb:cc:dd:ee:ff" not in registry
+
+
+def test_resolve_client_name_prefers_local() -> None:
+    """A hostname this entry resolved itself wins over the registry."""
+    from custom_components.openwrt.helpers import resolve_client_name
+
+    hass = MagicMock()
+    hass.data = {DOMAIN: {"hostname_registry": {"00:bb:cc:dd:ee:20": "shared"}}}
+    assert resolve_client_name(hass, "00:bb:cc:dd:ee:20", "Local-Name") == "Local-Name"
+
+
+def test_resolve_client_name_uses_registry() -> None:
+    """An AP with no name of its own borrows the DHCP router's."""
+    from custom_components.openwrt.helpers import resolve_client_name
+
+    hass = MagicMock()
+    hass.data = {DOMAIN: {"hostname_registry": {"00:bb:cc:dd:ee:20": "roaming-phone"}}}
+    mac = "00:bb:cc:dd:ee:20"
+    # No local name at all, and the degenerate case where the "name" the
+    # platform passed in is just the MAC again.
+    assert resolve_client_name(hass, mac, None) == "roaming-phone"
+    assert resolve_client_name(hass, mac, "") == "roaming-phone"
+    assert resolve_client_name(hass, mac, mac) == "roaming-phone"
+    assert resolve_client_name(hass, mac.upper(), mac.upper()) == "roaming-phone"
+    assert resolve_client_name(hass, mac, "*") == "roaming-phone"
+
+
+def test_resolve_client_name_falls_back_to_mac() -> None:
+    """With nothing known anywhere the MAC remains the name."""
+    from custom_components.openwrt.helpers import resolve_client_name
+
+    hass = MagicMock()
+    hass.data = {DOMAIN: {}}
+    assert resolve_client_name(hass, "00:bb:cc:dd:ee:21", None) == "00:bb:cc:dd:ee:21"
+
+
+@pytest.mark.asyncio
+async def test_hostname_registry_persisted_and_reloaded() -> None:
+    """The registry must survive a restart, available before any poll.
+
+    Device records are named when entities are created during entry setup. An
+    AP that starts before the DHCP router has polled would otherwise register
+    its devices under bare MACs, and HA does not rewrite them afterwards.
+    """
+    hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
+    hass.data = {}
+
+    config_entry = MagicMock()
+    config_entry.options = {}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "router1"
+
+    mock_client = AsyncMock()
+    mock_client.connected = True
+    mock_client.get_all_data.return_value = OpenWrtData(
+        system_resources=SystemResources(uptime=100),
+        connected_devices=[
+            ConnectedDevice(
+                mac="00:bb:cc:dd:ee:02",
+                hostname="roaming-phone",
+                interface="br-lan",
+                is_wireless=True,
+            ),
+        ],
+        dhcp_leases=[],
+        network_interfaces=[],
+        wireless_interfaces=[],
+    )
+
+    saved: dict[str, dict] = {}
+
+    def _make_store(_hass, _ver, key):
+        st = MagicMock()
+        st.async_load = AsyncMock(return_value=saved.get(key))
+        st.async_save = AsyncMock(
+            side_effect=lambda d, k=key: saved.update({k: dict(d)})
+        )
+        return st
+
+    with patch(
+        "custom_components.openwrt.coordinator.storage.Store", side_effect=_make_store
+    ):
+        coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+        await coordinator._async_update_data()
+
+    # The shared store is keyed globally, not per entry.
+    assert "openwrt_hostnames" in saved
+    assert saved["openwrt_hostnames"]["00:bb:cc:dd:ee:02"] == "roaming-phone"
+
+    # A second HA run: an AP starts up with no data of its own and must still
+    # see the name before its first poll returns anything.
+    hass2 = MagicMock()
+    hass2.loop = MagicMock()
+    hass2.loop.time = MagicMock(return_value=123456789.0)
+    hass2.data = {}
+
+    ap_entry = MagicMock()
+    ap_entry.options = {}
+    ap_entry.data = {"host": "192.168.1.3"}
+    ap_entry.entry_id = "router3"
+
+    ap_client = AsyncMock()
+    ap_client.connected = True
+    ap_client.get_all_data.return_value = OpenWrtData(
+        system_resources=SystemResources(uptime=100),
+        # The AP sees the association but resolves no hostname.
+        connected_devices=[
+            ConnectedDevice(
+                mac="00:bb:cc:dd:ee:02",
+                hostname="",
+                interface="br-lan",
+                is_wireless=True,
+            ),
+        ],
+        dhcp_leases=[],
+        network_interfaces=[],
+        wireless_interfaces=[],
+    )
+
+    with patch(
+        "custom_components.openwrt.coordinator.storage.Store", side_effect=_make_store
+    ):
+        ap_coord = OpenWrtDataCoordinator(hass2, ap_entry, ap_client)
+        await ap_coord._async_load_hostname_registry()
+        # Registry is populated before any device data has been processed.
+        assert (
+            hass2.data[DOMAIN]["hostname_registry"]["00:bb:cc:dd:ee:02"]
+            == "roaming-phone"
+        )
+
+
+@pytest.mark.asyncio
+async def test_hostname_registry_loaded_only_once() -> None:
+    """A second entry must reuse the dict, not swap it out mid-flight."""
+    hass = MagicMock()
+    hass.data = {DOMAIN: {"hostname_registry": {"aa:bb:cc:dd:ee:ff": "existing"}}}
+
+    config_entry = MagicMock()
+    config_entry.options = {}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "router2"
+
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(
+            return_value={"11:22:33:44:55:66": "should-not-load"}
+        )
+        mock_store.return_value.async_save = AsyncMock()
+        coordinator = OpenWrtDataCoordinator(hass, config_entry, AsyncMock())
+        original = hass.data[DOMAIN]["hostname_registry"]
+        await coordinator._async_load_hostname_registry()
+
+    assert hass.data[DOMAIN]["hostname_registry"] is original
+    assert "11:22:33:44:55:66" not in hass.data[DOMAIN]["hostname_registry"]

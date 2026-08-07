@@ -1033,13 +1033,13 @@ class OpenWrtAccessControlSwitch(
         self._mac = mac.lower()
         self._attr_unique_id = f"{entry.entry_id}_access_{self._mac.replace(':', '_')}"
         self._attr_translation_key = "device_access"
-        from .helpers import is_random_mac
+        from .helpers import is_random_mac, resolve_client_name
 
         if is_random_mac(self._mac):
             self._attr_entity_registry_enabled_default = False
         self._attr_device_info = DeviceInfo(
             connections={("mac", self._mac)},
-            name=name,
+            name=resolve_client_name(coordinator.hass, self._mac, name),
             via_device=(DOMAIN, cast(str, entry.unique_id)),
         )
 

@@ -57,7 +57,13 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import format_ap_device_id, format_ap_name, get_via_device, is_random_mac
+from .helpers import (
+    format_ap_device_id,
+    format_ap_name,
+    get_via_device,
+    is_random_mac,
+    resolve_client_name,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -310,7 +316,9 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         return DeviceInfo(
             identifiers={(DOMAIN, self._mac)},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
-            name=self._initial_name,
+            name=resolve_client_name(
+                self.coordinator.hass, self._mac, self._initial_name
+            ),
             via_device=get_via_device(
                 self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),
@@ -1367,7 +1375,9 @@ class OpenWrtNlbwmonRxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEn
         return DeviceInfo(
             identifiers={(DOMAIN, self._mac.lower())},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac.lower())},
-            name=self._initial_name,
+            name=resolve_client_name(
+                self.coordinator.hass, self._mac, self._initial_name
+            ),
             via_device=get_via_device(
                 self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),
@@ -1416,7 +1426,9 @@ class OpenWrtNlbwmonTxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEn
         return DeviceInfo(
             identifiers={(DOMAIN, self._mac.lower())},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac.lower())},
-            name=self._initial_name,
+            name=resolve_client_name(
+                self.coordinator.hass, self._mac, self._initial_name
+            ),
             via_device=get_via_device(
                 self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),

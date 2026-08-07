@@ -198,3 +198,23 @@ def get_via_device(
                     via_device = (DOMAIN, originator_mac)
 
     return via_device
+
+
+def resolve_client_name(
+    hass: HomeAssistant,
+    mac: str,
+    local_name: str | None = None,
+) -> str:
+    """Return the best known display name for a tracked client.
+
+    An access point runs no DHCP server, so its own view of a client carries no
+    hostname and every device it registers would otherwise be named after a MAC
+    address. Fall back to the name another config entry resolved -- typically
+    the router running dnsmasq -- before settling for the bare address.
+    """
+    mac_lower = mac.lower()
+    if local_name and local_name != "*" and local_name.lower() != mac_lower:
+        return local_name
+
+    shared = hass.data.get(DOMAIN, {}).get("hostname_registry", {})
+    return shared.get(mac_lower) or local_name or mac

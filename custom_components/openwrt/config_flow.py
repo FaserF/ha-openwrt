@@ -1938,17 +1938,25 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 leases = await client.get_dhcp_leases()
                 await client.disconnect()
 
+                # Hostnames already learned by other config entries, so an AP
+                # with no DHCP server of its own still shows real names.
+                shared_hostnames: dict[str, str] = self.hass.data.get(DOMAIN, {}).get(
+                    "hostname_registry", {}
+                )
+
                 # Combine them
                 for d in devices:
                     if d.mac:
                         mac = d.mac.lower()
-                        name = d.hostname or d.mac
+                        name = d.hostname or shared_hostnames.get(mac) or d.mac
                         device_options[mac] = f"{name} ({d.mac})"
                 for lease in leases:
                     if lease.mac:
                         mac = lease.mac.lower()
                         if mac not in device_options:
-                            name = lease.hostname or lease.mac
+                            name = (
+                                lease.hostname or shared_hostnames.get(mac) or lease.mac
+                            )
                             device_options[mac] = f"{name} ({lease.mac}) [Lease]"
         except Exception as err:
             _LOGGER.warning("Could not fetch devices for selective tracking: %s", err)
@@ -2357,22 +2365,35 @@ class OpenWrtOptionsFlow(OptionsFlow):
         # empty and the tracked set can never grow. all_connected_devices ignores
         # the whitelist (see the all_devices/filtered_devices split in the
         # coordinator) and carries real hostnames for readable labels.
+        # Hostnames learned by any config entry. An access point runs no DHCP
+        # server, so its own view of a client is MAC-only; without this its
+        # picker would list bare MAC addresses.
+        shared_hostnames: dict[str, str] = self.hass.data.get(DOMAIN, {}).get(
+            "hostname_registry", {}
+        )
+
         device_options: dict[str, str] = {}
         if coordinator.data:
             for device in coordinator.data.all_connected_devices:
                 if not device.mac:
                     continue
+                mac = device.mac.lower()
                 # "*" is dnsmasq's placeholder for a client that sent no hostname
                 hostname = "" if device.hostname == "*" else device.hostname
-                name = hostname or device.mac
-                device_options[device.mac.lower()] = f"{name} ({device.mac})"
+                name = hostname or shared_hostnames.get(mac) or device.mac
+                device_options[mac] = f"{name} ({device.mac})"
 
         # History keeps devices that were seen before but are offline right now
         # selectable.
         for mac, info in coordinator._device_history.items():
             if not isinstance(info, dict) or mac in device_options:
                 continue
-            name = info.get("hostname") or info.get("name") or mac
+            name = (
+                info.get("hostname")
+                or info.get("name")
+                or shared_hostnames.get(mac)
+                or mac
+            )
             device_options[mac] = f"{name} ({mac})"
 
         # An already tracked device that the coordinator has not seen yet must

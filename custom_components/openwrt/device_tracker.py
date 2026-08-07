@@ -149,6 +149,13 @@ async def async_setup_entry(
                 if mac_lower not in unique_devices or not unique_devices[mac_lower]:
                     unique_devices[mac_lower] = lease.hostname
 
+        # An access point has no DHCP data, so fall back to the hostname another
+        # config entry resolved. Without this its trackers are named by MAC.
+        shared_hostnames = hass.data.get(DOMAIN, {}).get("hostname_registry", {})
+        for mac_lower, hostname in unique_devices.items():
+            if not hostname or hostname == "*":
+                unique_devices[mac_lower] = shared_hostnames.get(mac_lower) or hostname
+
         new_entities: list[OpenWrtDeviceTracker] = []
 
         for mac, hostname in unique_devices.items():
@@ -457,7 +464,11 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             if hostname != router_hostname:
                 return hostname
 
-        return self._mac
+        # This entry resolved no hostname of its own -- an access point runs no
+        # DHCP server, so it only ever sees a MAC. Borrow the name another entry
+        # learned before falling back to the bare address.
+        shared = self.coordinator.hass.data.get(DOMAIN, {}).get("hostname_registry", {})
+        return shared.get(self._mac) or self._initial_name
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
