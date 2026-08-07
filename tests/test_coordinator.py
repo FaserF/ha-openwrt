@@ -175,7 +175,7 @@ async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
         name="AP GL-MT6000-a11 (2.4 GHz)",
         model="Access Point",
         config_entries={entry.entry_id},
-        identifiers={(DOMAIN, "94:83:c4:ac:7a:13_GL-MT6000-a11_2.4 GHz")},
+        identifiers={(DOMAIN, format_ap_device_id("94:83:c4:ac:7a:13", "GL-MT6000-a11_2.4 GHz"))},
         via_device_id="dev_router",
         disabled_by=None,
         entry_type=None,

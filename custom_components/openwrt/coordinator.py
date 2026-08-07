@@ -1822,6 +1822,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         devices_to_remove = []
         # Iterate over all devices in the registry
         for dev in list(device_registry.devices.values()):
+            # Only process devices that belong to our specific config entry
+            if self.config_entry.entry_id not in dev.config_entries:
+                continue
+
             # Check if any identifier belonging to our domain matches this router
             is_ours = False
             is_tracked_device = False
