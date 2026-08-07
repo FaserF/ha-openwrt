@@ -205,9 +205,10 @@ async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
         )
     ]
 
-    with patch("homeassistant.helpers.device_registry.async_get", return_value=dev_registry):
+    with patch(
+        "homeassistant.helpers.device_registry.async_get", return_value=dev_registry
+    ):
         await coordinator._async_update_device_registry(data)
 
     # Orphaned AP device (dev_orphan_ap) should be removed
     dev_registry.async_remove_device.assert_called_once_with("dev_orphan_ap")
-
