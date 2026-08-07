@@ -1875,11 +1875,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 continue
 
             # Identify if this is an Access Point device (old or new style)
-            # We also check the name as a fallback for old installations
-            is_ap_related = any(
-                "_ap_" in str(ident[1])
-                for ident in dev.identifiers
-                if ident[0] == DOMAIN
+            # We also check the model and name as a fallback for old/migrated installations
+            is_ap_related = (
+                any(
+                    "_ap_" in str(ident[1])
+                    for ident in dev.identifiers
+                    if ident[0] == DOMAIN
+                )
+                or dev.model == "Access Point"
+                or (dev.name and dev.name.startswith("AP "))
             )
             is_ghost_name = any(
                 ghost in (dev.name or "")

@@ -146,3 +146,68 @@ async def test_coordinator_reverse_dns_resolution(hass: HomeAssistant) -> None:
     assert data.connected_devices[0].hostname == "resolved-device.local"
     assert data.connected_devices[1].hostname == "Existing"
     assert data.dhcp_leases[0].hostname == "resolved-lease.local"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
+    """Test that orphaned AP devices (model='Access Point' or name starting with 'AP ') are removed."""
+    from custom_components.openwrt.api.base import WirelessInterface
+    from custom_components.openwrt.const import DOMAIN
+
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test_entry_id"
+    entry.unique_id = "94:83:c4:ac:7a:13"
+    entry.data = {"host": "192.168.1.1"}
+    entry.options = {}
+
+    mock_client = AsyncMock()
+    coordinator = OpenWrtDataCoordinator(hass, entry, mock_client)
+    coordinator.router_id = "94:83:c4:ac:7a:13"
+
+    dev_registry = MagicMock()
+    dev_router = MagicMock(id="dev_router")
+    dev_registry.async_get_device.return_value = dev_router
+
+    # Mock 2 AP devices: 1 active, 1 orphaned/ghost from old installation
+    dev_active_ap = MagicMock(
+        id="dev_active_ap",
+        name="AP GL-MT6000-a11 (2.4 GHz)",
+        model="Access Point",
+        config_entries={entry.entry_id},
+        identifiers={(DOMAIN, "94:83:c4:ac:7a:13_GL-MT6000-a11_2.4 GHz")},
+        via_device_id="dev_router",
+        disabled_by=None,
+        entry_type=None,
+    )
+    dev_orphan_ap = MagicMock(
+        id="dev_orphan_ap",
+        name="AP GL-MT6000-a11 (2.4 GHz)",
+        model="Access Point",
+        config_entries={entry.entry_id},
+        identifiers={(DOMAIN, "94:83:c4:ac:7a:13_ap_ra0")},
+        via_device_id="dev_router",
+        disabled_by=None,
+        entry_type=None,
+    )
+
+    dev_registry.devices = {
+        "dev_active_ap": dev_active_ap,
+        "dev_orphan_ap": dev_orphan_ap,
+    }
+
+    data = OpenWrtData()
+    data.wireless_interfaces = [
+        WirelessInterface(
+            name="ra0",
+            ssid="GL-MT6000-a11",
+            band="2.4 GHz",
+        )
+    ]
+
+    with patch("homeassistant.helpers.device_registry.async_get", return_value=dev_registry):
+        await coordinator._async_update_device_registry(data)
+
+    # Orphaned AP device (dev_orphan_ap) should be removed
+    dev_registry.async_remove_device.assert_called_once_with("dev_orphan_ap")
+

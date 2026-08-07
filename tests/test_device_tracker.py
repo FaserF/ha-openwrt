@@ -284,8 +284,11 @@ def test_device_tracker_stale_arp_presence(
     # By default trust_stale_arp is True (or enabled)
     mock_config_entry.options = {CONF_TRUST_STALE_ARP: True}
     assert tracker.is_connected is True
+    assert tracker._last_seen is not None
+    last_seen = tracker._last_seen
 
-    # When trust_stale_arp is disabled
+    # When trust_stale_arp is disabled and consider_home window has passed
     mock_config_entry.options = {CONF_TRUST_STALE_ARP: False}
-    tracker._last_seen = None
-    assert tracker.is_connected is False
+    with patch("custom_components.openwrt.device_tracker.datetime") as mock_datetime:
+        mock_datetime.now.return_value = last_seen + timedelta(seconds=25)
+        assert tracker.is_connected is False
