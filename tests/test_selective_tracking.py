@@ -873,3 +873,193 @@ async def test_hostname_registry_loaded_only_once() -> None:
 
     assert hass.data[DOMAIN]["hostname_registry"] is original
     assert "11:22:33:44:55:66" not in hass.data[DOMAIN]["hostname_registry"]
+
+
+def _coordinator(hass, entry_id, store_factory, client=None):
+    entry = MagicMock()
+    entry.options = {}
+    entry.data = {"host": "192.168.1.1"}
+    entry.entry_id = entry_id
+    with patch(
+        "custom_components.openwrt.coordinator.storage.Store",
+        side_effect=store_factory,
+    ):
+        return OpenWrtDataCoordinator(hass, entry, client or AsyncMock())
+
+
+def test_registry_entries_are_normalized_and_validated() -> None:
+    """Stored records are normalized on the way in.
+
+    Consumers look up lowercase MACs, so an uppercase stored key would silently
+    never resolve, and "*" must never become a label.
+    """
+    from custom_components.openwrt.coordinator import _clean_hostname_entry
+
+    assert _clean_hostname_entry("00:BB:CC:DD:EE:20", "Phone") == (
+        "00:bb:cc:dd:ee:20",
+        "Phone",
+    )
+    assert _clean_hostname_entry(" 00:bb:cc:dd:ee:20 ", " Phone ") == (
+        "00:bb:cc:dd:ee:20",
+        "Phone",
+    )
+    # Rejected: placeholder, empty, non-string, and anything not a MAC.
+    assert _clean_hostname_entry("00:bb:cc:dd:ee:20", "*") is None
+    assert _clean_hostname_entry("00:bb:cc:dd:ee:20", "") is None
+    assert _clean_hostname_entry("00:bb:cc:dd:ee:20", None) is None
+    assert _clean_hostname_entry("devices", {"a": 1}) is None
+    assert _clean_hostname_entry("last_version", "2.4.6") is None
+    assert _clean_hostname_entry(None, "Phone") is None
+
+
+@pytest.mark.asyncio
+async def test_registry_load_normalizes_persisted_keys() -> None:
+    """A persisted uppercase key must still resolve for lowercase lookups."""
+    hass = MagicMock()
+    hass.data = {}
+    stored = {
+        "00:BB:CC:DD:EE:20": "Upper-Cased",
+        "00:bb:cc:dd:ee:21": "*",
+        "not-a-mac": "junk",
+    }
+
+    def factory(_h, _v, key):
+        st = MagicMock()
+        st.async_load = AsyncMock(return_value=stored if "hostnames" in key else None)
+        st.async_save = AsyncMock()
+        return st
+
+    coord = _coordinator(hass, "router1", factory)
+    await coord._async_load_hostname_registry()
+
+    registry = hass.data[DOMAIN]["hostname_registry"]
+    assert registry == {"00:bb:cc:dd:ee:20": "Upper-Cased"}
+
+
+@pytest.mark.asyncio
+async def test_history_envelope_is_decoded_before_seeding() -> None:
+    """History is persisted in two shapes; the envelope must not be taken raw.
+
+    Assigning it raw would make "devices" and "last_version" look like device
+    MACs and would seed nothing.
+    """
+    hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
+    hass.data = {}
+
+    envelope = {
+        "devices": {
+            "00:bb:cc:dd:ee:20": {"hostname": "roaming-phone", "last_seen": 1.0},
+        },
+        "last_version": "2.4.6",
+    }
+    saved: dict[str, dict] = {}
+
+    def factory(_h, _v, key):
+        st = MagicMock()
+        st.async_load = AsyncMock(return_value=None if "hostnames" in key else envelope)
+        st.async_save = AsyncMock(
+            side_effect=lambda d, k=key: saved.update({k: dict(d)})
+        )
+        return st
+
+    client = AsyncMock()
+    client.connected = True
+    client.get_all_data.return_value = OpenWrtData(
+        system_resources=SystemResources(uptime=100),
+        connected_devices=[],
+        dhcp_leases=[],
+        network_interfaces=[],
+        wireless_interfaces=[],
+    )
+
+    coord = _coordinator(hass, "router1", factory, client)
+    await coord._async_update_data()
+
+    # Envelope keys must not have become device history entries.
+    assert "devices" not in coord._device_history
+    assert "last_version" not in coord._device_history
+    assert "00:bb:cc:dd:ee:20" in coord._device_history
+
+    registry = hass.data[DOMAIN]["hostname_registry"]
+    assert registry["00:bb:cc:dd:ee:20"] == "roaming-phone"
+    # Seed-only names are persisted, not just held in memory.
+    assert saved["openwrt_hostnames"]["00:bb:cc:dd:ee:20"] == "roaming-phone"
+
+
+@pytest.mark.asyncio
+async def test_hostname_store_is_shared_between_entries() -> None:
+    """Separate Store objects on one key can interleave writes; use one."""
+    hass = MagicMock()
+    hass.data = {}
+
+    def factory(_h, _v, key):
+        st = MagicMock(name=key)
+        st.async_load = AsyncMock(return_value=None)
+        st.async_save = AsyncMock()
+        return st
+
+    a = _coordinator(hass, "router1", factory)
+    b = _coordinator(hass, "router2", factory)
+
+    assert a._hostname_store is b._hostname_store
+    # The per-entry history stores stay distinct.
+    assert a._store is not b._store
+
+
+@pytest.mark.asyncio
+async def test_registry_save_failure_does_not_break_update() -> None:
+    """A storage error must not fail the whole coordinator refresh."""
+    hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
+    hass.data = {}
+
+    def factory(_h, _v, key):
+        st = MagicMock()
+        st.async_load = AsyncMock(return_value=None)
+        if "hostnames" in key:
+            st.async_save = AsyncMock(side_effect=OSError("disk full"))
+        else:
+            st.async_save = AsyncMock()
+        return st
+
+    client = AsyncMock()
+    client.connected = True
+    client.get_all_data.return_value = OpenWrtData(
+        system_resources=SystemResources(uptime=100),
+        connected_devices=[
+            ConnectedDevice(
+                mac="00:bb:cc:dd:ee:20",
+                hostname="roaming-phone",
+                interface="br-lan",
+                is_wireless=True,
+            ),
+        ],
+        dhcp_leases=[],
+        network_interfaces=[],
+        wireless_interfaces=[],
+    )
+
+    coord = _coordinator(hass, "router1", factory, client)
+    data = await coord._async_update_data()
+
+    # Update still succeeded and the in-memory registry is correct.
+    assert data is not None
+    assert hass.data[DOMAIN]["hostname_registry"]["00:bb:cc:dd:ee:20"] == (
+        "roaming-phone"
+    )
+
+
+def test_resolve_client_name_never_returns_placeholder() -> None:
+    """ "*" must never survive as a label, even with an empty registry."""
+    from custom_components.openwrt.helpers import resolve_client_name
+
+    hass = MagicMock()
+    hass.data = {DOMAIN: {"hostname_registry": {}}}
+    mac = "00:bb:cc:dd:ee:20"
+    assert resolve_client_name(hass, mac, "*") == mac
+    assert resolve_client_name(hass, mac, None) == mac
+    assert resolve_client_name(hass, mac, mac.upper()) == mac
+    assert resolve_client_name(hass, mac, "real-name") == "real-name"

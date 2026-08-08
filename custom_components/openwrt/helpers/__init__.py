@@ -212,9 +212,11 @@ def resolve_client_name(
     address. Fall back to the name another config entry resolved -- typically
     the router running dnsmasq -- before settling for the bare address.
     """
+    # "*" is dnsmasq's placeholder for a client that sent no hostname, and some
+    # callers pass the MAC itself as the "name". Neither is a usable label.
     mac_lower = mac.lower()
     if local_name and local_name != "*" and local_name.lower() != mac_lower:
         return local_name
 
     shared = hass.data.get(DOMAIN, {}).get("hostname_registry", {})
-    return shared.get(mac_lower) or local_name or mac
+    return shared.get(mac_lower) or mac

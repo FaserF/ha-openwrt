@@ -1944,19 +1944,20 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     "hostname_registry", {}
                 )
 
-                # Combine them
+                # Combine them. "*" is dnsmasq's placeholder for a client that
+                # sent no hostname, so it counts as absent rather than a label.
                 for d in devices:
                     if d.mac:
                         mac = d.mac.lower()
-                        name = d.hostname or shared_hostnames.get(mac) or d.mac
+                        local = "" if d.hostname == "*" else d.hostname
+                        name = local or shared_hostnames.get(mac) or d.mac
                         device_options[mac] = f"{name} ({d.mac})"
                 for lease in leases:
                     if lease.mac:
                         mac = lease.mac.lower()
                         if mac not in device_options:
-                            name = (
-                                lease.hostname or shared_hostnames.get(mac) or lease.mac
-                            )
+                            local = "" if lease.hostname == "*" else lease.hostname
+                            name = local or shared_hostnames.get(mac) or lease.mac
                             device_options[mac] = f"{name} ({lease.mac}) [Lease]"
         except Exception as err:
             _LOGGER.warning("Could not fetch devices for selective tracking: %s", err)

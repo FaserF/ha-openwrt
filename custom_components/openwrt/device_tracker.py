@@ -42,7 +42,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import get_via_device, is_random_mac
+from .helpers import get_via_device, is_random_mac, resolve_client_name
 from .helpers.mac_vendor import get_mac_vendor_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -467,8 +467,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
         # This entry resolved no hostname of its own -- an access point runs no
         # DHCP server, so it only ever sees a MAC. Borrow the name another entry
         # learned before falling back to the bare address.
-        shared = self.coordinator.hass.data.get(DOMAIN, {}).get("hostname_registry", {})
-        return shared.get(self._mac) or self._initial_name
+        return resolve_client_name(self.coordinator.hass, self._mac, self._initial_name)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
