@@ -515,7 +515,10 @@ def classify_service(
     reported by ``service list`` only -- ``rc list`` never carries it -- so it
     cannot be read from the rc view alone.
     """
-    enabled = bool(rc_entry.get("enabled", False))
+    # Absent means "the rc view did not say", which is not the same as False --
+    # the LuCI-RPC fallback path has no rc data at all.
+    enabled_known = rc_entry.get("enabled")
+    enabled = bool(enabled_known)
 
     # Fast path: procd says it is up, nothing to infer.
     if rc_entry.get("running"):
@@ -525,16 +528,28 @@ def classify_service(
     if isinstance(service_entry, dict):
         instances = service_entry.get("instances")
 
-    if instances:
+    # ubus data is external: anything that is not a dict of dicts tells us
+    # nothing, and must not raise here or one bad entry fails the whole refresh.
+    live = []
+    if isinstance(instances, dict):
         live = [inst for inst in instances.values() if isinstance(inst, dict)]
+
+    if live:
         if any(inst.get("running", False) for inst in live):
             return ServiceInfo(name=name, enabled=enabled, running=True)
         # Registered an instance, exited cleanly: a one-shot that completed.
+        # procd keeps reporting that instance until reboot, so follow the boot
+        # flag instead -- otherwise disabling the service never sticks.
         if any(inst.get("exit_code") == 0 for inst in live):
-            return ServiceInfo(name=name, enabled=enabled, running=True, one_shot=True)
+            return ServiceInfo(
+                name=name,
+                enabled=enabled,
+                running=enabled if enabled_known is not None else True,
+                one_shot=True,
+            )
         return ServiceInfo(name=name, enabled=enabled, running=False)
 
-    # No procd instance -> one-shot script; "running" is not meaningful for it.
+    # No usable procd instance -> one-shot script; "running" is not meaningful.
     return ServiceInfo(name=name, enabled=enabled, running=enabled, one_shot=True)
 
 

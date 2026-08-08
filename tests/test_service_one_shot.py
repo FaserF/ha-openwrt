@@ -170,3 +170,105 @@ async def test_daemon_toggle_keeps_start_stop_only() -> None:
 
     actions = [c.args[1] for c in client.manage_service.call_args_list]
     assert actions == ["stop"]
+
+
+def test_disabled_completed_one_shot_is_off() -> None:
+    """Disabling a completed one-shot must stick across a refresh.
+
+    procd keeps reporting the completed instance (exit_code 0) until reboot, so
+    keying purely off exit_code would flip the switch back on after turn_off.
+    """
+    svc = classify_service(
+        "usbmode",
+        {"start": 20, "enabled": False, "running": False},
+        {"instances": {"instance1": {"running": False, "exit_code": 0}}},
+    )
+    assert svc.one_shot is True
+    assert svc.enabled is False
+    assert svc.running is False
+
+
+def test_completed_one_shot_without_rc_data_is_on() -> None:
+    """With no rc view at all, 'enabled' is unknown rather than False.
+
+    This is the LuCI-RPC fallback path, where only `service list` is available.
+    """
+    svc = classify_service(
+        "adblock",
+        {},
+        {"instances": {"adblock": {"running": False, "exit_code": 0}}},
+    )
+    assert svc.running is True
+    assert svc.one_shot is True
+
+
+@pytest.mark.parametrize(
+    "bad", [{"instances": []}, {"instances": "nope"}, {"instances": {"a": "nope"}}]
+)
+def test_malformed_instances_do_not_raise(bad: dict) -> None:
+    """External ubus data must never break the whole service refresh."""
+    svc = classify_service("weird", {"enabled": True, "running": False}, bad)
+    # Nothing usable in service list -> fall back to the boot flag.
+    assert svc.running is True
+    assert svc.one_shot is True
+
+
+@pytest.mark.asyncio
+async def test_failed_manage_service_raises_and_does_not_update() -> None:
+    """A rejected command must not leave the switch showing the new state."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.openwrt.switch import OpenWrtServiceSwitch
+
+    coordinator = MagicMock()
+    coordinator.data.services = [
+        ServiceInfo(name="nft-limiter", enabled=True, running=True, one_shot=True),
+    ]
+    entry = MagicMock()
+    entry.entry_id = "e1"
+    entry.unique_id = "router1"
+
+    client = AsyncMock()
+    client.manage_service = AsyncMock(return_value=False)
+
+    switch = OpenWrtServiceSwitch(coordinator, entry, client, "nft-limiter")
+    switch.async_write_ha_state = MagicMock()
+
+    with pytest.raises(HomeAssistantError):
+        await switch.async_turn_off()
+
+    # Boot flag command failed, so stop must not have been attempted.
+    actions = [c.args[1] for c in client.manage_service.call_args_list]
+    assert actions == ["disable"]
+    assert switch.async_write_ha_state.called is False
+    assert switch.is_on is True
+
+
+@pytest.mark.asyncio
+async def test_failed_start_after_successful_enable_raises() -> None:
+    """If enable succeeds but start fails, state must not be published."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.openwrt.switch import OpenWrtServiceSwitch
+
+    coordinator = MagicMock()
+    coordinator.data.services = [
+        ServiceInfo(name="nft-limiter", enabled=False, running=False, one_shot=True),
+    ]
+    entry = MagicMock()
+    entry.entry_id = "e1"
+    entry.unique_id = "router1"
+
+    client = AsyncMock()
+    client.manage_service = AsyncMock(side_effect=[True, False])
+
+    switch = OpenWrtServiceSwitch(coordinator, entry, client, "nft-limiter")
+    switch.async_write_ha_state = MagicMock()
+
+    with pytest.raises(HomeAssistantError):
+        await switch.async_turn_on()
+
+    actions = [c.args[1] for c in client.manage_service.call_args_list]
+    assert actions == ["enable", "start"]
+    assert switch.async_write_ha_state.called is False
+    assert switch.is_on is False
