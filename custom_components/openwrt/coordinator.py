@@ -203,6 +203,23 @@ def create_client(hass: HomeAssistant, config: Mapping[str, Any]) -> OpenWrtClie
     )
 
 
+def _clean_hostname_entry(mac: Any, name: Any) -> tuple[str, str] | None:
+    """Normalize one MAC -> hostname pair, or return None if unusable.
+
+    Consumers look the registry up by lowercase MAC, so a stored uppercase key
+    would silently never resolve. dnsmasq's "*" placeholder is not a name.
+    """
+    if not isinstance(mac, str) or not isinstance(name, str):
+        return None
+    mac_lower = mac.strip().lower()
+    name = name.strip()
+    if not name or name == "*":
+        return None
+    if not re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac_lower):
+        return None
+    return mac_lower, name
+
+
 class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
     """Coordinator for fetching data from an OpenWrt device."""
 
@@ -249,6 +266,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             1,
             f"{DOMAIN}_{config_entry.entry_id}_history",
         )
+        # Shared by every entry, not per-entry: an access point has no hostnames
+        # of its own and must be able to read names the DHCP router resolved
+        # *before* its entities are created, otherwise it registers its devices
+        # under bare MAC addresses and the names never get rewritten.
+        # One Store instance for the whole domain, not one per entry: separate
+        # Store objects on the same key can interleave their writes and land an
+        # older snapshot last.
+        self._hostname_store: storage.Store = hass.data.setdefault(
+            DOMAIN, {}
+        ).setdefault("hostname_store", storage.Store(hass, 1, f"{DOMAIN}_hostnames"))
 
         update_interval = self.config_entry.options.get(
             CONF_UPDATE_INTERVAL,
@@ -1088,13 +1115,61 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 "tx_bytes": iface.tx_bytes,
             }
 
+    async def _async_load_hostname_registry(self) -> None:
+        """Load the shared MAC -> hostname registry, once per HA run."""
+        domain_data = self.hass.data.setdefault(DOMAIN, {})
+        if "hostname_registry" in domain_data:
+            return
+
+        # Claim the slot synchronously before the first await, so a concurrent
+        # entry setup cannot load it a second time and swap out the dict that
+        # other code is already holding a reference to.
+        registry: dict[str, str] = {}
+        domain_data["hostname_registry"] = registry
+
+        try:
+            stored = await self._hostname_store.async_load()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Could not load shared hostname registry: %s", err)
+            return
+
+        if isinstance(stored, dict):
+            for mac, name in stored.items():
+                if cleaned := _clean_hostname_entry(mac, name):
+                    registry[cleaned[0]] = cleaned[1]
+            _LOGGER.debug("Loaded %d shared hostnames", len(registry))
+
     async def _async_filter_and_track_devices(self, data: OpenWrtData) -> None:
         """Filter and track devices."""
+        await self._async_load_hostname_registry()
+        hostname_registry: dict[str, str] = self.hass.data[DOMAIN]["hostname_registry"]
+        registry_dirty = False
+
         # Load history if needed
         if not self._device_history:
             stored_data = await self._store.async_load()
             if stored_data:
-                self._device_history = stored_data
+                # History is written in two shapes: an envelope with a "devices"
+                # key, and a bare mapping. Decode both, as _async_setup does --
+                # assigning the envelope raw would make "devices" and
+                # "last_version" look like MAC addresses.
+                loaded = stored_data
+                if isinstance(stored_data, dict) and "devices" in stored_data:
+                    loaded = stored_data.get("devices", {})
+                if isinstance(loaded, dict):
+                    self._device_history = {
+                        mac: hist
+                        for mac, hist in loaded.items()
+                        if isinstance(hist, dict)
+                    }
+
+                # Seed the shared registry from this entry's persisted names too,
+                # so a fresh install with no shared store still benefits.
+                for mac, hist in self._device_history.items():
+                    cleaned = _clean_hostname_entry(mac, hist.get("hostname"))
+                    if cleaned and cleaned[0] not in hostname_registry:
+                        hostname_registry[cleaned[0]] = cleaned[1]
+                        registry_dirty = True
 
         # Stabilize wireless connection states (prevent flapping to 0 due to transient packet drops or RPC glitches)
         if self.data and self.data.all_connected_devices:
@@ -1189,6 +1264,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 if mac_f:
                     forced_wireless.add(mac_f)
 
+        # MAC -> hostname map shared by every config entry in this HA instance.
+        # A dumb AP sees associations but runs no DHCP server, so on its own it
+        # can only ever label a client by MAC; this lets it borrow the name the
+        # DHCP router already resolved.
+
         # all_devices: passes internal filters but ignores the tracking whitelist.
         # Used by the Connected Clients / Wireless Clients count sensors so they
         # always reflect total router occupancy, not just the selected tracked set.
@@ -1240,9 +1320,23 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # Device passes internal filters — count it in the totals regardless of whitelist
             all_devices.append(device)
 
-            # Handle MQTT Discovery if enabled
+            # Publish the hostname to the registry shared by every config entry.
+            # Deliberately before the whitelist check: an AP with no DHCP server
+            # of its own can only ever name a client from what another router
+            # learned, so the registry has to cover devices this entry does not
+            # track itself.
+            if cleaned := _clean_hostname_entry(mac, device.hostname):
+                if hostname_registry.get(cleaned[0]) != cleaned[1]:
+                    hostname_registry[cleaned[0]] = cleaned[1]
+                    registry_dirty = True
+
+            # Handle MQTT Discovery if enabled. Prefer a name another entry
+            # resolved -- _mqtt_discovered suppresses a later republish, so a
+            # MAC published now would stick.
             if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
-                await self._async_discovery_mqtt_device(mac, device.hostname or mac)
+                await self._async_discovery_mqtt_device(
+                    mac, hostname_registry.get(mac) or mac
+                )
 
             # Filter by whitelist if configured
             if whitelist and mac not in whitelist:
@@ -1302,6 +1396,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         data.all_connected_devices = all_devices
         data.connected_devices = filtered_devices
+
+        # Leases are the richest name source, so harvest them before the
+        # whitelist filter below discards the untracked ones.
+        for lease in data.dhcp_leases:
+            if cleaned := _clean_hostname_entry(lease.mac, lease.hostname):
+                if hostname_registry.get(cleaned[0]) != cleaned[1]:
+                    hostname_registry[cleaned[0]] = cleaned[1]
+                    registry_dirty = True
+
         # Filter DHCP leases by whitelist
         if whitelist:
             data.dhcp_leases = [
@@ -1366,6 +1469,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         if history_updated:
             await self._store.async_save(self._device_history)
+
+        if registry_dirty:
+            try:
+                await self._hostname_store.async_save(hostname_registry)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning("Could not save shared hostname registry: %s", err)
 
         # Handle MQTT Discovery (Start or Cleanup)
         # Initial MQTT discovery if enabled, or cleanup if disabled
