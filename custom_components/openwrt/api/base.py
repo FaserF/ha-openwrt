@@ -486,6 +486,71 @@ class ServiceInfo:
     name: str = ""
     enabled: bool = False
     running: bool = False
+    # True when procd tracks no resident process for this service, i.e. it is a
+    # one-shot init script that applies its configuration and exits.
+    one_shot: bool = False
+
+
+def classify_service(
+    name: str,
+    rc_entry: dict[str, Any],
+    service_entry: Any = None,
+) -> ServiceInfo:
+    """Build a ServiceInfo from procd's ``rc list`` and ``service list`` views.
+
+    procd only reports ``running`` for services that keep a resident process.
+    One-shot init scripts (adblock-fast, firewall, sysctl, sqm, custom nftables
+    scripts, ...) apply their configuration and exit, so ``rc list`` reports
+    them as ``running: false`` forever and a switch bound to that field can
+    never turn on. For those, the boot-enabled flag is the meaningful state.
+
+    A service is treated as procd-managed when ``service list`` reports
+    ``instances`` for it -- procd keeps the instance registered even while the
+    process is down, so an absent/empty ``instances`` means a genuine one-shot
+    rather than a stopped daemon.
+
+    Within an instance, ``exit_code`` disambiguates further: an instance that is
+    not running but exited 0 is a one-shot that already did its work, while a
+    non-zero exit means it failed or was stopped. Note that ``exit_code`` is
+    reported by ``service list`` only -- ``rc list`` never carries it -- so it
+    cannot be read from the rc view alone.
+    """
+    # Absent means "the rc view did not say", which is not the same as False --
+    # the LuCI-RPC fallback path has no rc data at all.
+    enabled_known = rc_entry.get("enabled")
+    enabled = bool(enabled_known)
+
+    # Fast path: procd says it is up, nothing to infer.
+    if rc_entry.get("running"):
+        return ServiceInfo(name=name, enabled=enabled, running=True)
+
+    instances = None
+    if isinstance(service_entry, dict):
+        instances = service_entry.get("instances")
+
+    # ubus data is external: anything that is not a dict of dicts tells us
+    # nothing, and must not raise here or one bad entry fails the whole refresh.
+    live = []
+    if isinstance(instances, dict):
+        live = [inst for inst in instances.values() if isinstance(inst, dict)]
+
+    if live:
+        if any(inst.get("running", False) for inst in live):
+            return ServiceInfo(name=name, enabled=enabled, running=True)
+        # Registered an instance, exited cleanly: a one-shot that completed.
+        # procd keeps reporting that instance until reboot, so follow the boot
+        # flag instead -- otherwise disabling the service never sticks.
+        if any(inst.get("exit_code") == 0 for inst in live):
+            return ServiceInfo(
+                name=name,
+                enabled=enabled,
+                running=enabled if enabled_known is not None else True,
+                one_shot=True,
+            )
+        return ServiceInfo(name=name, enabled=enabled, running=False)
+
+    # No usable procd instance -> one-shot script; "running" is not meaningful.
+    return ServiceInfo(name=name, enabled=enabled, running=enabled, one_shot=True)
 
 
 @dataclass

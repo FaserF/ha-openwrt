@@ -17,7 +17,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api.base import OpenWrtClient
+from .api.base import OpenWrtClient, ServiceInfo
 from .const import (
     CONF_ENABLE_FIREWALL,
     CONF_ENABLE_LED,
@@ -874,48 +874,65 @@ class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnti
         return None
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
+    def _service(self) -> ServiceInfo | None:
+        """Return the coordinator entry for this service."""
         if self.coordinator.data is None:
-            return {}
+            return None
         for service in self.coordinator.data.services:
             if service.name == self._service_name:
-                return {"enabled_at_boot": service.enabled}
-        return {}
+                return service
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
+        service = self._service
+        if service is None:
+            return {}
+        return {"enabled_at_boot": service.enabled, "one_shot": service.one_shot}
+
+    async def _async_manage(self, action: str) -> None:
+        """Run one service action, treating a False result as a failure."""
+        try:
+            ok = await self._client.manage_service(self._service_name, action)
+        except Exception as err:
+            msg = f"Failed to {action} service {self._service_name}: {err}"
+            raise HomeAssistantError(msg) from err
+        if not ok:
+            msg = f"Failed to {action} service {self._service_name}"
+            raise HomeAssistantError(msg)
+
+    async def _async_set_service(self, turn_on: bool) -> None:
+        """Apply the requested state, honouring one-shot semantics."""
+        service = self._service
+        action = "start" if turn_on else "stop"
+
+        # A one-shot script exits as soon as it has applied its config, so
+        # start/stop alone would be reverted on the next poll. Its boot flag is
+        # what the switch actually reflects, so toggle that first -- and do not
+        # go on to start/stop if it failed, or the two would disagree.
+        if service is not None and service.one_shot:
+            await self._async_manage("enable" if turn_on else "disable")
+
+        await self._async_manage(action)
+
+        # Optimistic update, only once the router has accepted the change.
+        if service is not None:
+            service.running = turn_on
+            if service.one_shot:
+                service.enabled = turn_on
+        self.async_write_ha_state()
+        self.coordinator.hass.async_create_task(
+            self.coordinator.async_request_refresh()
+        )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start the service."""
-        try:
-            await self._client.manage_service(self._service_name, "start")
-            # Optimistic update
-            if self.coordinator.data:
-                for service in self.coordinator.data.services:
-                    if service.name == self._service_name:
-                        service.running = True
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to start service {self._service_name}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
+        await self._async_set_service(True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop the service."""
-        try:
-            await self._client.manage_service(self._service_name, "stop")
-            # Optimistic update
-            if self.coordinator.data:
-                for service in self.coordinator.data.services:
-                    if service.name == self._service_name:
-                        service.running = False
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to stop service {self._service_name}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
+        await self._async_set_service(False)
 
 
 class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
