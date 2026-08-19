@@ -112,6 +112,10 @@ class OpenWrtSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, cast(str, entry.unique_id or entry.data[CONF_HOST]))},
         )
+        if hasattr(description, "entity_registry_enabled_default"):
+            self._attr_entity_registry_enabled_default = (
+                description.entity_registry_enabled_default
+            )
 
     @property
     def native_value(self) -> StateType | datetime:

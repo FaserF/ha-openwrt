@@ -169,6 +169,7 @@ async def test_get_all_data_batman_permissions_check(client_class) -> None:
     client.get_dhcp_leases = AsyncMock(return_value=[])
     client.get_lldp_neighbors = AsyncMock(return_value=[])
     client.get_upnp_mappings = AsyncMock(return_value=[])
+    client.get_wps_status = AsyncMock()
 
     # Mock low-level communication methods to prevent fallback warnings
     client._call = AsyncMock(return_value={})
