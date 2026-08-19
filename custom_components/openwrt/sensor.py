@@ -39,7 +39,7 @@ from homeassistant.helpers.typing import UNDEFINED, StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .api.base import OpenWrtData, StorageUsage
+from .api.base import NetworkInterface, OpenWrtData, StorageUsage
 from .const import (
     CONF_ENABLE_LOAD,
     CONF_ENABLE_NLBWMON_SENSORS,
@@ -1797,7 +1797,7 @@ def _async_setup_network_sensors(
         key = f"net_iface_{iface.name}"
         if key not in tracked_keys:
             tracked_keys.add(key)
-            entities.extend(_create_net_sensors(coordinator, entry, iface.name))
+            entities.extend(_create_net_sensors(coordinator, entry, iface))
 
 
 def _async_setup_specialized_sensors(
@@ -2326,16 +2326,17 @@ def _create_sqm_sensors(
 def _create_net_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
-    iface_name: str,
+    iface: NetworkInterface,
 ) -> list[OpenWrtSensorEntity]:
     """Create sensors for a network interface."""
     sensors: list[OpenWrtSensorEntity] = []
+    iface_name = iface.name
 
     # Traffic sensors (RX/TX)
     _create_net_traffic_sensors(coordinator, entry, iface_name, sensors)
 
     # Address sensors (IPv4/IPv6)
-    _create_net_address_sensors(coordinator, entry, iface_name, sensors)
+    _create_net_address_sensors(coordinator, entry, iface, sensors)
 
     # Status sensors (Speed/Uptime)
     _create_net_status_sensors(coordinator, entry, iface_name, sensors)
@@ -2401,10 +2402,14 @@ def _create_net_traffic_sensors(
 def _create_net_address_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
-    iface_name: str,
+    iface: NetworkInterface,
     sensors: list[OpenWrtSensorEntity],
 ) -> None:
     """Create address-related sensors (IPv4/IPv6) for an interface."""
+    iface_name = iface.name
+    # Disable IPv4 sensor by default for bridge/physical device without an IP
+    ipv4_enabled_default = bool(iface.ipv4_address)
+
     # IPv4
     sensors.append(
         OpenWrtSensorEntity(
@@ -2416,9 +2421,13 @@ def _create_net_address_sensors(
                 translation_key="net_ipv4",
                 translation_placeholders={"interface": iface_name},
                 entity_category=EntityCategory.DIAGNOSTIC,
+                entity_registry_enabled_default=ipv4_enabled_default,
                 value_fn=lambda data, n=iface_name: next(
                     (i.ipv4_address for i in data.network_interfaces if i.name == n),
                     None,
+                ),
+                available_fn=lambda data, n=iface_name: any(
+                    i.name == n and i.ipv4_address for i in data.network_interfaces
                 ),
                 attrs_fn=lambda data, n=iface_name: next(
                     (

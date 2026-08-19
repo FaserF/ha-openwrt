@@ -197,3 +197,34 @@ def test_wifi_sensor_section_and_ifname_matching() -> None:
     # Verify channel sensor reads channel correctly via section fallback
     channel_sensor = next(s for s in sensors if "channel" in s.entity_description.key)
     assert channel_sensor.native_value == 1
+
+
+def test_net_ipv4_sensor_availability() -> None:
+    """Test that IPv4 address sensors handle interfaces without IP address gracefully."""
+    from custom_components.openwrt.api.base import NetworkInterface
+    from custom_components.openwrt.sensor import _create_net_sensors
+
+    coordinator = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test"
+
+    iface_with_ip = NetworkInterface(name="lan", ipv4_address="192.168.1.1")
+    iface_no_ip = NetworkInterface(name="br-lan", ipv4_address="")
+
+    coordinator.data = OpenWrtData(network_interfaces=[iface_with_ip, iface_no_ip])
+    coordinator.last_update_success = True
+
+    sensors_with_ip = _create_net_sensors(coordinator, entry, iface_with_ip)
+    ipv4_sensor_with_ip = next(
+        s for s in sensors_with_ip if s.entity_description.key == "net_lan_ipv4"
+    )
+    assert ipv4_sensor_with_ip.entity_registry_enabled_default is True
+    assert ipv4_sensor_with_ip.available is True
+    assert ipv4_sensor_with_ip.native_value == "192.168.1.1"
+
+    sensors_no_ip = _create_net_sensors(coordinator, entry, iface_no_ip)
+    ipv4_sensor_no_ip = next(
+        s for s in sensors_no_ip if s.entity_description.key == "net_br-lan_ipv4"
+    )
+    assert ipv4_sensor_no_ip.entity_registry_enabled_default is False
+    assert ipv4_sensor_no_ip.available is False
