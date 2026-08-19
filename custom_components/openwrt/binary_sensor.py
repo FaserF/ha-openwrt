@@ -219,7 +219,9 @@ def _async_setup_interface_binary_sensors(
                             },
                             device_class=BinarySensorDeviceClass.CONNECTIVITY,
                             is_on_fn=lambda data, n=iface.name: any(
-                                i.up for i in data.network_interfaces if i.name == n
+                                i.up
+                                for i in data.network_interfaces
+                                if i.name == n or i.device == n
                             ),
                         ),
                     ),

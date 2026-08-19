@@ -1,10 +1,29 @@
 """Pytest configuration and fixtures for the OpenWrt integration tests."""
 
 import sys
+import types
 from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+# Ensure Unix-specific modules are shimmed on Windows so pytest and HA test helpers work seamlessly
+if sys.platform == "win32":
+    if "fcntl" not in sys.modules:
+        fcntl_mock = types.ModuleType("fcntl")
+        fcntl_mock.LOCK_EX = 2
+        fcntl_mock.LOCK_NB = 4
+        fcntl_mock.LOCK_SH = 1
+        fcntl_mock.LOCK_UN = 8
+        fcntl_mock.flock = MagicMock()
+        sys.modules["fcntl"] = fcntl_mock
+
+    if "resource" not in sys.modules:
+        resource_mock = types.ModuleType("resource")
+        resource_mock.RLIMIT_NOFILE = 7
+        resource_mock.getrlimit = MagicMock(return_value=(1024, 2048))
+        resource_mock.setrlimit = MagicMock()
+        sys.modules["resource"] = resource_mock
 
 import pytest
 

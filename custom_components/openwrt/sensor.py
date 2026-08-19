@@ -2339,8 +2339,9 @@ def _create_net_sensors(
     # Traffic sensors (RX/TX)
     _create_net_traffic_sensors(coordinator, entry, iface_name, sensors)
 
-    # Address sensors (IPv4/IPv6)
-    _create_net_address_sensors(coordinator, entry, iface, sensors)
+    # Address sensors (IPv4/IPv6) - only create if interface has IP or protocol
+    if iface.ipv4_address or iface.ipv6_address or iface.protocol:
+        _create_net_address_sensors(coordinator, entry, iface, sensors)
 
     # Status sensors (Speed/Uptime)
     _create_net_status_sensors(coordinator, entry, iface_name, sensors)

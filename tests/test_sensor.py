@@ -208,10 +208,17 @@ def test_net_ipv4_sensor_availability() -> None:
     entry = MagicMock()
     entry.entry_id = "test"
 
-    iface_with_ip = NetworkInterface(name="lan", ipv4_address="192.168.1.1")
-    iface_no_ip = NetworkInterface(name="br-lan", ipv4_address="")
+    iface_with_ip = NetworkInterface(
+        name="lan", protocol="static", ipv4_address="192.168.1.1"
+    )
+    iface_no_ip_proto = NetworkInterface(name="wwan", protocol="dhcp", ipv4_address="")
+    iface_physical_only = NetworkInterface(
+        name="lan1", protocol="", ipv4_address="", ipv6_address=""
+    )
 
-    coordinator.data = OpenWrtData(network_interfaces=[iface_with_ip, iface_no_ip])
+    coordinator.data = OpenWrtData(
+        network_interfaces=[iface_with_ip, iface_no_ip_proto, iface_physical_only]
+    )
     coordinator.last_update_success = True
 
     sensors_with_ip = _create_net_sensors(coordinator, entry, iface_with_ip)
@@ -222,9 +229,17 @@ def test_net_ipv4_sensor_availability() -> None:
     assert ipv4_sensor_with_ip.available is True
     assert ipv4_sensor_with_ip.native_value == "192.168.1.1"
 
-    sensors_no_ip = _create_net_sensors(coordinator, entry, iface_no_ip)
+    sensors_no_ip = _create_net_sensors(coordinator, entry, iface_no_ip_proto)
     ipv4_sensor_no_ip = next(
-        s for s in sensors_no_ip if s.entity_description.key == "net_br-lan_ipv4"
+        s for s in sensors_no_ip if s.entity_description.key == "net_wwan_ipv4"
     )
     assert ipv4_sensor_no_ip.entity_registry_enabled_default is False
     assert ipv4_sensor_no_ip.available is False
+
+    sensors_physical = _create_net_sensors(coordinator, entry, iface_physical_only)
+    assert not any(
+        s.entity_description.key == "net_lan1_ipv4" for s in sensors_physical
+    )
+    assert not any(
+        s.entity_description.key == "net_lan1_ipv6" for s in sensors_physical
+    )
