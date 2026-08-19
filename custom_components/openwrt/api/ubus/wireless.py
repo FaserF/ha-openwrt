@@ -23,6 +23,7 @@ class UbusWirelessMixin:
         if self.packages.wireless is False:
             return WpsStatus()
 
+        # 1. Try network.wireless status
         try:
             wireless_data = await self._call("network.wireless", "status")
             for radio_data in wireless_data.values():
@@ -45,10 +46,30 @@ class UbusWirelessMixin:
         except UbusError:
             pass
 
+        # 2. Fallback: discover directly from hostapd.* ubus objects
+        try:
+            objects = await self._list_objects()
+            for obj in objects:
+                if obj.startswith("hostapd."):
+                    try:
+                        result = await self._call(obj, "wps_status")
+                        return WpsStatus(
+                            enabled=result.get("pbc_status", "") == "Active",
+                            status=result.get("pbc_status", "Disabled"),
+                        )
+                    except UbusError:
+                        continue
+        except Exception:
+            pass
+
         return WpsStatus()
 
     async def set_wps(self, enabled: bool) -> bool:
         """Enable or disable WPS."""
+        method = "wps_start" if enabled else "wps_cancel"
+        success = False
+
+        # 1. Try network.wireless status
         try:
             wireless_data = await self._call("network.wireless", "status")
             for radio_data in wireless_data.values():
@@ -57,11 +78,31 @@ class UbusWirelessMixin:
                 for iface in radio_data.get("interfaces", []):
                     iface_name = iface.get("ifname", "")
                     if iface_name:
-                        method = "wps_start" if enabled else "wps_cancel"
-                        await self._call(f"hostapd.{iface_name}", method)
-                        return True
+                        try:
+                            await self._call(f"hostapd.{iface_name}", method)
+                            success = True
+                        except UbusError:
+                            continue
+            if success:
+                return True
         except UbusError as err:
-            _LOGGER.exception("Failed to set WPS: %s", err)
+            _LOGGER.debug("Failed to get network.wireless status for set_wps: %s", err)
+
+        # 2. Fallback: discover directly from hostapd.* ubus objects
+        try:
+            objects = await self._list_objects()
+            for obj in objects:
+                if obj.startswith("hostapd."):
+                    try:
+                        await self._call(obj, method)
+                        success = True
+                    except UbusError:
+                        continue
+            if success:
+                return True
+        except Exception as err:
+            _LOGGER.debug("Failed to list objects for set_wps: %s", err)
+
         return False
 
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
@@ -114,22 +155,32 @@ class UbusWirelessMixin:
 
     async def trigger_wps_push(self, interface: str) -> bool:
         """Trigger WPS push button on a specific wireless interface via ubus."""
-        try:
-            # 1. Try direct guess: hostapd.interface
-            obj = f"hostapd.{interface}"
-            await self._call(obj, "wps_push")
-            return True
-        except Exception:
+
+        async def _call_wps(target: str) -> bool:
             try:
-                # 2. List objects and find matching hostapd interface
-                objects = await self._list_objects()
-                for obj in objects:
-                    if obj.startswith("hostapd.") and interface in obj:
-                        await self._call(obj, "wps_push")
+                await self._call(target, "wps_start")
+                return True
+            except UbusError:
+                try:
+                    await self._call(target, "wps_push")
+                    return True
+                except UbusError:
+                    return False
+
+        # 1. Try direct guess: hostapd.interface
+        if await _call_wps(f"hostapd.{interface}"):
+            return True
+
+        # 2. List objects and find matching hostapd interface
+        try:
+            objects = await self._list_objects()
+            for obj in objects:
+                if obj.startswith("hostapd.") and interface in obj:
+                    if await _call_wps(obj):
                         return True
-                return False
-            except Exception as err:
-                _LOGGER.debug(
-                    "Failed to trigger WPS push via ubus for %s: %s", interface, err
-                )
-                return False
+        except Exception as err:
+            _LOGGER.debug(
+                "Failed to trigger WPS push via ubus for %s: %s", interface, err
+            )
+
+        return False

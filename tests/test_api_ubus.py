@@ -806,3 +806,60 @@ async def test_set_firewall_rule_enabled_reload_failure(ubus_client: UbusClient)
         await ubus_client.set_firewall_rule_enabled("rule_1", True)
 
     assert "firewall reload failed" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_ubus_wps_status_and_control(ubus_client: UbusClient):
+    """Test get_wps_status, set_wps, and trigger_wps_push via ubus."""
+    ubus_client.packages.wireless = True
+
+    # 1. Test get_wps_status via network.wireless status
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        mock_call.side_effect = lambda obj, method, *args, **kwargs: {
+            ("network.wireless", "status"): {
+                "radio0": {"interfaces": [{"ifname": "wlan0"}]}
+            },
+            ("hostapd.wlan0", "wps_status"): {"pbc_status": "Active"},
+        }.get((obj, method), {})
+
+        status = await ubus_client.get_wps_status()
+        assert status.enabled is True
+        assert status.status == "Active"
+
+    # 2. Test fallback to _list_objects when network.wireless fails
+    from custom_components.openwrt.api.ubus import UbusError
+
+    with (
+        patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call,
+        patch.object(
+            ubus_client,
+            "_list_objects",
+            new_callable=AsyncMock,
+            return_value=["hostapd.wlan0"],
+        ),
+    ):
+
+        def fallback_call(obj, method, *args, **kwargs):
+            if obj == "network.wireless":
+                raise UbusError("Not accepted")
+            if obj == "hostapd.wlan0" and method == "wps_status":
+                return {"pbc_status": "Active"}
+            if obj == "hostapd.wlan0" and method == "wps_start":
+                return {}
+            return {}
+
+        mock_call.side_effect = fallback_call
+
+        status = await ubus_client.get_wps_status()
+        assert status.enabled is True
+        assert status.status == "Active"
+
+        res = await ubus_client.set_wps(True)
+        assert res is True
+
+    # 3. Test trigger_wps_push tries wps_start first, then wps_push
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {}
+        res = await ubus_client.trigger_wps_push("wlan0")
+        assert res is True
+        mock_call.assert_called_with("hostapd.wlan0", "wps_start")

@@ -303,6 +303,21 @@ class LuciRpcFeaturesMixin:
             _LOGGER.debug("Failed to get WPS status via luci_rpc: %s", err)
             return WpsStatus()
 
+    async def set_wps(self, enabled: bool) -> bool:
+        """Enable or disable WPS via LuCI RPC."""
+        method = "wps_start" if enabled else "wps_cancel"
+        try:
+            cmd = (
+                f"for obj in $(ubus list 'hostapd.*' 2>/dev/null); do "
+                f'ubus call "$obj" {method} 2>/dev/null; '
+                f"done"
+            )
+            await self.execute_command(cmd)
+            return True
+        except Exception as err:
+            _LOGGER.debug("Failed to set WPS via luci_rpc: %s", err)
+            return False
+
     async def set_firewall_redirect_enabled(
         self,
         section_id: str,

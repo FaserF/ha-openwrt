@@ -733,9 +733,13 @@ class LuciRpcNetworkMixin:
     async def trigger_wps_push(self, interface: str) -> bool:
         """Trigger WPS push button via LuCI RPC."""
         try:
-            # We use execute_command abstraction to call ubus
-            await self.execute_command(f"ubus call hostapd.{interface} wps_push")
-            return True
+            # Try wps_start first (standard OpenWrt hostapd method), fallback to wps_push
+            try:
+                await self.execute_command(f"ubus call hostapd.{interface} wps_start")
+                return True
+            except Exception:
+                await self.execute_command(f"ubus call hostapd.{interface} wps_push")
+                return True
         except Exception as err:
             _LOGGER.debug(
                 "Failed to trigger WPS push via luci_rpc for %s: %s", interface, err
