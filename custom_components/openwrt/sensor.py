@@ -1308,6 +1308,27 @@ async def async_setup_entry(
                     ent_reg.async_remove(ent.entity_id)
                     continue
 
+            # Cleanup orphaned network address sensors for physical devices or removed interfaces
+            if unique_id.startswith(f"{entry.entry_id}_net_") and coordinator.data:
+                if unique_id.endswith(("_ipv4", "_ipv6")):
+                    # Check if interface still exists and is a logical interface with an IP or protocol
+                    matched_iface = next(
+                        (
+                            i
+                            for i in coordinator.data.network_interfaces
+                            if f"_net_{i.name}_ipv4" in unique_id
+                            or f"_net_{i.name}_ipv6" in unique_id
+                        ),
+                        None,
+                    )
+                    if not matched_iface or not (
+                        matched_iface.ipv4_address
+                        or matched_iface.ipv6_address
+                        or matched_iface.protocol
+                    ):
+                        ent_reg.async_remove(ent.entity_id)
+                        continue
+
     hass.add_job(_async_cleanup_entities)
 
     if entry.options.get(

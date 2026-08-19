@@ -14,6 +14,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -151,6 +152,29 @@ async def async_setup_entry(
 
         if entities:
             async_add_entities(entities)
+
+    async def _async_cleanup_entities() -> None:
+        """Clean up orphaned binary sensors."""
+        ent_reg = er.async_get(hass)
+        entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+
+        for ent in entries:
+            if ent.domain != "binary_sensor":
+                continue
+            unique_id = ent.unique_id
+            if (
+                unique_id.startswith(f"{entry.entry_id}_interface_")
+                and coordinator.data
+            ):
+                # e.g. entry_id_interface_br-lan_up
+                found = any(
+                    f"_interface_{i.name}_up" in unique_id
+                    for i in coordinator.data.network_interfaces
+                )
+                if not found:
+                    ent_reg.async_remove(ent.entity_id)
+
+    hass.add_job(_async_cleanup_entities)
 
     # Register listener and run initial discovery
     entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
