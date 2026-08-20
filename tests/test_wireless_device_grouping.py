@@ -326,7 +326,7 @@ def test_wireless_switch_status_matching() -> None:
     )
     assert sw.is_on is True
 
-    wifi_iface.enabled = False
+    wifi_iface.interface_enabled = False
     assert sw.is_on is False
 
 

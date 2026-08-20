@@ -63,7 +63,6 @@ from .helpers import (
     format_radio_device_id,
     get_via_device,
     is_random_mac,
-    normalize_band,
     resolve_client_name,
 )
 
