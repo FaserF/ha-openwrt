@@ -97,6 +97,55 @@ async def test_luci_get_device_info(luci_client: LuciRpcClient):
 
 
 @pytest.mark.asyncio
+async def test_disabled_radio_remains_discoverable_from_uci(
+    luci_client: LuciRpcClient,
+) -> None:
+    """Keep a configured radio controllable when runtime interfaces disappear."""
+    luci_client.packages.wireless = True
+
+    async def execute(command: str) -> str:
+        if "network.wireless status" in command:
+            return (
+                '{"radio0":{"up":false,"disabled":true,'
+                '"config":{"hwmode":"11g"},"interfaces":[]}}'
+            )
+        if command == "uci export wireless":
+            return """package wireless
+
+config wifi-device 'radio0'
+\toption type 'mac80211'
+\toption band '2g'
+\toption disabled '1'
+
+config wifi-iface 'default_radio0'
+\toption device 'radio0'
+\toption mode 'ap'
+\toption ssid 'Test WiFi'
+\toption encryption 'psk2'
+"""
+        if "iwinfo devices" in command:
+            return '{"devices":[]}'
+        return ""
+
+    with patch.object(
+        luci_client,
+        "execute_command",
+        new_callable=AsyncMock,
+        side_effect=execute,
+    ):
+        interfaces = await luci_client.get_wireless_interfaces()
+
+    assert len(interfaces) == 1
+    assert interfaces[0].section == "default_radio0"
+    assert interfaces[0].radio == "radio0"
+    assert interfaces[0].ssid == "Test WiFi"
+    assert interfaces[0].interface_enabled is True
+    assert interfaces[0].radio_enabled is False
+    assert interfaces[0].enabled is False
+    assert interfaces[0].band == "2.4 GHz"
+
+
+@pytest.mark.asyncio
 async def test_luci_get_sqm_status(luci_client: LuciRpcClient):
     """Test fetching SQM status via LuCI RPC."""
     luci_client._auth_token = "luci_test_token"

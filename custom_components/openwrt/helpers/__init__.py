@@ -73,6 +73,23 @@ def normalize_band(band: str | None) -> str:
 
     freq_str = str(band).lower().strip()
 
+    uci_band_aliases = {
+        "2g": "2.4 GHz",
+        "2ghz": "2.4 GHz",
+        "2 ghz": "2.4 GHz",
+        "2g ghz": "2.4 GHz",
+        "5g": "5 GHz",
+        "5ghz": "5 GHz",
+        "5 ghz": "5 GHz",
+        "5g ghz": "5 GHz",
+        "6g": "6 GHz",
+        "6ghz": "6 GHz",
+        "6 ghz": "6 GHz",
+        "6g ghz": "6 GHz",
+    }
+    if freq_str in uci_band_aliases:
+        return uci_band_aliases[freq_str]
+
     # Handle numeric MHz/GHz strings
     try:
         # Remove units if present for numeric check

@@ -414,7 +414,6 @@ def test_router_id_mac_formatting_prevents_duplicate_ap():
         format_ap_device_id,
         format_ap_name,
         format_radio_device_id,
-        format_radio_name,
     )
 
     # 1. Test helper extraction formatting
@@ -434,9 +433,19 @@ def test_router_id_mac_formatting_prevents_duplicate_ap():
         format_radio_device_id(config_entry, "radio0")
         == "94:83:c4:ac:7a:13_radio_radio0"
     )
-    assert format_radio_name("radio0", "2.4 GHz") == "2.4 GHz"
-    assert format_radio_name("radio0", "") == "radio0"
     assert format_ap_name("Main", "2.4 GHz") == "SSID Main"
+
+
+def test_format_radio_name_normalizes_uci_band_aliases() -> None:
+    """Use concise frequency names for raw and previously formatted UCI bands."""
+    from custom_components.openwrt.helpers import format_radio_name
+
+    assert format_radio_name("radio0", "2.4 GHz") == "2.4 GHz"
+    assert format_radio_name("radio0", "2g") == "2.4 GHz"
+    assert format_radio_name("radio0", "2g GHz") == "2.4 GHz"
+    assert format_radio_name("radio1", "5g") == "5 GHz"
+    assert format_radio_name("radio2", "6g") == "6 GHz"
+    assert format_radio_name("radio0", "") == "radio0"
 
 
 @pytest.mark.asyncio

@@ -151,56 +151,97 @@ class LuciRpcNetworkMixin:
                             if ifname and ifname != iface_name:
                                 iface_names.add(ifname)
             except Exception as err:
-                _LOGGER.debug(
-                    "network.wireless status failed via LuCI, trying UCI: %s", err
-                )
-                try:
-                    uci_wireless_str = await self.execute_command("uci export wireless")
-                    if uci_wireless_str:
-                        sections: dict[str, dict[str, str]] = {}
-                        current_section = ""
-                        for line in uci_wireless_str.splitlines():
-                            line = line.strip()
-                            if line.startswith("config"):
-                                parts = line.split()
-                                if len(parts) >= 3:
-                                    current_section = parts[2].strip("'\"")
-                                    sections[current_section] = {".type": parts[1]}
-                            elif line.startswith("option") and current_section:
-                                parts = line.split(None, 2)
-                                if len(parts) >= 3:
-                                    sections[current_section][parts[1]] = parts[
-                                        2
-                                    ].strip("'\"")
+                _LOGGER.debug("network.wireless status failed via LuCI: %s", err)
 
-                        for sect_name, sect_data in sections.items():
-                            if sect_data.get(".type") != "wifi-iface":
-                                continue
+        # network.wireless omits its interface list when a physical radio is
+        # disabled. Always supplement the runtime response with UCI so the
+        # configured radio and SSID entities remain present and can be turned
+        # back on from Home Assistant.
+        if self.packages.wireless is not False:
+            try:
+                uci_wireless_str = await self.execute_command("uci export wireless")
+                if uci_wireless_str:
+                    sections: dict[str, dict[str, str]] = {}
+                    current_section = ""
+                    for line in uci_wireless_str.splitlines():
+                        line = line.strip()
+                        if line.startswith("config"):
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                current_section = parts[2].strip("'\"")
+                                sections[current_section] = {".type": parts[1]}
+                        elif line.startswith("option") and current_section:
+                            parts = line.split(None, 2)
+                            if len(parts) >= 3:
+                                sections[current_section][parts[1]] = parts[2].strip(
+                                    "'\""
+                                )
 
-                            iface_name = sect_data.get("ifname") or sect_name
-                            radio_name = sect_data.get("device", "")
-                            radio_disabled = (
-                                sections.get(radio_name, {}).get("disabled", "0") == "1"
+                    by_section = {
+                        wifi.section: wifi for wifi in interfaces if wifi.section
+                    }
+                    for sect_name, sect_data in sections.items():
+                        if sect_data.get(".type") != "wifi-iface":
+                            continue
+
+                        radio_name = sect_data.get("device", "")
+                        radio_config = sections.get(radio_name, {})
+                        radio_disabled = WirelessInterface._uci_disabled(
+                            radio_config.get("disabled", "0")
+                        )
+                        iface_disabled = WirelessInterface._uci_disabled(
+                            sect_data.get("disabled", "0")
+                        )
+                        configured_enabled = not (radio_disabled or iface_disabled)
+
+                        existing = by_section.get(sect_name)
+                        if existing is not None:
+                            existing.radio = existing.radio or radio_name
+                            existing.radio_enabled = not radio_disabled
+                            existing.interface_enabled = not iface_disabled
+                            existing.enabled = configured_enabled
+                            existing.up = existing.up and configured_enabled
+                            existing.ssid = existing.ssid or sect_data.get("ssid", "")
+                            existing.mode = existing.mode or sect_data.get("mode", "")
+                            existing.encryption = existing.encryption or sect_data.get(
+                                "encryption", ""
                             )
-                            iface_disabled = sect_data.get("disabled", "0") == "1"
-
-                            wifi = WirelessInterface(
-                                name=iface_name,
-                                ssid=sect_data.get("ssid", ""),
-                                mode=sect_data.get("mode", ""),
-                                encryption=sect_data.get("encryption", ""),
-                                enabled=not (radio_disabled or iface_disabled),
-                                interface_enabled=not iface_disabled,
-                                up=not (radio_disabled or iface_disabled),
-                                radio=radio_name,
-                                radio_enabled=not radio_disabled,
-                                hwmode=sections.get(radio_name, {}).get("hwmode", ""),
-                                section=sect_name,
+                            existing.hwmode = existing.hwmode or radio_config.get(
+                                "hwmode", ""
                             )
-                            interfaces.append(wifi)
-                            iface_names.add(iface_name)
-                except Exception as e:
-                    _LOGGER.debug("UCI wireless fallback failed via LuCI: %s", e)
+                            existing.band = (
+                                existing.band
+                                or WirelessInterface._band_from_raw(
+                                    radio_config.get("band", "")
+                                    or radio_config.get("hwmode", "")
+                                )
+                            )
+                            continue
+
+                        iface_name = sect_data.get("ifname") or sect_name
+                        wifi = WirelessInterface(
+                            name=iface_name,
+                            ssid=sect_data.get("ssid", ""),
+                            mode=sect_data.get("mode", ""),
+                            encryption=sect_data.get("encryption", ""),
+                            enabled=configured_enabled,
+                            interface_enabled=not iface_disabled,
+                            up=configured_enabled,
+                            radio=radio_name,
+                            radio_enabled=not radio_disabled,
+                            hwmode=radio_config.get("hwmode", ""),
+                            section=sect_name,
+                            ifname=sect_data.get("ifname", ""),
+                            band=WirelessInterface._band_from_raw(
+                                radio_config.get("band", "")
+                                or radio_config.get("hwmode", "")
+                            ),
+                        )
+                        interfaces.append(wifi)
+                        by_section[sect_name] = wifi
+                        iface_names.add(iface_name)
+            except Exception as err:
+                _LOGGER.debug("UCI wireless supplement failed via LuCI: %s", err)
 
         # 2. Supplement/Fallback: iwinfo devices
         iw_devs = set()
@@ -340,8 +381,7 @@ class LuciRpcNetworkMixin:
             )
             if is_ghost_name and (
                 not wifi.ssid
-                or wifi.ssid == "OpenWrt"
-                or not wifi.mac_address
+                or (wifi.ssid == "OpenWrt" and not wifi.mac_address)
                 or wifi.mac_address == "00:00:00:00:00:00"
             ):
                 _LOGGER.debug(
