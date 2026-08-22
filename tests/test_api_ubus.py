@@ -654,24 +654,30 @@ async def test_ubus_coordinates_ssid_and_radio_in_one_transaction(
         call("uci", "commit", {"config": "wireless"}),
         call("network.wireless", "notify"),
     ]
-    assert call(
-        "uci",
-        "set",
-        {
-            "config": "wireless",
-            "section": "main",
-            "values": {"disabled": "0" if enabled else "1"},
-        },
-    ) in mock_call.await_args_list
-    assert call(
-        "uci",
-        "set",
-        {
-            "config": "wireless",
-            "section": "radio0",
-            "values": {"disabled": radio_state},
-        },
-    ) in mock_call.await_args_list
+    assert (
+        call(
+            "uci",
+            "set",
+            {
+                "config": "wireless",
+                "section": "main",
+                "values": {"disabled": "0" if enabled else "1"},
+            },
+        )
+        in mock_call.await_args_list
+    )
+    assert (
+        call(
+            "uci",
+            "set",
+            {
+                "config": "wireless",
+                "section": "radio0",
+                "values": {"disabled": radio_state},
+            },
+        )
+        in mock_call.await_args_list
+    )
 
 
 @pytest.mark.asyncio

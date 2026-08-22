@@ -130,6 +130,69 @@ config wifi-iface 'guest'
 
 
 @pytest.mark.asyncio
+async def test_ssh_runtime_disabled_interface_is_not_enabled(
+    ssh_client: SshClient,
+) -> None:
+    """Keep the combined state off when only the SSID is disabled."""
+    ssh_client.packages.wireless = True
+
+    def exec_side_effect(command: str) -> str:
+        if "network.wireless status" in command:
+            return (
+                '{"radio0":{"up":true,"disabled":false,'
+                '"config":{"band":"2g"},"interfaces":['
+                '{"section":"main","ifname":"wlan0",'
+                '"config":{"ssid":"Main","disabled":true}}]}}'
+            )
+        return ""
+
+    with patch.object(
+        ssh_client,
+        "_exec",
+        new_callable=AsyncMock,
+        side_effect=exec_side_effect,
+    ):
+        interfaces = await ssh_client.get_wireless_interfaces()
+
+    assert len(interfaces) == 1
+    assert interfaces[0].radio_enabled is True
+    assert interfaces[0].interface_enabled is False
+    assert interfaces[0].enabled is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method_name", "args", "kwargs"),
+    [
+        ("set_wireless_enabled", ("radio0", False), {}),
+        (
+            "set_wireless_network_enabled",
+            ("main", "radio0", False),
+            {"disable_radio": True},
+        ),
+    ],
+)
+async def test_ssh_wireless_mutation_rejects_nonzero_remote_exit(
+    ssh_client: SshClient,
+    method_name: str,
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+) -> None:
+    """Do not report a rejected remote wireless mutation as successful."""
+    ssh_client._last_full_poll = 123
+    with patch.object(
+        ssh_client,
+        "_exec",
+        new_callable=AsyncMock,
+        return_value="command failed\n__HA_RC__:1",
+    ):
+        result = await getattr(ssh_client, method_name)(*args, **kwargs)
+
+    assert result is False
+    assert ssh_client._last_full_poll == 123
+
+
+@pytest.mark.asyncio
 async def test_ssh_get_connected_devices_iwinfo_fallback(ssh_client: SshClient):
     """Test SSH client fallback to ubus hostapd for wifi clients when iwinfo fails."""
     ssh_client._connected = True

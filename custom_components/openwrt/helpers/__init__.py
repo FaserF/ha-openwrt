@@ -210,8 +210,7 @@ def get_via_device(
                     (
                         item
                         for item in coordinator.data.wireless_interfaces
-                        if device.interface
-                        in {item.name, item.section, item.ifname}
+                        if device.interface in {item.name, item.section, item.ifname}
                     ),
                     None,
                 )
@@ -224,9 +223,7 @@ def get_via_device(
                         via_device = (DOMAIN, ap_id)
                 elif wifi and wifi.radio:
                     radio_id = format_radio_device_id(router_id, wifi.radio)
-                    if dev_reg.async_get_device(
-                        identifiers={(DOMAIN, radio_id)}
-                    ):
+                    if dev_reg.async_get_device(identifiers={(DOMAIN, radio_id)}):
                         via_device = (DOMAIN, radio_id)
                 break
 

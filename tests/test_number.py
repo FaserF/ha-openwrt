@@ -264,8 +264,7 @@ async def test_txpower_number_is_created_once_per_radio() -> None:
     assert all(entity.entity_registry_enabled_default for entity in added_entities)
     assert {entity.native_value for entity in added_entities} == {20, 23}
     assert {
-        next(iter(entity._attr_device_info["identifiers"]))
-        for entity in added_entities
+        next(iter(entity._attr_device_info["identifiers"])) for entity in added_entities
     } == {
         ("openwrt", "02:00:00:00:00:01_radio_radio0"),
         ("openwrt", "02:00:00:00:00:01_radio_radio1"),

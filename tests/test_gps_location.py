@@ -83,7 +83,7 @@ async def test_async_update_gps_location(hass):
         assert res is not None
         assert res[0] == pytest.approx(52.016817)
         assert res[1] == pytest.approx(-0.718218)
-        assert isinstance(res[2], datetime)
+        assert res[2] == datetime(2026, 1, 1, tzinfo=UTC)
         mock_service_call.assert_called_once_with(
             "homeassistant",
             "set_location",

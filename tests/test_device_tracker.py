@@ -204,9 +204,7 @@ def test_wireless_client_is_grouped_under_its_ssid(
         "11:22:33:44:55:66_ap_Main_2.4 GHz",
     )
     registry.async_get_device.assert_called_with(
-        identifiers={
-            ("openwrt", "11:22:33:44:55:66_ap_Main_2.4 GHz")
-        }
+        identifiers={("openwrt", "11:22:33:44:55:66_ap_Main_2.4 GHz")}
     )
 
 

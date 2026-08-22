@@ -1749,7 +1749,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         )
 
         for connected in data.connected_devices:
-            if not connected.mac or not connected.connected or not connected.is_wireless:
+            if (
+                not connected.mac
+                or not connected.connected
+                or not connected.is_wireless
+            ):
                 continue
 
             mac = connected.mac.lower()
@@ -1909,9 +1913,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             manufacturer = device_info.release_distribution or ATTR_MANUFACTURER
             radio_device = device_registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
-                identifiers={
-                    (DOMAIN, format_radio_device_id(self.router_id, radio))
-                },
+                identifiers={(DOMAIN, format_radio_device_id(self.router_id, radio))},
                 name=label,
                 manufacturer=manufacturer,
                 model="Wireless Radio",
@@ -1976,8 +1978,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 device_registry.async_update_device(
                     ssid_device.id,
                     name=label,
-                    manufacturer=device_info.release_distribution
-                    or ATTR_MANUFACTURER,
+                    manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
                     model="Wireless SSID",
                     via_device_id=radio_devices[radio].id,
                 )

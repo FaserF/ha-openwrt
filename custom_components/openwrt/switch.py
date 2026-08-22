@@ -789,6 +789,7 @@ class OpenWrtRadioSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
                 for wifi in self.coordinator.data.wireless_interfaces:
                     if wifi.radio == self._radio:
                         wifi.radio_enabled = enabled
+                        wifi.enabled = enabled and wifi.interface_enabled
             self.async_write_ha_state()
         except HomeAssistantError:
             raise

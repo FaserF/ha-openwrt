@@ -82,7 +82,9 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         "router_id",
     )
     ssid_entities = [
-        entity for entity in radio0_entities if isinstance(entity, OpenWrtWirelessSwitch)
+        entity
+        for entity in radio0_entities
+        if isinstance(entity, OpenWrtWirelessSwitch)
     ]
     assert {
         next(iter(entity._attr_device_info["identifiers"])) for entity in ssid_entities
@@ -102,6 +104,49 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         for wifi in coordinator.data.wireless_interfaces
         if wifi.radio == "radio1"
     )
+
+
+@pytest.mark.asyncio
+async def test_radio_change_recomputes_combined_ssid_state() -> None:
+    """Keep each SSID's combined state aligned with radio and interface state."""
+    active = WirelessInterface(
+        name="phy0-ap0",
+        radio="radio0",
+        enabled=True,
+        interface_enabled=True,
+        radio_enabled=True,
+    )
+    disabled = WirelessInterface(
+        name="phy0-ap1",
+        radio="radio0",
+        enabled=False,
+        interface_enabled=False,
+        radio_enabled=True,
+    )
+    coordinator = MagicMock()
+    coordinator.router_id = "router_id"
+    coordinator.data = OpenWrtData(wireless_interfaces=[active, disabled])
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.hass.async_create_task = MagicMock(
+        side_effect=lambda task: task.close()
+    )
+    client = MagicMock()
+    client.set_radio_enabled = AsyncMock(return_value=True)
+    switch = OpenWrtRadioSwitch(
+        coordinator,
+        MagicMock(entry_id="test_entry", unique_id="router_id"),
+        client,
+        "radio0",
+        "2.4 GHz",
+    )
+
+    await switch.async_turn_off()
+    assert active.enabled is False
+    assert disabled.enabled is False
+
+    await switch.async_turn_on()
+    assert active.enabled is True
+    assert disabled.enabled is False
 
 
 @pytest.mark.asyncio

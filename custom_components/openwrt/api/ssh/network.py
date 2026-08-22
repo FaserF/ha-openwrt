@@ -124,16 +124,19 @@ class SshNetworkMixin:
                         iface_disabled = WirelessInterface._uci_disabled(
                             config.get("disabled", False)
                         )
+                        radio_disabled = WirelessInterface._uci_disabled(
+                            radio_data.get("disabled", False)
+                        )
                         wifi = WirelessInterface(
                             name=iface_name,
                             ssid=config.get("ssid", ""),
                             mode=config.get("mode", ""),
                             encryption=config.get("encryption", ""),
-                            enabled=not radio_data.get("disabled", False),
+                            enabled=not (radio_disabled or iface_disabled),
                             interface_enabled=not iface_disabled,
                             up=radio_data.get("up", False),
                             radio=radio_name,
-                            radio_enabled=not radio_data.get("disabled", False),
+                            radio_enabled=not radio_disabled,
                             band=WirelessInterface._band_from_raw(
                                 radio_data.get("config", {}).get("band", "")
                                 or radio_data.get("config", {}).get("hwmode", "")
@@ -545,14 +548,22 @@ class SshNetworkMixin:
 
         return interfaces
 
+    async def _exec_wireless_mutation(self, commands: list[str]) -> bool:
+        """Execute wireless commands and preserve their remote exit status."""
+        command = " && ".join(commands)
+        output = await self._exec(f'{command}; printf "\\n__HA_RC__:%s" $?')
+        _prefix, marker, status = output.rpartition("__HA_RC__:")
+        return marker == "__HA_RC__:" and status.strip() == "0"
+
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable/disable a wireless interface."""
         try:
             action = "0" if enabled else "1"
             safe_val = shlex.quote(f"wireless.{interface}.disabled={action}")
-            await self._exec(f"uci set {safe_val}")
-            await self._exec("uci commit wireless")
-            await self._exec("wifi reload")
+            if not await self._exec_wireless_mutation(
+                [f"uci set {safe_val}", "uci commit wireless", "wifi reload"]
+            ):
+                return False
             self._last_full_poll = 0
             return True
         except Exception as err:
@@ -577,7 +588,8 @@ class SshNetworkMixin:
                 assignments.append(f"wireless.{radio}.disabled=1")
             commands = [f"uci set {shlex.quote(value)}" for value in assignments]
             commands.extend(("uci commit wireless", "wifi reload"))
-            await self._exec(" && ".join(commands))
+            if not await self._exec_wireless_mutation(commands):
+                return False
             self._last_full_poll = 0
             return True
         except Exception as err:

@@ -211,9 +211,7 @@ def test_ap_stable_id_consistency() -> None:
 
     coordinator = MagicMock()
     coordinator.router_id = "router_mac"
-    coordinator.interface_to_stable_id = {
-        "phy0-ap0": "radio0_SSID_2.4 GHz"
-    }
+    coordinator.interface_to_stable_id = {"phy0-ap0": "radio0_SSID_2.4 GHz"}
 
     entry = MagicMock()
     entry.unique_id = "router_mac"
@@ -236,9 +234,7 @@ def test_ap_stable_id_consistency() -> None:
     device_info = entity._attr_device_info
     from custom_components.openwrt.helpers import format_ap_device_id
 
-    expected_id = format_ap_device_id(
-        "router_mac", "radio0_SSID_2.4 GHz"
-    )
+    expected_id = format_ap_device_id("router_mac", "radio0_SSID_2.4 GHz")
     assert (DOMAIN, expected_id) in device_info["identifiers"]
 
 

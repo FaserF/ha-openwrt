@@ -124,10 +124,16 @@ def find_violations(
             if not _is_synthetic_mac(value):
                 violations.add(Violation(line.path, line.line_number, "MAC address"))
         if any(pattern.search(line.text) for pattern in SECRET_RES):
-            violations.add(Violation(line.path, line.line_number, "credential-like value"))
+            violations.add(
+                Violation(line.path, line.line_number, "credential-like value")
+            )
         if any(pattern.search(line.text) for pattern in patterns):
-            violations.add(Violation(line.path, line.line_number, "installation denylist"))
-    return sorted(violations, key=lambda item: (item.path, item.line_number, item.category))
+            violations.add(
+                Violation(line.path, line.line_number, "installation denylist")
+            )
+    return sorted(
+        violations, key=lambda item: (item.path, item.line_number, item.category)
+    )
 
 
 def _self_test() -> None:
