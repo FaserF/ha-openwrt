@@ -428,3 +428,50 @@ async def test_section_matched_ssid_gets_optimistic_update() -> None:
 
     assert wifi.interface_enabled is False
     assert wifi.enabled is False
+
+
+@pytest.mark.asyncio
+async def test_empty_radio_does_not_modify_unrelated_interfaces() -> None:
+    """Do not update radio state on interfaces when switch has no radio assigned."""
+    wifi_target = WirelessInterface(
+        name="wlan0",
+        section="main",
+        radio=None,
+        interface_enabled=True,
+        radio_enabled=True,
+        enabled=True,
+    )
+    wifi_unrelated = WirelessInterface(
+        name="wlan1",
+        section="guest",
+        radio=None,
+        interface_enabled=True,
+        radio_enabled=True,
+        enabled=True,
+    )
+    coordinator = MagicMock()
+    coordinator.router_id = "router_id"
+    coordinator.data = OpenWrtData(wireless_interfaces=[wifi_target, wifi_unrelated])
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.hass.async_create_task = MagicMock(
+        side_effect=lambda task: task.close()
+    )
+    client = MagicMock()
+    client.set_wireless_enabled = AsyncMock(return_value=True)
+    switch = OpenWrtWirelessSwitch(
+        coordinator,
+        MagicMock(entry_id="test_entry", unique_id="router_id"),
+        client,
+        "main",
+        "Main",
+        section_id="main",
+        radio="",
+    )
+
+    await switch.async_turn_off()
+
+    assert wifi_target.interface_enabled is False
+    assert wifi_target.enabled is False
+    assert wifi_unrelated.interface_enabled is True
+    assert wifi_unrelated.enabled is True
+    assert wifi_unrelated.radio_enabled is True

@@ -925,7 +925,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
                     ):
                         wifi.interface_enabled = enabled
                         wifi.enabled = enabled
-                    if wifi.radio == self._radio:
+                    if self._radio and wifi.radio == self._radio:
                         if enabled:
                             wifi.radio_enabled = True
                         elif disable_radio:

@@ -243,7 +243,7 @@ def test_wifi_sensor_section_and_ifname_matching() -> None:
 
 
 def test_net_ipv4_sensor_availability() -> None:
-    """Test that IPv4 address sensors handle interfaces without IP address gracefully."""
+    """Test that IPv4 and IPv6 address sensors are only created when an IP is present."""
     from custom_components.openwrt.api.base import NetworkInterface
     from custom_components.openwrt.sensor import _create_net_sensors
 
@@ -252,9 +252,14 @@ def test_net_ipv4_sensor_availability() -> None:
     entry.entry_id = "test"
 
     iface_with_ip = NetworkInterface(
-        name="lan", protocol="static", ipv4_address="192.168.1.1"
+        name="lan",
+        protocol="static",
+        ipv4_address="192.168.1.1",
+        ipv6_address="2001:db8::1",
     )
-    iface_no_ip_proto = NetworkInterface(name="wwan", protocol="dhcp", ipv4_address="")
+    iface_no_ip_proto = NetworkInterface(
+        name="wwan", protocol="dhcp", ipv4_address="", ipv6_address=""
+    )
     iface_physical_only = NetworkInterface(
         name="lan1", protocol="", ipv4_address="", ipv6_address=""
     )
@@ -272,12 +277,16 @@ def test_net_ipv4_sensor_availability() -> None:
     assert ipv4_sensor_with_ip.available is True
     assert ipv4_sensor_with_ip.native_value == "192.168.1.1"
 
-    sensors_no_ip = _create_net_sensors(coordinator, entry, iface_no_ip_proto)
-    ipv4_sensor_no_ip = next(
-        s for s in sensors_no_ip if s.entity_description.key == "net_wwan_ipv4"
+    ipv6_sensor_with_ip = next(
+        s for s in sensors_with_ip if s.entity_description.key == "net_lan_ipv6"
     )
-    assert ipv4_sensor_no_ip.entity_registry_enabled_default is False
-    assert ipv4_sensor_no_ip.available is False
+    assert ipv6_sensor_with_ip.entity_registry_enabled_default is False
+    assert ipv6_sensor_with_ip.available is True
+    assert ipv6_sensor_with_ip.native_value == "2001:db8::1"
+
+    sensors_no_ip = _create_net_sensors(coordinator, entry, iface_no_ip_proto)
+    assert not any(s.entity_description.key == "net_wwan_ipv4" for s in sensors_no_ip)
+    assert not any(s.entity_description.key == "net_wwan_ipv6" for s in sensors_no_ip)
 
     sensors_physical = _create_net_sensors(coordinator, entry, iface_physical_only)
     assert not any(

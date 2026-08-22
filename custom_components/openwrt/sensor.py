@@ -1303,24 +1303,30 @@ async def async_setup_entry(
                     ent_reg.async_remove(ent.entity_id)
                     continue
 
-            # Cleanup orphaned network address sensors for physical devices or removed interfaces
+            # Cleanup orphaned network address sensors for physical devices, removed interfaces, or interfaces without an IP
             if unique_id.startswith(f"{entry.entry_id}_net_") and coordinator.data:
-                if unique_id.endswith(("_ipv4", "_ipv6")):
-                    # Check if interface still exists and is a logical interface with an IP or protocol
+                if unique_id.endswith("_ipv4"):
                     matched_iface = next(
                         (
                             i
                             for i in coordinator.data.network_interfaces
                             if f"_net_{i.name}_ipv4" in unique_id
-                            or f"_net_{i.name}_ipv6" in unique_id
                         ),
                         None,
                     )
-                    if not matched_iface or not (
-                        matched_iface.ipv4_address
-                        or matched_iface.ipv6_address
-                        or matched_iface.protocol
-                    ):
+                    if not matched_iface or not matched_iface.ipv4_address:
+                        ent_reg.async_remove(ent.entity_id)
+                        continue
+                elif unique_id.endswith("_ipv6"):
+                    matched_iface = next(
+                        (
+                            i
+                            for i in coordinator.data.network_interfaces
+                            if f"_net_{i.name}_ipv6" in unique_id
+                        ),
+                        None,
+                    )
+                    if not matched_iface or not matched_iface.ipv6_address:
                         ent_reg.async_remove(ent.entity_id)
                         continue
 
@@ -2428,65 +2434,75 @@ def _create_net_address_sensors(
 ) -> None:
     """Create address-related sensors (IPv4/IPv6) for an interface."""
     iface_name = iface.name
-    # Disable IPv4 sensor by default for bridge/physical device without an IP
-    ipv4_enabled_default = bool(iface.ipv4_address)
 
     # IPv4
-    sensors.append(
-        OpenWrtSensorEntity(
-            coordinator,
-            entry,
-            OpenWrtSensorDescription(
-                key=f"net_{iface_name}_ipv4",
-                name=f"{iface_name} IPv4 Address",
-                translation_key="net_ipv4",
-                translation_placeholders={"interface": iface_name},
-                entity_category=EntityCategory.DIAGNOSTIC,
-                entity_registry_enabled_default=ipv4_enabled_default,
-                value_fn=lambda data, n=iface_name: next(
-                    (i.ipv4_address for i in data.network_interfaces if i.name == n),
-                    None,
-                ),
-                available_fn=lambda data, n=iface_name: any(
-                    i.name == n and i.ipv4_address for i in data.network_interfaces
-                ),
-                attrs_fn=lambda data, n=iface_name: next(
-                    (
-                        {
-                            "dns_servers": (
-                                ", ".join(i.dns_servers) if i.dns_servers else "none"
-                            )
-                        }
-                        for i in data.network_interfaces
-                        if i.name == n
+    if iface.ipv4_address:
+        sensors.append(
+            OpenWrtSensorEntity(
+                coordinator,
+                entry,
+                OpenWrtSensorDescription(
+                    key=f"net_{iface_name}_ipv4",
+                    name=f"{iface_name} IPv4 Address",
+                    translation_key="net_ipv4",
+                    translation_placeholders={"interface": iface_name},
+                    entity_category=EntityCategory.DIAGNOSTIC,
+                    entity_registry_enabled_default=True,
+                    value_fn=lambda data, n=iface_name: next(
+                        (
+                            i.ipv4_address
+                            for i in data.network_interfaces
+                            if i.name == n
+                        ),
+                        None,
                     ),
-                    {},
+                    available_fn=lambda data, n=iface_name: any(
+                        i.name == n and i.ipv4_address for i in data.network_interfaces
+                    ),
+                    attrs_fn=lambda data, n=iface_name: next(
+                        (
+                            {
+                                "dns_servers": (
+                                    ", ".join(i.dns_servers)
+                                    if i.dns_servers
+                                    else "none"
+                                )
+                            }
+                            for i in data.network_interfaces
+                            if i.name == n
+                        ),
+                        {},
+                    ),
                 ),
-            ),
+            )
         )
-    )
     # IPv6
-    sensors.append(
-        OpenWrtSensorEntity(
-            coordinator,
-            entry,
-            OpenWrtSensorDescription(
-                key=f"net_{iface_name}_ipv6",
-                name=f"{iface_name} IPv6 Address",
-                translation_key="net_ipv6",
-                translation_placeholders={"interface": iface_name},
-                entity_category=EntityCategory.DIAGNOSTIC,
-                entity_registry_enabled_default=False,
-                value_fn=lambda data, n=iface_name: next(
-                    (i.ipv6_address for i in data.network_interfaces if i.name == n),
-                    None,
+    if iface.ipv6_address:
+        sensors.append(
+            OpenWrtSensorEntity(
+                coordinator,
+                entry,
+                OpenWrtSensorDescription(
+                    key=f"net_{iface_name}_ipv6",
+                    name=f"{iface_name} IPv6 Address",
+                    translation_key="net_ipv6",
+                    translation_placeholders={"interface": iface_name},
+                    entity_category=EntityCategory.DIAGNOSTIC,
+                    entity_registry_enabled_default=False,
+                    value_fn=lambda data, n=iface_name: next(
+                        (
+                            i.ipv6_address
+                            for i in data.network_interfaces
+                            if i.name == n
+                        ),
+                        None,
+                    ),
+                    available_fn=lambda data, n=iface_name: any(
+                        i.name == n and i.ipv6_address for i in data.network_interfaces
+                    ),
                 ),
-                available_fn=lambda data, n=iface_name: any(
-                    i.name == n and i.ipv6_address for i in data.network_interfaces
-                ),
-            ),
+            )
         )
-    )
 
 
 def _create_net_status_sensors(

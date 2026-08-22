@@ -17,7 +17,9 @@ IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 MAC_RE = re.compile(r"(?i)(?<![0-9a-f])(?:[0-9a-f]{2}:){5}[0-9a-f]{2}(?![0-9a-f])")
 SECRET_RES = (
     re.compile(r"(?i)\b(?:bearer|token)\s+[a-z0-9._~-]{20,}"),
-    re.compile(r"\b(?:ghp|github_pat|sk-proj|sk)-[A-Za-z0-9_-]{16,}"),
+    re.compile(
+        r"\b(?:(?:ghp|github_pat)_[A-Za-z0-9_]{16,}|(?:sk-proj|sk)-[A-Za-z0-9_-]{16,})"
+    ),
     re.compile(r"\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}"),
 )
 SYNTHETIC_MAC_RES = (
@@ -140,14 +142,18 @@ def _self_test() -> None:
     """Verify detection without embedding usable private fixture values."""
     private_ip = "192" + ".168.42.7"
     private_mac = "7c" + ":10:c9:12:34:56"
+    pat_a = "ghp_" + "0123456789abcdef0123"
+    pat_b = "github_pat_" + "0123456789abcdef0123"
     lines = [
         AddedLine("sample.py", 1, f"host = '{private_ip}'"),
         AddedLine("sample.py", 2, f"mac = '{private_mac}'"),
         AddedLine("sample.py", 3, "host = '192.0.2.10'"),
         AddedLine("sample.py", 4, "mac = '02:00:00:00:00:01'"),
+        AddedLine("sample.py", 5, f"token = '{pat_a}'"),
+        AddedLine("sample.py", 6, f"token = '{pat_b}'"),
     ]
     categories = {item.category for item in find_violations(lines, ())}
-    if categories != {"private IPv4", "MAC address"}:
+    if categories != {"private IPv4", "MAC address", "credential-like value"}:
         raise RuntimeError("privacy scanner self-test failed")
 
 
