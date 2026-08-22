@@ -29,7 +29,11 @@ jobs:
         env:
           PRIVATE_DATA_PATTERNS: ${{ secrets.PRIVATE_DATA_PATTERNS }}
         run: |
-          python .github/scripts/check_private_data.py --self-test --base origin/main
+          BASE_SHA="${{ github.event.before }}"
+          if [[ "${{ github.event_name }}" != "push" || "$BASE_SHA" =~ ^0+$ ]]; then
+            BASE_SHA="$(git rev-parse HEAD^)"
+          fi
+          python .github/scripts/check_private_data.py --self-test --base "$BASE_SHA"
 
       - name: Install validation dependencies
         run: |
