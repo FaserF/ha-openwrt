@@ -99,7 +99,12 @@ from .const import (
 from .helpers import (
     format_ap_device_id,
     format_ap_name,
+    format_ap_stable_id,
+    format_radio_device_id,
+    format_radio_name,
+    get_via_device,
     is_random_mac,
+    normalize_band,
 )
 from .helpers.mac_vendor import get_mac_vendor_info
 from .repairs import (
@@ -1730,6 +1735,71 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 own_macs.add(wifi_iface.mac_address.lower())
         return own_macs
 
+    def _async_reparent_connected_devices(
+        self,
+        data: OpenWrtData,
+        device_registry: dr.DeviceRegistry,
+    ) -> None:
+        """Move existing wireless client devices below their current SSID."""
+        get_by_identifier = getattr(
+            device_registry, "async_get_device_by_identifier", None
+        )
+        get_by_connection = getattr(
+            device_registry, "async_get_device_by_connection", None
+        )
+
+        for connected in data.connected_devices:
+            if (
+                not connected.mac
+                or not connected.connected
+                or not connected.is_wireless
+            ):
+                continue
+
+            mac = connected.mac.lower()
+            if get_by_identifier is not None:
+                client_device = get_by_identifier(
+                    (DOMAIN, mac), self.config_entry.entry_id
+                )
+            else:
+                client_device = device_registry.async_get_device(
+                    identifiers={(DOMAIN, mac)}
+                )
+            if client_device is None:
+                if get_by_connection is not None:
+                    client_device = get_by_connection(
+                        (dr.CONNECTION_NETWORK_MAC, mac), self.config_entry.entry_id
+                    )
+                else:
+                    client_device = device_registry.async_get_device(
+                        connections={(dr.CONNECTION_NETWORK_MAC, mac)}
+                    )
+            if client_device is None:
+                continue
+
+            parent_identifier = get_via_device(
+                self.hass,
+                self,
+                self.config_entry,
+                mac,
+            )
+            if get_by_identifier is not None:
+                parent_device = get_by_identifier(
+                    parent_identifier, self.config_entry.entry_id
+                )
+            else:
+                parent_device = device_registry.async_get_device(
+                    identifiers={parent_identifier}
+                )
+            if (
+                parent_device is not None
+                and client_device.via_device_id != parent_device.id
+            ):
+                device_registry.async_update_device(
+                    client_device.id,
+                    via_device_id=parent_device.id,
+                )
+
     async def _async_update_device_registry(self, data: OpenWrtData) -> None:
         """Update the device registry with fresh device information."""
         if not data.device_info:
@@ -1825,10 +1895,49 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             configuration_url=f"http://{self.config_entry.data[CONF_HOST]}",
         )
 
-        # 2. Register/Update AP devices for wireless interfaces
+        # 2. Register physical radios and AP devices for wireless interfaces.
+        radio_info: dict[str, str] = {}
+        for wifi in data.wireless_interfaces:
+            if not wifi.radio:
+                continue
+            band = (
+                normalize_band(wifi.band or wifi.frequency)
+                if wifi.band or wifi.frequency
+                else ""
+            )
+            radio_info.setdefault(wifi.radio, band)
+
+        radio_devices: dict[str, dr.DeviceEntry] = {}
+        for radio, band in radio_info.items():
+            label = format_radio_name(radio, band)
+            manufacturer = device_info.release_distribution or ATTR_MANUFACTURER
+            radio_device = device_registry.async_get_or_create(
+                config_entry_id=self.config_entry.entry_id,
+                identifiers={(DOMAIN, format_radio_device_id(self.router_id, radio))},
+                name=label,
+                manufacturer=manufacturer,
+                model="Wireless Radio",
+                via_device=(DOMAIN, self.router_id),
+            )
+            radio_devices[radio] = radio_device
+            # async_get_or_create() preserves an existing device name. Explicitly
+            # migrate names created by earlier integration versions while leaving a
+            # user's name_by_user override untouched.
+            if (
+                radio_device.name != label
+                or radio_device.manufacturer != manufacturer
+                or radio_device.model != "Wireless Radio"
+            ):
+                device_registry.async_update_device(
+                    radio_device.id,
+                    name=label,
+                    manufacturer=manufacturer,
+                    model="Wireless Radio",
+                )
+
         # Ensure stable_id is based on SSID and Band to prevent duplicates
         # for mesh routers that spawn multiple virtual interfaces per radio.
-        ap_info: dict[str, str] = {}
+        ap_info: dict[str, tuple[str, str]] = {}
 
         for wifi in data.wireless_interfaces:
             # Skip interfaces without name or SSID
@@ -1839,25 +1948,42 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # than the raw frequency in MHz. This groups all virtual interfaces on
             # the same radio+SSID combination under one stable AP device, even
             # when different channels are reported across updates.
-            from .helpers import normalize_band
-
-            band = normalize_band(wifi.band or wifi.frequency or wifi.radio)
+            band = (
+                normalize_band(wifi.band or wifi.frequency)
+                if wifi.band or wifi.frequency
+                else ""
+            )
             label = format_ap_name(wifi.ssid, band)
 
-            # Use SSID and Band as stable identifier to group virtual interfaces
-            stable_id = f"{wifi.ssid}_{band}"
-            ap_info[stable_id] = label
+            # Group virtual interfaces only within the same physical radio.
+            stable_id = format_ap_stable_id(wifi.ssid, band, wifi.radio)
             self.interface_to_stable_id[wifi.name] = stable_id
+            ap_info[stable_id] = (label, wifi.radio)
 
-        for stable_id, label in ap_info.items():
-            device_registry.async_get_or_create(
+        for stable_id, (label, radio) in ap_info.items():
+            ssid_device = device_registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
                 identifiers={(DOMAIN, format_ap_device_id(self.router_id, stable_id))},
                 name=label,
                 manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
-                model="Access Point",
-                via_device=(DOMAIN, self.router_id),
+                model="Wireless SSID",
+                via_device=(
+                    DOMAIN,
+                    format_radio_device_id(self.router_id, radio),
+                )
+                if radio
+                else (DOMAIN, self.router_id),
             )
+            if radio and radio in radio_devices:
+                device_registry.async_update_device(
+                    ssid_device.id,
+                    name=label,
+                    manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
+                    model="Wireless SSID",
+                    via_device_id=radio_devices[radio].id,
+                )
+
+        self._async_reparent_connected_devices(data, device_registry)
 
         # 3. Retroactively update manufacturer/model for already-registered tracked devices.
         # HA only writes manufacturer/model at first creation; subsequent coordinator polls
@@ -1921,6 +2047,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         for stable_id in ap_info.keys():
             active_identifiers.add(
                 (DOMAIN, format_ap_device_id(self.router_id, stable_id))
+            )
+        for radio in radio_info:
+            active_identifiers.add(
+                (DOMAIN, format_radio_device_id(self.router_id, radio))
             )
 
         _LOGGER.debug(

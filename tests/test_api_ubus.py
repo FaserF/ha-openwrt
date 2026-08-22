@@ -1,10 +1,10 @@
 """Test the OpenWrt Ubus API client."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from custom_components.openwrt.api.ubus import UbusClient
+from custom_components.openwrt.api.ubus import UbusClient, UbusError
 
 
 @pytest.fixture
@@ -459,6 +459,7 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
                         ],
                     },
                     "radio1": {
+                        "disabled": True,
                         "config": {"band": "5g", "hwmode": "11a"},
                         "interfaces": [
                             {
@@ -479,6 +480,7 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
                         "frequency": 5180,
                         "bssid": "00:11:22:33:44:55",
                         "channel": 36,
+                        "txpower": 23,
                     }
                 if device == "wlan0":
                     return {
@@ -486,6 +488,7 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
                         "frequency": 2412,
                         "bssid": "00:11:22:33:44:66",
                         "channel": 1,
+                        "txpower": 20,
                     }
             return {}
 
@@ -499,12 +502,54 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
         assert wifi2g.ifname == "wlan0"
         assert wifi2g.band == "2.4 GHz"
         assert wifi2g.channel == 1
+        assert wifi2g.txpower == 20
+        assert wifi2g.radio_enabled is True
 
         wifi5g = next(w for w in interfaces if w.section == "default_radio1")
         assert wifi5g.name == "wlan1"
         assert wifi5g.ifname == "wlan1"
         assert wifi5g.band == "5 GHz"
         assert wifi5g.channel == 36
+        assert wifi5g.txpower == 23
+        assert wifi5g.radio_enabled is False
+
+
+@pytest.mark.asyncio
+async def test_ubus_rejects_invalid_reported_txpower(ubus_client: UbusClient) -> None:
+    """Keep configured TX power when iwinfo reports an invalid zero value."""
+    ubus_client.packages.wireless = True
+
+    def call_side_effect(object_name, method, params=None, *args, **kwargs):
+        if object_name == "network.wireless" and method == "status":
+            return {
+                "radio0": {
+                    "config": {"band": "2g", "txpower": 17},
+                    "interfaces": [
+                        {
+                            "section": "main",
+                            "ifname": "wlan0",
+                            "config": {"ssid": "Main"},
+                        }
+                    ],
+                }
+            }
+        if object_name == "uci" and method == "get":
+            return {}
+        if object_name == "iwinfo" and method == "devices":
+            return ["wlan0"]
+        if object_name == "iwinfo" and method == "info":
+            return {"ssid": "Main", "txpower": 0}
+        return {}
+
+    with patch.object(
+        ubus_client,
+        "_call",
+        new_callable=AsyncMock,
+        side_effect=call_side_effect,
+    ):
+        interfaces = await ubus_client.get_wireless_interfaces()
+
+    assert interfaces[0].txpower == 17
 
 
 @pytest.mark.asyncio
@@ -582,6 +627,119 @@ async def test_ubus_wireless_skips_info_for_luci_admin_proxy(
     assert len(interfaces) == 1
     assert interfaces[0].name == "wlan06"
     assert interfaces[0].clients_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("enabled", "disable_radio", "radio_state"),
+    [(True, False, "0"), (False, True, "1")],
+)
+async def test_ubus_coordinates_ssid_and_radio_in_one_transaction(
+    ubus_client: UbusClient,
+    enabled: bool,
+    disable_radio: bool,
+    radio_state: str,
+) -> None:
+    """Commit the SSID and required radio state together."""
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        result = await ubus_client.set_wireless_network_enabled(
+            "main",
+            "radio0",
+            enabled,
+            disable_radio=disable_radio,
+        )
+
+    assert result is True
+    assert mock_call.await_args_list[-2:] == [
+        call("uci", "commit", {"config": "wireless"}),
+        call("network.wireless", "notify"),
+    ]
+    assert (
+        call(
+            "uci",
+            "set",
+            {
+                "config": "wireless",
+                "section": "main",
+                "values": {"disabled": "0" if enabled else "1"},
+            },
+        )
+        in mock_call.await_args_list
+    )
+    assert (
+        call(
+            "uci",
+            "set",
+            {
+                "config": "wireless",
+                "section": "radio0",
+                "values": {"disabled": radio_state},
+            },
+        )
+        in mock_call.await_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_ubus_reverts_partial_wireless_transaction(
+    ubus_client: UbusClient,
+) -> None:
+    """Discard staged UCI changes when a pre-commit operation fails."""
+    calls = []
+
+    async def call_side_effect(object_name, method, params=None, *args, **kwargs):
+        calls.append(call(object_name, method, params))
+        if object_name == "uci" and method == "set" and params["section"] == "main":
+            raise UbusError("set failed")
+        return {}
+
+    with patch.object(
+        ubus_client,
+        "_call",
+        new_callable=AsyncMock,
+        side_effect=call_side_effect,
+    ):
+        result = await ubus_client.set_wireless_network_enabled(
+            "main",
+            "radio0",
+            True,
+            disable_radio=False,
+        )
+
+    assert result is False
+    assert call("uci", "revert", {"config": "wireless"}) in calls
+    assert call("uci", "commit", {"config": "wireless"}) not in calls
+
+
+@pytest.mark.asyncio
+async def test_ubus_does_not_revert_after_successful_commit(
+    ubus_client: UbusClient,
+) -> None:
+    """Do not undo committed state when only the wireless notification fails."""
+    calls = []
+
+    async def call_side_effect(object_name, method, params=None, *args, **kwargs):
+        calls.append(call(object_name, method, params))
+        if object_name == "network.wireless" and method == "notify":
+            raise UbusError("notify failed")
+        return {}
+
+    with patch.object(
+        ubus_client,
+        "_call",
+        new_callable=AsyncMock,
+        side_effect=call_side_effect,
+    ):
+        result = await ubus_client.set_wireless_network_enabled(
+            "main",
+            "radio0",
+            False,
+            disable_radio=True,
+        )
+
+    assert result is False
+    assert call("uci", "commit", {"config": "wireless"}) in calls
+    assert call("uci", "revert", {"config": "wireless"}) not in calls
 
 
 @pytest.mark.asyncio

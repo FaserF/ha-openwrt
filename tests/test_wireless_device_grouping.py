@@ -1,12 +1,13 @@
 """Tests for wireless interface discovery and Access Point device grouping."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from custom_components.openwrt.api.ubus import UbusClient
 from custom_components.openwrt.const import DOMAIN
 from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
+from custom_components.openwrt.helpers import format_ap_stable_id
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -190,16 +191,16 @@ async def test_coordinator_stable_id_uses_band(ubus_client: UbusClient):
         if not wifi.name or not wifi.ssid:
             continue
         band = wifi.band or wifi.frequency or wifi.radio or "unknown"
-        stable_id = f"{wifi.ssid}_{band}"
+        stable_id = format_ap_stable_id(wifi.ssid, band, wifi.radio)
         ap_stable_ids.add(stable_id)
 
     assert len(ap_stable_ids) == 5
     expected_bands = {
-        "MyNet-Guest_5 GHz",
-        "MyNet-Guest_2.4 GHz",
-        "MyNet_2.4 GHz",
-        "MyNet_5 GHz",
-        "MyNet-IoT_2.4 GHz",
+        "radio0_MyNet-Guest_5 GHz",
+        "radio1_MyNet-Guest_2.4 GHz",
+        "radio1_MyNet_2.4 GHz",
+        "radio2_MyNet_5 GHz",
+        "radio1_MyNet-IoT_2.4 GHz",
     }
     assert ap_stable_ids == expected_bands
 
@@ -210,7 +211,7 @@ def test_ap_stable_id_consistency() -> None:
 
     coordinator = MagicMock()
     coordinator.router_id = "router_mac"
-    coordinator.interface_to_stable_id = {"phy0-ap0": "SSID_2.4 GHz"}
+    coordinator.interface_to_stable_id = {"phy0-ap0": "radio0_SSID_2.4 GHz"}
 
     entry = MagicMock()
     entry.unique_id = "router_mac"
@@ -233,13 +234,13 @@ def test_ap_stable_id_consistency() -> None:
     device_info = entity._attr_device_info
     from custom_components.openwrt.helpers import format_ap_device_id
 
-    expected_id = format_ap_device_id("router_mac", "SSID_2.4 GHz")
+    expected_id = format_ap_device_id("router_mac", "radio0_SSID_2.4 GHz")
     assert (DOMAIN, expected_id) in device_info["identifiers"]
 
 
 @pytest.mark.asyncio
-async def test_ap_deduplication_and_naming() -> None:
-    """Verify AP deduplication and disambiguation naming logic."""
+async def test_ap_deduplication_keeps_user_facing_names_clean() -> None:
+    """Hide runtime interface IDs when equal SSIDs share an AP device."""
     from custom_components.openwrt.api.base import WirelessInterface
     from custom_components.openwrt.sensor import OpenWrtWifiSensorEntity
     from custom_components.openwrt.switch import OpenWrtWirelessSwitch
@@ -253,8 +254,18 @@ async def test_ap_deduplication_and_naming() -> None:
     coordinator = OpenWrtDataCoordinator(MagicMock(), config_entry, MagicMock())
     coordinator.data = MagicMock()
     coordinator.data.wireless_interfaces = [
-        WirelessInterface(name="phy1-ap1", ssid="MyNet", frequency="2.4 GHz"),
-        WirelessInterface(name="phy1-ap2", ssid="MyNet", frequency="2.4 GHz"),
+        WirelessInterface(
+            name="phy1-ap1",
+            ssid="MyNet",
+            frequency="2.4 GHz",
+            radio="radio1",
+        ),
+        WirelessInterface(
+            name="phy1-ap2",
+            ssid="MyNet",
+            frequency="2.4 GHz",
+            radio="radio1",
+        ),
     ]
 
     from custom_components.openwrt.helpers import format_ap_name
@@ -263,7 +274,7 @@ async def test_ap_deduplication_and_naming() -> None:
     coordinator.interface_to_stable_id = {}
     for wifi in coordinator.data.wireless_interfaces:
         band = wifi.band or wifi.frequency or wifi.radio or "unknown"
-        stable_id = f"{wifi.ssid}_{band}"
+        stable_id = format_ap_stable_id(wifi.ssid, band, wifi.radio)
         ap_info[stable_id] = format_ap_name(wifi.ssid, band)
         coordinator.interface_to_stable_id[wifi.name] = stable_id
 
@@ -272,23 +283,41 @@ async def test_ap_deduplication_and_naming() -> None:
     desc = MagicMock()
     desc.key = "signal"
     desc.name = "Signal"
-    s1 = OpenWrtWifiSensorEntity(
-        coordinator, config_entry, desc, "phy1-ap1", "MyNet", "2.4 GHz"
-    )
-    s2 = OpenWrtWifiSensorEntity(
-        coordinator, config_entry, desc, "phy1-ap2", "MyNet", "2.4 GHz"
-    )
-    assert "phy1-ap1" in s1._attr_name
-    assert "phy1-ap2" in s2._attr_name
+    with (
+        patch("custom_components.openwrt.sensor.DeviceInfo", side_effect=dict),
+        patch("custom_components.openwrt.switch.DeviceInfo", side_effect=dict),
+    ):
+        s1 = OpenWrtWifiSensorEntity(
+            coordinator, config_entry, desc, "phy1-ap1", "MyNet", "2.4 GHz"
+        )
+        s2 = OpenWrtWifiSensorEntity(
+            coordinator, config_entry, desc, "phy1-ap2", "MyNet", "2.4 GHz"
+        )
+        sw1 = OpenWrtWirelessSwitch(
+            coordinator, config_entry, MagicMock(), "phy1-ap1", "MyNet", "2.4 GHz"
+        )
+        sw2 = OpenWrtWirelessSwitch(
+            coordinator, config_entry, MagicMock(), "phy1-ap2", "MyNet", "2.4 GHz"
+        )
+    assert getattr(s1, "_attr_name", None) is None
+    assert getattr(s2, "_attr_name", None) is None
+    assert s1._attr_device_info["name"] == "SSID MyNet"
+    assert s2._attr_device_info["name"] == "SSID MyNet"
 
-    sw1 = OpenWrtWirelessSwitch(
-        coordinator, config_entry, MagicMock(), "phy1-ap1", "MyNet", "2.4 GHz"
-    )
-    sw2 = OpenWrtWirelessSwitch(
-        coordinator, config_entry, MagicMock(), "phy1-ap2", "MyNet", "2.4 GHz"
-    )
-    assert "phy1-ap1" in sw1._attr_name
-    assert "phy1-ap2" in sw2._attr_name
+    assert sw1._attr_name == "SSID MyNet"
+    assert sw2._attr_name == "SSID MyNet"
+    assert sw1._attr_device_info["name"] == "SSID MyNet"
+    assert sw2._attr_device_info["name"] == "SSID MyNet"
+
+
+def test_same_ssid_and_band_stay_distinct_across_radios() -> None:
+    """Do not merge equal SSIDs broadcast by different physical radios."""
+    radio0_id = format_ap_stable_id("Main", "2.4 GHz", "radio0")
+    radio1_id = format_ap_stable_id("Main", "2.4 GHz", "radio1")
+
+    assert radio0_id == "radio0_Main_2.4 GHz"
+    assert radio1_id == "radio1_Main_2.4 GHz"
+    assert radio0_id != radio1_id
 
 
 def test_wireless_switch_status_matching() -> None:
@@ -318,7 +347,7 @@ def test_wireless_switch_status_matching() -> None:
     )
     assert sw.is_on is True
 
-    wifi_iface.enabled = False
+    wifi_iface.interface_enabled = False
     assert sw.is_on is False
 
 
@@ -401,18 +430,204 @@ async def test_coordinator_orphan_cleanup_ghost_sections(hass):
 
 def test_router_id_mac_formatting_prevents_duplicate_ap():
     """Verify that MAC address formatting in unique_id ensures stable router and AP device identification."""
-    from custom_components.openwrt.helpers import _router_id, format_ap_device_id
+    from custom_components.openwrt.helpers import (
+        _router_id,
+        format_ap_device_id,
+        format_ap_name,
+        format_radio_device_id,
+    )
 
     # 1. Test helper extraction formatting
     config_entry = MagicMock()
-    config_entry.unique_id = "9483c4ac7a13"
+    config_entry.unique_id = "020000000001"
     config_entry.data = {"host": "192.168.1.1"}
 
     # Extract router ID should format the MAC
-    assert _router_id(config_entry) == "94:83:c4:ac:7a:13"
+    assert _router_id(config_entry) == "02:00:00:00:00:01"
 
     # Format AP device ID should use the formatted MAC
     assert (
         format_ap_device_id(config_entry, "stable_ssid_5 GHz")
-        == "94:83:c4:ac:7a:13_ap_stable_ssid_5 GHz"
+        == "02:00:00:00:00:01_ap_stable_ssid_5 GHz"
+    )
+    assert (
+        format_radio_device_id(config_entry, "radio0")
+        == "02:00:00:00:00:01_radio_radio0"
+    )
+    assert format_ap_name("Main", "2.4 GHz") == "SSID Main"
+
+
+def test_format_radio_name_normalizes_uci_band_aliases() -> None:
+    """Use concise frequency names for raw and previously formatted UCI bands."""
+    from custom_components.openwrt.helpers import format_radio_name
+
+    assert format_radio_name("radio0", "2.4 GHz") == "2.4 GHz"
+    assert format_radio_name("radio0", "2g") == "2.4 GHz"
+    assert format_radio_name("radio0", "2g GHz") == "2.4 GHz"
+    assert format_radio_name("radio1", "5g") == "5 GHz"
+    assert format_radio_name("radio2", "6g") == "6 GHz"
+    assert format_radio_name("radio0", "") == "radio0"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_preserves_active_radio_device(hass):
+    """Keep a configured physical radio during registry cleanup."""
+    from custom_components.openwrt.api.base import (
+        DeviceInfo,
+        OpenWrtData,
+        WirelessInterface,
+    )
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "router_mac"
+    config_entry.data = {"host": "192.0.2.1"}
+    config_entry.options = {}
+    coordinator = OpenWrtDataCoordinator(hass, config_entry, MagicMock())
+    coordinator.router_id = "router_mac"
+
+    router_dev = MagicMock()
+    router_dev.id = "router_dev_id"
+    router_dev.identifiers = {(DOMAIN, "router_mac")}
+
+    radio_dev = MagicMock()
+    radio_dev.id = "radio_dev_id"
+    radio_dev.name = "Radio radio0 (2.4 GHz)"
+    radio_dev.identifiers = {(DOMAIN, "router_mac_radio_radio0")}
+    radio_dev.config_entries = {"test_entry"}
+    radio_dev.via_device_id = "router_dev_id"
+    radio_dev.disabled_by = None
+    radio_dev.entry_type = None
+    radio_dev.manufacturer = "OpenWrt"
+    radio_dev.model = "Wireless Radio"
+
+    device_registry = MagicMock()
+    device_registry.devices = {
+        router_dev.id: router_dev,
+        radio_dev.id: radio_dev,
+    }
+    device_registry.async_get_device.return_value = router_dev
+    device_registry.async_get_or_create.return_value = radio_dev
+
+    data = OpenWrtData(
+        device_info=DeviceInfo(mac_address="router_mac"),
+        wireless_interfaces=[
+            WirelessInterface(
+                name="phy0-ap0",
+                ssid="Test",
+                radio="radio0",
+                band="2.4 GHz",
+            )
+        ],
+    )
+
+    with patch(
+        "homeassistant.helpers.device_registry.async_get",
+        return_value=device_registry,
+    ):
+        await coordinator._async_update_device_registry(data)
+
+    device_registry.async_remove_device.assert_not_called()
+    device_registry.async_update_device.assert_any_call(
+        "radio_dev_id",
+        name="2.4 GHz",
+        manufacturer="OpenWrt",
+        model="Wireless Radio",
+    )
+    created_identifiers = [
+        identifier
+        for call in device_registry.async_get_or_create.call_args_list
+        for identifier in call.kwargs.get("identifiers", set())
+    ]
+    assert (DOMAIN, "router_mac_radio_radio0") in created_identifiers
+    assert (DOMAIN, "router_mac_ap_radio0_Test_2.4 GHz") in created_identifiers
+    ap_call = next(
+        call
+        for call in device_registry.async_get_or_create.call_args_list
+        if (DOMAIN, "router_mac_ap_radio0_Test_2.4 GHz")
+        in call.kwargs.get("identifiers", set())
+    )
+    assert ap_call.kwargs["name"] == "SSID Test"
+    assert ap_call.kwargs["via_device"] == (
+        DOMAIN,
+        "router_mac_radio_radio0",
+    )
+
+
+def test_coordinator_reparents_existing_wireless_client_to_ssid(hass) -> None:
+    """Move an existing client device below its currently associated SSID."""
+    from custom_components.openwrt.api.base import ConnectedDevice, OpenWrtData
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "router_mac"
+    config_entry.data = {"host": "192.0.2.1"}
+    config_entry.options = {}
+    coordinator = OpenWrtDataCoordinator(hass, config_entry, MagicMock())
+
+    client = MagicMock(id="client_id", via_device_id="router_id")
+    ssid = MagicMock(id="ssid_id")
+    registry = MagicMock()
+    registry.async_get_device_by_identifier.side_effect = [client, ssid]
+    data = OpenWrtData(
+        connected_devices=[
+            ConnectedDevice(
+                mac="02:00:00:00:00:01",
+                interface="phy0-ap0",
+                is_wireless=True,
+                connected=True,
+            )
+        ]
+    )
+
+    with patch(
+        "custom_components.openwrt.coordinator.get_via_device",
+        return_value=(DOMAIN, "router_mac_ap_Main_2.4 GHz"),
+    ):
+        coordinator._async_reparent_connected_devices(data, registry)
+
+    registry.async_update_device.assert_called_once_with(
+        "client_id", via_device_id="ssid_id"
+    )
+    registry.async_get_device.assert_not_called()
+
+
+def test_coordinator_reparents_with_legacy_device_registry(hass) -> None:
+    """Retain compatibility with HA releases before scoped registry lookups."""
+    from custom_components.openwrt.api.base import ConnectedDevice, OpenWrtData
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "router_mac"
+    config_entry.data = {"host": "192.0.2.1"}
+    config_entry.options = {}
+    coordinator = OpenWrtDataCoordinator(hass, config_entry, MagicMock())
+
+    client = MagicMock(id="client_id", via_device_id="router_id")
+    ssid = MagicMock(id="ssid_id")
+    registry = MagicMock(spec=["async_get_device", "async_update_device"])
+    registry.async_get_device.side_effect = [client, ssid]
+    data = OpenWrtData(
+        connected_devices=[
+            ConnectedDevice(
+                mac="02:00:00:00:00:01",
+                interface="phy0-ap0",
+                is_wireless=True,
+                connected=True,
+            )
+        ]
+    )
+
+    with patch(
+        "custom_components.openwrt.coordinator.get_via_device",
+        return_value=(DOMAIN, "router_mac_ap_Main_2.4 GHz"),
+    ):
+        coordinator._async_reparent_connected_devices(data, registry)
+
+    assert registry.async_get_device.call_args_list == [
+        call(identifiers={(DOMAIN, "02:00:00:00:00:01")}),
+        call(identifiers={(DOMAIN, "router_mac_ap_Main_2.4 GHz")}),
+    ]
+    registry.async_update_device.assert_called_once_with(
+        "client_id", via_device_id="ssid_id"
     )

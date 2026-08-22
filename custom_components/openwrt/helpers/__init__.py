@@ -40,6 +40,30 @@ def format_ap_device_id(entry_or_router_id: ConfigEntry | str, iface_name: str) 
     return format_ap_identifier(entry_or_router_id, iface_name)
 
 
+def format_radio_device_id(
+    entry_or_router_id: ConfigEntry | str,
+    radio: str,
+) -> str:
+    """Return the canonical device registry identifier for a physical radio."""
+    router_id = (
+        entry_or_router_id
+        if isinstance(entry_or_router_id, str)
+        else _router_id(entry_or_router_id)
+    )
+    return f"{router_id}_radio_{radio}"
+
+
+def format_ap_stable_id(ssid: str, band: str, radio: str = "") -> str:
+    """Return an AP identifier distinct across physical radios."""
+    return f"{radio}_{ssid}_{band}" if radio else f"{ssid}_{band}"
+
+
+def format_radio_name(radio: str, band: str | None) -> str:
+    """Return a concise radio display name with a stable fallback."""
+    normalized_band = normalize_band(band) if band else "unknown"
+    return normalized_band if normalized_band != "unknown" else radio
+
+
 def normalize_band(band: str | None) -> str:
     """Normalize raw frequency or band strings to a standard format.
 
@@ -53,6 +77,23 @@ def normalize_band(band: str | None) -> str:
         return "unknown"
 
     freq_str = str(band).lower().strip()
+
+    uci_band_aliases = {
+        "2g": "2.4 GHz",
+        "2ghz": "2.4 GHz",
+        "2 ghz": "2.4 GHz",
+        "2g ghz": "2.4 GHz",
+        "5g": "5 GHz",
+        "5ghz": "5 GHz",
+        "5 ghz": "5 GHz",
+        "5g ghz": "5 GHz",
+        "6g": "6 GHz",
+        "6ghz": "6 GHz",
+        "6 ghz": "6 GHz",
+        "6g ghz": "6 GHz",
+    }
+    if freq_str in uci_band_aliases:
+        return uci_band_aliases[freq_str]
 
     # Handle numeric MHz/GHz strings
     try:
@@ -89,18 +130,12 @@ def normalize_band(band: str | None) -> str:
 
 
 def format_ap_name(ssid: str, band: str = "") -> str:
-    """Format the display name for an Access Point device.
+    """Format the display name for an SSID device.
 
     Examples:
-        format_ap_name("SmartLife", "2.4 GHz") -> "AP SmartLife (2.4 GHz)"
-        format_ap_name("SmartLife", "2412")     -> "AP SmartLife (2.4 GHz)"
+        format_ap_name("SmartLife", "2.4 GHz") -> "SSID SmartLife"
     """
-    label = ssid
-    norm_band = normalize_band(band) if band else ""
-
-    if norm_band and norm_band != "unknown":
-        return f"AP {label} ({norm_band})"
-    return f"AP {label}"
+    return f"SSID {ssid}"
 
 
 def is_random_mac(mac: str) -> bool:
@@ -152,8 +187,8 @@ def get_via_device(
 ) -> tuple[str, str]:
     """Resolve the via_device for a connected device.
 
-    Returns a tuple (DOMAIN, identifier). Falls back to the router if
-    the AP device is not found in the registry or if the device is wired.
+    Returns a tuple (DOMAIN, identifier). Wireless clients are attached to
+    their physical radio; wired or ambiguous clients fall back to the router.
     """
     from homeassistant.helpers import device_registry as dr
 
@@ -170,13 +205,26 @@ def get_via_device(
                 and device.is_wireless
                 and device.interface
             ):
+                dev_reg = dr.async_get(hass)
+                wifi = next(
+                    (
+                        item
+                        for item in coordinator.data.wireless_interfaces
+                        if device.interface in {item.name, item.section, item.ifname}
+                    ),
+                    None,
+                )
                 stable_id = coordinator.interface_to_stable_id.get(device.interface)
+                if not stable_id and wifi:
+                    stable_id = coordinator.interface_to_stable_id.get(wifi.name)
                 if stable_id:
                     ap_id = format_ap_device_id(router_id, stable_id)
-                    # Verify the AP device exists to avoid "non existing via_device" warnings
-                    dev_reg = dr.async_get(hass)
                     if dev_reg.async_get_device(identifiers={(DOMAIN, ap_id)}):
                         via_device = (DOMAIN, ap_id)
+                elif wifi and wifi.radio:
+                    radio_id = format_radio_device_id(router_id, wifi.radio)
+                    if dev_reg.async_get_device(identifiers={(DOMAIN, radio_id)}):
+                        via_device = (DOMAIN, radio_id)
                 break
 
         # If not local wireless, check Batman-adv mesh for remote nodes

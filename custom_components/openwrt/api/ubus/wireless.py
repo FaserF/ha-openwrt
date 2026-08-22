@@ -107,6 +107,7 @@ class UbusWirelessMixin:
 
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable or disable a wireless radio via UCI."""
+        committed = False
         try:
             action = "0" if enabled else "1"  # disabled=0 means enabled
             await self._call(
@@ -119,10 +120,70 @@ class UbusWirelessMixin:
                 },
             )
             await self._call("uci", "commit", {"config": "wireless"})
+            committed = True
             await self._call("network.wireless", "notify")
             self._last_full_poll = 0
             return True
         except UbusError:
+            if not committed:
+                await self._revert_wireless_changes()
+            return False
+
+    async def _revert_wireless_changes(self) -> None:
+        """Best-effort discard of an incomplete wireless UCI transaction."""
+        try:
+            await self._call("uci", "revert", {"config": "wireless"})
+        except UbusError as err:
+            _LOGGER.debug("Failed to revert incomplete wireless UCI changes: %s", err)
+
+    async def set_wireless_network_enabled(
+        self,
+        interface: str,
+        radio: str,
+        enabled: bool,
+        *,
+        disable_radio: bool,
+    ) -> bool:
+        """Set an SSID and its radio in one UCI transaction."""
+        committed = False
+        try:
+            if enabled:
+                await self._call(
+                    "uci",
+                    "set",
+                    {
+                        "config": "wireless",
+                        "section": radio,
+                        "values": {"disabled": "0"},
+                    },
+                )
+            await self._call(
+                "uci",
+                "set",
+                {
+                    "config": "wireless",
+                    "section": interface,
+                    "values": {"disabled": "0" if enabled else "1"},
+                },
+            )
+            if disable_radio:
+                await self._call(
+                    "uci",
+                    "set",
+                    {
+                        "config": "wireless",
+                        "section": radio,
+                        "values": {"disabled": "1"},
+                    },
+                )
+            await self._call("uci", "commit", {"config": "wireless"})
+            committed = True
+            await self._call("network.wireless", "notify")
+            self._last_full_poll = 0
+            return True
+        except UbusError:
+            if not committed:
+                await self._revert_wireless_changes()
             return False
 
     async def get_wifi_credentials(self) -> list[WifiCredentials]:

@@ -68,6 +68,131 @@ async def test_ssh_get_device_info(ssh_client: SshClient):
 
 
 @pytest.mark.asyncio
+async def test_ssh_keeps_disabled_radio_when_another_radio_is_active(
+    ssh_client: SshClient,
+) -> None:
+    """Supplement runtime data with configured interfaces from every radio."""
+    ssh_client.packages.wireless = True
+
+    def exec_side_effect(command: str) -> str:
+        if "network.wireless status" in command:
+            return (
+                '{"radio0":{"up":true,"disabled":false,'
+                '"config":{"band":"2g"},"interfaces":['
+                '{"section":"main","ifname":"wlan0",'
+                '"config":{"ssid":"Main"}}]},'
+                '"radio1":{"up":false,"disabled":true,'
+                '"config":{"band":"5g"},"interfaces":[]}}'
+            )
+        if "iwinfo devices" in command:
+            return '{"devices":["wlan0"]}'
+        if "uci export wireless" in command:
+            return """package wireless
+
+config wifi-device 'radio0'
+\toption band '2g'
+
+config wifi-device 'radio1'
+\toption band '5g'
+\toption disabled 'true'
+
+config wifi-iface 'main'
+\toption device 'radio0'
+\toption mode 'ap'
+\toption ssid 'Main'
+\toption ifname 'wlan0'
+
+config wifi-iface 'guest'
+\toption device 'radio1'
+\toption mode 'ap'
+\toption ssid 'Guest'
+"""
+        return ""
+
+    with patch.object(
+        ssh_client,
+        "_exec",
+        new_callable=AsyncMock,
+        side_effect=exec_side_effect,
+    ):
+        interfaces = await ssh_client.get_wireless_interfaces()
+
+    assert len(interfaces) == 2
+    active = next(wifi for wifi in interfaces if wifi.section == "main")
+    disabled = next(wifi for wifi in interfaces if wifi.section == "guest")
+    assert active.radio_enabled is True
+    assert active.interface_enabled is True
+    assert disabled.radio == "radio1"
+    assert disabled.band == "5 GHz"
+    assert disabled.radio_enabled is False
+    assert disabled.interface_enabled is True
+    assert disabled.enabled is False
+
+
+@pytest.mark.asyncio
+async def test_ssh_runtime_disabled_interface_is_not_enabled(
+    ssh_client: SshClient,
+) -> None:
+    """Keep the combined state off when only the SSID is disabled."""
+    ssh_client.packages.wireless = True
+
+    def exec_side_effect(command: str) -> str:
+        if "network.wireless status" in command:
+            return (
+                '{"radio0":{"up":true,"disabled":false,'
+                '"config":{"band":"2g"},"interfaces":['
+                '{"section":"main","ifname":"wlan0",'
+                '"config":{"ssid":"Main","disabled":true}}]}}'
+            )
+        return ""
+
+    with patch.object(
+        ssh_client,
+        "_exec",
+        new_callable=AsyncMock,
+        side_effect=exec_side_effect,
+    ):
+        interfaces = await ssh_client.get_wireless_interfaces()
+
+    assert len(interfaces) == 1
+    assert interfaces[0].radio_enabled is True
+    assert interfaces[0].interface_enabled is False
+    assert interfaces[0].enabled is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method_name", "args", "kwargs"),
+    [
+        ("set_wireless_enabled", ("radio0", False), {}),
+        (
+            "set_wireless_network_enabled",
+            ("main", "radio0", False),
+            {"disable_radio": True},
+        ),
+    ],
+)
+async def test_ssh_wireless_mutation_rejects_nonzero_remote_exit(
+    ssh_client: SshClient,
+    method_name: str,
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+) -> None:
+    """Do not report a rejected remote wireless mutation as successful."""
+    ssh_client._last_full_poll = 123
+    with patch.object(
+        ssh_client,
+        "_exec",
+        new_callable=AsyncMock,
+        return_value="command failed\n__HA_RC__:1",
+    ):
+        result = await getattr(ssh_client, method_name)(*args, **kwargs)
+
+    assert result is False
+    assert ssh_client._last_full_poll == 123
+
+
+@pytest.mark.asyncio
 async def test_ssh_get_connected_devices_iwinfo_fallback(ssh_client: SshClient):
     """Test SSH client fallback to ubus hostapd for wifi clients when iwinfo fails."""
     ssh_client._connected = True

@@ -1,0 +1,57 @@
+name: Fork Feature Validation
+
+on:
+  push:
+    branches:
+      - 'codex/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-feature-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Check newly added data
+        run: |
+          python .github/scripts/check_private_data.py \
+            --self-test \
+            --github-event-name "${{ github.event_name }}" \
+            --github-before "${{ github.event.before }}" \
+            --default-branch "${{ github.event.repository.default_branch }}"
+
+      - name: Install validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy==1.18.2 pyyaml pytest pytest-asyncio pytest-cov homeassistant paramiko aiohttp pytest-homeassistant-custom-component beautifulsoup4
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Type check
+        run: >-
+          mypy --follow-imports=silent
+          custom_components/openwrt/api/ssh/network.py
+          custom_components/openwrt/api/ubus/network.py
+          custom_components/openwrt/api/ubus/wireless.py
+          custom_components/openwrt/coordinator.py
+          custom_components/openwrt/helpers/__init__.py
+          custom_components/openwrt/number.py
+          custom_components/openwrt/switch.py
+
+      - name: Test
+        run: PYTHONPATH=. pytest --cov=custom_components.openwrt --cov-report=term-missing
