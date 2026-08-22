@@ -1,6 +1,6 @@
 """Tests for wireless interface discovery and Access Point device grouping."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -594,3 +594,44 @@ def test_coordinator_reparents_existing_wireless_client_to_ssid(hass) -> None:
         "client_id", via_device_id="ssid_id"
     )
     registry.async_get_device.assert_not_called()
+
+
+def test_coordinator_reparents_with_legacy_device_registry(hass) -> None:
+    """Retain compatibility with HA releases before scoped registry lookups."""
+    from custom_components.openwrt.api.base import ConnectedDevice, OpenWrtData
+
+    config_entry = MagicMock()
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "router_mac"
+    config_entry.data = {"host": "192.0.2.1"}
+    config_entry.options = {}
+    coordinator = OpenWrtDataCoordinator(hass, config_entry, MagicMock())
+
+    client = MagicMock(id="client_id", via_device_id="router_id")
+    ssid = MagicMock(id="ssid_id")
+    registry = MagicMock(spec=["async_get_device", "async_update_device"])
+    registry.async_get_device.side_effect = [client, ssid]
+    data = OpenWrtData(
+        connected_devices=[
+            ConnectedDevice(
+                mac="02:00:00:00:00:01",
+                interface="phy0-ap0",
+                is_wireless=True,
+                connected=True,
+            )
+        ]
+    )
+
+    with patch(
+        "custom_components.openwrt.coordinator.get_via_device",
+        return_value=(DOMAIN, "router_mac_ap_Main_2.4 GHz"),
+    ):
+        coordinator._async_reparent_connected_devices(data, registry)
+
+    assert registry.async_get_device.call_args_list == [
+        call(identifiers={(DOMAIN, "02:00:00:00:00:01")}),
+        call(identifiers={(DOMAIN, "router_mac_ap_Main_2.4 GHz")}),
+    ]
+    registry.async_update_device.assert_called_once_with(
+        "client_id", via_device_id="ssid_id"
+    )

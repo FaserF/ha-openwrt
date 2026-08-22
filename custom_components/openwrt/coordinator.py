@@ -1741,18 +1741,35 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         device_registry: dr.DeviceRegistry,
     ) -> None:
         """Move existing wireless client devices below their current SSID."""
+        get_by_identifier = getattr(
+            device_registry, "async_get_device_by_identifier", None
+        )
+        get_by_connection = getattr(
+            device_registry, "async_get_device_by_connection", None
+        )
+
         for connected in data.connected_devices:
             if not connected.mac or not connected.connected or not connected.is_wireless:
                 continue
 
             mac = connected.mac.lower()
-            client_device = device_registry.async_get_device_by_identifier(
-                (DOMAIN, mac), self.config_entry.entry_id
-            )
-            if client_device is None:
-                client_device = device_registry.async_get_device_by_connection(
-                    (dr.CONNECTION_NETWORK_MAC, mac), self.config_entry.entry_id
+            if get_by_identifier is not None:
+                client_device = get_by_identifier(
+                    (DOMAIN, mac), self.config_entry.entry_id
                 )
+            else:
+                client_device = device_registry.async_get_device(
+                    identifiers={(DOMAIN, mac)}
+                )
+            if client_device is None:
+                if get_by_connection is not None:
+                    client_device = get_by_connection(
+                        (dr.CONNECTION_NETWORK_MAC, mac), self.config_entry.entry_id
+                    )
+                else:
+                    client_device = device_registry.async_get_device(
+                        connections={(dr.CONNECTION_NETWORK_MAC, mac)}
+                    )
             if client_device is None:
                 continue
 
@@ -1762,9 +1779,14 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 self.config_entry,
                 mac,
             )
-            parent_device = device_registry.async_get_device_by_identifier(
-                parent_identifier, self.config_entry.entry_id
-            )
+            if get_by_identifier is not None:
+                parent_device = get_by_identifier(
+                    parent_identifier, self.config_entry.entry_id
+                )
+            else:
+                parent_device = device_registry.async_get_device(
+                    identifiers={parent_identifier}
+                )
             if (
                 parent_device is not None
                 and client_device.via_device_id != parent_device.id
