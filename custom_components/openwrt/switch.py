@@ -36,7 +36,6 @@ from .const import (
 )
 from .coordinator import OpenWrtDataCoordinator
 from .helpers import (
-    _router_id,
     format_ap_device_id,
     format_ap_name,
     format_radio_device_id,
@@ -761,11 +760,13 @@ class OpenWrtRadioSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
         self._attr_name = "Physical radio"
         self._attr_unique_id = f"{entry.entry_id}_radio_{radio}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
+            identifiers={
+                (DOMAIN, format_radio_device_id(coordinator.router_id, radio))
+            },
             name=label,
             manufacturer="OpenWrt",
             model="Wireless Radio",
-            via_device=(DOMAIN, _router_id(entry)),
+            via_device=(DOMAIN, coordinator.router_id),
         )
 
     @property
@@ -851,9 +852,12 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
 
         name_label = format_ap_name(ssid or iface_name, frequency)
 
-        via_device = (DOMAIN, _router_id(entry))
+        via_device = (DOMAIN, coordinator.router_id)
         if radio:
-            via_device = (DOMAIN, format_radio_device_id(entry, radio))
+            via_device = (
+                DOMAIN,
+                format_radio_device_id(coordinator.router_id, radio),
+            )
         self._attr_device_info = DeviceInfo(
             identifiers={
                 (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
@@ -907,7 +911,9 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
 
             if self.coordinator.data:
                 for wifi in self.coordinator.data.wireless_interfaces:
-                    if wifi.name == self._iface_name:
+                    if wifi.name == self._iface_name or (
+                        self._section_id and wifi.section == self._section_id
+                    ):
                         wifi.interface_enabled = enabled
                         wifi.enabled = enabled
                     if wifi.radio == self._radio:

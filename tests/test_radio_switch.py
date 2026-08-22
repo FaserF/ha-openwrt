@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.openwrt.api.base import OpenWrtData, WirelessInterface
 from custom_components.openwrt.switch import (
@@ -45,7 +46,7 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         side_effect=lambda task: task.close()
     )
 
-    entry = MagicMock(entry_id="test_entry", unique_id="router_id")
+    entry = MagicMock(entry_id="test_entry", unique_id="stale_router_id")
     client = MagicMock()
     client.set_radio_enabled = AsyncMock(return_value=True)
     entities = []
@@ -75,6 +76,10 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
     assert next(iter(radios[0]._attr_device_info["identifiers"])) == (
         "openwrt",
         "router_id_radio_radio0",
+    )
+    assert radios[0]._attr_device_info["via_device"] == (
+        "openwrt",
+        "router_id",
     )
     ssid_entities = [
         entity for entity in radio0_entities if isinstance(entity, OpenWrtWirelessSwitch)
@@ -200,3 +205,93 @@ async def test_enabling_ssid_also_enables_its_radio() -> None:
     assert wifi.enabled is True
     assert wifi.radio_enabled is True
     assert switch.is_on is True
+
+
+@pytest.mark.asyncio
+async def test_rejected_radio_change_preserves_coordinator_state() -> None:
+    """Do not optimistically update a radio after a rejected command."""
+    wifi = WirelessInterface(name="wlan0", radio="radio0", radio_enabled=True)
+    coordinator = MagicMock()
+    coordinator.router_id = "router_id"
+    coordinator.data = OpenWrtData(wireless_interfaces=[wifi])
+    client = MagicMock()
+    client.set_radio_enabled = AsyncMock(return_value=False)
+    switch = OpenWrtRadioSwitch(
+        coordinator,
+        MagicMock(entry_id="test_entry", unique_id="router_id"),
+        client,
+        "radio0",
+        "2.4 GHz",
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await switch.async_turn_off()
+
+    assert wifi.radio_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_rejected_ssid_change_preserves_coordinator_state() -> None:
+    """Do not optimistically update an SSID after a rejected command."""
+    wifi = WirelessInterface(
+        name="wlan0",
+        section="main",
+        radio="radio0",
+        interface_enabled=True,
+        radio_enabled=True,
+    )
+    coordinator = MagicMock()
+    coordinator.router_id = "router_id"
+    coordinator.data = OpenWrtData(wireless_interfaces=[wifi])
+    client = MagicMock()
+    client.set_wireless_network_enabled = AsyncMock(return_value=False)
+    switch = OpenWrtWirelessSwitch(
+        coordinator,
+        MagicMock(entry_id="test_entry", unique_id="router_id"),
+        client,
+        wifi.name,
+        "Main",
+        section_id=wifi.section,
+        radio=wifi.radio,
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await switch.async_turn_off()
+
+    assert wifi.interface_enabled is True
+    assert wifi.radio_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_section_matched_ssid_gets_optimistic_update() -> None:
+    """Update an SSID whose runtime name differs from its UCI section."""
+    wifi = WirelessInterface(
+        name="wlan0",
+        section="main",
+        radio="radio0",
+        interface_enabled=True,
+        radio_enabled=True,
+    )
+    coordinator = MagicMock()
+    coordinator.router_id = "router_id"
+    coordinator.data = OpenWrtData(wireless_interfaces=[wifi])
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.hass.async_create_task = MagicMock(
+        side_effect=lambda task: task.close()
+    )
+    client = MagicMock()
+    client.set_wireless_network_enabled = AsyncMock(return_value=True)
+    switch = OpenWrtWirelessSwitch(
+        coordinator,
+        MagicMock(entry_id="test_entry", unique_id="router_id"),
+        client,
+        "main",
+        "Main",
+        section_id="main",
+        radio="radio0",
+    )
+
+    await switch.async_turn_off()
+
+    assert wifi.interface_enabled is False
+    assert wifi.enabled is False

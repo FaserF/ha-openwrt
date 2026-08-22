@@ -141,11 +141,13 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
         self._attr_name = "Transmit power"
         self._attr_unique_id = f"{entry.entry_id}_txpower_{radio}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, format_radio_device_id(entry, radio))},
+            identifiers={
+                (DOMAIN, format_radio_device_id(coordinator.router_id, radio))
+            },
             name=label,
             manufacturer="OpenWrt",
             model="Wireless Radio",
-            via_device=(DOMAIN, cast(str, entry.unique_id)),
+            via_device=(DOMAIN, coordinator.router_id),
         )
 
     @property

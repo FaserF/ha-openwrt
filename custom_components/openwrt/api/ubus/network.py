@@ -263,8 +263,6 @@ class UbusNetworkMixin:
                     if q_val is not None and q_max:
                         wifi.quality = round((q_val / q_max) * 100, 1)
 
-                    if iwinfo.get("txpower") is not None:
-                        wifi.txpower = iwinfo["txpower"]
                     if iwinfo.get("txpower_offset") is not None:
                         wifi.txpower_offset = iwinfo["txpower_offset"]
 

@@ -53,6 +53,11 @@ def format_radio_device_id(
     return f"{router_id}_radio_{radio}"
 
 
+def format_ap_stable_id(ssid: str, band: str, radio: str = "") -> str:
+    """Return an AP identifier distinct across physical radios."""
+    return f"{radio}_{ssid}_{band}" if radio else f"{ssid}_{band}"
+
+
 def format_radio_name(radio: str, band: str | None) -> str:
     """Return a concise radio display name with a stable fallback."""
     normalized_band = normalize_band(band) if band else "unknown"

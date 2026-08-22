@@ -164,8 +164,9 @@ class SshNetworkMixin:
         except Exception as err:
             _LOGGER.debug("network.wireless status failed via SSH: %s", err)
 
-        # 2. UCI fallback if no interfaces found via ubus
-        if not interfaces:
+        # 2. Always supplement runtime data with UCI. OpenWrt omits disabled
+        # interfaces (and all interfaces of a disabled radio) from runtime status.
+        if self.packages.wireless is not False:
             try:
                 uci_wireless_str = await self._exec("uci export wireless 2>/dev/null")
                 if uci_wireless_str:
@@ -185,42 +186,75 @@ class SshNetworkMixin:
                                     "'\""
                                 )
 
+                    by_section = {
+                        wifi.section: wifi for wifi in interfaces if wifi.section
+                    }
                     for sect_name, sect_data in sections.items():
                         if sect_data.get(".type") != "wifi-iface":
                             continue
 
                         iface_name = sect_data.get("ifname") or sect_name
                         radio_name = sect_data.get("device", "")
-                        radio_disabled = (
-                            sections.get(radio_name, {}).get("disabled", "0") == "1"
+                        radio_config = sections.get(radio_name, {})
+                        radio_disabled = WirelessInterface._uci_disabled(
+                            radio_config.get("disabled", "0")
                         )
-                        iface_disabled = sect_data.get("disabled", "0") == "1"
+                        iface_disabled = WirelessInterface._uci_disabled(
+                            sect_data.get("disabled", "0")
+                        )
+                        configured_enabled = not (radio_disabled or iface_disabled)
 
-                        ifname_val = sect_data.get("ifname")
-                        is_disabled = radio_disabled or iface_disabled
+                        existing = by_section.get(sect_name)
+                        if existing is not None:
+                            existing.radio = existing.radio or radio_name
+                            existing.radio_enabled = not radio_disabled
+                            existing.interface_enabled = not iface_disabled
+                            existing.enabled = configured_enabled
+                            existing.up = existing.up and configured_enabled
+                            existing.ssid = existing.ssid or sect_data.get("ssid", "")
+                            existing.mode = existing.mode or sect_data.get("mode", "")
+                            existing.encryption = existing.encryption or sect_data.get(
+                                "encryption", ""
+                            )
+                            existing.hwmode = existing.hwmode or radio_config.get(
+                                "hwmode", ""
+                            )
+                            existing.band = (
+                                existing.band
+                                or WirelessInterface._band_from_raw(
+                                    radio_config.get("band", "")
+                                    or radio_config.get("hwmode", "")
+                                )
+                            )
+                            continue
 
                         wifi = WirelessInterface(
                             name=iface_name,
                             ssid=sect_data.get("ssid", ""),
                             mode=sect_data.get("mode", ""),
                             encryption=sect_data.get("encryption", ""),
-                            enabled=not is_disabled,
+                            enabled=configured_enabled,
                             interface_enabled=not iface_disabled,
-                            up=not is_disabled,
+                            up=configured_enabled,
                             radio=radio_name,
                             radio_enabled=not radio_disabled,
-                            hwmode=sections.get(radio_name, {}).get("hwmode", ""),
+                            band=WirelessInterface._band_from_raw(
+                                radio_config.get("band", "")
+                                or radio_config.get("hwmode", "")
+                            ),
+                            hwmode=radio_config.get("hwmode", ""),
                             section=sect_name,
-                            ifname=ifname_val or "",
+                            ifname=sect_data.get("ifname", ""),
                         )
                         interfaces.append(wifi)
+                        by_section[sect_name] = wifi
                         iface_names.add(iface_name)
                         if sect_name and sect_name != iface_name:
                             iface_names.add(sect_name)
-                        if ifname_val and ifname_val != iface_name:
-                            iface_names.add(ifname_val)
+                        if wifi.ifname and wifi.ifname != iface_name:
+                            iface_names.add(wifi.ifname)
             except Exception as e:
-                _LOGGER.debug("UCI wireless fallback failed via SSH: %s", e)
+                _LOGGER.debug("UCI wireless supplement failed via SSH: %s", e)
 
         # 3. Populate metrics via ubus iwinfo
         for wifi in interfaces:

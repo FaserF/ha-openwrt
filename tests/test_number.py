@@ -113,6 +113,29 @@ def test_txpower_number_status_matching() -> None:
     assert num.native_value == 14
 
 
+def test_txpower_number_uses_canonical_router_id_without_entry_unique_id() -> None:
+    """Attach TX power to the coordinator router when unique_id is not set yet."""
+    coordinator = MagicMock()
+    coordinator.router_id = "canonical_router"
+    coordinator.data = OpenWrtData(
+        wireless_interfaces=[
+            WirelessInterface(name="wlan0", radio="radio0", txpower=20)
+        ]
+    )
+    entry = MagicMock(entry_id="test_entry", unique_id=None)
+
+    with patch("custom_components.openwrt.number.DeviceInfo", side_effect=dict):
+        entity = OpenWrtTxPowerNumber(coordinator, entry, "radio0", "2.4 GHz")
+
+    assert entity._attr_device_info["identifiers"] == {
+        ("openwrt", "canonical_router_radio_radio0")
+    }
+    assert entity._attr_device_info["via_device"] == (
+        "openwrt",
+        "canonical_router",
+    )
+
+
 def test_txpower_number_max_value() -> None:
     """Verify OpenWrtTxPowerNumber native_max_value respects txpower_offset."""
     from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
@@ -214,6 +237,7 @@ async def test_txpower_number_is_created_once_per_radio() -> None:
         ),
     ]
     coordinator = MagicMock()
+    coordinator.router_id = "02:00:00:00:00:01"
     coordinator.data = OpenWrtData(
         wireless_interfaces=wireless_interfaces,
         permissions=OpenWrtPermissions(write_wireless=True),
@@ -222,7 +246,7 @@ async def test_txpower_number_is_created_once_per_radio() -> None:
 
     entry = MagicMock()
     entry.entry_id = "test_entry"
-    entry.unique_id = "9483c4ac7a13"
+    entry.unique_id = "020000000001"
     entry.async_on_unload = MagicMock()
 
     added_entities: list[OpenWrtTxPowerNumber] = []
@@ -243,8 +267,8 @@ async def test_txpower_number_is_created_once_per_radio() -> None:
         next(iter(entity._attr_device_info["identifiers"]))
         for entity in added_entities
     } == {
-        ("openwrt", "94:83:c4:ac:7a:13_radio_radio0"),
-        ("openwrt", "94:83:c4:ac:7a:13_radio_radio1"),
+        ("openwrt", "02:00:00:00:00:01_radio_radio0"),
+        ("openwrt", "02:00:00:00:00:01_radio_radio1"),
     }
     assert {entity._attr_device_info["name"] for entity in added_entities} == {
         "2.4 GHz",

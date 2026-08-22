@@ -99,6 +99,7 @@ from .const import (
 from .helpers import (
     format_ap_device_id,
     format_ap_name,
+    format_ap_stable_id,
     format_radio_device_id,
     format_radio_name,
     get_via_device,
@@ -1745,10 +1746,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 continue
 
             mac = connected.mac.lower()
-            client_device = device_registry.async_get_device(
-                identifiers={(DOMAIN, mac)},
-                connections={(dr.CONNECTION_NETWORK_MAC, mac)},
+            client_device = device_registry.async_get_device_by_identifier(
+                (DOMAIN, mac), self.config_entry.entry_id
             )
+            if client_device is None:
+                client_device = device_registry.async_get_device_by_connection(
+                    (dr.CONNECTION_NETWORK_MAC, mac), self.config_entry.entry_id
+                )
             if client_device is None:
                 continue
 
@@ -1758,8 +1762,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 self.config_entry,
                 mac,
             )
-            parent_device = device_registry.async_get_device(
-                identifiers={parent_identifier}
+            parent_device = device_registry.async_get_device_by_identifier(
+                parent_identifier, self.config_entry.entry_id
             )
             if (
                 parent_device is not None
@@ -1870,7 +1874,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         for wifi in data.wireless_interfaces:
             if not wifi.radio:
                 continue
-            band = normalize_band(wifi.band or wifi.frequency or wifi.radio)
+            band = (
+                normalize_band(wifi.band or wifi.frequency)
+                if wifi.band or wifi.frequency
+                else ""
+            )
             radio_info.setdefault(wifi.radio, band)
 
         radio_devices: dict[str, dr.DeviceEntry] = {}
@@ -1916,11 +1924,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # than the raw frequency in MHz. This groups all virtual interfaces on
             # the same radio+SSID combination under one stable AP device, even
             # when different channels are reported across updates.
-            band = normalize_band(wifi.band or wifi.frequency or wifi.radio)
+            band = (
+                normalize_band(wifi.band or wifi.frequency)
+                if wifi.band or wifi.frequency
+                else ""
+            )
             label = format_ap_name(wifi.ssid, band)
 
-            # Use SSID and Band as stable identifier to group virtual interfaces
-            stable_id = f"{wifi.ssid}_{band}"
+            # Group virtual interfaces only within the same physical radio.
+            stable_id = format_ap_stable_id(wifi.ssid, band, wifi.radio)
             self.interface_to_stable_id[wifi.name] = stable_id
             ap_info[stable_id] = (label, wifi.radio)
 

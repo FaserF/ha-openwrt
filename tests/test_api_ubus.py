@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from custom_components.openwrt.api.ubus import UbusClient
+from custom_components.openwrt.api.ubus import UbusClient, UbusError
 
 
 @pytest.fixture
@@ -515,6 +515,44 @@ async def test_ubus_get_wireless_interfaces_matching(ubus_client: UbusClient):
 
 
 @pytest.mark.asyncio
+async def test_ubus_rejects_invalid_reported_txpower(ubus_client: UbusClient) -> None:
+    """Keep configured TX power when iwinfo reports an invalid zero value."""
+    ubus_client.packages.wireless = True
+
+    def call_side_effect(object_name, method, params=None, *args, **kwargs):
+        if object_name == "network.wireless" and method == "status":
+            return {
+                "radio0": {
+                    "config": {"band": "2g", "txpower": 17},
+                    "interfaces": [
+                        {
+                            "section": "main",
+                            "ifname": "wlan0",
+                            "config": {"ssid": "Main"},
+                        }
+                    ],
+                }
+            }
+        if object_name == "uci" and method == "get":
+            return {}
+        if object_name == "iwinfo" and method == "devices":
+            return ["wlan0"]
+        if object_name == "iwinfo" and method == "info":
+            return {"ssid": "Main", "txpower": 0}
+        return {}
+
+    with patch.object(
+        ubus_client,
+        "_call",
+        new_callable=AsyncMock,
+        side_effect=call_side_effect,
+    ):
+        interfaces = await ubus_client.get_wireless_interfaces()
+
+    assert interfaces[0].txpower == 17
+
+
+@pytest.mark.asyncio
 async def test_ubus_wireless_skips_radio_info(ubus_client: UbusClient):
     """Test that physical radio names are not queried as iwinfo interfaces."""
     ubus_client.packages.wireless = True
@@ -634,6 +672,68 @@ async def test_ubus_coordinates_ssid_and_radio_in_one_transaction(
             "values": {"disabled": radio_state},
         },
     ) in mock_call.await_args_list
+
+
+@pytest.mark.asyncio
+async def test_ubus_reverts_partial_wireless_transaction(
+    ubus_client: UbusClient,
+) -> None:
+    """Discard staged UCI changes when a pre-commit operation fails."""
+    calls = []
+
+    async def call_side_effect(object_name, method, params=None, *args, **kwargs):
+        calls.append(call(object_name, method, params))
+        if object_name == "uci" and method == "set" and params["section"] == "main":
+            raise UbusError("set failed")
+        return {}
+
+    with patch.object(
+        ubus_client,
+        "_call",
+        new_callable=AsyncMock,
+        side_effect=call_side_effect,
+    ):
+        result = await ubus_client.set_wireless_network_enabled(
+            "main",
+            "radio0",
+            True,
+            disable_radio=False,
+        )
+
+    assert result is False
+    assert call("uci", "revert", {"config": "wireless"}) in calls
+    assert call("uci", "commit", {"config": "wireless"}) not in calls
+
+
+@pytest.mark.asyncio
+async def test_ubus_does_not_revert_after_successful_commit(
+    ubus_client: UbusClient,
+) -> None:
+    """Do not undo committed state when only the wireless notification fails."""
+    calls = []
+
+    async def call_side_effect(object_name, method, params=None, *args, **kwargs):
+        calls.append(call(object_name, method, params))
+        if object_name == "network.wireless" and method == "notify":
+            raise UbusError("notify failed")
+        return {}
+
+    with patch.object(
+        ubus_client,
+        "_call",
+        new_callable=AsyncMock,
+        side_effect=call_side_effect,
+    ):
+        result = await ubus_client.set_wireless_network_enabled(
+            "main",
+            "radio0",
+            False,
+            disable_radio=True,
+        )
+
+    assert result is False
+    assert call("uci", "commit", {"config": "wireless"}) in calls
+    assert call("uci", "revert", {"config": "wireless"}) not in calls
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 """Tests for GPS location updates from Quectel modem."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -70,9 +70,15 @@ async def test_async_update_gps_location(hass):
         "===GPS_LOC===\n+QGPSLOC: 105742.00,5201.0090N,00043.0931W,0.8,78.2,3,,0.0,0.0,290626,13\nOK",  # location output
     ]
 
-    with patch.object(
-        hass.services, "async_call", new_callable=AsyncMock
-    ) as mock_service_call:
+    with (
+        patch.object(
+            hass.services, "async_call", new_callable=AsyncMock
+        ) as mock_service_call,
+        patch(
+            "custom_components.openwrt.helpers.gps.dt_util.now",
+            return_value=datetime(2026, 1, 1, tzinfo=UTC),
+        ),
+    ):
         res = await async_update_gps_location(hass, mock_client, "/dev/ttyUSB3")
         assert res is not None
         assert res[0] == pytest.approx(52.016817)
