@@ -10,7 +10,50 @@ from custom_components.openwrt.switch import (
     OpenWrtRadioSwitch,
     OpenWrtWirelessSwitch,
     _add_wireless_switches,
+    async_setup_entry,
 )
+
+
+@pytest.mark.asyncio
+async def test_setup_removes_only_orphaned_radio_switches(hass) -> None:
+    """Remove radio switches whose physical radio is no longer discovered."""
+    coordinator = MagicMock()
+    coordinator.data = OpenWrtData(
+        wireless_interfaces=[WirelessInterface(name="phy0-ap0", radio="radio0")]
+    )
+    coordinator.async_add_listener = MagicMock()
+    coordinator._device_history = {}
+
+    entry = MagicMock(entry_id="test_entry")
+    entry.data = {}
+    entry.options = {}
+    entry.async_on_unload = MagicMock()
+    hass.data = {
+        "openwrt": {entry.entry_id: {"coordinator": coordinator, "client": MagicMock()}}
+    }
+    hass.add_job = MagicMock(side_effect=lambda callback: callback())
+
+    active = MagicMock(
+        domain="switch",
+        entity_id="switch.radio0",
+        unique_id="test_entry_radio_radio0",
+    )
+    orphaned = MagicMock(
+        domain="switch",
+        entity_id="switch.radio1",
+        unique_id="test_entry_radio_radio1",
+    )
+    registry = MagicMock()
+    with (
+        patch("custom_components.openwrt.switch.er.async_get", return_value=registry),
+        patch(
+            "custom_components.openwrt.switch.er.async_entries_for_config_entry",
+            return_value=[active, orphaned],
+        ),
+    ):
+        await async_setup_entry(hass, entry, MagicMock())
+
+    registry.async_remove.assert_called_once_with("switch.radio1")
 
 
 @pytest.mark.asyncio
@@ -250,6 +293,51 @@ async def test_enabling_ssid_also_enables_its_radio() -> None:
     assert wifi.enabled is True
     assert wifi.radio_enabled is True
     assert switch.is_on is True
+
+
+@pytest.mark.asyncio
+async def test_enabling_ssid_recomputes_enabled_sibling_state() -> None:
+    """Restore configured sibling SSIDs when their shared radio is enabled."""
+    target = WirelessInterface(
+        name="phy1-ap0",
+        section="main_5g",
+        ssid="Main",
+        radio="radio1",
+        enabled=False,
+        interface_enabled=False,
+        radio_enabled=False,
+    )
+    sibling = WirelessInterface(
+        name="phy1-ap1",
+        section="guest_5g",
+        ssid="Guest",
+        radio="radio1",
+        enabled=False,
+        interface_enabled=True,
+        radio_enabled=False,
+    )
+    coordinator = MagicMock()
+    coordinator.data = OpenWrtData(wireless_interfaces=[target, sibling])
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.hass.async_create_task = MagicMock(
+        side_effect=lambda task: task.close()
+    )
+    client = MagicMock()
+    client.set_wireless_network_enabled = AsyncMock(return_value=True)
+    switch = OpenWrtWirelessSwitch(
+        coordinator,
+        MagicMock(entry_id="test_entry", unique_id="router_id"),
+        client,
+        target.name,
+        target.ssid,
+        section_id=target.section,
+        radio=target.radio,
+    )
+
+    await switch.async_turn_on()
+
+    assert target.enabled is True
+    assert sibling.enabled is True
 
 
 @pytest.mark.asyncio

@@ -28,11 +28,11 @@ jobs:
 
       - name: Check newly added data
         run: |
-          BASE_SHA="${{ github.event.before }}"
-          if [[ "${{ github.event_name }}" != "push" || "$BASE_SHA" =~ ^0+$ ]]; then
-            BASE_SHA="$(git rev-parse HEAD^)"
-          fi
-          python .github/scripts/check_private_data.py --self-test --base "$BASE_SHA"
+          python .github/scripts/check_private_data.py \
+            --self-test \
+            --github-event-name "${{ github.event_name }}" \
+            --github-before "${{ github.event.before }}" \
+            --default-branch "${{ github.event.repository.default_branch }}"
 
       - name: Install validation dependencies
         run: |

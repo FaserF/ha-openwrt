@@ -156,6 +156,14 @@ async def async_setup_entry(
                     ent_reg.async_remove(ent.entity_id)
                     continue
 
+            if "_radio_" in unique_id and coordinator.data:
+                radio = unique_id.split("_radio_")[-1]
+                if not any(
+                    wifi.radio == radio for wifi in coordinator.data.wireless_interfaces
+                ):
+                    ent_reg.async_remove(ent.entity_id)
+                    continue
+
     hass.add_job(_async_cleanup_entities)
 
 
@@ -922,6 +930,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
                             wifi.radio_enabled = True
                         elif disable_radio:
                             wifi.radio_enabled = False
+                        wifi.enabled = wifi.radio_enabled and wifi.interface_enabled
             self.async_write_ha_state()
         except HomeAssistantError:
             raise

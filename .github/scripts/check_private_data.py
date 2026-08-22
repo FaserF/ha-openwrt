@@ -151,12 +151,37 @@ def _self_test() -> None:
         raise RuntimeError("privacy scanner self-test failed")
 
 
+def _resolve_github_base(
+    event_name: str,
+    before: str,
+    default_branch: str,
+) -> str:
+    """Resolve the complete branch base for a GitHub Actions scan."""
+    if event_name == "push" and before and set(before) != {"0"}:
+        return before
+    if not default_branch:
+        raise ValueError("default branch is required")
+    remote_ref = f"refs/remotes/origin/{default_branch}"
+    _run_git(
+        [
+            "fetch",
+            "--no-tags",
+            "origin",
+            f"{default_branch}:{remote_ref}",
+        ]
+    )
+    return _run_git(["merge-base", "HEAD", remote_ref]).strip()
+
+
 def main() -> int:
     """Scan staged or branch-added lines."""
     parser = argparse.ArgumentParser()
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--staged", action="store_true")
     source.add_argument("--base")
+    source.add_argument("--github-event-name")
+    parser.add_argument("--github-before", default="")
+    parser.add_argument("--default-branch", default="")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
@@ -166,8 +191,18 @@ def main() -> int:
         diff = _run_git(["diff", "--cached", "--unified=0", "--no-ext-diff"])
     elif args.base:
         diff = _run_git(["diff", "--unified=0", "--no-ext-diff", args.base])
+    elif args.github_event_name:
+        try:
+            base = _resolve_github_base(
+                args.github_event_name,
+                args.github_before,
+                args.default_branch,
+            )
+        except ValueError as err:
+            parser.error(str(err))
+        diff = _run_git(["diff", "--unified=0", "--no-ext-diff", base])
     else:
-        parser.error("one of --staged or --base is required")
+        parser.error("one of --staged, --base, or --github-event-name is required")
 
     violations = find_violations(_added_lines(diff), _load_private_patterns())
     for violation in violations:
