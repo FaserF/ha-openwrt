@@ -131,25 +131,35 @@ def main():
 
     # Generate Changelog
     changelog_md = ""
-    if os.path.exists("scripts/generate_changelog.py"):
+    script_path = None
+    if os.path.exists(".github/scripts/changelog_builder.py"):
+        script_path = ".github/scripts/changelog_builder.py"
+    elif os.path.exists("scripts/generate_changelog.py"):
+        script_path = "scripts/generate_changelog.py"
+
+    if script_path:
         try:
-            changelog_md = (
-                subprocess.check_output(
-                    [
-                        "python",
-                        "scripts/generate_changelog.py",
-                        "--from-tag",
-                        changelog_from,
-                        "--total-commits",
-                        str(total_commit_count),
-                        "--repo",
-                        repo,
-                    ]
-                )
-                .decode("utf-8")
-                .strip()
-            )
-        except Exception:
+            repo_url = f"https://github.com/{repo}" if repo else f"https://github.com/{owner}/{repo_name}"
+            cl_args = [
+                "python",
+                script_path,
+                "--repo-url",
+                repo_url,
+                "--output",
+                "CHANGELOG_BODY.md",
+            ]
+            if changelog_from:
+                cl_args.extend(["--from-tag", changelog_from])
+            subprocess.run(cl_args, check=True)
+            if os.path.exists("CHANGELOG_BODY.md"):
+                with open("CHANGELOG_BODY.md", encoding="utf-8") as cl_file:
+                    changelog_md = cl_file.read().strip()
+                try:
+                    os.remove("CHANGELOG_BODY.md")
+                except OSError:
+                    pass
+        except Exception as e:
+            print(f"Error generating changelog: {e}")
             changelog_md = (
                 "_Changelog could not be generated automatically. See commit history._"
             )

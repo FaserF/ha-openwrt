@@ -99,26 +99,44 @@ def main():
         total_commit_count = 0
 
     # 4. Generate Changelog
-    changelog_md = (
-        "_Changelog could not be generated automatically. See commit history._"
-    )
-    if os.path.exists("scripts/generate_changelog.py"):
+    changelog_md = ""
+    script_path = None
+    if os.path.exists(".github/scripts/changelog_builder.py"):
+        script_path = ".github/scripts/changelog_builder.py"
+    elif os.path.exists("scripts/generate_changelog.py"):
+        script_path = "scripts/generate_changelog.py"
+
+    if script_path:
         try:
+            repo_url = f"https://github.com/{repo}"
             cl_args = [
                 "python",
-                "scripts/generate_changelog.py",
-                "--total-commits",
-                str(total_commit_count),
+                script_path,
+                "--repo-url",
+                repo_url,
+                "--output",
+                "CHANGELOG_BODY.md",
             ]
             if changelog_from:
                 cl_args.extend(["--from-tag", changelog_from])
-            if repo:
-                cl_args.extend(["--repo", repo])
-            changelog_md = run_cmd(cl_args)
-            if not changelog_md.strip():
-                changelog_md = "_No categorised changes detected._"
+            subprocess.run(cl_args, check=True)
+            if os.path.exists("CHANGELOG_BODY.md"):
+                with open("CHANGELOG_BODY.md", encoding="utf-8") as cl_file:
+                    changelog_md = cl_file.read().strip()
+                try:
+                    os.remove("CHANGELOG_BODY.md")
+                except OSError:
+                    pass
         except Exception as e:
-            print(f"Error calling changelog generator: {e}")
+            print(f"Error generating changelog: {e}")
+            changelog_md = (
+                "_Changelog could not be generated automatically. See commit history._"
+            )
+    else:
+        changelog_md = "_Changelog script not found._"
+
+    if not changelog_md:
+        changelog_md = "_No categorised changes detected._"
 
     # 5. Channel decoration
     if release_type == "stable":
