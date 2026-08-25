@@ -244,7 +244,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self.in_reboot_installation = False
         self._firmware_checked = False
         # Initialize firmware check timer to avoid blocking initial startup with external GitHub/ASU API calls
-        self._last_firmware_check: float = self.hass.loop.time() if self.hass and self.hass.loop else 0.0
+        self._last_firmware_check: float = (
+            self.hass.loop.time() if self.hass and self.hass.loop else 0.0
+        )
         self._last_gps_check: float = -86400.0  # Force check on startup
         self._last_update_time: float = 0.0
         self._device_history: dict[str, dict[str, Any]] = {}
@@ -901,7 +903,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         # Core system read permission is required for the integration to function
         perms = data.permissions
-        packages = data.packages
 
         stale = False
         reason = ""
