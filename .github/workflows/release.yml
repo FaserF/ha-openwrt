@@ -239,14 +239,14 @@ jobs:
               --notes-file "release_body.md" \
               --draft=false \
               $prerelease_arg
-            gh release upload "$TAG" openwrt.zip --clobber
+            gh release upload "$TAG" integration.zip --clobber
           else
             gh release create "$TAG" \
               --target "${{ github.ref_name }}" \
               --title "Release $VERSION" \
               --notes-file "release_body.md" \
               $prerelease_arg \
-              openwrt.zip
+              integration.zip
           fi
 
  
