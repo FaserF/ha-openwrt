@@ -206,8 +206,13 @@ jobs:
 
       - name: 📦 Zip Component
         run: |
-          cd custom_components/openwrt
-          zip -r ../../openwrt.zip .
+          DOMAIN=$(python -c "import json, glob; print(json.load(open(glob.glob('custom_components/*/manifest.json')[0]))['domain'])")
+          cd "custom_components/$DOMAIN"
+          zip -r "../../$DOMAIN.zip" .
+          cd ../..
+          mv "$DOMAIN.zip" integration.zip || true
+          # Keep domain-named zip for backward compatibility
+          cp integration.zip "$DOMAIN.zip" 2>/dev/null || true
 
       - name: Download Release Body Artifact
         uses: actions/download-artifact@v8
