@@ -421,12 +421,18 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             utc_now = dt_util.utcnow()
             # Calculate what the boot time would be based on current uptime
             boot_time_raw = utc_now - timedelta(seconds=uptime)
-            if uptime >= 3600:
-                # More than 1 hour: Round to start of hour to reduce state changes
-                new_boot_time = boot_time_raw.replace(minute=0, second=0, microsecond=0)
-            else:
-                # Less than 1 hour: Round to start of minute
-                new_boot_time = boot_time_raw.replace(second=0, microsecond=0)
+            # Round to the nearest minute. Rounding to the full hour once
+            # uptime exceeded 3600 s discarded the minute component, so a
+            # router booted at 05:02 was reported as 05:00, and one booted
+            # at 05:47 also as 05:00 - an error of up to 59 minutes.
+            # Adding 30 s before truncating rounds to the nearest minute
+            # rather than always flooring, which would report a boot time
+            # up to 59 s early. Poll jitter is already absorbed by the
+            # >60 s stabilization check below, which is what keeps the
+            # sensor from flickering.
+            new_boot_time = (boot_time_raw + timedelta(seconds=30)).replace(
+                second=0, microsecond=0
+            )
 
             # Stabilization logic:
             # If we don't have a boot time yet, set it.
