@@ -1,4 +1,4 @@
-﻿import argparse
+import argparse
 import datetime
 import glob
 import json
