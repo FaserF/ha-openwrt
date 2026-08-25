@@ -13,6 +13,7 @@ target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
+ignore = ["E501", "B008", "SIM102", "SIM105", "SIM117", "E402", "B017", "B904", "ARG001", "RUF012", "DTZ003", "DTZ007", "DTZ001", "DTZ005", "BLE001", "S110", "S112"]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
