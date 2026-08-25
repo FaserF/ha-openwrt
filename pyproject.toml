@@ -13,22 +13,8 @@ target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
 ignore = ["E501", "B008", "SIM102", "SIM105", "SIM117", "E402", "B017", "B904", "ARG001", "RUF012", "DTZ003", "DTZ007", "DTZ001", "DTZ005", "BLE001", "S110", "S112"]
-select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "C",  # flake8-comprehensions
-    "B",  # flake8-bugbear
-    "UP", # pyupgrade
-]
-ignore = [
-    "E501",  # line too long, handled by black
-    "C901",  # too complex
-    "F403",  # star imports used
-    "F405",  # undefined names from star imports
-]
 
 [tool.mypy]
 explicit_package_bases = true
