@@ -243,7 +243,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self.config_entry = config_entry
         self.in_reboot_installation = False
         self._firmware_checked = False
-        self._last_firmware_check: float = -86400.0  # Force check on startup
+        # Initialize firmware check timer to avoid blocking initial startup with external GitHub/ASU API calls
+        self._last_firmware_check: float = self.hass.loop.time() if self.hass and self.hass.loop else 0.0
         self._last_gps_check: float = -86400.0  # Force check on startup
         self._last_update_time: float = 0.0
         self._device_history: dict[str, dict[str, Any]] = {}
@@ -895,34 +896,18 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         """Check for stale permissions."""
         username = self.config_entry.data.get(CONF_USERNAME, "homeassistant")
         if username == "root":
+            async_delete_stale_permissions_repair(self.hass, self.config_entry)
             return
 
-        # Identify missing but expected permissions based on detected packages
+        # Core system read permission is required for the integration to function
         perms = data.permissions
         packages = data.packages
 
         stale = False
         reason = ""
-        # We check for core features that indicate the RPC user needs more rights
-        # than what were granted during its creation.
         if not perms.read_system:
             stale = True
             reason = "missing core system read permissions"
-        elif packages.wireless and not perms.read_wireless:
-            stale = True
-            reason = "missing wireless read permissions (wireless package detected)"
-        elif packages.mwan3 and not perms.read_mwan:
-            stale = True
-            reason = "missing mwan3 read permissions (mwan3 package detected)"
-        elif packages.sqm_scripts and not perms.read_sqm:
-            stale = True
-            reason = "missing sqm read permissions (sqm package detected)"
-        elif packages.adblock and not perms.read_services:
-            stale = True
-            reason = "missing service read permissions (adblock package detected)"
-        elif packages.nlbwmon and not perms.read_network:
-            stale = True
-            reason = "missing network read permissions (nlbwmon package detected)"
 
         # Detect if an upgrade happened
         current_version = data.device_info.release_version
