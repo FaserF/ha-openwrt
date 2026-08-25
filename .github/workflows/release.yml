@@ -57,14 +57,14 @@ jobs:
       is_prerelease: ${{ steps.get_version.outputs.is_prerelease }}
       release_body: ${{ steps.get_version.outputs.release_body }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.7"
 
       - name: Calculate Version and Release Details
         id: get_version
@@ -80,7 +80,7 @@ jobs:
           python .github/scripts/calculate_release_details.py
 
       - name: Upload Release Body
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: release-body
           path: release_body.md
@@ -93,14 +93,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.7"
 
       - name: Configure Git and pull latest
         run: |
@@ -119,11 +119,23 @@ jobs:
           fi
 
       - name: Upload Updated Components
-        uses: actions/upload-artifact@v7
+
+
+        uses: actions/upload-artifact@v7.0.1
+
+
         with:
+
+
           name: updated-components
+
+
           path: custom_components/
+
+
           retention-days: 1
+
+
 
       - name: Commit and Push
         run: |
@@ -134,7 +146,7 @@ jobs:
           fi
 
       - name: Download Release Body
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: release-body
 
@@ -152,10 +164,7 @@ jobs:
           IS_PRERELEASE: ${{ needs.versioning.outputs.is_prerelease }}
         shell: bash
         run: |
-          release_id=$(gh api "repos/$REPO/releases" --jq '.[] | select(.tag_name=="'$TAG'" or .name=="Release '$VERSION'") | select(.draft==true) | .id')
-          if [ -n "$release_id" ]; then
-            gh api -X DELETE "repos/$REPO/releases/$release_id"
-          fi
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
           git tag -d "$TAG" 2>/dev/null || true
           git push --delete origin "$TAG" 2>/dev/null || true
 
@@ -170,6 +179,7 @@ jobs:
             --draft \
             $prerelease_arg
 
+
   gh-release:
     needs: [versioning, sync-version]
     if: always() && needs.versioning.result == 'success' && needs.sync-version.result == 'success'
@@ -179,7 +189,7 @@ jobs:
       contents: write
       actions: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
@@ -189,7 +199,7 @@ jobs:
           git pull --rebase origin ${{ github.ref_name }}
 
       - name: Download Updated Components
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: updated-components
           path: custom_components/
@@ -200,7 +210,7 @@ jobs:
           zip -r ../../openwrt.zip .
 
       - name: Download Release Body Artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: release-body
 
@@ -213,29 +223,19 @@ jobs:
           IS_PRERELEASE: ${{ needs.versioning.outputs.is_prerelease }}
         shell: bash
         run: |
-          # Find existing draft release
-          release_id=$(gh api "repos/$REPO/releases" --jq '.[] | select(.tag_name=="'$TAG'" or .name=="Release '$VERSION'") | select(.draft==true) | .id')
-
-          # Set prerelease argument
           prerelease_arg=""
           if [ "$IS_PRERELEASE" = "true" ]; then
             prerelease_arg="--prerelease"
           fi
-
-          if [ -n "$release_id" ]; then
-            # Update the existing draft release to publish it
-            gh api -X PATCH "repos/$REPO/releases/$release_id" \
-              -f tag_name="$TAG" \
-              -f target_commitish="${{ github.ref_name }}" \
-              -f name="Release $VERSION" \
-              -f body_path="release_body.md" \
-              -F draft=false \
-              -F prerelease=$( [ "$IS_PRERELEASE" = "true" ] && echo "true" || echo "false" )
-
-            # Upload the assets to the published release
+          
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "Release $VERSION" \
+              --notes-file "release_body.md" \
+              --draft=false \
+              $prerelease_arg
             gh release upload "$TAG" openwrt.zip --clobber
           else
-            # Create a brand new release if no draft exists
             gh release create "$TAG" \
               --target "${{ github.ref_name }}" \
               --title "Release $VERSION" \
@@ -244,6 +244,7 @@ jobs:
               openwrt.zip
           fi
 
+ 
       - name: Post-Release Dev Bump
         run: |
           git config --global user.name "github-actions[bot]"
@@ -267,22 +268,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
-      - name: Delete Draft Release
+      - name: Delete Draft Release and Tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.versioning.outputs.tag }}
         shell: bash
         run: |
-          release_id=$(gh api "repos/$REPO/releases" --jq '.[] | select(.tag_name=="'$TAG'") | select(.draft==true) | .id')
-          if [ -n "$release_id" ]; then
-            gh api -X DELETE "repos/$REPO/releases/$release_id"
-            gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          fi
-
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          git tag -d "$TAG" 2>/dev/null || true
+          git push --delete origin "$TAG" 2>/dev/null || true
       - name: Delete Component Artifact
-        uses: actions/github-script@v9
+        uses: actions/github-script@v9.0.0
         with:
           script: |
             const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
