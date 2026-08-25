@@ -64,7 +64,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.14.7"
+          python-version: '3.14'
 
       - name: Calculate Version and Release Details
         id: get_version
@@ -100,7 +100,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.14.7"
+          python-version: '3.14'
 
       - name: Configure Git and pull latest
         run: |
