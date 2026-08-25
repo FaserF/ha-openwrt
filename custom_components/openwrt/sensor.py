@@ -2721,6 +2721,7 @@ def _create_mwan_sensors(
                 name=f"MWAN {iface_name} Online Ratio",
                 native_unit_of_measurement=PERCENTAGE,
                 state_class=SensorStateClass.MEASUREMENT,
+                suggested_display_precision=2,
                 value_fn=lambda data, n=iface_name: next(
                     (
                         m.online_ratio * 100

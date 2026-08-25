@@ -22,6 +22,18 @@ UBUS_ID_AUTH = 1
 UBUS_ID_CALL = 2
 
 
+def _as_seconds(value: Any) -> float:
+    """Coerce a ubus duration field to float seconds.
+
+    Routers occasionally omit these fields or report them as null, in which
+    case float() would raise and abort the whole status response.
+    """
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _valid_txpower(value: Any) -> int:
     """Return a positive dBm value, or zero when OpenWrt has no reading."""
     try:
@@ -604,11 +616,21 @@ class UbusNetworkMixin:
             data = await self._call("mwan3", "status")
             interfaces = data.get("interfaces", {})
             for iface_name, iface_data in interfaces.items():
+                # mwan3 reports "online" and "uptime" as durations in
+                # seconds. online_ratio is expected to be the fraction of
+                # uptime spent online; passing the raw seconds through made
+                # the sensor display values in the millions of percent.
+                online_secs = _as_seconds(iface_data.get("online"))
+                uptime_secs = _as_seconds(iface_data.get("uptime"))
                 statuses.append(
                     MwanStatus(
                         interface_name=iface_name,
                         status=iface_data.get("status", "unknown"),
-                        online_ratio=float(iface_data.get("online", 0)),
+                        online_ratio=(
+                            min(online_secs / uptime_secs, 1.0)
+                            if uptime_secs > 0
+                            else 0.0
+                        ),
                         uptime=iface_data.get("uptime", 0),
                         enabled=iface_data.get("enabled", False),
                     ),
