@@ -14,7 +14,14 @@ from ..base import (
     OpenWrtPermissions,
 )
 from .devices import LuciRpcDevicesMixin
-from .exceptions import *
+from .exceptions import (
+    LuciRpcAuthError,
+    LuciRpcConnectionError,
+    LuciRpcError,
+    LuciRpcPackageMissingError,
+    LuciRpcSslError,
+    LuciRpcTimeoutError,
+)
 from .features import LuciRpcFeaturesMixin
 from .network import LuciRpcNetworkMixin
 from .system import LuciRpcSystemMixin

@@ -12,7 +12,7 @@ def get_latest_ha_version():
         with urllib.request.urlopen(req, timeout=5) as response:
             data = json.loads(response.read().decode("utf-8"))
             return data["info"]["version"]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error fetching HA version: {e}")
         return "2026.6.2"
 
@@ -28,7 +28,7 @@ def get_service_version(repo_name):
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode("utf-8"))
                 return data["latest"][0]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Error fetching OpenWrt version: {e}")
             return "25.12.4"
 
@@ -41,7 +41,7 @@ def get_service_version(repo_name):
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode("utf-8"))
                 return data["tag_name"].lstrip("v")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Error fetching Valetudo version: {e}")
             return "2026.6.0"
 
@@ -54,7 +54,7 @@ def get_service_version(repo_name):
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode("utf-8"))
                 return data["tag_name"].lstrip("v")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Error fetching Atmosphere version: {e}")
             return "1.8.0"
 

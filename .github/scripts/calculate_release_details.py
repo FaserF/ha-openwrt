@@ -161,7 +161,7 @@ def main():
                     os.remove("CHANGELOG_BODY.md")
                 except OSError:
                     pass
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Error generating changelog: {e}")
             changelog_md = (
                 "_Changelog could not be generated automatically. See commit history._"

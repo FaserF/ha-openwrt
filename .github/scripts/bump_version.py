@@ -14,7 +14,7 @@ def get_latest_tag():
         )
         tags = result.stdout.strip().split("\n")
         return tags[0] if tags and tags[0] else None
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -68,7 +68,7 @@ def bump_version(current, bump_type, release_status, all_tags=None):
                     s_major, s_minor, s_patch, _, _ = parse_version(t)
                     latest_stable = (s_major, s_minor, s_patch)
                     break
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     # Calculate Target Stable Core
