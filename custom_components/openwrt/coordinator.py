@@ -334,7 +334,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         except Exception as err:
             _LOGGER.warning("Could not load persistent history: %s", err)
 
-        # Try to connect and perform first fetch
+        # Try to connect
         for attempt in range(1, 4):
             try:
                 _LOGGER.debug(
@@ -344,30 +344,19 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 if not self.client.connected:
                     await self.client.connect()
 
-                # Also try an initial data fetch to populate the coordinator
-                self.data = await self.client.get_all_data()
-                if self.data:
-                    if self.data.device_info:
-                        self.data.firmware_current_version = (
-                            self.data.device_info.firmware_version
-                            or self.data.device_info.release_version
-                        )
-                    # Crucial: Populate interface mappings and register devices BEFORE platforms load
-                    await self._async_update_device_registry(self.data)
-
                 self.last_update_success = True
                 _LOGGER.info("Successfully connected to OpenWrt device")
                 break
             except Exception as err:
                 if attempt < 3:
                     _LOGGER.warning(
-                        "Initial connection/fetch failed, retrying in 5s: %s",
+                        "Initial connection failed, retrying in 5s: %s",
                         err,
                     )
                     await asyncio.sleep(5)
                 else:
                     _LOGGER.warning(
-                        "Initial connection/fetch failed after 3 attempts: %s. "
+                        "Initial connection failed after 3 attempts: %s. "
                         "Integration will retry in the background.",
                         err,
                     )
