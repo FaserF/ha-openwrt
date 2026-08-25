@@ -481,29 +481,26 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # Update global wireless state for device trackers
         self._async_update_global_wireless_state(data)
 
+        # Fetch optional sub-features concurrently
+        sub_tasks = []
         if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
-            try:
-                await self._async_fetch_mqtt_presence_data(data)
-            except Exception as err:
-                _LOGGER.debug("MQTT presence data fetch failed: %s", err)
+            sub_tasks.append(self._async_fetch_mqtt_presence_data(data))
 
         if self.config_entry.options.get(
             CONF_ENABLE_NLBWMON_SENSORS,
             self.config_entry.data.get(CONF_ENABLE_NLBWMON_SENSORS, False),
         ):
-            try:
-                await self._async_fetch_nlbwmon_top_hosts_data(data)
-            except Exception as err:
-                _LOGGER.debug("nlbwmon top hosts fetch failed: %s", err)
+            sub_tasks.append(self._async_fetch_nlbwmon_top_hosts_data(data))
 
         if self.config_entry.options.get(
             CONF_ENABLE_SNORT_SENSORS,
             self.config_entry.data.get(CONF_ENABLE_SNORT_SENSORS, False),
         ):
-            try:
-                await self._async_fetch_snort_data(data)
-            except Exception as err:
-                _LOGGER.debug("snort data fetch failed: %s", err)
+            sub_tasks.append(self._async_fetch_snort_data(data))
+
+        if sub_tasks:
+            await asyncio.gather(*sub_tasks, return_exceptions=True)
+
         if self.config_entry.options.get(CONF_GPS_MODEM_ENABLED, False):
             data.qmodem_info.enabled = True
             gps_port = self.config_entry.options.get(
