@@ -13,7 +13,7 @@ from ..base import (
     StorageUsage,
     SystemResources,
 )
-from .exceptions import *
+from .exceptions import LuciRpcError
 
 _LOGGER = logging.getLogger(__name__)
 

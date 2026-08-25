@@ -20,3 +20,12 @@ class SshConnectionError(SshError):
 
 class SshKeyError(SshError):
     """SSH key parsing or authentication failure."""
+
+
+__all__ = [
+    "SshAuthError",
+    "SshConnectionError",
+    "SshError",
+    "SshKeyError",
+    "SshTimeoutError",
+]

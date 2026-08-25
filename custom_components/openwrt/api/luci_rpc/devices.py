@@ -8,7 +8,13 @@ from ..base import (
     ConnectedDevice,
     DhcpLease,
 )
-from .exceptions import *
+from .exceptions import (
+    LuciRpcAuthError,
+    LuciRpcConnectionError,
+    LuciRpcError,
+    LuciRpcSslError,
+    LuciRpcTimeoutError,
+)
 
 _LOGGER = logging.getLogger(__name__)
 

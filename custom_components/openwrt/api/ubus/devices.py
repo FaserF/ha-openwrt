@@ -11,7 +11,14 @@ from ..base import (
     IpNeighbor,
     LldpNeighbor,
 )
-from .exceptions import *
+from .exceptions import (
+    UbusAuthError,
+    UbusConnectionError,
+    UbusError,
+    UbusPermissionError,
+    UbusSslError,
+    UbusTimeoutError,
+)
 
 _LOGGER = logging.getLogger(__name__)
 UBUS_JSONRPC_VERSION = "2.0"

@@ -14,7 +14,7 @@ from ..base import (
     WireGuardPeer,
     WirelessInterface,
 )
-from .exceptions import *
+from .exceptions import UbusError
 
 _LOGGER = logging.getLogger(__name__)
 UBUS_JSONRPC_VERSION = "2.0"

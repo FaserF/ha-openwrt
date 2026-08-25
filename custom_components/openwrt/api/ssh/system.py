@@ -13,7 +13,6 @@ from ..base import (
     SystemResources,
     UsbDevice,
 )
-from .exceptions import *
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -17,7 +17,12 @@ from ..base import (
     OpenWrtPermissions,
 )
 from .devices import SshDevicesMixin
-from .exceptions import *
+from .exceptions import (
+    SshAuthError,
+    SshConnectionError,
+    SshError,
+    SshTimeoutError,
+)
 from .features import SshFeaturesMixin
 from .network import SshNetworkMixin
 from .system import SshSystemMixin

@@ -63,7 +63,7 @@ jobs:
 
       - name: Format and Fix with Ruff
         run: |
-          ruff check --fix --unsafe-fixes .
+          ruff check --fix .
           ruff format .
 
       - name: Commit and push changes

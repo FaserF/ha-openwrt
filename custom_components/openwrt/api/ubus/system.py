@@ -14,7 +14,7 @@ from ..base import (
     SystemResources,
     UsbDevice,
 )
-from .exceptions import *
+from .exceptions import UbusError, UbusPermissionError
 
 _LOGGER = logging.getLogger(__name__)
 UBUS_JSONRPC_VERSION = "2.0"

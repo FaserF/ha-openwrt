@@ -20,7 +20,13 @@ from ..base import (
     WpsStatus,
     classify_service,
 )
-from .exceptions import *
+from .exceptions import (
+    LuciRpcAuthError,
+    LuciRpcConnectionError,
+    LuciRpcError,
+    LuciRpcSslError,
+    LuciRpcTimeoutError,
+)
 
 _LOGGER = logging.getLogger(__name__)
 

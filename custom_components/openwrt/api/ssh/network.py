@@ -18,7 +18,6 @@ from ..base import (
     WirelessInterface,
     WpsStatus,
 )
-from .exceptions import *
 
 _LOGGER = logging.getLogger(__name__)
 

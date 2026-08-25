@@ -28,3 +28,14 @@ class UbusPackageMissingError(UbusError):
 
 class UbusPermissionError(UbusError):
     """Insufficient RPC permissions (e.g. 403 or ACL error). Consider switching to LuCI RPC for better accessibility."""
+
+
+__all__ = [
+    "UbusAuthError",
+    "UbusConnectionError",
+    "UbusError",
+    "UbusPackageMissingError",
+    "UbusPermissionError",
+    "UbusSslError",
+    "UbusTimeoutError",
+]

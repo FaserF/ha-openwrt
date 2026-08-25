@@ -11,7 +11,7 @@ from ..base import (
     ConnectedDevice,
     DhcpLease,
 )
-from .exceptions import *
+from .exceptions import SshError
 
 _LOGGER = logging.getLogger(__name__)
 

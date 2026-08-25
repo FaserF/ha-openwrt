@@ -16,7 +16,7 @@ from ..base import (
     WireGuardPeer,
     WirelessInterface,
 )
-from .exceptions import *
+from .exceptions import LuciRpcError
 
 _LOGGER = logging.getLogger(__name__)
 

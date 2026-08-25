@@ -19,7 +19,7 @@ from ..base import (
     SqmStatus,
     classify_service,
 )
-from .exceptions import *
+from .exceptions import SshError
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -12,7 +12,15 @@ from ..base import (
     OpenWrtClient,
 )
 from .devices import UbusDevicesMixin
-from .exceptions import *
+from .exceptions import (
+    UbusAuthError,
+    UbusConnectionError,
+    UbusError,
+    UbusPackageMissingError,
+    UbusPermissionError,
+    UbusSslError,
+    UbusTimeoutError,
+)
 from .features import UbusFeaturesMixin
 from .network import UbusNetworkMixin
 from .services import UbusServicesMixin

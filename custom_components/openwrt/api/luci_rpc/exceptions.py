@@ -24,3 +24,13 @@ class LuciRpcSslError(LuciRpcError):
 
 class LuciRpcPackageMissingError(LuciRpcError):
     """Required package missing (e.g. 404 on /cgi-bin/luci/rpc)."""
+
+
+__all__ = [
+    "LuciRpcAuthError",
+    "LuciRpcConnectionError",
+    "LuciRpcError",
+    "LuciRpcPackageMissingError",
+    "LuciRpcSslError",
+    "LuciRpcTimeoutError",
+]
