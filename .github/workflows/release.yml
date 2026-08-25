@@ -210,9 +210,9 @@ jobs:
           cd "custom_components/$DOMAIN"
           zip -r "../../$DOMAIN.zip" .
           cd ../..
-          mv "$DOMAIN.zip" integration.zip || true
+          mv "$DOMAIN.zip" "$DOMAIN.zip" || true
           # Keep domain-named zip for backward compatibility
-          cp integration.zip "$DOMAIN.zip" 2>/dev/null || true
+          cp "$DOMAIN.zip" "$DOMAIN.zip" 2>/dev/null || true
 
       - name: Download Release Body Artifact
         uses: actions/download-artifact@v8
@@ -239,14 +239,14 @@ jobs:
               --notes-file "release_body.md" \
               --draft=false \
               $prerelease_arg
-            gh release upload "$TAG" integration.zip --clobber
+            gh release upload "$TAG" "$DOMAIN.zip" --clobber
           else
             gh release create "$TAG" \
               --target "${{ github.ref_name }}" \
               --title "Release $VERSION" \
               --notes-file "release_body.md" \
               $prerelease_arg \
-              integration.zip
+              "$DOMAIN.zip"
           fi
 
  
