@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
 
 from custom_components.openwrt.const import (
     CONF_MQTT_BROKER,
@@ -148,10 +147,12 @@ async def test_options_flow_mqtt_redeploy(
 
 
 async def test_deploy_helper_success(hass: HomeAssistant) -> None:
-    """Test the deployment helper logic (partial mock)."""
+    """Test the deployment helper logic using local templates."""
     from custom_components.openwrt.helpers.mqtt_presence import (
         async_deploy_mqtt_presence,
     )
+
+    hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
 
     mock_client = AsyncMock()
     mock_client.execute_command.return_value = "OK"
@@ -162,28 +163,62 @@ async def test_deploy_helper_success(hass: HomeAssistant) -> None:
         "password": "p",
     }
 
-    # Mock aiohttp session
-    with patch(
-        "custom_components.openwrt.helpers.mqtt_presence.async_get_clientsession"
-    ) as mock_session_func:
-        mock_session = mock_session_func.return_value
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.text.return_value = 'file content with BROKER="192.168.1.10"'
-        mock_session.get.return_value.__aenter__.return_value = mock_resp
+    success, error = await async_deploy_mqtt_presence(
+        hass, mock_client, mqtt_config
+    )
 
-        success, error = await async_deploy_mqtt_presence(
-            hass, mock_client, mqtt_config
-        )
+    assert success is True
+    assert error is None
+    # Verify commands were called
+    mock_client.execute_command.assert_any_call("mkdir -p /etc/presence")
+    assert mock_client.execute_command.call_count >= 10
 
-        assert success is True
-        assert error is None
-        # Verify commands were called
-        mock_client.execute_command.assert_any_call("mkdir -p /etc/presence")
-        # Verify MQTT config replacement (check if execute_command was called with base64)
-        # We can't easily check the exact base64 without re-implementing,
-        # but we check if it was called multiple times for files
-        assert mock_client.execute_command.call_count >= 10
+
+async def test_deploy_helper_with_whitelist_and_consider_home(hass: HomeAssistant) -> None:
+    """Test deploying presence with tracked_devices whitelist and consider_home grace period."""
+    from custom_components.openwrt.helpers.mqtt_presence import (
+        async_deploy_mqtt_presence,
+    )
+
+    hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
+
+    mock_client = AsyncMock()
+    mqtt_config = {
+        "broker": "127.0.0.1",
+        "port": 1883,
+        "username": "u",
+        "password": "p",
+    }
+
+    executed_cmds = []
+
+    async def capture_cmd(cmd):
+        executed_cmds.append(cmd)
+        return "OK"
+
+    mock_client.execute_command.side_effect = capture_cmd
+
+    tracked = ["11:22:33:44:55:66", "aa-bb-cc-dd-ee-ff"]
+    success, error = await async_deploy_mqtt_presence(
+        hass, mock_client, mqtt_config, tracked_devices=tracked, consider_home=120
+    )
+
+    assert success is True
+    assert error is None
+
+    # Verify presence.conf was written with GRACE_SECONDS=120 and ZONE_ENTITY=zone.home
+    presence_conf_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence.conf" in c)
+    assert "GRACE_SECONDS=120" in presence_conf_cmd
+    assert 'ZONE_ENTITY="zone.home"' in presence_conf_cmd
+
+    # Verify presence_devices.conf was written with formatted MAC entries and lowercase topic
+    dev_conf_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_devices.conf" in c)
+    assert "11:22:33:44:55:66 presence/11_22_33_44_55_66" in dev_conf_cmd
+    assert "AA:BB:CC:DD:EE:FF presence/aa_bb_cc_dd_ee_ff" in dev_conf_cmd
+
+    # Verify presence_event.sh formats JSON payload with in_zones
+    event_sh_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_event.sh" in c)
+    assert 'payload="{\\"state\\":\\"home\\",\\"in_zones\\":[\\"$' in event_sh_cmd
 
 
 async def test_mqtt_discovery_cleanup_no_colons(hass: HomeAssistant) -> None:

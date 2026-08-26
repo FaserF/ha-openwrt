@@ -179,7 +179,8 @@
           "mqtt_broker": "MQTT Broker (reachable from router)",
           "mqtt_port": "MQTT Port",
           "mqtt_username": "MQTT Username",
-          "mqtt_password": "MQTT Password"
+          "mqtt_password": "MQTT Password",
+          "mqtt_zone": "Target Zone Entity (e.g. Home, Office)"
         }
       },
       "deploy_mqtt_presence": {
@@ -285,7 +286,8 @@
           "mqtt_broker": "MQTT Broker (reachable from router)",
           "mqtt_port": "MQTT Port",
           "mqtt_username": "MQTT Username",
-          "mqtt_password": "MQTT Password"
+          "mqtt_password": "MQTT Password",
+          "mqtt_zone": "Target Zone Entity (e.g. Home, Office)"
         }
       },
       "options_deploy_failed": {

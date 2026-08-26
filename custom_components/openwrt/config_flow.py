@@ -88,6 +88,7 @@ from .const import (
     CONF_MQTT_PORT,
     CONF_MQTT_PRESENCE,
     CONF_MQTT_USERNAME,
+    CONF_MQTT_ZONE,
     CONF_REDEPLOY_MQTT,
     CONF_REDEPLOY_USER,
     CONF_REVERSE_DNS,
@@ -2040,6 +2041,12 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_MQTT_PASSWORD,
                         default=self._data.get(CONF_MQTT_PASSWORD, ""),
                     ): str,
+                    vol.Optional(
+                        CONF_MQTT_ZONE,
+                        default=self._data.get(CONF_MQTT_ZONE, "zone.home"),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="zone")
+                    ),
                 }
             ),
             errors=errors,
@@ -2061,10 +2068,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 "port": self._data.get(CONF_MQTT_PORT, 1883),
                 "username": self._data.get(CONF_MQTT_USERNAME, ""),
                 "password": self._data.get(CONF_MQTT_PASSWORD, ""),
+                "zone": self._data.get(CONF_MQTT_ZONE, "zone.home"),
             }
 
+            tracked_devices: list[str] = list(self._data.get(CONF_TRACKED_DEVICES, []))
+            manual_devices = self._data.get(CONF_MANUAL_TRACKED_DEVICES, "")
+            if isinstance(manual_devices, str) and manual_devices.strip():
+                tracked_devices.extend(manual_devices.splitlines())
+
+            consider_home = self._data.get(CONF_CONSIDER_HOME)
+
             success, error = await async_deploy_mqtt_presence(
-                self.hass, client, mqtt_config
+                self.hass, client, mqtt_config, tracked_devices, consider_home
             )
             if success:
                 return await self._create_entry()
@@ -2705,6 +2720,12 @@ class OpenWrtOptionsFlow(OptionsFlow):
                         CONF_MQTT_PASSWORD,
                         default=current.get(CONF_MQTT_PASSWORD, ""),
                     ): str,
+                    vol.Optional(
+                        CONF_MQTT_ZONE,
+                        default=current.get(CONF_MQTT_ZONE, "zone.home"),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="zone")
+                    ),
                 }
             ),
             errors=errors,
@@ -2726,10 +2747,19 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 "port": self._options.get(CONF_MQTT_PORT, 1883),
                 "username": self._options.get(CONF_MQTT_USERNAME, ""),
                 "password": self._options.get(CONF_MQTT_PASSWORD, ""),
+                "zone": self._options.get(CONF_MQTT_ZONE, "zone.home"),
             }
 
+            current_opts = {**self._config_entry.options, **self._options}
+            tracked_devices: list[str] = list(current_opts.get(CONF_TRACKED_DEVICES, []))
+            manual_devices = current_opts.get(CONF_MANUAL_TRACKED_DEVICES, "")
+            if isinstance(manual_devices, str) and manual_devices.strip():
+                tracked_devices.extend(manual_devices.splitlines())
+
+            consider_home = current_opts.get(CONF_CONSIDER_HOME)
+
             success, error = await async_deploy_mqtt_presence(
-                self.hass, client, mqtt_config
+                self.hass, client, mqtt_config, tracked_devices, consider_home
             )
             if success:
                 return await self.async_step_options_permissions()
