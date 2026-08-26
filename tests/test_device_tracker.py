@@ -394,10 +394,11 @@ async def test_device_tracker_persists_offline_devices_from_history() -> None:
 
     with (
         patch(
-            "homeassistant.helpers.entity_registry.async_get", return_value=mock_ent_reg
+            "custom_components.openwrt.device_tracker.er.async_get",
+            return_value=mock_ent_reg,
         ),
         patch(
-            "homeassistant.helpers.entity_registry.async_entries_for_config_entry",
+            "custom_components.openwrt.device_tracker.er.async_entries_for_config_entry",
             return_value=[],
         ),
     ):
@@ -497,10 +498,11 @@ async def test_device_tracker_cleanup_unwhitelisted_entities() -> None:
 
     with (
         patch(
-            "homeassistant.helpers.entity_registry.async_get", return_value=mock_ent_reg
+            "custom_components.openwrt.device_tracker.er.async_get",
+            return_value=mock_ent_reg,
         ),
         patch(
-            "homeassistant.helpers.entity_registry.async_entries_for_config_entry",
+            "custom_components.openwrt.device_tracker.er.async_entries_for_config_entry",
             return_value=[mock_entry1, mock_entry2],
         ),
     ):
