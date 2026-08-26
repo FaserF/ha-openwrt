@@ -1313,6 +1313,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     hostname_registry[cleaned[0]] = cleaned[1]
                     registry_dirty = True
 
+            # Filter by whitelist if configured
+            if whitelist and mac not in whitelist:
+                _LOGGER.debug(
+                    "Skipping device %s: not in tracked_devices whitelist", mac
+                )
+                continue
+
             # Handle MQTT Discovery if enabled. Prefer a name another entry
             # resolved -- _mqtt_discovered suppresses a later republish, so a
             # MAC published now would stick.
@@ -1320,13 +1327,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 await self._async_discovery_mqtt_device(
                     mac, hostname_registry.get(mac) or mac
                 )
-
-            # Filter by whitelist if configured
-            if whitelist and mac not in whitelist:
-                _LOGGER.debug(
-                    "Skipping device %s: not in tracked_devices whitelist", mac
-                )
-                continue
 
             filtered_devices.append(device)
 
@@ -1508,11 +1508,14 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 "Cleaning up" if clean else "Starting",
                 len(self._device_history),
             )
+            whitelist = self._async_get_tracked_devices_whitelist()
             for mac, hist_data in list(self._device_history.items()):
                 # Always cleanup legacy topics to be sure
                 await self._async_discovery_mqtt_device_cleanup(mac)
 
                 if not clean:
+                    if whitelist and mac not in whitelist:
+                        continue
                     await self._async_discovery_mqtt_device(
                         mac, hist_data.get("hostname") or mac
                     )
