@@ -1682,7 +1682,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 "connections": [["mac", mac]],
                 "identifiers": [f"openwrt_{mac}"],
                 "name": hostname,
-                "via_device": self.router_id,
             },
         }
 
