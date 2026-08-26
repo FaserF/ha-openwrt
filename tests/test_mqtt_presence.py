@@ -278,3 +278,67 @@ async def test_mqtt_discovery_cleanup_allowed_characters(hass: HomeAssistant) ->
             assert re.match(r"^[a-zA-Z0-9_-]+$", node_id), (
                 f"Node ID '{node_id}' in topic '{topic}' contains illegal characters"
             )
+
+
+async def test_mqtt_discovery_cleanup_active_topic_and_ownership(
+    hass: HomeAssistant,
+) -> None:
+    """Test that MQTT cleanup clears the active discovery topic and preserves status if another entry tracks the MAC."""
+    from custom_components.openwrt.const import CONF_TRACKED_DEVICES, DATA_COORDINATOR
+    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
+
+    # Entry 1
+    config_entry1 = MagicMock()
+    config_entry1.options = {CONF_MQTT_PRESENCE: True}
+    config_entry1.data = {"host": "192.168.1.1"}
+    config_entry1.entry_id = "entry_1"
+    config_entry1.unique_id = "11:22:33:44:55:66"
+
+    # Entry 2 (also tracks the same device)
+    config_entry2 = MagicMock()
+    config_entry2.options = {
+        CONF_MQTT_PRESENCE: True,
+        CONF_TRACKED_DEVICES: ["aa:bb:cc:dd:ee:01"],
+    }
+    config_entry2.data = {"host": "192.168.1.2"}
+    config_entry2.entry_id = "entry_2"
+    config_entry2.unique_id = "11:22:33:44:55:77"
+
+    mock_client1 = AsyncMock()
+    mock_client2 = AsyncMock()
+
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(return_value={})
+        coord1 = OpenWrtDataCoordinator(hass, config_entry1, mock_client1)
+        coord2 = OpenWrtDataCoordinator(hass, config_entry2, mock_client2)
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN]["entry_1"] = {DATA_COORDINATOR: coord1}
+    hass.data[DOMAIN]["entry_2"] = {DATA_COORDINATOR: coord2}
+
+    published_topics = []
+
+    async def mock_publish(domain, service, service_data, **kwargs):
+        if domain == "mqtt" and service == "publish":
+            published_topics.append(service_data["topic"])
+
+    hass.services.async_call = mock_publish
+
+    # Cleanup on coord1 while coord2 still tracks aa:bb:cc:dd:ee:01
+    await coord1._async_discovery_mqtt_device_cleanup("aa:bb:cc:dd:ee:01")
+
+    # Active topic must be cleared
+    assert (
+        "homeassistant/device_tracker/openwrt_mqtt_aa_bb_cc_dd_ee_01/config"
+        in published_topics
+    )
+    # Status topic must NOT be cleared because entry_2 still tracks it
+    assert "presence/aa_bb_cc_dd_ee_01" not in published_topics
+
+    # Now remove aa:bb:cc:dd:ee:01 from entry_2 whitelist
+    config_entry2.options[CONF_TRACKED_DEVICES] = ["00:11:22:33:44:55"]
+    published_topics.clear()
+
+    # Cleanup again on coord1 - now status topic SHOULD be cleared
+    await coord1._async_discovery_mqtt_device_cleanup("aa:bb:cc:dd:ee:01")
+    assert "presence/aa_bb_cc_dd_ee_01" in published_topics

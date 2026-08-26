@@ -1063,3 +1063,54 @@ def test_resolve_client_name_never_returns_placeholder() -> None:
     assert resolve_client_name(hass, mac, None) == mac
     assert resolve_client_name(hass, mac, mac.upper()) == mac
     assert resolve_client_name(hass, mac, "real-name") == "real-name"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_whitelist_case_normalization() -> None:
+    """Test that whitelist matches regardless of case in CONF_TRACKED_DEVICES."""
+    hass = MagicMock()
+    hass.loop = MagicMock()
+    hass.loop.time = MagicMock(return_value=123456789.0)
+
+    config_entry = MagicMock()
+    # Uppercase MAC in whitelist
+    config_entry.options = {CONF_TRACKED_DEVICES: ["00:BB:CC:DD:EE:01"]}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "test_entry"
+
+    mock_client = AsyncMock()
+    mock_client.connected = True
+
+    raw_data = OpenWrtData(
+        system_resources=SystemResources(uptime=100),
+        connected_devices=[
+            ConnectedDevice(
+                mac="00:bb:cc:dd:ee:01",
+                hostname="device1",
+                interface="br-lan",
+                is_wireless=True,
+            ),
+            ConnectedDevice(
+                mac="00:bb:cc:dd:ee:02",
+                hostname="device2",
+                interface="br-lan",
+                is_wireless=True,
+            ),
+        ],
+        dhcp_leases=[
+            DhcpLease(mac="00:bb:cc:dd:ee:01", hostname="device1", ip="192.168.1.10"),
+            DhcpLease(mac="00:bb:cc:dd:ee:02", hostname="device2", ip="192.168.1.11"),
+        ],
+        network_interfaces=[],
+        wireless_interfaces=[],
+    )
+    mock_client.get_all_data.return_value = raw_data
+
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(return_value={})
+        mock_store.return_value.async_save = AsyncMock()
+        coordinator = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+
+    data = await coordinator._async_update_data()
+    assert len(data.connected_devices) == 1
+    assert data.connected_devices[0].mac == "00:bb:cc:dd:ee:01"

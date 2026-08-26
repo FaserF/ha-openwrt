@@ -82,6 +82,7 @@ from .const import (
     CONNECTION_TYPE_LUCI_RPC,
     CONNECTION_TYPE_SSH,
     CONNECTION_TYPE_UBUS,
+    DATA_COORDINATOR,
     DEFAULT_CONSIDER_HOME,
     DEFAULT_GPS_MODEM_PORT,
     DEFAULT_GPS_POLL_INTERVAL,
@@ -1318,6 +1319,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 _LOGGER.debug(
                     "Skipping device %s: not in tracked_devices whitelist", mac
                 )
+                if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+                    await self._async_discovery_mqtt_device_cleanup(mac)
                 continue
 
             # Handle MQTT Discovery if enabled. Prefer a name another entry
@@ -1515,6 +1518,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
                 if not clean:
                     if whitelist and mac not in whitelist:
+                        await self._async_discovery_mqtt_device_cleanup(mac)
                         continue
                     await self._async_discovery_mqtt_device(
                         mac, hist_data.get("hostname") or mac
@@ -1537,7 +1541,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             CONF_MANUAL_TRACKED_DEVICES, ""
         )
 
-        whitelist = set(tracked_devices)
+        whitelist = {
+            d.lower() for d in tracked_devices if isinstance(d, str) and d.strip()
+        }
 
         if manual_devices_raw:
             # Parse multi-line string of MAC addresses
@@ -1550,24 +1556,25 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         return whitelist if whitelist else None
 
     async def _async_discovery_mqtt_device_cleanup(self, mac: str) -> None:
-        """Remove legacy MQTT discovery messages for a device tracker."""
+        """Remove active and legacy MQTT discovery messages for a device tracker."""
         mac_safe = mac.replace(":", "_")
         mac_colons = mac.lower()
-        router_id_safe = re.sub(r"[^a-zA-Z0-9_-]", "_", self.router_id)
+        router_id_safe = re.sub(r"[^a-zA-Z0-9_-]", "_", str(self.router_id))
 
         mac_no_colons = mac.replace(":", "").lower()
         mac_6chars = mac_no_colons[-6:].upper()
 
-        # Cleanup all legacy patterns we might have used
+        # Cleanup all active and legacy patterns we might have used
         # IMPORTANT: Discovery topics MUST NOT contain colons
-        legacy_topics = [
+        discovery_topics = [
+            f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config",
             f"homeassistant/device_tracker/{router_id_safe}_{mac_safe}/config",
             f"homeassistant/device_tracker/openwrt_{mac_safe}/config",
             f"homeassistant/device_tracker/{mac_6chars}/config",
             f"homeassistant/device_tracker/openwrt_{mac_6chars}/config",
         ]
 
-        for topic in legacy_topics:
+        for topic in discovery_topics:
             _LOGGER.debug("Clearing MQTT discovery topic: %s", topic)
             try:
                 await self.hass.services.async_call(
@@ -1582,27 +1589,44 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             except Exception as err:
                 _LOGGER.debug("Failed to clear topic %s: %s", topic, err)
 
-        # Cleanup status topics too to clear retained messages
-        status_topics = [
-            f"presence/{mac_safe}",
-            f"presence/{mac_colons}",
-            f"openwrt/presence/{mac_safe}",
-            f"openwrt/presence/{mac_colons}",
-        ]
-        for topic in status_topics:
-            _LOGGER.debug("Clearing MQTT status topic: %s", topic)
-            try:
-                await self.hass.services.async_call(
-                    "mqtt",
-                    "publish",
-                    {
-                        "topic": topic,
-                        "payload": "",
-                        "retain": True,
-                    },
-                )
-            except Exception:
-                pass
+        # Check if any other config entry is still tracking this device via MQTT presence
+        other_entry_tracks_device = False
+        domain_data = self.hass.data.get(DOMAIN, {})
+        for entry_id, entry_data in domain_data.items():
+            if entry_id == self.config_entry.entry_id or not isinstance(
+                entry_data, dict
+            ):
+                continue
+            other_coord = entry_data.get(DATA_COORDINATOR)
+            if other_coord and hasattr(other_coord, "config_entry"):
+                if other_coord.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+                    other_whitelist = other_coord._async_get_tracked_devices_whitelist()
+                    if other_whitelist is None or mac in other_whitelist:
+                        other_entry_tracks_device = True
+                        break
+
+        # Only clear status topics if no other config entry is tracking this device
+        if not other_entry_tracks_device:
+            status_topics = [
+                f"presence/{mac_safe}",
+                f"presence/{mac_colons}",
+                f"openwrt/presence/{mac_safe}",
+                f"openwrt/presence/{mac_colons}",
+            ]
+            for topic in status_topics:
+                _LOGGER.debug("Clearing MQTT status topic: %s", topic)
+                try:
+                    await self.hass.services.async_call(
+                        "mqtt",
+                        "publish",
+                        {
+                            "topic": topic,
+                            "payload": "",
+                            "retain": True,
+                        },
+                    )
+                except Exception:
+                    pass
 
         if mac in self._mqtt_discovered:
             self._mqtt_discovered.remove(mac)
