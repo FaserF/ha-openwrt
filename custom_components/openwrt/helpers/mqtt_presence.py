@@ -3,28 +3,29 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+from string import Template
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from ..api.base import OpenWrtClient
+from ..const import DEFAULT_CONSIDER_HOME
 
 _LOGGER = logging.getLogger(__name__)
 
-# Pin to a specific commit for security (MIT Licensed scripts from f45tb00t/OpenWRT_HA_Presence)
-# Commit: 818d73bcef3a4f47754ff931243693c11c6a6cd0 (pinned on 2026-04-30)
-# renovate: datasource=git-refs depName=https://github.com/f45tb00t/OpenWRT_HA_Presence
-REPO_URL = "https://raw.githubusercontent.com/f45tb00t/OpenWRT_HA_Presence/818d73bcef3a4f47754ff931243693c11c6a6cd0"
-FILES_TO_DEPLOY = [
-    "etc/presence/presence_event.sh",
-    "etc/presence/presence.conf",
-    "etc/presence/presence_mqtt.conf",
-    "etc/presence/presence_devices.conf",
-    "etc/presence/install.sh",
-    "etc/presence/healthcheck.sh",
-    "etc/init.d/presence_hostapd",
-]
+TEMPLATES_DIR = Path(__file__).parent / "presence_templates"
+
+# Map router target file_path -> local template path relative to TEMPLATES_DIR
+FILE_TEMPLATE_MAP = {
+    "etc/presence/presence_event.sh": "scripts/presence_event.sh",
+    "etc/presence/presence.conf": "conf/presence.conf",
+    "etc/presence/presence_mqtt.conf": "conf/presence_mqtt.conf",
+    "etc/presence/presence_devices.conf": "conf/presence_devices.conf",
+    "etc/presence/install.sh": "scripts/install.sh",
+    "etc/presence/healthcheck.sh": "scripts/healthcheck.sh",
+    "etc/init.d/presence_hostapd": "init.d/presence_hostapd",
+}
 
 
 def escape_shell_value(value: Any) -> str:
@@ -36,9 +37,27 @@ async def async_deploy_mqtt_presence(
     hass: HomeAssistant,
     client: OpenWrtClient,
     mqtt_config: dict[str, Any],
+    tracked_devices: list[str] | set[str] | None = None,
+    consider_home: int | None = None,
 ) -> tuple[bool, str | None]:
-    """Download and deploy MQTT presence scripts to the router."""
-    session = async_get_clientsession(hass)
+    """Deploy MQTT presence scripts to the router using bundled templates."""
+    # Normalize tracked_devices MAC addresses to uppercase (for conf matching)
+    normalized_macs: set[str] = set()
+    if tracked_devices:
+        for mac in tracked_devices:
+            if isinstance(mac, str) and mac.strip():
+                clean_mac = mac.strip().lower().replace("-", ":")
+                if len(clean_mac) == 12 and ":" not in clean_mac:
+                    clean_mac = ":".join(clean_mac[i : i + 2] for i in range(0, 12, 2))
+                if len(clean_mac) == 17:
+                    normalized_macs.add(clean_mac.upper())
+
+    # Determine GRACE_SECONDS from consider_home option/default
+    grace_seconds = (
+        consider_home
+        if consider_home is not None and consider_home > 0
+        else DEFAULT_CONSIDER_HOME
+    )
 
     try:
         # Ensure directory exists
@@ -57,62 +76,54 @@ async def async_deploy_mqtt_presence(
 
         ifaces_str = " ".join(valid_ifaces) if valid_ifaces else "wl0-ap0 wl1-ap0"
 
-        # Download and write each file
-        for file_path in FILES_TO_DEPLOY:
-            url = f"{REPO_URL}/{file_path}"
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return False, f"Failed to download {file_path} from GitHub"
-                content = await resp.text()
+        # Read and format local template files
+        for target_file, rel_template_path in FILE_TEMPLATE_MAP.items():
+            template_file = TEMPLATES_DIR / rel_template_path
 
-            # Apply MQTT config to etc/presence/presence_mqtt.conf
-            if file_path == "etc/presence/presence_mqtt.conf":
-                content = content.replace(
-                    'BROKER="192.168.1.10"',
-                    f'BROKER="{escape_shell_value(mqtt_config["broker"])}"',
-                )
-                content = content.replace(
-                    'PORT="1883"', f'PORT="{escape_shell_value(mqtt_config["port"])}"'
-                )
-                content = content.replace(
-                    'USER="presence"',
-                    f'USER="{escape_shell_value(mqtt_config["username"])}"',
-                )
-                content = content.replace(
-                    'PASS="change_me"',
-                    f'PASS="{escape_shell_value(mqtt_config["password"])}"',
+            if not template_file.is_file():
+                return False, f"Template file missing: {rel_template_path}"
+
+            raw_content = await hass.async_add_executor_job(
+                template_file.read_text, "utf-8"
+            )
+
+            # Apply string.Template substitutions to configuration files
+            if target_file == "etc/presence/presence_mqtt.conf":
+                tmpl = Template(raw_content)
+                content = tmpl.substitute(
+                    BROKER=escape_shell_value(mqtt_config["broker"]),
+                    PORT=escape_shell_value(mqtt_config["port"]),
+                    USER=escape_shell_value(mqtt_config["username"]),
+                    PASS=escape_shell_value(mqtt_config["password"]),
                 )
 
-            # Apply IFACES config and enable DEBUG to etc/presence/presence.conf
-            if file_path == "etc/presence/presence.conf":
-                content = content.replace("DEBUG=0", "DEBUG=1")
-                if valid_ifaces:
-                    content = content.replace(
-                        'IFACES="wl0-ap0 wl1-ap0"',
-                        f'IFACES="{ifaces_str}"',
-                    )
-
-            # Patch presence_event.sh to auto-publish all devices and use unique client IDs
-            if file_path == "etc/presence/presence_event.sh":
-                # Auto-topic fallback
-                content = content.replace(
-                    '[ -n "$TOPIC" ] || exit 0',
-                    'if [ -z "$TOPIC" ]; then SAFE_MAC=$(echo "$MAC" | tr ":" "_"); TOPIC="presence/${SAFE_MAC}"; fi',
-                )
-                # Unique Client ID per interface to avoid "session taken over"
-                content = content.replace(
-                    '-i "ap-presence-$HOST_ID"', '-i "ap-presence-$HOST_ID-$IFACE"'
+            elif target_file == "etc/presence/presence.conf":
+                zone_entity = escape_shell_value(mqtt_config.get("zone", "zone.home"))
+                tmpl = Template(raw_content)
+                content = tmpl.substitute(
+                    GRACE_SECONDS=str(grace_seconds),
+                    IFACES=ifaces_str,
+                    ZONE_ENTITY=zone_entity,
                 )
 
-            # Patch init script to use unique instance names for multiple interfaces
-            if file_path == "etc/init.d/presence_hostapd":
-                content = content.replace(
-                    "procd_open_instance", 'procd_open_instance "$IFACE"'
-                )
+            elif target_file == "etc/presence/presence_devices.conf":
+                if normalized_macs:
+                    device_lines = []
+                    for mac in sorted(normalized_macs):
+                        safe_mac = mac.lower().replace(":", "_")
+                        device_lines.append(f"{mac} presence/{safe_mac}")
+                    mappings_str = "\n".join(device_lines)
+                else:
+                    mappings_str = ""
+                tmpl = Template(raw_content)
+                content = tmpl.substitute(DEVICE_MAPPINGS=mappings_str)
+
+            else:
+                # Pure static scripts (.sh / init scripts) are written directly without modification
+                content = raw_content
 
             # Write file to router via heredoc for robustness
-            cmd = f"cat <<'EOF' > /{file_path}\n{content}\nEOF"
-
+            cmd = f"cat <<'EOF' > /{target_file}\n{content}\nEOF"
             await client.execute_command(cmd)
 
         # Set permissions

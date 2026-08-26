@@ -1698,6 +1698,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         payload = {
             "name": f"{hostname} MQTT",
             "state_topic": f"presence/{mac_safe}",
+            "json_attributes_topic": f"presence/{mac_safe}",
+            "value_template": "{{ value_json.state if value_json is defined and value_json.state is defined else value }}",
             "unique_id": f"openwrt_track_{mac_safe}",
             "payload_home": "home",
             "payload_not_home": "not_home",
