@@ -74,6 +74,7 @@ async def async_setup_entry(
         )
 
         mqtt_enabled = entry.options.get(CONF_MQTT_PRESENCE, False)
+        whitelist = coordinator._async_get_tracked_devices_whitelist()
 
         for ent in entries:
             if ent.domain != "device_tracker":
@@ -84,11 +85,19 @@ async def async_setup_entry(
                 ent_reg.async_remove(ent.entity_id)
                 continue
 
-            # Remove wired trackers if wired tracking is disabled
-            # We identify them by their unique_id which ends with mac
             unique_id = ent.unique_id
-            mac = unique_id.split("_")[-1].lower()
+            mac = (
+                unique_id.removeprefix("openwrt_tracker_").lower()
+                if unique_id.startswith("openwrt_tracker_")
+                else unique_id.split("_")[-1].lower()
+            )
 
+            # Remove if not in whitelist when whitelist is active
+            if whitelist is not None and mac not in whitelist:
+                ent_reg.async_remove(ent.entity_id)
+                continue
+
+            # Remove wired trackers if wired tracking is disabled
             # Check history to see if it's wired
             if not track_wired and mac in coordinator._device_history:
                 if not coordinator._device_history[mac].get("is_wireless"):
@@ -138,7 +147,9 @@ async def async_setup_entry(
         if not perms.read_network and not perms.read_wireless:
             return
 
-        # Collect all unique MACs from both connected devices and DHCP leases
+        whitelist = coordinator._async_get_tracked_devices_whitelist()
+
+        # Collect all unique MACs from connected devices, DHCP leases, persistent history, and registry
         unique_devices: dict[str, str | None] = {}
         for device in coordinator.data.connected_devices:
             if device.mac:
@@ -149,6 +160,34 @@ async def async_setup_entry(
                 if mac_lower not in unique_devices or not unique_devices[mac_lower]:
                     unique_devices[mac_lower] = lease.hostname
 
+        # Include historical tracked devices so offline devices persist across restarts
+        for mac, hist in coordinator._device_history.items():
+            mac_lower = mac.lower()
+            if whitelist is not None and mac_lower not in whitelist:
+                continue
+            if mac_lower not in unique_devices or not unique_devices[mac_lower]:
+                unique_devices[mac_lower] = hist.get("hostname")
+
+        # Include any explicit whitelist entries
+        if whitelist is not None:
+            for mac in whitelist:
+                mac_lower = mac.lower()
+                if mac_lower not in unique_devices:
+                    unique_devices[mac_lower] = None
+
+        # Include any existing registered entities for this config entry
+        ent_reg = er.async_get(hass)
+        entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
+        for ent in entries:
+            if ent.domain == "device_tracker" and ent.unique_id.startswith(
+                "openwrt_tracker_"
+            ):
+                mac_lower = ent.unique_id.removeprefix("openwrt_tracker_").lower()
+                if whitelist is not None and mac_lower not in whitelist:
+                    continue
+                if mac_lower not in unique_devices:
+                    unique_devices[mac_lower] = None
+
         # An access point has no DHCP data, so fall back to the hostname another
         # config entry resolved. Without this its trackers are named by MAC.
         shared_hostnames = hass.data.get(DOMAIN, {}).get("hostname_registry", {})
@@ -156,10 +195,20 @@ async def async_setup_entry(
             if not hostname or hostname == "*":
                 unique_devices[mac_lower] = shared_hostnames.get(mac_lower) or hostname
 
+        own_macs = (
+            coordinator._get_own_macs(coordinator.data) if coordinator.data else set()
+        )
+        interface_regex = (
+            r"^(wlan|eth|lan|wan|br-|radio|phy|veth|lo|bond|team)[0-9]*([.-].*)?$"
+        )
+
         new_entities: list[OpenWrtDeviceTracker] = []
 
         for mac, hostname in unique_devices.items():
             if mac in tracked_macs:
+                continue
+
+            if mac in own_macs or re.match(interface_regex, mac):
                 continue
 
             # Determine if it's currently wireless on THIS node
@@ -443,13 +492,25 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     def hostname(self) -> str | None:
         """Return hostname."""
         device = self._raw_get_device_data()
-        return device.hostname if device else None
+        if device and device.hostname:
+            return device.hostname
+        if self.coordinator.data:
+            for lease in self.coordinator.data.dhcp_leases:
+                if lease.mac and lease.mac.lower() == self._mac and lease.hostname:
+                    return lease.hostname
+        return None
 
     @property
     def ip_address(self) -> str | None:
         """Return IP."""
         device = self._raw_get_device_data()
-        return device.ip if device else None
+        if device and device.ip:
+            return device.ip
+        if self.coordinator.data:
+            for lease in self.coordinator.data.dhcp_leases:
+                if lease.mac and lease.mac.lower() == self._mac and lease.ip:
+                    return lease.ip
+        return None
 
     @property
     def name(self) -> str:
@@ -493,6 +554,16 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
                 {
                     "is_wireless": True,
                     "connection_type": state_info.get("connection_type"),
+                }
+            )
+        elif self._mac in self.coordinator._device_history:
+            is_wl = bool(
+                self.coordinator._device_history[self._mac].get("is_wireless", False)
+            )
+            attrs.update(
+                {
+                    "is_wireless": is_wl,
+                    "connection_type": "wireless" if is_wl else "wired",
                 }
             )
 

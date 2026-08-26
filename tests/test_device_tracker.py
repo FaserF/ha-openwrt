@@ -349,3 +349,165 @@ def test_device_tracker_stale_arp_presence(
     with patch("custom_components.openwrt.device_tracker.datetime") as mock_datetime:
         mock_datetime.now.return_value = last_seen + timedelta(seconds=25)
         assert tracker.is_connected is False
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_persists_offline_devices_from_history() -> None:
+    """Test that device tracker creates entities for offline devices from history on setup."""
+    from custom_components.openwrt.api.base import OpenWrtPermissions
+    from custom_components.openwrt.const import DATA_COORDINATOR, DOMAIN
+    from custom_components.openwrt.device_tracker import async_setup_entry
+
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.1"}
+    entry.options = {}
+
+    coordinator = MagicMock()
+    coordinator.hass = hass
+    coordinator.config_entry = entry
+    coordinator.data = OpenWrtData(
+        connected_devices=[],
+        dhcp_leases=[],
+        permissions=OpenWrtPermissions(read_network=True, read_wireless=True),
+    )
+    coordinator._get_own_macs.return_value = set()
+    coordinator._async_get_tracked_devices_whitelist.return_value = None
+    coordinator._device_history = {
+        "00:bb:cc:dd:ee:01": {
+            "hostname": "offline-phone",
+            "is_wireless": True,
+            "initially_seen": 1700000000,
+            "last_seen": 1700001000,
+        }
+    }
+
+    hass.data = {DOMAIN: {entry.entry_id: {DATA_COORDINATOR: coordinator}}}
+    mock_ent_reg = MagicMock()
+    mock_ent_reg.entities = {}
+
+    added_entities = []
+
+    def mock_add_entities(entities: list) -> None:
+        added_entities.extend(entities)
+
+    with (
+        patch(
+            "homeassistant.helpers.entity_registry.async_get", return_value=mock_ent_reg
+        ),
+        patch(
+            "homeassistant.helpers.entity_registry.async_entries_for_config_entry",
+            return_value=[],
+        ),
+    ):
+        await async_setup_entry(hass, entry, mock_add_entities)
+
+    assert len(added_entities) == 1
+    tracker = added_entities[0]
+    assert tracker.mac_address == "00:bb:cc:dd:ee:01"
+    assert tracker.name == "offline-phone"
+    assert tracker.is_connected is False
+    attrs = tracker.extra_state_attributes
+    assert attrs["is_wireless"] is True
+    assert attrs["connection_type"] == "wireless"
+    assert "last_seen" in attrs
+    assert "initially_seen" in attrs
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_fallback_to_dhcp_lease_when_offline() -> None:
+    """Test that device tracker reads hostname/ip from dhcp_leases when not in connected_devices."""
+    from custom_components.openwrt.api.base import DhcpLease
+
+    coordinator = MagicMock()
+    coordinator.data = OpenWrtData(
+        connected_devices=[],
+        dhcp_leases=[
+            DhcpLease(
+                mac="aa:bb:cc:dd:ee:02",
+                hostname="tablet",
+                ip="192.168.1.150",
+            )
+        ],
+    )
+    coordinator.hass.data = {}
+    coordinator._device_history = {}
+
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.options = {}
+    entry.data = {CONF_HOST: "192.168.1.1"}
+
+    tracker = OpenWrtDeviceTracker(coordinator, entry, "aa:bb:cc:dd:ee:02")
+    assert tracker.hostname == "tablet"
+    assert tracker.ip_address == "192.168.1.150"
+    assert tracker.name == "tablet"
+    assert tracker.is_connected is False
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_cleanup_unwhitelisted_entities() -> None:
+    """Test that entities removed from whitelist are cleaned up."""
+    from custom_components.openwrt.const import (
+        CONF_TRACKED_DEVICES,
+        DATA_COORDINATOR,
+        DOMAIN,
+    )
+    from custom_components.openwrt.device_tracker import async_setup_entry
+
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {CONF_HOST: "192.168.1.1"}
+    entry.options = {CONF_TRACKED_DEVICES: ["aa:bb:cc:dd:ee:01"]}
+
+    coordinator = MagicMock()
+    coordinator.hass = hass
+    coordinator.config_entry = entry
+    coordinator.data = OpenWrtData(
+        connected_devices=[],
+        dhcp_leases=[],
+    )
+    coordinator._get_own_macs.return_value = set()
+    coordinator._async_get_tracked_devices_whitelist.return_value = {
+        "aa:bb:cc:dd:ee:01"
+    }
+    coordinator._device_history = {
+        "aa:bb:cc:dd:ee:01": {"hostname": "phone1", "is_wireless": True},
+        "aa:bb:cc:dd:ee:02": {"hostname": "phone2", "is_wireless": True},
+    }
+
+    hass.data = {DOMAIN: {entry.entry_id: {DATA_COORDINATOR: coordinator}}}
+
+    mock_ent_reg = MagicMock()
+    mock_entry1 = MagicMock(
+        domain="device_tracker",
+        entity_id="device_tracker.phone1",
+        unique_id="openwrt_tracker_aa:bb:cc:dd:ee:01",
+    )
+    mock_entry2 = MagicMock(
+        domain="device_tracker",
+        entity_id="device_tracker.phone2",
+        unique_id="openwrt_tracker_aa:bb:cc:dd:ee:02",
+    )
+
+    job_callbacks = []
+    hass.add_job = lambda cb: job_callbacks.append(cb)
+
+    with (
+        patch(
+            "homeassistant.helpers.entity_registry.async_get", return_value=mock_ent_reg
+        ),
+        patch(
+            "homeassistant.helpers.entity_registry.async_entries_for_config_entry",
+            return_value=[mock_entry1, mock_entry2],
+        ),
+    ):
+        await async_setup_entry(hass, entry, MagicMock())
+        # Run the scheduled cleanup job while patched
+        for cb in job_callbacks:
+            cb()
+
+    # phone2 is not in whitelist, so its entity should be removed
+    mock_ent_reg.async_remove.assert_called_once_with("device_tracker.phone2")
