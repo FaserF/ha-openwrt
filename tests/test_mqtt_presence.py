@@ -122,8 +122,12 @@ async def test_options_flow_mqtt_redeploy(
     }
 
     # Mock coordinator for permissions check
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
     hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
-        "coordinator": MagicMock(data=MagicMock(permissions=MagicMock(write_mqtt=True)))
+        "coordinator": mock_coord
     }
     with (
         patch(
@@ -134,9 +138,10 @@ async def test_options_flow_mqtt_redeploy(
             "custom_components.openwrt.config_flow.create_client",
             return_value=AsyncMock(),
         ),
-        patch.object(
-            flow, "async_step_options_permissions", return_value=AsyncMock()
-        ) as mock_perms,
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
     ):
         result = await flow.async_step_init(user_input)
 
@@ -147,11 +152,23 @@ async def test_options_flow_mqtt_redeploy(
         result = await flow.async_step_options_mqtt_presence(user_input)
         assert result["step_id"] == "options_mqtt_zone"
 
-        # Submit Zone selection
+        # Submit Zone selection -> goes to permissions / select devices
         result = await flow.async_step_options_mqtt_zone({"mqtt_zone": "zone.home"})
+        assert result["step_id"] == "options_permissions"
 
+        # Submit permissions -> packages
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        assert result["step_id"] == "options_packages"
+
+        # Submit packages -> select devices
+        result = await flow.async_step_options_packages({"track_devices": True})
+        assert result["step_id"] == "options_select_devices"
+
+        # Submit whitelist selection -> triggers deploy and finishes
+        result = await flow.async_step_options_select_devices(
+            {"tracked_devices": ["11:22:33:44:55:66"]}
+        )
         assert mock_deploy.called
-        assert mock_perms.called
 
 
 async def test_options_flow_consider_home_change_triggers_redeploy(
@@ -175,8 +192,12 @@ async def test_options_flow_consider_home_change_triggers_redeploy(
         CONF_CONSIDER_HOME: 300,
     }
 
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
     hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
-        "coordinator": MagicMock(data=MagicMock(permissions=MagicMock(write_mqtt=True)))
+        "coordinator": mock_coord
     }
     with (
         patch(
@@ -187,9 +208,10 @@ async def test_options_flow_consider_home_change_triggers_redeploy(
             "custom_components.openwrt.config_flow.create_client",
             return_value=AsyncMock(),
         ),
-        patch.object(
-            flow, "async_step_options_permissions", return_value=AsyncMock()
-        ) as mock_perms,
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
     ):
         result = await flow.async_step_init(user_input)
         assert result["step_id"] == "options_mqtt_presence"
@@ -198,10 +220,20 @@ async def test_options_flow_consider_home_change_triggers_redeploy(
         assert result["step_id"] == "options_mqtt_zone"
 
         result = await flow.async_step_options_mqtt_zone({"mqtt_zone": "zone.home"})
+        assert result["step_id"] == "options_permissions"
+
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        assert result["step_id"] == "options_packages"
+
+        result = await flow.async_step_options_packages({"track_devices": True})
+        assert result["step_id"] == "options_select_devices"
+
+        result = await flow.async_step_options_select_devices(
+            {"tracked_devices": ["11:22:33:44:55:66"]}
+        )
         assert mock_deploy.called
         # Verify consider_home parameter passed to async_deploy_mqtt_presence was 300
         assert mock_deploy.call_args.args[4] == 300
-        assert mock_perms.called
 
 
 async def test_should_redeploy_mqtt_presence_helper() -> None:
