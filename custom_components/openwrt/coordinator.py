@@ -1526,10 +1526,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 # Small delay between discovery calls to avoid flooding
                 await asyncio.sleep(0.05)
 
-            # Trigger a fresh presence scan on router after all discovery messages are published
-            if not clean:
-                self.hass.async_create_task(self._async_trigger_presence_scan())
-
         # Global registry cleanup (independent of device history)
         if clean and mqtt_ready:
             await self._async_global_registry_cleanup()
@@ -1739,25 +1735,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             )
         except Exception as err:
             _LOGGER.error("Failed to send MQTT discovery for %s: %s", mac, err)
-
-    async def _async_trigger_presence_scan(self) -> None:
-        """Trigger an initial presence scan on the router after discovery is complete."""
-        try:
-            await asyncio.sleep(1.0)
-            _LOGGER.debug("Triggering presence scan on router")
-            scan_cmd = (
-                "[ -f /etc/presence/presence.conf ] && . /etc/presence/presence.conf; "
-                "ACTION=/etc/presence/presence_event.sh; "
-                "[ -x \"$ACTION\" ] || exit 0; "
-                "for IFACE in ${IFACES:-wl0-ap0 wl1-ap0}; do "
-                "[ -d \"/sys/class/net/$IFACE\" ] || continue; "
-                "iw dev \"$IFACE\" station dump 2>/dev/null | awk '/^Station/ {print $2}' | "
-                "while read -r MAC; do [ -n \"$MAC\" ] && \"$ACTION\" \"$IFACE\" \"AP-STA-CONNECTED\" \"$MAC\"; done; "
-                "done"
-            )
-            await self.client.execute_command(scan_cmd)
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Presence scan trigger ignored/failed: %s", err)
 
     def _get_own_macs(self, data: OpenWrtData) -> set[str]:
         """Collect all MAC addresses belonging to the router itself."""
