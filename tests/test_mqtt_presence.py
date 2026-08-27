@@ -216,6 +216,7 @@ async def test_mqtt_discovery_cleanup_no_colons(hass: HomeAssistant) -> None:
             calls.append(service_data)
 
     hass.services.async_call = mock_async_call
+    hass.services.has_service = MagicMock(return_value=True)
 
     # Call cleanup
     await coordinator._async_discovery_mqtt_device_cleanup("AA:BB:CC:DD:EE:FF")
@@ -261,6 +262,7 @@ async def test_mqtt_discovery_cleanup_allowed_characters(hass: HomeAssistant) ->
             calls.append(service_data)
 
     hass.services.async_call = mock_async_call
+    hass.services.has_service = MagicMock(return_value=True)
 
     # Call cleanup
     await coordinator._async_discovery_mqtt_device_cleanup("AA:BB:CC:DD:EE:FF")
@@ -270,14 +272,11 @@ async def test_mqtt_discovery_cleanup_allowed_characters(hass: HomeAssistant) ->
     for call in calls:
         topic = call["topic"]
         if "device_tracker" in topic:
-            # The topic looks like: homeassistant/device_tracker/<node_id>/config
-            # Extract the node_id part
             parts = topic.split("/")
             node_id = parts[2]
-            # Must only consist of [a-zA-Z0-9_-]
-            assert re.match(r"^[a-zA-Z0-9_-]+$", node_id), (
-                f"Node ID '{node_id}' in topic '{topic}' contains illegal characters"
-            )
+            assert re.match(
+                r"^[a-zA-Z0-9_-]+$", node_id
+            ), f"Node ID '{node_id}' in topic '{topic}' contains illegal characters"
 
 
 async def test_mqtt_discovery_cleanup_active_topic_and_ownership(
@@ -323,6 +322,7 @@ async def test_mqtt_discovery_cleanup_active_topic_and_ownership(
             published_topics.append(service_data["topic"])
 
     hass.services.async_call = mock_publish
+    hass.services.has_service = MagicMock(return_value=True)
 
     # Cleanup on coord1 while coord2 still tracks aa:bb:cc:dd:ee:01
     await coord1._async_discovery_mqtt_device_cleanup("aa:bb:cc:dd:ee:01")

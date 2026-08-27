@@ -1557,6 +1557,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     async def _async_discovery_mqtt_device_cleanup(self, mac: str) -> None:
         """Remove active and legacy MQTT discovery messages for a device tracker."""
+        if not self.hass.services.has_service("mqtt", "publish"):
+            if mac in self._mqtt_discovered:
+                self._mqtt_discovered.remove(mac)
+            return
+
         mac_safe = mac.replace(":", "_")
         mac_colons = mac.lower()
         router_id_safe = re.sub(r"[^a-zA-Z0-9_-]", "_", str(self.router_id))
@@ -1635,28 +1640,36 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         """Scan ALL entities for MQTT zombies and remove them."""
         _LOGGER.debug("Starting global MQTT registry cleanup")
         ent_reg = er.async_get(self.hass)
+        entries = er.async_entries_for_config_entry(
+            ent_reg, self.config_entry.entry_id
+        )
 
-        # Get all known MAC formats from history
+        # 1. Collect all prefixes this router might have used in the past
+        mac_safe = self.router_id.replace(":", "_")
+        mac_no_colons = self.router_id.replace(":", "").lower()
+        mac_6chars = mac_no_colons[-6:].upper()
+        router_id_safe = re.sub(r"[^a-zA-Z0-9_-]", "_", str(self.router_id))
+
+        router_prefixes = [
+            f"openwrt_track_{router_id_safe}_",
+            f"openwrt_track_{mac_safe}_",
+            f"openwrt_track_{mac_6chars}_",
+            f"{router_id_safe}_{mac_safe}_",
+            f"openwrt_{mac_safe}_",
+            f"openwrt_{mac_6chars}_",
+        ]
+
+        # 2. Collect all MACs from this router's history
         known_macs = set()
         for mac in self._device_history:
-            known_macs.add(mac.lower())
-            known_macs.add(mac.replace(":", "").lower())
             known_macs.add(mac.replace(":", "_").lower())
-            known_macs.add(mac.replace(":", "")[-6:].lower())  # Last 6 chars
+            known_macs.add(mac.replace(":", "").lower())
 
-        # Build a set of STRICT identifiers belonging to THIS router
-        router_prefixes = {
-            self.config_entry.entry_id.lower(),
-            self.router_id.lower(),
-            self.router_id.replace(":", "_").lower(),
-            self.router_id.replace(":", "").lower(),
-            "openwrt",  # Historical prefix
-        }
-
-        # Scan ALL entities for MQTT zombies belonging to THIS router
-        for entry in list(ent_reg.entities.values()):
-            if entry.platform == "mqtt" and entry.domain == "device_tracker":
-                unique_id = (entry.unique_id or "").lower()
+        # 3. Check all entries in registry for this config entry
+        for entry in entries:
+            # We only care about device_tracker entities from MQTT
+            if entry.domain == "device_tracker" and entry.platform == "mqtt":
+                unique_id = entry.unique_id.lower()
                 entity_id = entry.entity_id.lower()
 
                 # Rule 1: Starts with our router-specific prefix?
@@ -1686,6 +1699,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     async def _async_discovery_mqtt_device(self, mac: str, hostname: str) -> None:
         """Send MQTT discovery message for a device tracker."""
+        if not self.hass.services.has_service("mqtt", "publish"):
+            return
         if mac in self._mqtt_discovered:
             return
 

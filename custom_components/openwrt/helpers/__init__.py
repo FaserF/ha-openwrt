@@ -133,8 +133,13 @@ def format_ap_name(ssid: str, band: str = "") -> str:
     """Format the display name for an SSID device.
 
     Examples:
-        format_ap_name("SmartLife", "2.4 GHz") -> "SSID SmartLife"
+        format_ap_name("SmartLife", "2.4 GHz") -> "SSID SmartLife (2.4 GHz)"
+        format_ap_name("SmartLife") -> "SSID SmartLife"
     """
+    if band:
+        normalized = normalize_band(band)
+        if normalized and normalized != "unknown":
+            return f"SSID {ssid} ({normalized})"
     return f"SSID {ssid}"
 
 

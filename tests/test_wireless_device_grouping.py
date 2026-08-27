@@ -301,13 +301,13 @@ async def test_ap_deduplication_keeps_user_facing_names_clean() -> None:
         )
     assert getattr(s1, "_attr_name", None) is None
     assert getattr(s2, "_attr_name", None) is None
-    assert s1._attr_device_info["name"] == "SSID MyNet"
-    assert s2._attr_device_info["name"] == "SSID MyNet"
+    assert s1._attr_device_info["name"] == "SSID MyNet (2.4 GHz)"
+    assert s2._attr_device_info["name"] == "SSID MyNet (2.4 GHz)"
 
     assert sw1._attr_name == "SSID MyNet"
     assert sw2._attr_name == "SSID MyNet"
-    assert sw1._attr_device_info["name"] == "SSID MyNet"
-    assert sw2._attr_device_info["name"] == "SSID MyNet"
+    assert sw1._attr_device_info["name"] == "SSID MyNet (2.4 GHz)"
+    assert sw2._attr_device_info["name"] == "SSID MyNet (2.4 GHz)"
 
 
 def test_same_ssid_and_band_stay_distinct_across_radios() -> None:
@@ -454,7 +454,8 @@ def test_router_id_mac_formatting_prevents_duplicate_ap():
         format_radio_device_id(config_entry, "radio0")
         == "02:00:00:00:00:01_radio_radio0"
     )
-    assert format_ap_name("Main", "2.4 GHz") == "SSID Main"
+    assert format_ap_name("Main", "2.4 GHz") == "SSID Main (2.4 GHz)"
+    assert format_ap_name("Main", "") == "SSID Main"
 
 
 def test_format_radio_name_normalizes_uci_band_aliases() -> None:
@@ -547,7 +548,7 @@ async def test_coordinator_preserves_active_radio_device(hass):
         if (DOMAIN, "router_mac_ap_radio0_Test_2.4 GHz")
         in call.kwargs.get("identifiers", set())
     )
-    assert ap_call.kwargs["name"] == "SSID Test"
+    assert ap_call.kwargs["name"] == "SSID Test (2.4 GHz)"
     assert ap_call.kwargs["via_device"] == (
         DOMAIN,
         "router_mac_radio_radio0",
