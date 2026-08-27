@@ -98,12 +98,24 @@ async def async_deploy_mqtt_presence(
                 )
 
             elif target_file == "etc/presence/presence.conf":
-                zone_entity = escape_shell_value(mqtt_config.get("zone", "zone.home"))
+                zone_entity = mqtt_config.get("zone", "zone.home")
+                latitude = ""
+                longitude = ""
+                if zone_state := hass.states.get(zone_entity):
+                    if (
+                        "latitude" in zone_state.attributes
+                        and "longitude" in zone_state.attributes
+                    ):
+                        latitude = str(zone_state.attributes["latitude"])
+                        longitude = str(zone_state.attributes["longitude"])
+
                 tmpl = Template(raw_content)
                 content = tmpl.substitute(
                     GRACE_SECONDS=str(grace_seconds),
                     IFACES=ifaces_str,
-                    ZONE_ENTITY=zone_entity,
+                    ZONE_ENTITY=escape_shell_value(zone_entity),
+                    LATITUDE=escape_shell_value(latitude),
+                    LONGITUDE=escape_shell_value(longitude),
                 )
 
             elif target_file == "etc/presence/presence_devices.conf":

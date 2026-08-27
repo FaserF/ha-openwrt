@@ -72,12 +72,18 @@ publish() {
   state_val="$1"
   if [ "$state_val" = "home" ]; then
     zone_val="${ZONE_ENTITY:-zone.home}"
-    payload="{\"in_zones\":[\"${zone_val}\"]}"
+    if [ -n "${LATITUDE:-}" ] && [ -n "${LONGITUDE:-}" ]; then
+      payload="{\"in_zones\":[\"${zone_val}\"],\"latitude\":${LATITUDE},\"longitude\":${LONGITUDE},\"gps_accuracy\":10}"
+    else
+      payload="{\"in_zones\":[\"${zone_val}\"]}"
+    fi
+    mqtt_state="home"
   else
     payload="{\"in_zones\":[]}"
+    mqtt_state="not_home"
   fi
 
-  log "publish topic='$TOPIC' state='None' payload='$payload'"
+  log "publish topic='$TOPIC' state='$mqtt_state' payload='$payload'"
   mosquitto_pub \
     -h "$BROKER" -p "$PORT" \
     -u "$USER" -P "$PASS" \
@@ -85,7 +91,7 @@ publish() {
     -q "${QOS:-1}" -r \
     --keepalive 30 \
     --will-topic "${TOPIC}/status" --will-payload "unknown" --will-retain \
-    -t "${TOPIC}" -m "None" >/dev/null
+    -t "${TOPIC}" -m "$mqtt_state" >/dev/null
 
   mosquitto_pub \
     -h "$BROKER" -p "$PORT" \
