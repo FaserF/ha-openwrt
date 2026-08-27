@@ -45,7 +45,7 @@ start_service() {
 
   # Initial scan of currently connected stations upon service start
   (
-    sleep 5
+    sleep 10
     for IFACE in $IFACES; do
       [ -d "/sys/class/net/$IFACE" ] || continue
       iw dev "$IFACE" station dump 2>/dev/null \
