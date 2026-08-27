@@ -1640,9 +1640,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         """Scan ALL entities for MQTT zombies and remove them."""
         _LOGGER.debug("Starting global MQTT registry cleanup")
         ent_reg = er.async_get(self.hass)
-        entries = er.async_entries_for_config_entry(
-            ent_reg, self.config_entry.entry_id
-        )
+        entries = er.async_entries_for_config_entry(ent_reg, self.config_entry.entry_id)
 
         # 1. Collect all prefixes this router might have used in the past
         mac_safe = self.router_id.replace(":", "_")

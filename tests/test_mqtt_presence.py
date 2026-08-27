@@ -274,9 +274,9 @@ async def test_mqtt_discovery_cleanup_allowed_characters(hass: HomeAssistant) ->
         if "device_tracker" in topic:
             parts = topic.split("/")
             node_id = parts[2]
-            assert re.match(
-                r"^[a-zA-Z0-9_-]+$", node_id
-            ), f"Node ID '{node_id}' in topic '{topic}' contains illegal characters"
+            assert re.match(r"^[a-zA-Z0-9_-]+$", node_id), (
+                f"Node ID '{node_id}' in topic '{topic}' contains illegal characters"
+            )
 
 
 async def test_mqtt_discovery_cleanup_active_topic_and_ownership(
