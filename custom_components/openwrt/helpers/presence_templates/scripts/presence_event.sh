@@ -73,7 +73,7 @@ publish() {
   if [ "$state_val" = "home" ]; then
     zone_val="${ZONE_ENTITY:-zone.home}"
     payload="{\"in_zones\":[\"${zone_val}\"]}"
-    mqtt_state="home"
+    mqtt_state="${ZONE_NAME:-home}"
   else
     payload="{\"in_zones\":[]}"
     mqtt_state="not_home"
