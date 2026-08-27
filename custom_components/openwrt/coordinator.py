@@ -1710,7 +1710,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             "unique_id": f"openwrt_track_{mac_safe}",
             "payload_home": "home",
             "payload_not_home": "not_home",
-            "payload_reset": "None",
             "source_type": "router",
             "device": {
                 "connections": [["mac", mac]],
