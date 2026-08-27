@@ -72,12 +72,12 @@ publish() {
   state_val="$1"
   if [ "$state_val" = "home" ]; then
     zone_val="${ZONE_ENTITY:-zone.home}"
-    payload="{\"state\":\"home\",\"in_zones\":[\"${zone_val}\"]}"
+    payload="{\"in_zones\":[\"${zone_val}\"]}"
   else
-    payload="{\"state\":\"not_home\",\"in_zones\":[]}"
+    payload="{\"in_zones\":[]}"
   fi
 
-  log "publish topic='$TOPIC' payload='$payload'"
+  log "publish topic='${TOPIC}/attributes' payload='$payload'"
   mosquitto_pub \
     -h "$BROKER" -p "$PORT" \
     -u "$USER" -P "$PASS" \
@@ -85,7 +85,7 @@ publish() {
     -q "${QOS:-1}" -r \
     --keepalive 30 \
     --will-topic "${TOPIC}/status" --will-payload "unknown" --will-retain \
-    -t "$TOPIC" -m "$payload" >/dev/null
+    -t "${TOPIC}/attributes" -m "$payload" >/dev/null
 }
 
 is_seen_anywhere() {

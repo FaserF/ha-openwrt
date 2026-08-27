@@ -2834,7 +2834,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 self.hass, client, mqtt_config, tracked_devices, consider_home
             )
             if success:
-                return await self.async_step_options_permissions()
+                return self.async_create_entry(title="", data=self._options)
 
             return self.async_show_form(
                 step_id="options_deploy_failed",

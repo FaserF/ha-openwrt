@@ -357,7 +357,8 @@ async def test_deploy_helper_with_whitelist_and_consider_home(hass: HomeAssistan
 
     # Verify presence_event.sh formats JSON payload with in_zones
     event_sh_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_event.sh" in c)
-    assert 'payload="{\\"state\\":\\"home\\",\\"in_zones\\":[\\"$' in event_sh_cmd
+    assert 'payload="{\\"in_zones\\":[\\"$' in event_sh_cmd
+    assert '-t "${TOPIC}/attributes"' in event_sh_cmd
 
 
 async def test_mqtt_discovery_cleanup_no_colons(hass: HomeAssistant) -> None:
