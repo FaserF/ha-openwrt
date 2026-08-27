@@ -94,6 +94,10 @@ async def test_config_flow_mqtt_steps(hass: HomeAssistant, mock_config_entry) ->
         patch.object(flow, "_create_entry", return_value=AsyncMock()) as mock_create,
     ):
         result = await flow.async_step_mqtt_presence(user_input)
+        assert result["step_id"] == "mqtt_zone"
+
+        # 3. Submit Zone selection
+        result = await flow.async_step_mqtt_zone({"mqtt_zone": "zone.home"})
 
         assert mock_deploy.called
         assert mock_create.called
@@ -141,6 +145,10 @@ async def test_options_flow_mqtt_redeploy(
 
         # Submit the details
         result = await flow.async_step_options_mqtt_presence(user_input)
+        assert result["step_id"] == "options_mqtt_zone"
+
+        # Submit Zone selection
+        result = await flow.async_step_options_mqtt_zone({"mqtt_zone": "zone.home"})
 
         assert mock_deploy.called
         assert mock_perms.called

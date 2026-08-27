@@ -179,7 +179,13 @@
           "mqtt_broker": "MQTT Broker (reachable from router)",
           "mqtt_port": "MQTT Port",
           "mqtt_username": "MQTT Username",
-          "mqtt_password": "MQTT Password",
+          "mqtt_password": "MQTT Password"
+        }
+      },
+      "mqtt_zone": {
+        "title": "MQTT Presence Location Zone",
+        "description": "Select the Home Assistant Zone entity that corresponds to the location of this router. The presence status reported by this router will be associated with this zone.",
+        "data": {
           "mqtt_zone": "Target Zone Entity (e.g. Home, Office)"
         }
       },
@@ -286,7 +292,13 @@
           "mqtt_broker": "MQTT Broker (reachable from router)",
           "mqtt_port": "MQTT Port",
           "mqtt_username": "MQTT Username",
-          "mqtt_password": "MQTT Password",
+          "mqtt_password": "MQTT Password"
+        }
+      },
+      "options_mqtt_zone": {
+        "title": "MQTT Presence Location Zone",
+        "description": "Select the Home Assistant Zone entity that corresponds to the location of this router. The presence status reported by this router will be associated with this zone.",
+        "data": {
           "mqtt_zone": "Target Zone Entity (e.g. Home, Office)"
         }
       },

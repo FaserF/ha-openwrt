@@ -2050,7 +2050,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors["base"] = "mqtt_permission_missing"
                 else:
                     self._data.update(user_input)
-                    return await self.async_step_do_deploy_mqtt_presence()
+                    return await self.async_step_mqtt_zone()
 
         return self.async_show_form(
             step_id="mqtt_presence",
@@ -2073,6 +2073,27 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_MQTT_PASSWORD,
                         default=self._data.get(CONF_MQTT_PASSWORD, ""),
                     ): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "presence_repo_url": MQTT_PRESENCE_URL,
+            },
+        )
+
+    async def async_step_mqtt_zone(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Handle MQTT zone selection step."""
+        if user_input is not None:
+            self._data.update(user_input)
+            return await self.async_step_do_deploy_mqtt_presence()
+
+        return self.async_show_form(
+            step_id="mqtt_zone",
+            data_schema=vol.Schema(
+                {
                     vol.Optional(
                         CONF_MQTT_ZONE,
                         default=self._data.get(CONF_MQTT_ZONE, "zone.home"),
@@ -2081,10 +2102,6 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                     ),
                 }
             ),
-            errors=errors,
-            description_placeholders={
-                "presence_repo_url": MQTT_PRESENCE_URL,
-            },
         )
 
     async def async_step_do_deploy_mqtt_presence(self) -> ConfigFlowResult:
@@ -2398,7 +2415,8 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Handle selective device tracking step."""
         if user_input is not None:
             self._options.update(user_input)
-            if self._config_entry.options.get(CONF_MQTT_PRESENCE):
+            current_opts = {**self._config_entry.options, **self._options}
+            if current_opts.get(CONF_MQTT_PRESENCE):
                 return await self.async_step_options_do_deploy_mqtt_presence()
             return self.async_create_entry(title="", data=self._options)
 
@@ -2729,7 +2747,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 errors["base"] = "mqtt_permission_missing"
             else:
                 self._options.update(user_input)
-                return await self.async_step_options_do_deploy_mqtt_presence()
+                return await self.async_step_options_mqtt_zone()
 
         current = self._config_entry.options
         return self.async_show_form(
@@ -2756,6 +2774,28 @@ class OpenWrtOptionsFlow(OptionsFlow):
                         CONF_MQTT_PASSWORD,
                         default=current.get(CONF_MQTT_PASSWORD, ""),
                     ): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "presence_repo_url": MQTT_PRESENCE_URL,
+            },
+        )
+
+    async def async_step_options_mqtt_zone(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Handle MQTT zone selection step in options flow."""
+        if user_input is not None:
+            self._options.update(user_input)
+            return await self.async_step_options_do_deploy_mqtt_presence()
+
+        current = self._config_entry.options
+        return self.async_show_form(
+            step_id="options_mqtt_zone",
+            data_schema=vol.Schema(
+                {
                     vol.Optional(
                         CONF_MQTT_ZONE,
                         default=current.get(CONF_MQTT_ZONE, "zone.home"),
@@ -2764,10 +2804,6 @@ class OpenWrtOptionsFlow(OptionsFlow):
                     ),
                 }
             ),
-            errors=errors,
-            description_placeholders={
-                "presence_repo_url": MQTT_PRESENCE_URL,
-            },
         )
 
     async def async_step_options_do_deploy_mqtt_presence(self) -> ConfigFlowResult:
