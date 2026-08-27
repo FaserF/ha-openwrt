@@ -140,6 +140,38 @@ CONNECTION_TYPE_MAP = {
     CONNECTION_TYPE_SSH: "SSH (not recommended)",
 }
 
+# Configuration options that require redeploying MQTT presence scripts to the router when changed
+MQTT_PRESENCE_REDEPLOY_KEYS = {
+    CONF_MQTT_BROKER,
+    CONF_MQTT_PORT,
+    CONF_MQTT_USERNAME,
+    CONF_MQTT_PASSWORD,
+    CONF_MQTT_ZONE,
+    CONF_CONSIDER_HOME,
+    CONF_TRACKED_DEVICES,
+    CONF_MANUAL_TRACKED_DEVICES,
+}
+
+
+def should_redeploy_mqtt_presence(
+    current_options: Mapping[str, Any],
+    new_options: Mapping[str, Any],
+) -> bool:
+    """Check if MQTT presence configuration or any associated parameter has changed."""
+    # 1. Newly enabled
+    if new_options.get(CONF_MQTT_PRESENCE) and not current_options.get(CONF_MQTT_PRESENCE):
+        return True
+
+    # 2. Currently enabled: check explicitly requested redeploy or parameter changes
+    if new_options.get(CONF_MQTT_PRESENCE):
+        if new_options.get(CONF_REDEPLOY_MQTT):
+            return True
+        for key in MQTT_PRESENCE_REDEPLOY_KEYS:
+            if key in new_options and new_options[key] != current_options.get(key):
+                return True
+
+    return False
+
 
 def _generate_permission_table(
     perms: Any, translations: dict[str, str] | None = None
@@ -2225,19 +2257,21 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if user_input is not None:
             _LOGGER.debug("Options init submitted: %s", user_input)
             self._options = {**self._config_entry.options, **user_input}
-            if (
-                user_input.get(CONF_MQTT_PRESENCE)
-                and not self._config_entry.options.get(CONF_MQTT_PRESENCE)
-            ) or user_input.get(CONF_REDEPLOY_MQTT):
-                return await self.async_step_options_mqtt_presence()
+            mqtt_was_enabled = self._config_entry.options.get(CONF_MQTT_PRESENCE, False)
+            mqtt_is_enabled = user_input.get(CONF_MQTT_PRESENCE, False)
+
+            if should_redeploy_mqtt_presence(
+                self._config_entry.options, self._options
+            ):
+                if not mqtt_was_enabled or user_input.get(CONF_REDEPLOY_MQTT):
+                    return await self.async_step_options_mqtt_presence()
+                return await self.async_step_options_do_deploy_mqtt_presence()
 
             if user_input.get(CONF_REDEPLOY_USER):
                 return await self.async_step_options_redeploy_user()
 
             # Check if we are disabling MQTT
-            if not user_input.get(
-                CONF_MQTT_PRESENCE
-            ) and self._config_entry.options.get(CONF_MQTT_PRESENCE):
+            if not mqtt_is_enabled and mqtt_was_enabled:
                 from .helpers.mqtt_presence import async_remove_mqtt_presence
 
                 client = create_client(self.hass, self._config_entry.data)
@@ -2364,6 +2398,8 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Handle selective device tracking step."""
         if user_input is not None:
             self._options.update(user_input)
+            if self._config_entry.options.get(CONF_MQTT_PRESENCE):
+                return await self.async_step_options_do_deploy_mqtt_presence()
             return self.async_create_entry(title="", data=self._options)
 
         # Get discovered devices from coordinator

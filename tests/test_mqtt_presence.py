@@ -146,6 +146,99 @@ async def test_options_flow_mqtt_redeploy(
         assert mock_perms.called
 
 
+async def test_options_flow_consider_home_change_triggers_redeploy(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test that changing consider_home when MQTT is enabled auto-redeploys scripts to router."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+    from custom_components.openwrt.const import CONF_CONSIDER_HOME
+
+    mock_config_entry.options = {
+        CONF_MQTT_PRESENCE: True,
+        CONF_CONSIDER_HOME: 180,
+    }
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    user_input = {
+        CONF_MQTT_PRESENCE: True,
+        CONF_CONSIDER_HOME: 300,
+    }
+
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": MagicMock(data=MagicMock(permissions=MagicMock(write_mqtt=True)))
+    }
+    with (
+        patch(
+            "custom_components.openwrt.helpers.mqtt_presence.async_deploy_mqtt_presence",
+            return_value=(True, None),
+        ) as mock_deploy,
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(),
+        ),
+        patch.object(
+            flow, "async_step_options_permissions", return_value=AsyncMock()
+        ) as mock_perms,
+    ):
+        result = await flow.async_step_init(user_input)
+        assert mock_deploy.called
+        # Verify consider_home parameter passed to async_deploy_mqtt_presence was 300
+        assert mock_deploy.call_args.args[4] == 300
+        assert mock_perms.called
+
+
+async def test_should_redeploy_mqtt_presence_helper() -> None:
+    """Test the should_redeploy_mqtt_presence helper with various option changes."""
+    from custom_components.openwrt.config_flow import should_redeploy_mqtt_presence
+    from custom_components.openwrt.const import (
+        CONF_CONSIDER_HOME,
+        CONF_MQTT_BROKER,
+        CONF_MQTT_PRESENCE,
+        CONF_MQTT_ZONE,
+        CONF_TRACKED_DEVICES,
+    )
+
+    current = {
+        CONF_MQTT_PRESENCE: True,
+        CONF_CONSIDER_HOME: 180,
+        CONF_MQTT_ZONE: "zone.home",
+    }
+
+    # No changes
+    assert not should_redeploy_mqtt_presence(
+        current, {CONF_MQTT_PRESENCE: True, CONF_CONSIDER_HOME: 180}
+    )
+
+    # Newly enabled
+    assert should_redeploy_mqtt_presence(
+        {CONF_MQTT_PRESENCE: False}, {CONF_MQTT_PRESENCE: True}
+    )
+
+    # consider_home changed
+    assert should_redeploy_mqtt_presence(
+        current, {CONF_MQTT_PRESENCE: True, CONF_CONSIDER_HOME: 300}
+    )
+
+    # zone changed
+    assert should_redeploy_mqtt_presence(
+        current, {CONF_MQTT_PRESENCE: True, CONF_MQTT_ZONE: "zone.work"}
+    )
+
+    # broker changed
+    assert should_redeploy_mqtt_presence(
+        current, {CONF_MQTT_PRESENCE: True, CONF_MQTT_BROKER: "1.2.3.4"}
+    )
+
+    # tracked devices changed
+    assert should_redeploy_mqtt_presence(
+        current,
+        {CONF_MQTT_PRESENCE: True, CONF_TRACKED_DEVICES: ["AA:BB:CC:DD:EE:FF"]},
+    )
+
+
 async def test_deploy_helper_success(hass: HomeAssistant) -> None:
     """Test the deployment helper logic using local templates."""
     from custom_components.openwrt.helpers.mqtt_presence import (
