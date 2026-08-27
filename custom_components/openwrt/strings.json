@@ -173,7 +173,7 @@
       },
       "mqtt_presence": {
         "title": "MQTT Presence Detection (Optional)",
-        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n⚠️ **Note:** This is a third-party feature. Support is not provided by this integration. Bugs should be reported to the original repository.",
+        "description": "Enable MQTT-based presence detection for higher reliability and lower latency.",
         "data": {
           "mqtt_presence": "Enable MQTT Presence Detection",
           "mqtt_broker": "MQTT Broker (reachable from router)",
@@ -286,7 +286,7 @@
       },
       "options_mqtt_presence": {
         "title": "MQTT Presence Detection (Optional)",
-        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n⚠️ **Note:** This is a third-party feature. Support is not provided by this integration. Bugs should be reported to the original repository.",
+        "description": "Enable MQTT-based presence detection for higher reliability and lower latency.",
         "data": {
           "mqtt_presence": "Enable MQTT Presence Detection",
           "mqtt_broker": "MQTT Broker (reachable from router)",

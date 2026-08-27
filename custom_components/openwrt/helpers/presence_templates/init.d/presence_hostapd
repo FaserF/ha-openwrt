@@ -22,6 +22,19 @@ start_service() {
     procd_set_param stderr 1
     procd_close_instance
   done
+
+  # Initial scan of currently connected stations upon service start
+  (
+    sleep 2
+    for IFACE in $IFACES; do
+      [ -d "/sys/class/net/$IFACE" ] || continue
+      iw dev "$IFACE" station dump 2>/dev/null \
+        | awk '/^Station/ {print $2}' \
+        | while read -r MAC; do
+            [ -n "$MAC" ] && "$ACTION" "$IFACE" "AP-STA-CONNECTED" "$MAC"
+          done
+    done
+  ) &
 }
 
 service_triggers() {

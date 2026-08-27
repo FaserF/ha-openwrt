@@ -192,6 +192,12 @@ async def test_options_flow_consider_home_change_triggers_redeploy(
         ) as mock_perms,
     ):
         result = await flow.async_step_init(user_input)
+        assert result["step_id"] == "options_mqtt_presence"
+
+        result = await flow.async_step_options_mqtt_presence(user_input)
+        assert result["step_id"] == "options_mqtt_zone"
+
+        result = await flow.async_step_options_mqtt_zone({"mqtt_zone": "zone.home"})
         assert mock_deploy.called
         # Verify consider_home parameter passed to async_deploy_mqtt_presence was 300
         assert mock_deploy.call_args.args[4] == 300
