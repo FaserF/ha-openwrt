@@ -14,7 +14,27 @@ start_service() {
   IFACES="wl0-ap0 wl1-ap0"
   [ -f /etc/presence/presence.conf ] && . /etc/presence/presence.conf
 
+  ACTIVE_IFACES=""
   for IFACE in $IFACES; do
+    if hostapd_cli -i "$IFACE" ping 2>/dev/null | grep -q PONG; then
+      ACTIVE_IFACES="$ACTIVE_IFACES $IFACE"
+    fi
+  done
+
+  if [ -z "$ACTIVE_IFACES" ]; then
+    for sock in /var/run/hostapd/*; do
+      [ -e "$sock" ] || continue
+      iface=$(basename "$sock")
+      [ "$iface" = "global" ] && continue
+      if hostapd_cli -i "$iface" ping 2>/dev/null | grep -q PONG; then
+        ACTIVE_IFACES="$ACTIVE_IFACES $iface"
+      fi
+    done
+  fi
+
+  [ -z "$ACTIVE_IFACES" ] && ACTIVE_IFACES="$IFACES"
+
+  for IFACE in $ACTIVE_IFACES; do
     procd_open_instance "$IFACE"
     procd_set_param command /usr/sbin/hostapd_cli -i "$IFACE" -a "$ACTION"
     procd_set_param respawn 3600 5 5
@@ -25,7 +45,7 @@ start_service() {
 
   # Initial scan of currently connected stations upon service start
   (
-    sleep 2
+    sleep 5
     for IFACE in $IFACES; do
       [ -d "/sys/class/net/$IFACE" ] || continue
       iw dev "$IFACE" station dump 2>/dev/null \

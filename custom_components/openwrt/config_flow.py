@@ -2409,6 +2409,8 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Handle selective device tracking step."""
         if user_input is not None:
             self._options.update(user_input)
+            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+                return await self.async_step_options_do_deploy_mqtt_presence()
             return self.async_create_entry(title="", data=self._options)
 
         # Get discovered devices from coordinator
@@ -2502,6 +2504,8 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if user_input is not None:
             if self._packages is not None:
                 return await self.async_step_options_packages()
+            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+                return await self.async_step_options_do_deploy_mqtt_presence()
             return self.async_create_entry(title="", data=self._options)
 
         client = create_client(self.hass, {**self._config_entry.data, **self._options})
@@ -2538,6 +2542,8 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if self._permissions is None:
             if self._packages is not None:
                 return await self.async_step_options_packages()
+            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+                return await self.async_step_options_do_deploy_mqtt_presence()
             return self.async_create_entry(title="", data=self._options)
 
         if self._ubus_restricted:
@@ -2584,6 +2590,8 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if user_input is not None:
             if self._packages is not None:
                 return await self.async_step_options_packages()
+            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+                return await self.async_step_options_do_deploy_mqtt_presence()
             return self.async_create_entry(title="", data=self._options)
 
         # Try to get model from direct client or use existing device registry if available
@@ -2609,9 +2617,13 @@ class OpenWrtOptionsFlow(OptionsFlow):
             self._options.update(user_input)
             if user_input.get(CONF_TRACK_DEVICES):
                 return await self.async_step_options_select_devices()
+            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+                return await self.async_step_options_do_deploy_mqtt_presence()
             return self.async_create_entry(title="", data=self._options)
 
         if self._packages is None:
+            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+                return await self.async_step_options_do_deploy_mqtt_presence()
             return self.async_create_entry(title="", data=self._options)
 
         # Get translations for package features
@@ -2777,7 +2789,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Handle MQTT zone selection step in options flow."""
         if user_input is not None:
             self._options.update(user_input)
-            return await self.async_step_options_do_deploy_mqtt_presence()
+            return await self.async_step_options_permissions()
 
         current = self._config_entry.options
         return self.async_show_form(
