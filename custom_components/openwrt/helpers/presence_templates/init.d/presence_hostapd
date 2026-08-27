@@ -54,7 +54,7 @@ start_service() {
             [ -n "$MAC" ] && "$ACTION" "$IFACE" "AP-STA-CONNECTED" "$MAC"
           done
     done
-  ) &
+  ) >/dev/null 2>&1 &
 }
 
 service_triggers() {

@@ -34,7 +34,4 @@ else
     exit 1
 fi
 
-/etc/init.d/presence_hostapd enable
-/etc/init.d/presence_hostapd restart
-
-echo "OK: presence_hostapd enabled and restarted"
+echo "OK: presence_hostapd installation completed"
