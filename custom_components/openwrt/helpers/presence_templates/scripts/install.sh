@@ -34,6 +34,7 @@ else
     exit 1
 fi
 
+killall -9 hostapd_cli 2>/dev/null || true
 /etc/init.d/presence_hostapd enable
 /etc/init.d/presence_hostapd restart
 
