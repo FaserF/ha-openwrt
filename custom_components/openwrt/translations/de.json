@@ -179,7 +179,13 @@
           "mqtt_broker": "MQTT Broker (vom Router aus erreichbar)",
           "mqtt_port": "MQTT Port",
           "mqtt_username": "MQTT Benutzername",
-          "mqtt_password": "MQTT Passwort",
+          "mqtt_password": "MQTT Passwort"
+        }
+      },
+      "mqtt_zone": {
+        "title": "MQTT Präsenz Standort-Zone",
+        "description": "Wähle die Home Assistant Zone-Entität aus, die dem Standort dieses Routers entspricht. Der von diesem Router gemeldete Präsenzstatus wird dieser Zone zugeordnet.",
+        "data": {
           "mqtt_zone": "Ziel Zone-Entität (z. B. Home, Büro)"
         }
       },
@@ -286,7 +292,13 @@
           "mqtt_broker": "MQTT Broker (vom Router aus erreichbar)",
           "mqtt_port": "MQTT Port",
           "mqtt_username": "MQTT Benutzername",
-          "mqtt_password": "MQTT Passwort",
+          "mqtt_password": "MQTT Passwort"
+        }
+      },
+      "options_mqtt_zone": {
+        "title": "MQTT Präsenz Standort-Zone",
+        "description": "Wähle die Home Assistant Zone-Entität aus, die dem Standort dieses Routers entspricht. Der von diesem Router gemeldete Präsenzstatus wird dieser Zone zugeordnet.",
+        "data": {
           "mqtt_zone": "Ziel Zone-Entität (z. B. Home, Büro)"
         }
       },
