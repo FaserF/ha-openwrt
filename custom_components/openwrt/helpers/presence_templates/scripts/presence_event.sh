@@ -72,12 +72,12 @@ publish() {
   state_val="$1"
   if [ "$state_val" = "home" ]; then
     zone_val="${ZONE_ENTITY:-zone.home}"
-    if [ -n "${LATITUDE:-}" ] && [ -n "${LONGITUDE:-}" ]; then
-      payload="{\"in_zones\":[\"${zone_val}\"],\"latitude\":${LATITUDE},\"longitude\":${LONGITUDE},\"gps_accuracy\":10}"
+    payload="{\"in_zones\":[\"${zone_val}\"]}"
+    if [ "$zone_val" = "zone.home" ]; then
+      mqtt_state="home"
     else
-      payload="{\"in_zones\":[\"${zone_val}\"]}"
+      mqtt_state="${ZONE_NAME:-home}"
     fi
-    mqtt_state="home"
   else
     payload="{\"in_zones\":[]}"
     mqtt_state="not_home"
