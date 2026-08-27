@@ -128,7 +128,6 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DOCS_URL,
     DOMAIN,
-    MQTT_PRESENCE_URL,
 )
 from .coordinator import create_client
 
@@ -2076,9 +2075,6 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
-            description_placeholders={
-                "presence_repo_url": MQTT_PRESENCE_URL,
-            },
         )
 
     async def async_step_mqtt_zone(
@@ -2280,9 +2276,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
             if should_redeploy_mqtt_presence(
                 self._config_entry.options, self._options
             ):
-                if not mqtt_was_enabled or user_input.get(CONF_REDEPLOY_MQTT):
-                    return await self.async_step_options_mqtt_presence()
-                return await self.async_step_options_do_deploy_mqtt_presence()
+                return await self.async_step_options_mqtt_presence()
 
             if user_input.get(CONF_REDEPLOY_USER):
                 return await self.async_step_options_redeploy_user()
@@ -2415,9 +2409,6 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Handle selective device tracking step."""
         if user_input is not None:
             self._options.update(user_input)
-            current_opts = {**self._config_entry.options, **self._options}
-            if current_opts.get(CONF_MQTT_PRESENCE):
-                return await self.async_step_options_do_deploy_mqtt_presence()
             return self.async_create_entry(title="", data=self._options)
 
         # Get discovered devices from coordinator
@@ -2777,9 +2768,6 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 }
             ),
             errors=errors,
-            description_placeholders={
-                "presence_repo_url": MQTT_PRESENCE_URL,
-            },
         )
 
     async def async_step_options_mqtt_zone(

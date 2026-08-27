@@ -173,7 +173,7 @@
       },
       "mqtt_presence": {
         "title": "MQTT Präsenzerkennung (Optional)",
-        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz. Dies nutzt ein Drittanbieter-Skript von [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n⚠️ **Hinweis:** Dies ist eine Drittanbieter-Funktion. Support wird für dieses Feature nicht angeboten. Fehler sollten im ursprünglichen Repository gemeldet werden.",
+        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz.",
         "data": {
           "mqtt_presence": "MQTT Präsenzerkennung aktivieren",
           "mqtt_broker": "MQTT Broker (vom Router aus erreichbar)",
@@ -286,7 +286,7 @@
       },
       "options_mqtt_presence": {
         "title": "MQTT Präsenzerkennung (Optional)",
-        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz. Dies nutzt ein Drittanbieter-Skript von [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n⚠️ **Hinweis:** Dies ist eine Drittanbieter-Funktion. Support wird für dieses Feature nicht angeboten. Fehler sollten im ursprünglichen Repository gemeldet werden.",
+        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz.",
         "data": {
           "mqtt_presence": "MQTT Präsenzerkennung aktivieren",
           "mqtt_broker": "MQTT Broker (vom Router aus erreichbar)",
