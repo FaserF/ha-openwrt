@@ -1609,9 +1609,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         if not other_entry_tracks_device:
             status_topics = [
                 f"presence/{mac_safe}",
+                f"presence/{mac_safe}/attributes",
                 f"presence/{mac_colons}",
+                f"presence/{mac_colons}/attributes",
                 f"openwrt/presence/{mac_safe}",
+                f"openwrt/presence/{mac_safe}/attributes",
                 f"openwrt/presence/{mac_colons}",
+                f"openwrt/presence/{mac_colons}/attributes",
             ]
             for topic in status_topics:
                 _LOGGER.debug("Clearing MQTT status topic: %s", topic)
