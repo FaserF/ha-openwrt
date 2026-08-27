@@ -1021,3 +1021,67 @@ async def test_ubus_wps_status_and_control(ubus_client: UbusClient):
         res = await ubus_client.trigger_wps_push("wlan0")
         assert res is True
         mock_call.assert_called_with("hostapd.wlan0", "wps_start")
+
+
+@pytest.mark.asyncio
+async def test_ubus_set_wireless_network_enabled_resolves_wifinet_section(
+    ubus_client: UbusClient,
+) -> None:
+    """Test that set_wireless_network_enabled resolves wifinet3 to the correct UCI section."""
+    uci_data = {
+        "values": {
+            "radio0": {".type": "wifi-device"},
+            "radio1": {".type": "wifi-device"},
+            "default_radio0": {
+                ".type": "wifi-iface",
+                "device": "radio0",
+                "mode": "ap",
+                "ssid": "SSID0",
+            },
+            "cfg02e1b1": {
+                ".type": "wifi-iface",
+                "device": "radio0",
+                "mode": "ap",
+                "ssid": "SSID1",
+            },
+            "cfg03e1b2": {
+                ".type": "wifi-iface",
+                "device": "radio1",
+                "mode": "ap",
+                "ssid": "SSID2",
+            },
+            "cfg04e1b3": {
+                ".type": "wifi-iface",
+                "device": "radio1",
+                "mode": "ap",
+                "ssid": "SSID3",
+            },
+        }
+    }
+
+    recorded_calls = []
+
+    async def mock_call(obj, method, params=None):
+        recorded_calls.append((obj, method, params))
+        if obj == "uci" and method == "get":
+            return uci_data
+        return {}
+
+    with patch.object(ubus_client, "_call", side_effect=mock_call):
+        # wifinet3 is the 4th wifi-iface section (index 3) -> cfg04e1b3
+        success = await ubus_client.set_wireless_network_enabled(
+            "wifinet3", "radio1", True, disable_radio=False
+        )
+        assert success is True
+
+        # Verify uci set was called for cfg04e1b3, not wifinet3
+        set_calls = [
+            params
+            for obj, method, params in recorded_calls
+            if obj == "uci" and method == "set"
+        ]
+        assert any(
+            c.get("section") == "cfg04e1b3" and c.get("values") == {"disabled": "0"}
+            for c in set_calls
+        )
+        assert not any(c.get("section") == "wifinet3" for c in set_calls)

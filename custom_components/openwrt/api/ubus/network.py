@@ -140,48 +140,93 @@ class UbusNetworkMixin:
                     and "values" in uci_wireless
                 ):
                     vals = uci_wireless["values"]
+                    by_section = {
+                        wifi.section: wifi for wifi in interfaces if wifi.section
+                    }
+                    by_name = {wifi.name: wifi for wifi in interfaces if wifi.name}
+                    wifi_iface_count = 0
                     for sect_name, sect_data in vals.items():
-                        if sect_data.get(".type") != "wifi-iface":
+                        if (
+                            not isinstance(sect_data, dict)
+                            or sect_data.get(".type") != "wifi-iface"
+                        ):
                             continue
 
-                        # In some firmwares (like Xiaomi), ifname is not in UCI
-                        # But iwinfo might know the interface.
                         iface_name = sect_data.get("ifname") or sect_name
                         radio_name = sect_data.get("device", "")
+                        radio_config = (
+                            vals.get(radio_name, {})
+                            if isinstance(vals.get(radio_name), dict)
+                            else {}
+                        )
 
                         # Get radio status to determine if enabled
-                        radio_disabled = (
-                            vals.get(radio_name, {}).get("disabled", "0") == "1"
+                        radio_disabled = WirelessInterface._uci_disabled(
+                            radio_config.get("disabled", "0")
                         )
-                        iface_disabled = sect_data.get("disabled", "0") == "1"
+                        iface_disabled = WirelessInterface._uci_disabled(
+                            sect_data.get("disabled", "0")
+                        )
+                        configured_enabled = not (radio_disabled or iface_disabled)
+
+                        anon_name = f"wifinet{wifi_iface_count}"
+                        existing = (
+                            by_section.get(sect_name)
+                            or by_section.get(anon_name)
+                            or by_name.get(iface_name)
+                            or by_name.get(sect_name)
+                            or by_name.get(anon_name)
+                        )
+                        wifi_iface_count += 1
+
+                        if existing is not None:
+                            existing.section = sect_name
+                            existing.radio = existing.radio or radio_name
+                            existing.radio_enabled = not radio_disabled
+                            existing.interface_enabled = not iface_disabled
+                            existing.enabled = configured_enabled
+                            existing.up = existing.up and configured_enabled
+                            existing.ssid = existing.ssid or sect_data.get("ssid", "")
+                            existing.mode = existing.mode or sect_data.get("mode", "")
+                            existing.encryption = existing.encryption or sect_data.get(
+                                "encryption", ""
+                            )
+                            existing.hwmode = existing.hwmode or radio_config.get(
+                                "hwmode", ""
+                            )
+                            existing.band = (
+                                existing.band
+                                or WirelessInterface._band_from_raw(
+                                    radio_config.get("band", "")
+                                    or radio_config.get("hwmode", "")
+                                )
+                            )
+                            iface_names.add(iface_name)
+                            iface_names.add(sect_name)
+                            continue
 
                         wifi = WirelessInterface(
                             name=iface_name,
                             ssid=sect_data.get("ssid", ""),
                             mode=sect_data.get("mode", ""),
                             encryption=sect_data.get("encryption", ""),
-                            enabled=not (radio_disabled or iface_disabled),
+                            enabled=configured_enabled,
                             interface_enabled=not iface_disabled,
-                            up=not (radio_disabled or iface_disabled),
+                            up=configured_enabled,
                             radio=radio_name,
                             radio_enabled=not radio_disabled,
                             band=WirelessInterface._band_from_raw(
-                                vals.get(radio_name, {}).get("band", "")
-                                or vals.get(radio_name, {}).get("hwmode", "")
+                                radio_config.get("band", "")
+                                or radio_config.get("hwmode", "")
                             ),
-                            hwmode=vals.get(radio_name, {}).get("hwmode", ""),
-                            txpower=_valid_txpower(
-                                vals.get(radio_name, {}).get("txpower")
-                            ),
+                            hwmode=radio_config.get("hwmode", ""),
+                            txpower=_valid_txpower(radio_config.get("txpower")),
                             section=sect_name,
-                            ifname=sect_data.get("ifname"),
+                            ifname=sect_data.get("ifname", ""),
                         )
                         interfaces.append(wifi)
                         iface_names.add(iface_name)
-                        if wifi.section and wifi.section != iface_name:
-                            iface_names.add(wifi.section)
-                        if wifi.ifname and wifi.ifname != iface_name:
-                            iface_names.add(wifi.ifname)
+                        iface_names.add(sect_name)
             except Exception as e:
                 _LOGGER.debug("UCI wireless fallback failed: %s", e)
 

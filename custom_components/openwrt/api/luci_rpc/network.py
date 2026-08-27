@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import shlex
 
 from ..base import (
@@ -727,9 +728,11 @@ class LuciRpcNetworkMixin:
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable or disable a wireless radio via UCI."""
         try:
+            match = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
+            target = f"@wifi-iface[{match.group(1)}]" if match else interface
             action = "0" if enabled else "1"
             cmd = (
-                f"uci set wireless.{interface}.disabled={action} && "
+                f"uci set wireless.{target}.disabled={action} && "
                 "uci commit wireless && "
                 "wifi reload"
             )
@@ -749,10 +752,12 @@ class LuciRpcNetworkMixin:
     ) -> bool:
         """Set an SSID and its radio in one UCI transaction."""
         try:
+            match = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
+            target = f"@wifi-iface[{match.group(1)}]" if match else interface
             assignments = []
             if enabled:
                 assignments.append(f"wireless.{radio}.disabled=0")
-            assignments.append(f"wireless.{interface}.disabled={0 if enabled else 1}")
+            assignments.append(f"wireless.{target}.disabled={0 if enabled else 1}")
             if disable_radio:
                 assignments.append(f"wireless.{radio}.disabled=1")
             commands = [f"uci set {shlex.quote(value)}" for value in assignments]

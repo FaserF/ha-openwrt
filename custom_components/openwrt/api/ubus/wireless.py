@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from ..base import (
     WifiCredentials,
@@ -105,17 +106,79 @@ class UbusWirelessMixin:
 
         return False
 
+    async def _resolve_wireless_section(self, interface: str, radio: str = "") -> str:
+        """Resolve an interface name (e.g. wifinet0, wlan0) to a valid UCI section."""
+        try:
+            uci_data = await self._call("uci", "get", {"config": "wireless"})
+            if (
+                not uci_data
+                or not isinstance(uci_data, dict)
+                or "values" not in uci_data
+            ):
+                return interface
+
+            vals = uci_data["values"]
+            # 1. Exact match with section key
+            if interface in vals:
+                return interface
+
+            wifi_ifaces = [
+                (sect_name, sect_data)
+                for sect_name, sect_data in vals.items()
+                if isinstance(sect_data, dict)
+                and sect_data.get(".type") == "wifi-iface"
+            ]
+
+            # 2. Check if interface is wifinetN or @wifi-iface[N]
+            match_net = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
+            match_anon = re.match(r"^@?wifi-iface\[(\d+)\]$", interface, re.IGNORECASE)
+            idx = None
+            if match_net:
+                idx = int(match_net.group(1))
+            elif match_anon:
+                idx = int(match_anon.group(1))
+
+            if idx is not None and 0 <= idx < len(wifi_ifaces):
+                return wifi_ifaces[idx][0]
+
+            # 3. Match by ifname or section field or .name
+            for sect_name, sect_data in wifi_ifaces:
+                if (
+                    sect_data.get("ifname") == interface
+                    or sect_data.get("section") == interface
+                    or sect_data.get(".name") == interface
+                ):
+                    return sect_name
+
+            # 4. If radio provided, match wifi-iface for this radio if only one exists
+            if radio:
+                radio_ifaces = [
+                    (s_name, s_data)
+                    for s_name, s_data in wifi_ifaces
+                    if s_data.get("device") == radio
+                ]
+                if len(radio_ifaces) == 1:
+                    return radio_ifaces[0][0]
+
+        except Exception as err:
+            _LOGGER.debug(
+                "Failed to resolve wireless UCI section for %s: %s", interface, err
+            )
+
+        return interface
+
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable or disable a wireless radio via UCI."""
         committed = False
         try:
+            target_section = await self._resolve_wireless_section(interface)
             action = "0" if enabled else "1"  # disabled=0 means enabled
             await self._call(
                 "uci",
                 "set",
                 {
                     "config": "wireless",
-                    "section": interface,
+                    "section": target_section,
                     "values": {"disabled": action},
                 },
             )
@@ -147,6 +210,7 @@ class UbusWirelessMixin:
         """Set an SSID and its radio in one UCI transaction."""
         committed = False
         try:
+            target_section = await self._resolve_wireless_section(interface, radio)
             if enabled:
                 await self._call(
                     "uci",
@@ -162,7 +226,7 @@ class UbusWirelessMixin:
                 "set",
                 {
                     "config": "wireless",
-                    "section": interface,
+                    "section": target_section,
                     "values": {"disabled": "0" if enabled else "1"},
                 },
             )

@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import re
 import shlex
 from typing import Any
 
@@ -557,8 +558,10 @@ class SshNetworkMixin:
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable/disable a wireless interface."""
         try:
+            match = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
+            target = f"@wifi-iface[{match.group(1)}]" if match else interface
             action = "0" if enabled else "1"
-            safe_val = shlex.quote(f"wireless.{interface}.disabled={action}")
+            safe_val = shlex.quote(f"wireless.{target}.disabled={action}")
             if not await self._exec_wireless_mutation(
                 [f"uci set {safe_val}", "uci commit wireless", "wifi reload"]
             ):
@@ -579,10 +582,12 @@ class SshNetworkMixin:
     ) -> bool:
         """Set an SSID and its radio in one UCI transaction."""
         try:
+            match = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
+            target = f"@wifi-iface[{match.group(1)}]" if match else interface
             assignments = []
             if enabled:
                 assignments.append(f"wireless.{radio}.disabled=0")
-            assignments.append(f"wireless.{interface}.disabled={0 if enabled else 1}")
+            assignments.append(f"wireless.{target}.disabled={0 if enabled else 1}")
             if disable_radio:
                 assignments.append(f"wireless.{radio}.disabled=1")
             commands = [f"uci set {shlex.quote(value)}" for value in assignments]

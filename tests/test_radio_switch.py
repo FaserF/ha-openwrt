@@ -475,3 +475,46 @@ async def test_empty_radio_does_not_modify_unrelated_interfaces() -> None:
     assert wifi_unrelated.interface_enabled is True
     assert wifi_unrelated.enabled is True
     assert wifi_unrelated.radio_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_setup_does_not_remove_wireless_switches_when_interfaces_empty(
+    hass,
+) -> None:
+    """Do not remove wireless or radio switches when wireless_interfaces is empty at boot."""
+    coordinator = MagicMock()
+    coordinator.data = OpenWrtData(wireless_interfaces=[])
+    coordinator.async_add_listener = MagicMock()
+    coordinator._device_history = {}
+
+    entry = MagicMock(entry_id="test_entry")
+    entry.data = {}
+    entry.options = {}
+    entry.async_on_unload = MagicMock()
+    hass.data = {
+        "openwrt": {entry.entry_id: {"coordinator": coordinator, "client": MagicMock()}}
+    }
+    hass.add_job = MagicMock(side_effect=lambda callback: callback())
+
+    active_radio = MagicMock(
+        domain="switch",
+        entity_id="switch.radio0",
+        unique_id="test_entry_radio_radio0",
+    )
+    active_wireless = MagicMock(
+        domain="switch",
+        entity_id="switch.ssid_main",
+        unique_id="test_entry_wireless_wifinet0",
+    )
+    registry = MagicMock()
+    with (
+        patch("custom_components.openwrt.switch.er.async_get", return_value=registry),
+        patch(
+            "custom_components.openwrt.switch.er.async_entries_for_config_entry",
+            return_value=[active_radio, active_wireless],
+        ),
+    ):
+        await async_setup_entry(hass, entry, MagicMock())
+
+    # Neither switch should be removed because wireless interfaces are not known yet
+    registry.async_remove.assert_not_called()

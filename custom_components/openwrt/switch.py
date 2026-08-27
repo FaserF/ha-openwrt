@@ -146,17 +146,27 @@ async def async_setup_entry(
                         ent_reg.async_remove(ent.entity_id)
                         continue
 
-            # Cleanup orphaned wireless switches (e.g. ghost radios)
-            if "_wireless_" in unique_id and coordinator.data:
+            # Cleanup orphaned wireless switches (e.g. ghost radios) only if wireless interfaces are known
+            if (
+                "_wireless_" in unique_id
+                and coordinator.data
+                and coordinator.data.wireless_interfaces
+            ):
                 iface_name = unique_id.split("_wireless_")[-1]
                 if not any(
-                    w.name == iface_name or w.section == iface_name
+                    w.name == iface_name
+                    or w.section == iface_name
+                    or (w.ifname and w.ifname == iface_name)
                     for w in coordinator.data.wireless_interfaces
                 ):
                     ent_reg.async_remove(ent.entity_id)
                     continue
 
-            if "_radio_" in unique_id and coordinator.data:
+            if (
+                "_radio_" in unique_id
+                and coordinator.data
+                and coordinator.data.wireless_interfaces
+            ):
                 radio = unique_id.split("_radio_")[-1]
                 if not any(
                     wifi.radio == radio for wifi in coordinator.data.wireless_interfaces
