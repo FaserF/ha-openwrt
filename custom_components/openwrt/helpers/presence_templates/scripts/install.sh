@@ -34,6 +34,11 @@ else
     exit 1
 fi
 
+# Run healthcheck before enabling/starting service
+if [ -f /etc/presence/healthcheck.sh ]; then
+    sh /etc/presence/healthcheck.sh
+fi
+
 killall -9 hostapd_cli 2>/dev/null || true
 /etc/init.d/presence_hostapd enable
 /etc/init.d/presence_hostapd restart

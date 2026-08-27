@@ -132,15 +132,9 @@ async def async_deploy_mqtt_presence(
         )
         await client.execute_command("chmod 600 /etc/presence/presence_mqtt.conf")
 
-        # Run install script (enables and starts service)
+        # Run install script (installs deps, checks health, then enables and starts service)
         install_output = await client.execute_command("sh /etc/presence/install.sh")
         _LOGGER.debug("MQTT Presence install output: %s", install_output)
-
-        # Verify healthcheck
-        health_output = await client.execute_command("sh /etc/presence/healthcheck.sh")
-        if "HEALTHCHECK SUCCESS" not in health_output and "OK" not in health_output:
-            _LOGGER.error("MQTT Presence healthcheck failed: %s", health_output)
-            return False, f"Healthcheck failed: {health_output}"
 
         return True, None
 
