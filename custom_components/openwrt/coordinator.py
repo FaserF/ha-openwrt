@@ -1703,6 +1703,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             "Sending MQTT discovery for %s (%s) to %s", hostname, mac, discovery_topic
         )
 
+        mqtt_zone = self.config_entry.options.get(CONF_MQTT_ZONE, "zone.home")
+        zone_name = None
+        if mqtt_zone != "zone.home":
+            if zone_state := self.hass.states.get(mqtt_zone):
+                zone_name = zone_state.name
+
         payload = {
             "name": f"{hostname} MQTT",
             "state_topic": f"presence/{mac_safe}",
@@ -1717,6 +1723,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 "name": hostname,
             },
         }
+
+        if zone_name:
+            payload["value_template"] = (
+                f"{{{{ '{zone_name}' if value == 'home' else value }}}}"
+            )
 
         try:
             await self.hass.services.async_call(
