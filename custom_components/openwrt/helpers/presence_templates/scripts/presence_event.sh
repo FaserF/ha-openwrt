@@ -88,9 +88,14 @@ publish() {
 }
 
 is_seen_anywhere() {
-  # Roaming check across local radios on the same AP
-  for i in ${IFACES:-}; do
-    if iw dev "$i" station dump 2>/dev/null \
+  # Roaming check across local radios on the same AP. Interface names come from
+  # the live hostapd control sockets (one socket per AP interface) so the check
+  # never depends on a stale interface snapshot.
+  for sock in /var/run/hostapd/*; do
+    [ -e "$sock" ] || continue
+    iface=$(basename "$sock")
+    [ "$iface" = "global" ] && continue
+    if iw dev "$iface" station dump 2>/dev/null \
       | awk '/^Station/ {print toupper($2)}' \
       | grep -Fxq "$MAC"; then
       return 0

@@ -64,29 +64,6 @@ async def async_deploy_mqtt_presence(
         # Ensure directory exists
         await client.execute_command("mkdir -p /etc/presence")
 
-        # Discover active wireless interfaces to configure presence.conf
-        ifaces_output = await client.execute_command(
-            "ls -1 /var/run/hostapd/ 2>/dev/null || true"
-        )
-        valid_ifaces = []
-        if ifaces_output:
-            for line in ifaces_output.splitlines():
-                line = line.strip()
-                if line and line != "global" and "No such file" not in line:
-                    valid_ifaces.append(line)
-
-        # No probe result must never be replaced by a hardcoded guess: it would
-        # fake a discovery result downstream and make scripts target interfaces
-        # that do not exist. Surface the failure instead.
-        if not valid_ifaces:
-            return False, (
-                "No active hostapd control socket found in /var/run/hostapd/. "
-                "Ensure hostapd is running and the socket directory is accessible, "
-                "then retry deployment."
-            )
-
-        ifaces_str = " ".join(valid_ifaces)
-
         # Read and format local template files
         for target_file, rel_template_path in FILE_TEMPLATE_MAP.items():
             template_file = TEMPLATES_DIR / rel_template_path
@@ -120,7 +97,6 @@ async def async_deploy_mqtt_presence(
                 tmpl = Template(raw_content)
                 content = tmpl.substitute(
                     GRACE_SECONDS=escape_shell_value(grace_seconds),
-                    IFACES=escape_shell_value(ifaces_str),
                     ZONE_ENTITY=escape_shell_value(zone_entity),
                     ZONE_NAME=escape_shell_value(zone_name),
                 )
