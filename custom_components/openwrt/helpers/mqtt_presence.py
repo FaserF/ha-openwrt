@@ -103,6 +103,8 @@ async def async_deploy_mqtt_presence(
                 if zone_entity != "zone.home":
                     if zone_state := hass.states.get(zone_entity):
                         zone_name = zone_state.name or zone_entity
+                    else:
+                        zone_name = zone_entity.split(".")[-1]
 
                 tmpl = Template(raw_content)
                 content = tmpl.substitute(
