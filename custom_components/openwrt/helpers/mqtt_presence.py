@@ -75,7 +75,17 @@ async def async_deploy_mqtt_presence(
                 if line and line != "global" and "No such file" not in line:
                     valid_ifaces.append(line)
 
-        ifaces_str = " ".join(valid_ifaces) if valid_ifaces else "wl0-ap0 wl1-ap0"
+        # No probe result must never be replaced by a hardcoded guess: it would
+        # fake a discovery result downstream and make scripts target interfaces
+        # that do not exist. Surface the failure instead.
+        if not valid_ifaces:
+            return False, (
+                "No active hostapd control socket found in /var/run/hostapd/. "
+                "Ensure hostapd is running and the socket directory is accessible, "
+                "then retry deployment."
+            )
+
+        ifaces_str = " ".join(valid_ifaces)
 
         # Read and format local template files
         for target_file, rel_template_path in FILE_TEMPLATE_MAP.items():
