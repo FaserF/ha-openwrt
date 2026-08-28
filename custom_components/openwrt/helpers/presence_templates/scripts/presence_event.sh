@@ -56,6 +56,22 @@ resolve_topic() {
   fi
 }
 
+pub_retry() {
+  retries=3
+  delay=1
+  while [ $retries -gt 0 ]; do
+    if "$@"; then
+      return 0
+    fi
+    retries=$((retries - 1))
+    log "cmd failed ($*), retrying in ${delay}s... ($retries left)"
+    sleep "$delay"
+    delay=$((delay * 2))
+  done
+  log "ERROR: command failed after retries: $*"
+  return 1
+}
+
 publish() {
   state_val="$1"
   # Not whitelisted -> nothing to publish.
@@ -71,22 +87,22 @@ publish() {
   fi
 
   log "publish topic='$TOPIC' state='$mqtt_state' payload='$payload'"
-  mosquitto_pub \
+  pub_retry mosquitto_pub \
     -h "$BROKER" -p "$PORT" \
     -u "$USER" -P "$PASS" \
     -i "ap-presence-$HOST_ID-$$" \
     -q "${QOS:-1}" -r \
     --keepalive 30 \
     --will-topic "${TOPIC}/status" --will-payload "unknown" --will-retain \
-    -t "${TOPIC}" -m "$mqtt_state" >/dev/null
+    -t "${TOPIC}" -m "$mqtt_state" >/dev/null || log "Failed to publish state to $TOPIC"
 
-  mosquitto_pub \
+  pub_retry mosquitto_pub \
     -h "$BROKER" -p "$PORT" \
     -u "$USER" -P "$PASS" \
     -i "ap-presence-$HOST_ID-$$-attr" \
     -q "${QOS:-1}" -r \
     --keepalive 30 \
-    -t "${TOPIC}/attributes" -m "$payload" >/dev/null
+    -t "${TOPIC}/attributes" -m "$payload" >/dev/null || log "Failed to publish attributes to $TOPIC/attributes"
 }
 
 is_seen_anywhere() {
