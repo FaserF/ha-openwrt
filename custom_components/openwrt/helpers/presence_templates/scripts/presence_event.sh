@@ -51,7 +51,9 @@ resolve_topic() {
   fi
 
   # Enrich TOPIC with prefix
-  [ -n "${TOPIC_PREFIX:-}" ] && TOPIC="${TOPIC_PREFIX%/}/$TOPIC"
+  if [ -n "${TOPIC_PREFIX:-}" ]; then
+    TOPIC="${TOPIC_PREFIX%/}/$TOPIC"
+  fi
 }
 
 publish() {
