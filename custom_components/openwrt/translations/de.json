@@ -191,11 +191,11 @@
       },
       "deploy_mqtt_presence": {
         "title": "Skripte werden übertragen",
-        "description": "Lade die Präsenzerkennungs-Skripte herunter und übertrage sie auf deinen Router. Dies kann einen Moment dauern..."
+        "description": "Übertrage die Präsenzerkennungs-Skripte auf deinen Router. Dies kann einen Moment dauern..."
       },
       "deploy_failed": {
         "title": "Übertragung fehlgeschlagen",
-        "description": "Die Übertragung der MQTT-Präsenz-Skripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Internetverbindung und den freien Speicherplatz deines Routers."
+        "description": "Die Übertragung der MQTT-Präsenz-Skripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Verbindung und den freien Speicherplatz deines Routers."
       }
     },
     "error": {
@@ -304,7 +304,7 @@
       },
       "options_deploy_failed": {
         "title": "Übertragung fehlgeschlagen",
-        "description": "Die Übertragung der MQTT-Präsenz-Skripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Internetverbindung und den freien Speicherplatz deines Routers."
+        "description": "Die Übertragung der MQTT-Präsenz-Skripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Verbindung und den freien Speicherplatz deines Routers."
       },
       "options_redeploy_user": {
         "title": "Home Assistant Benutzer neu übertragen",

@@ -191,11 +191,11 @@
       },
       "deploy_mqtt_presence": {
         "title": "Deploying Scripts",
-        "description": "Downloading and deploying the presence detection scripts to your router. This may take a moment..."
+        "description": "Deploying the presence detection scripts to your router. This may take a moment..."
       },
       "deploy_failed": {
         "title": "Deployment Failed",
-        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's internet connection and free space."
+        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's connection and free space."
       }
     },
     "error": {
@@ -304,7 +304,7 @@
       },
       "options_deploy_failed": {
         "title": "Deployment Failed",
-        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's internet connection and free space."
+        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's connection and free space."
       },
       "options_redeploy_user": {
         "title": "Redeploy Home Assistant User",
