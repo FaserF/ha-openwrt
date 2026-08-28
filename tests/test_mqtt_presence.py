@@ -345,10 +345,10 @@ async def test_deploy_helper_with_whitelist_and_consider_home(hass: HomeAssistan
     assert success is True
     assert error is None
 
-    # Verify presence.conf was written with GRACE_SECONDS=120 and ZONE_ENTITY=zone.home
+    # Verify presence.conf was written with GRACE_SECONDS=120 and ZONE_ENTITY='zone.home'
     presence_conf_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence.conf" in c)
-    assert "GRACE_SECONDS=120" in presence_conf_cmd
-    assert 'ZONE_ENTITY="zone.home"' in presence_conf_cmd
+    assert "GRACE_SECONDS=120" in presence_conf_cmd or "GRACE_SECONDS='120'" in presence_conf_cmd
+    assert "ZONE_ENTITY=zone.home" in presence_conf_cmd or "ZONE_ENTITY='zone.home'" in presence_conf_cmd
 
     # Verify presence_devices.conf was written with formatted MAC entries and lowercase topic
     dev_conf_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_devices.conf" in c)

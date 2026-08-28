@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+import shlex
 from string import Template
 from typing import Any
 
@@ -29,8 +30,8 @@ FILE_TEMPLATE_MAP = {
 
 
 def escape_shell_value(value: Any) -> str:
-    """Escape a value for use in a double-quoted shell string."""
-    return str(value).replace("\\", "\\\\").replace('"', '\\"')
+    """Escape a value safely for POSIX shell scripts using shlex.quote."""
+    return shlex.quote(str(value))
 
 
 async def async_deploy_mqtt_presence(
@@ -108,8 +109,8 @@ async def async_deploy_mqtt_presence(
 
                 tmpl = Template(raw_content)
                 content = tmpl.substitute(
-                    GRACE_SECONDS=str(grace_seconds),
-                    IFACES=ifaces_str,
+                    GRACE_SECONDS=escape_shell_value(grace_seconds),
+                    IFACES=escape_shell_value(ifaces_str),
                     ZONE_ENTITY=escape_shell_value(zone_entity),
                     ZONE_NAME=escape_shell_value(zone_name),
                 )
