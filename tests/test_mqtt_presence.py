@@ -294,7 +294,7 @@ async def test_deploy_helper_success(hass: HomeAssistant) -> None:
     hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
 
     mock_client = AsyncMock()
-    mock_client.execute_command.return_value = "OK"
+    mock_client.execute_command.return_value = "OK: presence_hostapd enabled and restarted"
     mqtt_config = {
         "broker": "127.0.0.1",
         "port": 1883,
@@ -311,6 +311,36 @@ async def test_deploy_helper_success(hass: HomeAssistant) -> None:
     # Verify commands were called
     mock_client.execute_command.assert_any_call("mkdir -p /etc/presence")
     assert mock_client.execute_command.call_count >= 10
+
+
+async def test_deploy_helper_install_failure(hass: HomeAssistant) -> None:
+    """Test that deployment fails when install.sh reports failure."""
+    from custom_components.openwrt.helpers.mqtt_presence import (
+        async_deploy_mqtt_presence,
+    )
+
+    hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
+
+    mock_client = AsyncMock()
+    # Simulate healthcheck failure inside install.sh
+    mock_client.execute_command.side_effect = lambda cmd: (
+        "FAIL: no hostapd control socket responds to ping in /var/run/hostapd/"
+        if "install.sh" in cmd
+        else "OK"
+    )
+    mqtt_config = {
+        "broker": "127.0.0.1",
+        "port": 1883,
+        "username": "u",
+        "password": "p",
+    }
+
+    success, error = await async_deploy_mqtt_presence(
+        hass, mock_client, mqtt_config
+    )
+
+    assert success is False
+    assert "FAIL: no hostapd control socket responds to ping" in error
 
 
 async def test_deploy_helper_with_whitelist_and_consider_home(hass: HomeAssistant) -> None:

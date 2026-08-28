@@ -131,6 +131,21 @@ async def async_deploy_mqtt_presence(
         install_output = await client.execute_command("sh /etc/presence/install.sh")
         _LOGGER.debug("MQTT Presence install output: %s", install_output)
 
+        if (
+            not install_output
+            or "FAIL:" in install_output
+            or "Error:" in install_output
+            or "missing:" in install_output
+            or "OK" not in install_output
+        ):
+            err_msg = (
+                install_output.strip()
+                if install_output and install_output.strip()
+                else "Installation script failed without output"
+            )
+            _LOGGER.error("MQTT Presence installation failed: %s", err_msg)
+            return False, err_msg
+
         return True, None
 
     except Exception as err:
