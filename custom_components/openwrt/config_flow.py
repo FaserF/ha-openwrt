@@ -172,6 +172,27 @@ def should_redeploy_mqtt_presence(
     return False
 
 
+def _build_mqtt_deploy_args(
+    data: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str], Any]:
+    """Build MQTT presence deployment parameters from configuration data."""
+    mqtt_config = {
+        "broker": data.get(CONF_MQTT_BROKER, ""),
+        "port": data.get(CONF_MQTT_PORT, 1883),
+        "username": data.get(CONF_MQTT_USERNAME, ""),
+        "password": data.get(CONF_MQTT_PASSWORD, ""),
+        "zone": data.get(CONF_MQTT_ZONE, "zone.home"),
+    }
+
+    tracked_devices: list[str] = list(data.get(CONF_TRACKED_DEVICES, []))
+    manual_devices = data.get(CONF_MANUAL_TRACKED_DEVICES, "")
+    if isinstance(manual_devices, str) and manual_devices.strip():
+        tracked_devices.extend(manual_devices.splitlines())
+
+    consider_home = data.get(CONF_CONSIDER_HOME)
+    return mqtt_config, tracked_devices, consider_home
+
+
 def _generate_permission_table(
     perms: Any, translations: dict[str, str] | None = None
 ) -> str:
@@ -2108,20 +2129,9 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         try:
             await client.connect()
 
-            mqtt_config = {
-                "broker": self._data.get(CONF_MQTT_BROKER, ""),
-                "port": self._data.get(CONF_MQTT_PORT, 1883),
-                "username": self._data.get(CONF_MQTT_USERNAME, ""),
-                "password": self._data.get(CONF_MQTT_PASSWORD, ""),
-                "zone": self._data.get(CONF_MQTT_ZONE, "zone.home"),
-            }
-
-            tracked_devices: list[str] = list(self._data.get(CONF_TRACKED_DEVICES, []))
-            manual_devices = self._data.get(CONF_MANUAL_TRACKED_DEVICES, "")
-            if isinstance(manual_devices, str) and manual_devices.strip():
-                tracked_devices.extend(manual_devices.splitlines())
-
-            consider_home = self._data.get(CONF_CONSIDER_HOME)
+            mqtt_config, tracked_devices, consider_home = _build_mqtt_deploy_args(
+                self._data
+            )
 
             success, error = await async_deploy_mqtt_presence(
                 self.hass, client, mqtt_config, tracked_devices, consider_home
@@ -2814,21 +2824,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
         try:
             await client.connect()
 
-            mqtt_config = {
-                "broker": self._options.get(CONF_MQTT_BROKER, ""),
-                "port": self._options.get(CONF_MQTT_PORT, 1883),
-                "username": self._options.get(CONF_MQTT_USERNAME, ""),
-                "password": self._options.get(CONF_MQTT_PASSWORD, ""),
-                "zone": self._options.get(CONF_MQTT_ZONE, "zone.home"),
-            }
-
             current_opts = {**self._config_entry.options, **self._options}
-            tracked_devices: list[str] = list(current_opts.get(CONF_TRACKED_DEVICES, []))
-            manual_devices = current_opts.get(CONF_MANUAL_TRACKED_DEVICES, "")
-            if isinstance(manual_devices, str) and manual_devices.strip():
-                tracked_devices.extend(manual_devices.splitlines())
-
-            consider_home = current_opts.get(CONF_CONSIDER_HOME)
+            mqtt_config, tracked_devices, consider_home = _build_mqtt_deploy_args(
+                current_opts
+            )
 
             success, error = await async_deploy_mqtt_presence(
                 self.hass, client, mqtt_config, tracked_devices, consider_home
