@@ -33,10 +33,10 @@ HOST_ID="$(cat /proc/sys/kernel/hostname 2>/dev/null || echo openwrt)"
 # Sets TOPIC to "" when the MAC is not whitelisted (publish then no-ops).
 resolve_topic() {
   TOPIC="$(awk -v m="$MAC" '
-    BEGIN { mm=toupper(m) }
+    BEGIN { mm=tolower(m) }
     /^[[:space:]]*#/ { next }
     NF>=2 {
-      if (toupper($1) == mm) { print $2; exit }
+      if (tolower($1) == mm) { print $2; exit }
     }
   ' "$DEV_CONF")"
 
@@ -47,7 +47,7 @@ resolve_topic() {
       return
     fi
     # No device entries at all -> fallback to auto-topic presence/<safe_mac>.
-    TOPIC="presence/$(printf '%s' "$MAC" | tr '[:upper:]' '[:lower:]' | tr ':' '_')"
+    TOPIC="presence/$(printf '%s' "$MAC" | tr ':' '_')"
   fi
 
   # Enrich TOPIC with prefix
@@ -114,12 +114,22 @@ is_seen_anywhere() {
     iface=$(basename "$sock")
     [ "$iface" = "global" ] && continue
     if iw dev "$iface" station dump 2>/dev/null \
-      | awk '/^Station/ {print toupper($2)}' \
+      | awk '/^Station/ {print tolower($2)}' \
       | grep -Fxq "$MAC"; then
       return 0
     fi
   done
   return 1
+}
+
+cancel_grace() {
+  target_mac="$1"
+  [ -n "$target_mac" ] || return 0
+  # Compatibility lookup for killing grace process without requiring pkill
+  pids="$(ps w 2>/dev/null | grep -F "presence_grace_${target_mac}" | grep -v grep | awk '{print $1}' || true)"
+  for pid in $pids; do
+    kill "$pid" 2>/dev/null || true
+  done
 }
 
 # --- Grace-mode entry -----------------------------------------------------
@@ -150,7 +160,7 @@ REST="$*"
 
 # Extract MAC with colons from the remaining args (hostapd_cli may append key=value tokens)
 MAC="$(printf '%s\n' "$REST" | grep -Eoi '([0-9a-f]{2}:){5}[0-9a-f]{2}' | head -n 1 \
-  | tr '[:lower:]' '[:upper:]' || true)"
+  | tr 'A-Z' 'a-z' || true)"
 
 log "iface=$IFACE event=$EVENT rest='$REST' mac='$MAC'"
 
@@ -166,13 +176,13 @@ log "mapped mac=$MAC -> topic='$TOPIC'"
 case "$EVENT" in
   AP-STA-CONNECTED)
     # Cancel any existing grace timer process for this MAC
-    pkill -f "presence_grace_${MAC}" 2>/dev/null || true
+    cancel_grace "$MAC"
     publish "home"
     ;;
 
   AP-STA-DISCONNECTED)
     # Cancel previous grace timer process for this MAC to restart countdown
-    pkill -f "presence_grace_${MAC}" 2>/dev/null || true
+    cancel_grace "$MAC"
     log "start grace timer (${GRACE_SECONDS:-0}s) for mac=$MAC"
 
     # Start the timer as a detached process whose argv carries the marker, so a

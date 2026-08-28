@@ -386,7 +386,7 @@ async def test_deploy_helper_with_whitelist_and_consider_home(hass: HomeAssistan
     # Verify presence_devices.conf was written with formatted MAC entries and lowercase topic
     dev_conf_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_devices.conf" in c)
     assert "11:22:33:44:55:66 presence/11_22_33_44_55_66" in dev_conf_cmd
-    assert "AA:BB:CC:DD:EE:FF presence/aa_bb_cc_dd_ee_ff" in dev_conf_cmd
+    assert "aa:bb:cc:dd:ee:ff presence/aa_bb_cc_dd_ee_ff" in dev_conf_cmd
 
     # Verify presence_event.sh formats JSON payload with in_zones
     event_sh_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_event.sh" in c)

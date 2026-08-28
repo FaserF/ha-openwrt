@@ -42,7 +42,7 @@ async def async_deploy_mqtt_presence(
     consider_home: int | None = None,
 ) -> tuple[bool, str | None]:
     """Deploy MQTT presence scripts to the router using bundled templates."""
-    # Normalize tracked_devices MAC addresses to uppercase (for conf matching)
+    # Normalize tracked_devices MAC addresses to lowercase (for conf matching)
     normalized_macs: set[str] = set()
     if tracked_devices:
         for mac in tracked_devices:
@@ -51,7 +51,7 @@ async def async_deploy_mqtt_presence(
                 if len(clean_mac) == 12 and ":" not in clean_mac:
                     clean_mac = ":".join(clean_mac[i : i + 2] for i in range(0, 12, 2))
                 if len(clean_mac) == 17:
-                    normalized_macs.add(clean_mac.upper())
+                    normalized_macs.add(clean_mac)
 
     # Determine GRACE_SECONDS from consider_home option/default
     grace_seconds = (
