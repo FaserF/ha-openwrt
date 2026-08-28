@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+import subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -547,3 +550,39 @@ async def test_mqtt_discovery_cleanup_active_topic_and_ownership(
     # Cleanup again on coord1 - now status topic SHOULD be cleared
     await coord1._async_discovery_mqtt_device_cleanup("aa:bb:cc:dd:ee:01")
     assert "presence/aa_bb_cc_dd_ee_01" in published_topics
+
+
+def test_presence_templates_shell_syntax() -> None:
+    """Test that all shell script templates pass sh -n syntax check.
+
+    Note: This is a static syntax check only (sh -n). It verifies shell script validity
+    and parsing, but does not test runtime behavioral logic or execution outcomes.
+    """
+    from custom_components.openwrt.helpers.mqtt_presence import (
+        FILE_TEMPLATE_MAP,
+        TEMPLATES_DIR,
+    )
+
+    script_templates = [
+        rel_path
+        for target, rel_path in FILE_TEMPLATE_MAP.items()
+        if rel_path.endswith(".sh") or rel_path.startswith("init.d/")
+    ]
+
+    assert len(script_templates) == 4, f"Expected 4 shell script templates, found {len(script_templates)}"
+
+    for rel_path in script_templates:
+        full_path = TEMPLATES_DIR / rel_path
+        assert full_path.is_file(), f"Template file missing: {full_path}"
+
+        result = subprocess.run(
+            ["sh", "-n", str(full_path)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"Shell syntax check (sh -n) failed for {rel_path}:\n"
+            f"stdout: {result.stdout}\n"
+            f"stderr: {result.stderr}"
+        )
+
