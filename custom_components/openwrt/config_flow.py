@@ -2832,6 +2832,8 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 self.hass, client, mqtt_config, tracked_devices, consider_home
             )
             if success:
+                if self._options.get(CONF_REDEPLOY_USER) and not self._root_credentials:
+                    return await self.async_step_options_redeploy_user()
                 return self.async_create_entry(title="", data=self._options)
 
             return self.async_show_form(
@@ -2919,7 +2921,9 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
             success, error = await client.provision_user(ha_username, ha_password)
             if success:
-                if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+                if should_redeploy_mqtt_presence(
+                    self._config_entry.options, self._options
+                ):
                     return await self.async_step_options_mqtt_presence()
                 return await self.async_step_options_permissions()
 

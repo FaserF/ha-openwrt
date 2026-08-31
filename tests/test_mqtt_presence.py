@@ -323,11 +323,15 @@ async def test_options_flow_mqtt_disable_in_substep(
         ),
     ):
         # Trigger redeploy to enter sub-step options_mqtt_presence
-        result = await flow.async_step_init({CONF_MQTT_PRESENCE: True, CONF_REDEPLOY_MQTT: True})
+        result = await flow.async_step_init(
+            {CONF_MQTT_PRESENCE: True, CONF_REDEPLOY_MQTT: True}
+        )
         assert result["step_id"] == "options_mqtt_presence"
 
         # Disable MQTT in sub-step
-        result = await flow.async_step_options_mqtt_presence({CONF_MQTT_PRESENCE: False})
+        result = await flow.async_step_options_mqtt_presence(
+            {CONF_MQTT_PRESENCE: False}
+        )
         assert result["step_id"] == "options_permissions"
         assert not mock_remove.called
 
@@ -336,6 +340,44 @@ async def test_options_flow_mqtt_disable_in_substep(
         result = await flow.async_step_options_packages({"track_devices": False})
         assert result["type"] in ("create_entry", "CREATE_ENTRY")
         assert mock_remove.called
+
+
+async def test_options_flow_combined_redeploy_user_and_mqtt(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test that requesting user redeploy and MQTT redeploy processes both sequentially."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+    from custom_components.openwrt.const import CONF_REDEPLOY_USER
+
+    mock_config_entry.options = {CONF_MQTT_PRESENCE: False}
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    with (
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(provision_user=AsyncMock(return_value=(True, None))),
+        ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        # 1. Enable MQTT AND request redeploy user simultaneously
+        result = await flow.async_step_init(
+            {CONF_MQTT_PRESENCE: True, CONF_REDEPLOY_USER: True}
+        )
+        # Should go to options_redeploy_user first
+        assert result["step_id"] == "options_redeploy_user"
+
+        # 2. Provide root credentials for user redeploy
+        result = await flow.async_step_options_redeploy_user(
+            {"username": "root", "password": "password"}
+        )
+        # Should transition to options_mqtt_presence next instead of skipping MQTT!
+        assert result["step_id"] == "options_mqtt_presence"
 
 
 async def test_should_redeploy_mqtt_presence_helper() -> None:
