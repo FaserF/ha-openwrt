@@ -2302,64 +2302,71 @@ class OpenWrtOptionsFlow(OptionsFlow):
             return await self.async_step_options_permissions()
 
         current = self._config_entry.options
-        schema = vol.Schema(
-            {
-                vol.Optional(
-                    CONF_UPDATE_INTERVAL,
-                    default=current.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
-                ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
-                vol.Optional(
-                    CONF_TRACK_WIRED,
-                    default=current.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
-                ): bool,
-                vol.Optional(
-                    CONF_CONSIDER_HOME,
-                    default=current.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME),
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
-                vol.Optional(
-                    CONF_AUTO_BACKUP,
-                    default=current.get(CONF_AUTO_BACKUP, True),
-                ): bool,
-                vol.Optional(
-                    CONF_BACKUP_RETENTION_DAYS,
-                    default=current.get(
-                        CONF_BACKUP_RETENTION_DAYS, DEFAULT_BACKUP_RETENTION_DAYS
-                    ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=365)),
-                vol.Optional(
-                    CONF_CUSTOM_FIRMWARE_REPO,
-                    default=current.get(CONF_CUSTOM_FIRMWARE_REPO, ""),
-                ): str,
-                vol.Optional(
-                    CONF_ASU_URL,
-                    default=current.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org"),
-                ): str,
-                vol.Optional(
-                    CONF_TARGET_OVERRIDE,
-                    default=current.get(CONF_TARGET_OVERRIDE, ""),
-                ): str,
-                vol.Optional(
-                    CONF_DHCP_SOFTWARE,
-                    default=current.get(CONF_DHCP_SOFTWARE, "auto"),
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=["auto", "dnsmasq", "odhcpd", "none"],
-                        translation_key="dhcp_software",
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    ),
+        schema_dict: dict[Any, Any] = {
+            vol.Optional(
+                CONF_UPDATE_INTERVAL,
+                default=current.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+            ): vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
+            vol.Optional(
+                CONF_TRACK_WIRED,
+                default=current.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
+            ): bool,
+            vol.Optional(
+                CONF_CONSIDER_HOME,
+                default=current.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME),
+            ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
+            vol.Optional(
+                CONF_AUTO_BACKUP,
+                default=current.get(CONF_AUTO_BACKUP, True),
+            ): bool,
+            vol.Optional(
+                CONF_BACKUP_RETENTION_DAYS,
+                default=current.get(
+                    CONF_BACKUP_RETENTION_DAYS, DEFAULT_BACKUP_RETENTION_DAYS
                 ),
-                vol.Optional(
-                    CONF_SKIP_RANDOM_MAC,
-                    default=current.get(CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC),
-                ): bool,
-                vol.Optional(
-                    CONF_MQTT_PRESENCE,
-                    default=current.get(CONF_MQTT_PRESENCE, False),
-                ): bool,
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=365)),
+            vol.Optional(
+                CONF_CUSTOM_FIRMWARE_REPO,
+                default=current.get(CONF_CUSTOM_FIRMWARE_REPO, ""),
+            ): str,
+            vol.Optional(
+                CONF_ASU_URL,
+                default=current.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org"),
+            ): str,
+            vol.Optional(
+                CONF_TARGET_OVERRIDE,
+                default=current.get(CONF_TARGET_OVERRIDE, ""),
+            ): str,
+            vol.Optional(
+                CONF_DHCP_SOFTWARE,
+                default=current.get(CONF_DHCP_SOFTWARE, "auto"),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=["auto", "dnsmasq", "odhcpd", "none"],
+                    translation_key="dhcp_software",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                ),
+            ),
+            vol.Optional(
+                CONF_SKIP_RANDOM_MAC,
+                default=current.get(CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC),
+            ): bool,
+            vol.Optional(
+                CONF_MQTT_PRESENCE,
+                default=current.get(CONF_MQTT_PRESENCE, False),
+            ): bool,
+        }
+
+        if current.get(CONF_MQTT_PRESENCE, False):
+            schema_dict[
                 vol.Optional(
                     CONF_REDEPLOY_MQTT,
                     default=False,
-                ): bool,
+                )
+            ] = bool
+
+        schema_dict.update(
+            {
                 vol.Optional(
                     CONF_TRUST_STALE_ARP,
                     default=current.get(CONF_TRUST_STALE_ARP, DEFAULT_TRUST_STALE_ARP),
@@ -2403,8 +2410,9 @@ class OpenWrtOptionsFlow(OptionsFlow):
                     CONF_REDEPLOY_USER,
                     default=False,
                 ): bool,
-            },
+            }
         )
+        schema = vol.Schema(schema_dict)
         return self.async_show_form(step_id="init", data_schema=schema)
 
     async def _async_finalize_options(self) -> ConfigFlowResult:
