@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 import shlex
+from pathlib import Path
 from string import Template
 from typing import Any
 

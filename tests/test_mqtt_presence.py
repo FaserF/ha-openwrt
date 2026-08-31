@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 import subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import HomeAssistant
 
 from custom_components.openwrt.const import (
     CONF_MQTT_BROKER,
@@ -297,7 +296,9 @@ async def test_deploy_helper_success(hass: HomeAssistant) -> None:
     hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
 
     mock_client = AsyncMock()
-    mock_client.execute_command.return_value = "OK: presence_hostapd enabled and restarted"
+    mock_client.execute_command.return_value = (
+        "OK: presence_hostapd enabled and restarted"
+    )
     mqtt_config = {
         "broker": "127.0.0.1",
         "port": 1883,
@@ -305,9 +306,7 @@ async def test_deploy_helper_success(hass: HomeAssistant) -> None:
         "password": "p",
     }
 
-    success, error = await async_deploy_mqtt_presence(
-        hass, mock_client, mqtt_config
-    )
+    success, error = await async_deploy_mqtt_presence(hass, mock_client, mqtt_config)
 
     assert success is True
     assert error is None
@@ -338,15 +337,15 @@ async def test_deploy_helper_install_failure(hass: HomeAssistant) -> None:
         "password": "p",
     }
 
-    success, error = await async_deploy_mqtt_presence(
-        hass, mock_client, mqtt_config
-    )
+    success, error = await async_deploy_mqtt_presence(hass, mock_client, mqtt_config)
 
     assert success is False
     assert "FAIL: no hostapd control socket responds to ping" in error
 
 
-async def test_deploy_helper_with_whitelist_and_consider_home(hass: HomeAssistant) -> None:
+async def test_deploy_helper_with_whitelist_and_consider_home(
+    hass: HomeAssistant,
+) -> None:
     """Test deploying presence with tracked_devices whitelist and consider_home grace period."""
     from custom_components.openwrt.helpers.mqtt_presence import (
         async_deploy_mqtt_presence,
@@ -379,17 +378,31 @@ async def test_deploy_helper_with_whitelist_and_consider_home(hass: HomeAssistan
     assert error is None
 
     # Verify presence.conf was written with GRACE_SECONDS=120 and ZONE_ENTITY='zone.home'
-    presence_conf_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence.conf" in c)
-    assert "GRACE_SECONDS=120" in presence_conf_cmd or "GRACE_SECONDS='120'" in presence_conf_cmd
-    assert "ZONE_ENTITY=zone.home" in presence_conf_cmd or "ZONE_ENTITY='zone.home'" in presence_conf_cmd
+    presence_conf_cmd = next(
+        c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence.conf" in c
+    )
+    assert (
+        "GRACE_SECONDS=120" in presence_conf_cmd
+        or "GRACE_SECONDS='120'" in presence_conf_cmd
+    )
+    assert (
+        "ZONE_ENTITY=zone.home" in presence_conf_cmd
+        or "ZONE_ENTITY='zone.home'" in presence_conf_cmd
+    )
 
     # Verify presence_devices.conf was written with formatted MAC entries and lowercase topic
-    dev_conf_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_devices.conf" in c)
+    dev_conf_cmd = next(
+        c
+        for c in executed_cmds
+        if "cat <<'EOF' > /etc/presence/presence_devices.conf" in c
+    )
     assert "11:22:33:44:55:66 presence/11_22_33_44_55_66" in dev_conf_cmd
     assert "aa:bb:cc:dd:ee:ff presence/aa_bb_cc_dd_ee_ff" in dev_conf_cmd
 
     # Verify presence_event.sh formats JSON payload with in_zones
-    event_sh_cmd = next(c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_event.sh" in c)
+    event_sh_cmd = next(
+        c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_event.sh" in c
+    )
     assert 'payload="{\\"in_zones\\":[\\"$' in event_sh_cmd
     assert '-t "${TOPIC}/attributes"' in event_sh_cmd
 
@@ -569,7 +582,9 @@ def test_presence_templates_shell_syntax() -> None:
         if rel_path.endswith(".sh") or rel_path.startswith("init.d/")
     ]
 
-    assert len(script_templates) == 4, f"Expected 4 shell script templates, found {len(script_templates)}"
+    assert len(script_templates) == 4, (
+        f"Expected 4 shell script templates, found {len(script_templates)}"
+    )
 
     for rel_path in script_templates:
         full_path = TEMPLATES_DIR / rel_path
@@ -585,4 +600,3 @@ def test_presence_templates_shell_syntax() -> None:
             f"stdout: {result.stdout}\n"
             f"stderr: {result.stderr}"
         )
-
