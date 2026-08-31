@@ -174,6 +174,17 @@ def should_redeploy_mqtt_presence(
     return False
 
 
+def should_remove_mqtt_presence(
+    current_options: Mapping[str, Any],
+    new_options: Mapping[str, Any],
+) -> bool:
+    """Check if MQTT presence was previously enabled but is now disabled."""
+    return bool(
+        current_options.get(CONF_MQTT_PRESENCE, False)
+        and not new_options.get(CONF_MQTT_PRESENCE, False)
+    )
+
+
 def _build_mqtt_deploy_args(
     data: Mapping[str, Any],
 ) -> tuple[dict[str, Any], list[str], Any]:
@@ -2282,27 +2293,11 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if user_input is not None:
             _LOGGER.debug("Options init submitted: %s", user_input)
             self._options = {**self._config_entry.options, **user_input}
-            mqtt_was_enabled = self._config_entry.options.get(CONF_MQTT_PRESENCE, False)
-            mqtt_is_enabled = user_input.get(CONF_MQTT_PRESENCE, False)
-
-            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
-                return await self.async_step_options_mqtt_presence()
-
             if user_input.get(CONF_REDEPLOY_USER):
                 return await self.async_step_options_redeploy_user()
 
-            # Check if we are disabling MQTT
-            if not mqtt_is_enabled and mqtt_was_enabled:
-                from .helpers.mqtt_presence import async_remove_mqtt_presence
-
-                client = create_client(self.hass, self._config_entry.data)
-                try:
-                    await client.connect()
-                    await async_remove_mqtt_presence(client)
-                except Exception:
-                    _LOGGER.exception("Failed to clean up MQTT presence on router")
-                finally:
-                    await client.disconnect()
+            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+                return await self.async_step_options_mqtt_presence()
 
             return await self.async_step_options_permissions()
 
@@ -2412,6 +2407,14 @@ class OpenWrtOptionsFlow(OptionsFlow):
         )
         return self.async_show_form(step_id="init", data_schema=schema)
 
+    async def _async_finalize_options(self) -> ConfigFlowResult:
+        """Finalize options flow: deploy/remove MQTT if needed or create entry."""
+        if should_remove_mqtt_presence(self._config_entry.options, self._options):
+            return await self.async_step_options_do_remove_mqtt_presence()
+        if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+            return await self.async_step_options_do_deploy_mqtt_presence()
+        return self.async_create_entry(title="", data=self._options)
+
     async def async_step_options_select_devices(
         self,
         user_input: dict[str, Any] | None = None,
@@ -2419,9 +2422,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
         """Handle selective device tracking step."""
         if user_input is not None:
             self._options.update(user_input)
-            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
-                return await self.async_step_options_do_deploy_mqtt_presence()
-            return self.async_create_entry(title="", data=self._options)
+            return await self._async_finalize_options()
 
         # Get discovered devices from coordinator
         coordinator = self.hass.data[DOMAIN][self._config_entry.entry_id][
@@ -2514,9 +2515,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if user_input is not None:
             if self._packages is not None:
                 return await self.async_step_options_packages()
-            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
-                return await self.async_step_options_do_deploy_mqtt_presence()
-            return self.async_create_entry(title="", data=self._options)
+            return await self._async_finalize_options()
 
         client = create_client(self.hass, {**self._config_entry.data, **self._options})
         try:
@@ -2552,9 +2551,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if self._permissions is None:
             if self._packages is not None:
                 return await self.async_step_options_packages()
-            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
-                return await self.async_step_options_do_deploy_mqtt_presence()
-            return self.async_create_entry(title="", data=self._options)
+            return await self._async_finalize_options()
 
         if self._ubus_restricted:
             return await self.async_step_options_ubus_restricted()
@@ -2600,9 +2597,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
         if user_input is not None:
             if self._packages is not None:
                 return await self.async_step_options_packages()
-            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
-                return await self.async_step_options_do_deploy_mqtt_presence()
-            return self.async_create_entry(title="", data=self._options)
+            return await self._async_finalize_options()
 
         # Try to get model from direct client or use existing device registry if available
         model = self._config_entry.data.get(CONF_HOST, "Router")
@@ -2627,14 +2622,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
             self._options.update(user_input)
             if user_input.get(CONF_TRACK_DEVICES):
                 return await self.async_step_options_select_devices()
-            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
-                return await self.async_step_options_do_deploy_mqtt_presence()
-            return self.async_create_entry(title="", data=self._options)
+            return await self._async_finalize_options()
 
         if self._packages is None:
-            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
-                return await self.async_step_options_do_deploy_mqtt_presence()
-            return self.async_create_entry(title="", data=self._options)
+            return await self._async_finalize_options()
 
         # Get translations for package features
         translations = await translation.async_get_translations(
@@ -2867,6 +2858,21 @@ class OpenWrtOptionsFlow(OptionsFlow):
             ),
         )
 
+    async def async_step_options_do_remove_mqtt_presence(self) -> ConfigFlowResult:
+        """Perform the actual MQTT presence removal in options flow."""
+        from .helpers.mqtt_presence import async_remove_mqtt_presence
+
+        client = create_client(self.hass, self._config_entry.data)
+        try:
+            await client.connect()
+            await async_remove_mqtt_presence(client)
+        except Exception:
+            _LOGGER.exception("Failed to clean up MQTT presence on router")
+        finally:
+            await client.disconnect()
+
+        return self.async_create_entry(title="", data=self._options)
+
     async def async_step_options_redeploy_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -2905,6 +2911,8 @@ class OpenWrtOptionsFlow(OptionsFlow):
 
             success, error = await client.provision_user(ha_username, ha_password)
             if success:
+                if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
+                    return await self.async_step_options_mqtt_presence()
                 return await self.async_step_options_permissions()
 
             return self.async_show_form(

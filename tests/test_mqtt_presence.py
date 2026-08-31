@@ -238,6 +238,106 @@ async def test_options_flow_consider_home_change_triggers_redeploy(
         assert mock_deploy.call_args.args[4] == 300
 
 
+async def test_options_flow_mqtt_removal(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test disabling MQTT presence defers removal to finalization."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+
+    mock_config_entry.options = {CONF_MQTT_PRESENCE: True}
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": mock_coord
+    }
+
+    with (
+        patch(
+            "custom_components.openwrt.helpers.mqtt_presence.async_remove_mqtt_presence",
+            AsyncMock(),
+        ) as mock_remove,
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        # 1. Disable MQTT in init
+        result = await flow.async_step_init({CONF_MQTT_PRESENCE: False})
+        assert result["step_id"] == "options_permissions"
+        assert not mock_remove.called
+
+        # 2. Advance to packages
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        assert result["step_id"] == "options_packages"
+        assert not mock_remove.called
+
+        # 3. Finalize from packages step
+        result = await flow.async_step_options_packages({"track_devices": False})
+        assert result["type"] in ("create_entry", "CREATE_ENTRY")
+        assert mock_remove.called
+
+
+async def test_options_flow_mqtt_disable_in_substep(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test disabling MQTT presence in options_mqtt_presence sub-step correctly removes presence."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+
+    mock_config_entry.options = {CONF_MQTT_PRESENCE: True}
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": mock_coord
+    }
+
+    with (
+        patch(
+            "custom_components.openwrt.helpers.mqtt_presence.async_remove_mqtt_presence",
+            AsyncMock(),
+        ) as mock_remove,
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        # Trigger redeploy to enter sub-step options_mqtt_presence
+        result = await flow.async_step_init({CONF_MQTT_PRESENCE: True, CONF_REDEPLOY_MQTT: True})
+        assert result["step_id"] == "options_mqtt_presence"
+
+        # Disable MQTT in sub-step
+        result = await flow.async_step_options_mqtt_presence({CONF_MQTT_PRESENCE: False})
+        assert result["step_id"] == "options_permissions"
+        assert not mock_remove.called
+
+        # Finalize
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        result = await flow.async_step_options_packages({"track_devices": False})
+        assert result["type"] in ("create_entry", "CREATE_ENTRY")
+        assert mock_remove.called
+
+
 async def test_should_redeploy_mqtt_presence_helper() -> None:
     """Test the should_redeploy_mqtt_presence helper with various option changes."""
     from custom_components.openwrt.config_flow import should_redeploy_mqtt_presence
