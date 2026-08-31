@@ -1320,7 +1320,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     "Skipping device %s: not in tracked_devices whitelist", mac
                 )
                 if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
-                    if mac in self._mqtt_discovered or mac.lower() in self._mqtt_discovered:
+                    if (
+                        mac in self._mqtt_discovered
+                        or mac.lower() in self._mqtt_discovered
+                    ):
                         await self._async_discovery_mqtt_device_cleanup(mac)
                 continue
 

@@ -158,7 +158,9 @@ def should_redeploy_mqtt_presence(
 ) -> bool:
     """Check if MQTT presence configuration or any associated parameter has changed."""
     # 1. Newly enabled
-    if new_options.get(CONF_MQTT_PRESENCE) and not current_options.get(CONF_MQTT_PRESENCE):
+    if new_options.get(CONF_MQTT_PRESENCE) and not current_options.get(
+        CONF_MQTT_PRESENCE
+    ):
         return True
 
     # 2. Currently enabled: check explicitly requested redeploy or parameter changes
@@ -2283,9 +2285,7 @@ class OpenWrtOptionsFlow(OptionsFlow):
             mqtt_was_enabled = self._config_entry.options.get(CONF_MQTT_PRESENCE, False)
             mqtt_is_enabled = user_input.get(CONF_MQTT_PRESENCE, False)
 
-            if should_redeploy_mqtt_presence(
-                self._config_entry.options, self._options
-            ):
+            if should_redeploy_mqtt_presence(self._config_entry.options, self._options):
                 return await self.async_step_options_mqtt_presence()
 
             if user_input.get(CONF_REDEPLOY_USER):
