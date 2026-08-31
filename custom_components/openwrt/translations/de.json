@@ -306,6 +306,10 @@
         "title": "Übertragung fehlgeschlagen",
         "description": "Die Übertragung der MQTT-Präsenz-Skripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Verbindung und den freien Speicherplatz deines Routers."
       },
+      "options_remove_failed": {
+        "title": "Entfernung fehlgeschlagen",
+        "description": "Das Entfernen der MQTT-Präsenz-Skripte vom Router ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Verbindung deines Routers."
+      },
       "options_redeploy_user": {
         "title": "Home Assistant Benutzer neu übertragen",
         "description": "Um den Home Assistant Benutzer und seine ACL-Regeln neu zu übertragen, gib bitte die Zugangsdaten für einen Benutzer mit Root-Zugriff (meist 'root') ein.\n\nDies wird den dedizierten Benutzer neu erstellen und alle notwendigen Berechtigungen wiederherstellen, damit die Integration korrekt funktioniert.",

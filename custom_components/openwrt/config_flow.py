@@ -2875,13 +2875,40 @@ class OpenWrtOptionsFlow(OptionsFlow):
         client = create_client(self.hass, self._config_entry.data)
         try:
             await client.connect()
-            await async_remove_mqtt_presence(client)
-        except Exception:
+            success, error = await async_remove_mqtt_presence(client)
+            if success:
+                return self.async_create_entry(title="", data=self._options)
+
+            return self.async_show_form(
+                step_id="options_remove_failed",
+                description_placeholders={"error": error or "Unknown error"},
+            )
+        except Exception as err:
             _LOGGER.exception("Failed to clean up MQTT presence on router")
+            return self.async_show_form(
+                step_id="options_remove_failed",
+                description_placeholders={"error": str(err)},
+            )
         finally:
             await client.disconnect()
 
-        return self.async_create_entry(title="", data=self._options)
+    async def async_step_options_remove_failed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle MQTT presence removal failure in options flow."""
+        if user_input is not None:
+            if user_input.get("action") == "retry":
+                return await self.async_step_options_do_remove_mqtt_presence()
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="options_remove_failed",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("action", default="retry"): vol.In(["retry", "back"]),
+                }
+            ),
+        )
 
     async def async_step_options_redeploy_user(
         self, user_input: dict[str, Any] | None = None

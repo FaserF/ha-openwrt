@@ -261,7 +261,7 @@ async def test_options_flow_mqtt_removal(
     with (
         patch(
             "custom_components.openwrt.helpers.mqtt_presence.async_remove_mqtt_presence",
-            AsyncMock(),
+            AsyncMock(return_value=(True, None)),
         ) as mock_remove,
         patch(
             "custom_components.openwrt.config_flow.create_client",
@@ -311,7 +311,7 @@ async def test_options_flow_mqtt_disable_in_substep(
     with (
         patch(
             "custom_components.openwrt.helpers.mqtt_presence.async_remove_mqtt_presence",
-            AsyncMock(),
+            AsyncMock(return_value=(True, None)),
         ) as mock_remove,
         patch(
             "custom_components.openwrt.config_flow.create_client",
@@ -339,6 +339,48 @@ async def test_options_flow_mqtt_disable_in_substep(
         result = await flow.async_step_options_permissions({"acknowledge": True})
         result = await flow.async_step_options_packages({"track_devices": False})
         assert result["type"] in ("create_entry", "CREATE_ENTRY")
+        assert mock_remove.called
+
+
+async def test_options_flow_mqtt_removal_failure(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test that failed removal stops entry creation and shows retry form."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+
+    mock_config_entry.options = {CONF_MQTT_PRESENCE: True}
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": mock_coord
+    }
+
+    with (
+        patch(
+            "custom_components.openwrt.helpers.mqtt_presence.async_remove_mqtt_presence",
+            AsyncMock(return_value=(False, "SSH Connection Refused")),
+        ) as mock_remove,
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        result = await flow.async_step_init({CONF_MQTT_PRESENCE: False})
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        result = await flow.async_step_options_packages({"track_devices": False})
+
+        assert result["step_id"] == "options_remove_failed"
         assert mock_remove.called
 
 

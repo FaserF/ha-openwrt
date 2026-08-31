@@ -306,6 +306,10 @@
         "title": "Deployment Failed",
         "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's connection and free space."
       },
+      "options_remove_failed": {
+        "title": "Removal Failed",
+        "description": "The removal of the MQTT presence scripts from the router failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's connection."
+      },
       "options_redeploy_user": {
         "title": "Redeploy Home Assistant User",
         "description": "To redeploy the Home Assistant user and its ACL rules, please provide the credentials for a user with root access (usually 'root').\n\nThis will recreate the dedicated user and restore all necessary permissions for the integration to work correctly.",
