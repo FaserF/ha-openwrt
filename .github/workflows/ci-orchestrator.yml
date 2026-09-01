@@ -36,12 +36,12 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v7.0.0
         with:
-          python-version: '3.14'
+          python-version: '3.14.7'
 
       - name: Install Python Dependencies
         run: |
@@ -67,7 +67,7 @@ jobs:
           ruff format .
 
       - name: Commit and push changes
-        uses: stefanzweifel/git-auto-commit-action@v7
+        uses: stefanzweifel/git-auto-commit-action@v7.2.0
         with:
           commit_message: "style: auto-fix and format with Ruff [skip ci]"
           commit_user_name: "github-actions[bot]"
@@ -90,7 +90,7 @@ jobs:
           fi
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@v7.0.0
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-test
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: home-assistant/actions/hassfest@master
 
   hacs-validation:
@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-test
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: HACS validation
         uses: hacs/action@main
         with:
@@ -128,18 +128,18 @@ jobs:
         language: [ 'python' ]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@v4.37.9
         with:
           languages: ${{ matrix.language }}
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+        uses: github/codeql-action/autobuild@v4.37.9
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@v4.37.9
 
   auto-merge:
     name: Auto Merge Renovate
@@ -147,7 +147,7 @@ jobs:
     needs: [lint-test, hassfest, hacs-validation, codeql]
     if: github.event_name == 'pull_request' && github.actor == 'renovate[bot]'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Enable Auto Merge
         run: gh pr merge --squash "$PR_URL"
         env:
