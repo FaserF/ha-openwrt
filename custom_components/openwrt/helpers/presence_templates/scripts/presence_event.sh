@@ -79,7 +79,7 @@ publish() {
 
   if [ "$state_val" = "home" ]; then
     zone_val="${ZONE_ENTITY:-zone.home}"
-    payload="{\"in_zones\":[\"${zone_val}\"]}"
+    payload="{\"in_zones\":[\"${zone_val}\"],\"connected_ap\":\"${HOST_ID}\"}"
     mqtt_state="${ZONE_NAME:-home}"
   else
     payload='{"in_zones":[]}'
@@ -122,6 +122,24 @@ is_seen_anywhere() {
   return 1
 }
 
+is_owned_by_other_ap() {
+  [ -n "$TOPIC" ] || return 1
+  attr_payload="$(mosquitto_sub \
+    -h "$BROKER" -p "$PORT" \
+    -u "$USER" -P "$PASS" \
+    -i "ap-presence-check-$HOST_ID-$$" \
+    -t "${TOPIC}/attributes" -C 1 -W 2 2>/dev/null || true)"
+  [ -n "$attr_payload" ] || return 1
+
+  owner_ap="$(printf '%s' "$attr_payload" | awk -F'"connected_ap"' '{print $2}' | awk -F'"' '{print $2}')"
+
+  if [ -n "$owner_ap" ] && [ "$owner_ap" != "$HOST_ID" ]; then
+    log "mac=$MAC is currently owned by AP '$owner_ap' (local AP is '$HOST_ID')"
+    return 0
+  fi
+  return 1
+}
+
 cancel_grace() {
   target_mac="$1"
   [ -n "$target_mac" ] || return 0
@@ -143,7 +161,12 @@ case "${1:-}" in
     sleep "${GRACE_SECONDS:-0}"
     # If the client is visible again (roamed back or reconnected), suppress not_home.
     if is_seen_anywhere; then
-      log "mac=$MAC reappeared during grace -> suppress not_home"
+      log "mac=$MAC reappeared locally during grace -> suppress not_home"
+      exit 0
+    fi
+    # Multi-AP roaming check: if another AP has claimed this device during grace, suppress not_home.
+    if is_owned_by_other_ap; then
+      log "mac=$MAC was claimed by another AP during grace -> suppress not_home"
       exit 0
     fi
     log "grace expired for mac=$MAC -> publish not_home"
