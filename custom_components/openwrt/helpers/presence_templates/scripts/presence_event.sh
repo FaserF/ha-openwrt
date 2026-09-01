@@ -27,8 +27,6 @@ log() {
   logger -t "$LOGTAG" "$*"
 }
 
-HOST_ID="$(cat /proc/sys/kernel/hostname 2>/dev/null || echo openwrt)"
-
 # Map MAC -> topic (case-insensitive). Shared by event dispatch and grace mode.
 # Sets TOPIC to "" when the MAC is not whitelisted (publish then no-ops).
 resolve_topic() {
@@ -79,7 +77,7 @@ publish() {
 
   if [ "$state_val" = "home" ]; then
     zone_val="${ZONE_ENTITY:-zone.home}"
-    payload="{\"in_zones\":[\"${zone_val}\"],\"connected_ap\":\"${HOST_ID}\"}"
+    payload="{\"in_zones\":[\"${zone_val}\"],\"connected_ap\":\"${ROUTER_ID}\"}"
     mqtt_state="${ZONE_NAME:-home}"
   else
     payload='{"in_zones":[]}'
@@ -90,7 +88,7 @@ publish() {
   pub_retry mosquitto_pub \
     -h "$BROKER" -p "$PORT" \
     -u "$USER" -P "$PASS" \
-    -i "ap-presence-$HOST_ID-$$" \
+    -i "ap-presence-$ROUTER_ID-$$" \
     -q "${QOS:-1}" -r \
     --keepalive 30 \
     --will-topic "${TOPIC}/status" --will-payload "unknown" --will-retain \
@@ -99,7 +97,7 @@ publish() {
   pub_retry mosquitto_pub \
     -h "$BROKER" -p "$PORT" \
     -u "$USER" -P "$PASS" \
-    -i "ap-presence-$HOST_ID-$$-attr" \
+    -i "ap-presence-$ROUTER_ID-$$-attr" \
     -q "${QOS:-1}" -r \
     --keepalive 30 \
     -t "${TOPIC}/attributes" -m "$payload" >/dev/null || log "Failed to publish attributes to $TOPIC/attributes"
@@ -127,14 +125,14 @@ is_owned_by_other_ap() {
   attr_payload="$(mosquitto_sub \
     -h "$BROKER" -p "$PORT" \
     -u "$USER" -P "$PASS" \
-    -i "ap-presence-check-$HOST_ID-$$" \
+    -i "ap-presence-check-$ROUTER_ID-$$" \
     -t "${TOPIC}/attributes" -C 1 -W 2 2>/dev/null || true)"
   [ -n "$attr_payload" ] || return 1
 
   owner_ap="$(printf '%s' "$attr_payload" | awk -F'"connected_ap"' '{print $2}' | awk -F'"' '{print $2}')"
 
-  if [ -n "$owner_ap" ] && [ "$owner_ap" != "$HOST_ID" ]; then
-    log "mac=$MAC is currently owned by AP '$owner_ap' (local AP is '$HOST_ID')"
+  if [ -n "$owner_ap" ] && [ "$owner_ap" != "$ROUTER_ID" ]; then
+    log "mac=$MAC is currently owned by AP '$owner_ap' (local AP is '$ROUTER_ID')"
     return 0
   fi
   return 1

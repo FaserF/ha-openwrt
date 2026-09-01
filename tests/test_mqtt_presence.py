@@ -538,6 +538,7 @@ async def test_deploy_helper_with_whitelist_and_consider_home(
     hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
 
     mock_client = AsyncMock()
+    mock_client.host = "192.168.1.1"
     mqtt_config = {
         "broker": "127.0.0.1",
         "port": 1883,
@@ -561,9 +562,13 @@ async def test_deploy_helper_with_whitelist_and_consider_home(
     assert success is True
     assert error is None
 
-    # Verify presence.conf was written with GRACE_SECONDS=120 and ZONE_ENTITY='zone.home'
+    # Verify presence.conf was written with ROUTER_ID, GRACE_SECONDS=120 and ZONE_ENTITY='zone.home'
     presence_conf_cmd = next(
         c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence.conf" in c
+    )
+    assert (
+        "ROUTER_ID=192.168.1.1" in presence_conf_cmd
+        or "ROUTER_ID='192.168.1.1'" in presence_conf_cmd
     )
     assert (
         "GRACE_SECONDS=120" in presence_conf_cmd
@@ -588,7 +593,7 @@ async def test_deploy_helper_with_whitelist_and_consider_home(
         c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_event.sh" in c
     )
     assert 'payload="{\\"in_zones\\":[\\"$' in event_sh_cmd
-    assert '\\"connected_ap\\":\\"${HOST_ID}\\"' in event_sh_cmd
+    assert '\\"connected_ap\\":\\"${ROUTER_ID}\\"' in event_sh_cmd
     assert "is_owned_by_other_ap" in event_sh_cmd
     assert '-t "${TOPIC}/attributes"' in event_sh_cmd
 

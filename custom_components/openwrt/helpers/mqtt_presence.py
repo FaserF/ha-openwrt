@@ -94,8 +94,17 @@ async def async_deploy_mqtt_presence(
                     else:
                         zone_name = zone_entity.split(".")[-1]
 
+                router_id = (
+                    client.host
+                    if hasattr(client, "host")
+                    and isinstance(client.host, str)
+                    and client.host
+                    else "openwrt"
+                )
+
                 tmpl = Template(raw_content)
                 content = tmpl.substitute(
+                    ROUTER_ID=escape_shell_value(router_id),
                     GRACE_SECONDS=escape_shell_value(grace_seconds),
                     ZONE_ENTITY=escape_shell_value(zone_entity),
                     ZONE_NAME=escape_shell_value(zone_name),
