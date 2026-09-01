@@ -129,7 +129,12 @@ is_owned_by_other_ap() {
     -t "${TOPIC}/attributes" -C 1 -W 2 2>/dev/null || true)"
   [ -n "$attr_payload" ] || return 1
 
-  owner_ap="$(printf '%s' "$attr_payload" | awk -F'"connected_ap"' '{print $2}' | awk -F'"' '{print $2}')"
+  # Prefer OpenWrt native jsonfilter, fall back to awk
+  if command -v jsonfilter >/dev/null 2>&1; then
+    owner_ap="$(jsonfilter -s "$attr_payload" -e '@.connected_ap' 2>/dev/null || true)"
+  else
+    owner_ap="$(printf '%s' "$attr_payload" | awk -F'"connected_ap"' '{print $2}' | awk -F'"' '{print $2}')"
+  fi
 
   if [ -n "$owner_ap" ] && [ "$owner_ap" != "$ROUTER_ID" ]; then
     log "mac=$MAC is currently owned by AP '$owner_ap' (local AP is '$ROUTER_ID')"
