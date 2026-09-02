@@ -15,6 +15,7 @@ from custom_components.openwrt.const import (
     CONF_MQTT_PORT,
     CONF_MQTT_PRESENCE,
     CONF_MQTT_USERNAME,
+    CONF_MQTT_ZONE,
     CONF_REDEPLOY_MQTT,
     DOMAIN,
 )
@@ -84,6 +85,7 @@ async def test_config_flow_mqtt_steps(hass: HomeAssistant, mock_config_entry) ->
     hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
         "coordinator": MagicMock(data=MagicMock(permissions=MagicMock(write_mqtt=True)))
     }
+    created_entry_result = MagicMock()
     with (
         patch(
             "custom_components.openwrt.helpers.mqtt_presence.async_deploy_mqtt_presence",
@@ -93,16 +95,20 @@ async def test_config_flow_mqtt_steps(hass: HomeAssistant, mock_config_entry) ->
             "custom_components.openwrt.config_flow.create_client",
             return_value=AsyncMock(),
         ),
-        patch.object(flow, "_create_entry", return_value=AsyncMock()) as mock_create,
     ):
         result = await flow.async_step_mqtt_presence(user_input)
         assert result["step_id"] == "mqtt_zone"
 
         # 3. Submit Zone selection
-        result = await flow.async_step_mqtt_zone({"mqtt_zone": "zone.home"})
+        with patch.object(
+            flow, "async_create_entry", return_value=created_entry_result
+        ) as mock_create_entry:
+            result = await flow.async_step_mqtt_zone({"mqtt_zone": "zone.work"})
 
-        assert mock_deploy.called
-        assert mock_create.called
+            assert mock_deploy.called
+            assert mock_create_entry.called
+            # Verify options passed to async_create_entry includes CONF_MQTT_ZONE
+            assert mock_create_entry.call_args.kwargs["options"][CONF_MQTT_ZONE] == "zone.work"
 
 
 async def test_options_flow_mqtt_redeploy(

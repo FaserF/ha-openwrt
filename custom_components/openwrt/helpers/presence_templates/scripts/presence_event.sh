@@ -122,7 +122,7 @@ is_seen_anywhere() {
 
 is_owned_by_other_ap() {
   [ -n "$TOPIC" ] || return 1
-  attr_payload="$(mosquitto_sub \
+  attr_payload="$(timeout 3 mosquitto_sub \
     -h "$BROKER" -p "$PORT" \
     -u "$USER" -P "$PASS" \
     -i "ap-presence-check-$ROUTER_ID-$$" \

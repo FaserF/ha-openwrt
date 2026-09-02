@@ -2244,6 +2244,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_MQTT_PORT,
             CONF_MQTT_USERNAME,
             CONF_MQTT_PASSWORD,
+            CONF_MQTT_ZONE,
             CONF_TRACKED_DEVICES,
             CONF_MANUAL_TRACKED_DEVICES,
             CONF_ENABLE_FIREWALL,
