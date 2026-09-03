@@ -108,7 +108,10 @@ async def test_config_flow_mqtt_steps(hass: HomeAssistant, mock_config_entry) ->
             assert mock_deploy.called
             assert mock_create_entry.called
             # Verify options passed to async_create_entry includes CONF_MQTT_ZONE
-            assert mock_create_entry.call_args.kwargs["options"][CONF_MQTT_ZONE] == "zone.work"
+            assert (
+                mock_create_entry.call_args.kwargs["options"][CONF_MQTT_ZONE]
+                == "zone.work"
+            )
 
 
 async def test_options_flow_mqtt_redeploy(
