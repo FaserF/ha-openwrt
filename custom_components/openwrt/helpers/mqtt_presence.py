@@ -56,7 +56,7 @@ async def async_deploy_mqtt_presence(
     # Determine GRACE_SECONDS from consider_home option/default
     grace_seconds = (
         consider_home
-        if consider_home is not None and consider_home > 0
+        if consider_home is not None and consider_home >= 0
         else DEFAULT_CONSIDER_HOME
     )
 

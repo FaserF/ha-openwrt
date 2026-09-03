@@ -585,6 +585,21 @@ async def test_deploy_helper_with_whitelist_and_consider_home(
         or "ZONE_ENTITY='zone.home'" in presence_conf_cmd
     )
 
+    # Test consider_home=0 (valid zero grace period)
+    executed_cmds.clear()
+    success, error = await async_deploy_mqtt_presence(
+        hass, mock_client, mqtt_config, tracked_devices=tracked, consider_home=0
+    )
+    assert success is True
+    assert error is None
+    presence_conf_cmd_zero = next(
+        c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence.conf" in c
+    )
+    assert (
+        "GRACE_SECONDS=0" in presence_conf_cmd_zero
+        or "GRACE_SECONDS='0'" in presence_conf_cmd_zero
+    )
+
     # Verify presence_devices.conf was written with formatted MAC entries and lowercase topic
     dev_conf_cmd = next(
         c
