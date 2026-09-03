@@ -31,6 +31,7 @@ def test_manual_scan_uses_default_branch_merge_base(tmp_path: Path) -> None:
     _git(repository, "commit", "-m", "baseline")
     _git(repository, "remote", "add", "origin", str(origin))
     _git(repository, "push", "-u", "origin", "main")
+    _git(repository, "fetch", "origin")
     _git(repository, "switch", "-c", "feature")
 
     private_address = "192" + ".168.42.9"

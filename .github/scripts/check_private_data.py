@@ -173,7 +173,7 @@ def _resolve_github_base(
             "fetch",
             "--no-tags",
             "origin",
-            f"{default_branch}:{remote_ref}",
+            f"+refs/heads/{default_branch}:{remote_ref}",
         ]
     )
     return _run_git(["merge-base", "HEAD", remote_ref]).strip()

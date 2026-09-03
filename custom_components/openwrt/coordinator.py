@@ -1320,7 +1320,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     "Skipping device %s: not in tracked_devices whitelist", mac
                 )
                 if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
-                    await self._async_discovery_mqtt_device_cleanup(mac)
+                    if (
+                        mac in self._mqtt_discovered
+                        or mac.lower() in self._mqtt_discovered
+                    ):
+                        await self._async_discovery_mqtt_device_cleanup(mac)
                 continue
 
             # Handle MQTT Discovery if enabled. Prefer a name another entry
@@ -1513,10 +1517,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             )
             whitelist = self._async_get_tracked_devices_whitelist()
             for mac, hist_data in list(self._device_history.items()):
-                # Always cleanup legacy topics to be sure
-                await self._async_discovery_mqtt_device_cleanup(mac)
-
-                if not clean:
+                if clean:
+                    await self._async_discovery_mqtt_device_cleanup(mac)
+                else:
                     if whitelist and mac not in whitelist:
                         await self._async_discovery_mqtt_device_cleanup(mac)
                         continue
@@ -1556,7 +1559,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         return whitelist if whitelist else None
 
     async def _async_discovery_mqtt_device_cleanup(self, mac: str) -> None:
-        """Remove active and legacy MQTT discovery messages for a device tracker."""
+        """Remove active MQTT discovery message for a device tracker."""
         if not self.hass.services.has_service("mqtt", "publish"):
             if mac in self._mqtt_discovered:
                 self._mqtt_discovered.remove(mac)
@@ -1564,19 +1567,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         mac_safe = mac.replace(":", "_")
         mac_colons = mac.lower()
-        router_id_safe = re.sub(r"[^a-zA-Z0-9_-]", "_", str(self.router_id))
 
-        mac_no_colons = mac.replace(":", "").lower()
-        mac_6chars = mac_no_colons[-6:].upper()
-
-        # Cleanup all active and legacy patterns we might have used
-        # IMPORTANT: Discovery topics MUST NOT contain colons
+        # Cleanup current and primary legacy MQTT discovery topics
         discovery_topics = [
             f"homeassistant/device_tracker/openwrt_mqtt_{mac_safe}/config",
-            f"homeassistant/device_tracker/{router_id_safe}_{mac_safe}/config",
             f"homeassistant/device_tracker/openwrt_{mac_safe}/config",
-            f"homeassistant/device_tracker/{mac_6chars}/config",
-            f"homeassistant/device_tracker/openwrt_{mac_6chars}/config",
         ]
 
         for topic in discovery_topics:
@@ -1614,9 +1609,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         if not other_entry_tracks_device:
             status_topics = [
                 f"presence/{mac_safe}",
+                f"presence/{mac_safe}/attributes",
                 f"presence/{mac_colons}",
+                f"presence/{mac_colons}/attributes",
                 f"openwrt/presence/{mac_safe}",
+                f"openwrt/presence/{mac_safe}/attributes",
                 f"openwrt/presence/{mac_colons}",
+                f"openwrt/presence/{mac_colons}/attributes",
             ]
             for topic in status_topics:
                 _LOGGER.debug("Clearing MQTT status topic: %s", topic)
@@ -1711,6 +1710,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         payload = {
             "name": f"{hostname} MQTT",
             "state_topic": f"presence/{mac_safe}",
+            "json_attributes_topic": f"presence/{mac_safe}/attributes",
             "unique_id": f"openwrt_track_{mac_safe}",
             "payload_home": "home",
             "payload_not_home": "not_home",
