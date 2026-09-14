@@ -224,11 +224,43 @@ def get_via_device(
                     stable_id = coordinator.interface_to_stable_id.get(wifi.name)
                 if stable_id:
                     ap_id = format_ap_device_id(router_id, stable_id)
-                    if dev_reg.async_get_device(identifiers={(DOMAIN, ap_id)}):
+                    ap_identifier = (DOMAIN, ap_id)
+                    if hasattr(dev_reg, "async_get_device_by_identifier"):
+                        has_dev = (
+                            dev_reg.async_get_device_by_identifier(ap_identifier)
+                            is not None
+                        )
+                    elif hasattr(dev_reg.devices, "get_entry"):
+                        has_dev = (
+                            dev_reg.devices.get_entry(identifiers={ap_identifier})
+                            is not None
+                        )
+                    else:
+                        has_dev = (
+                            dev_reg.async_get_device(identifiers={ap_identifier})
+                            is not None
+                        )
+                    if has_dev:
                         via_device = (DOMAIN, ap_id)
                 elif wifi and wifi.radio:
                     radio_id = format_radio_device_id(router_id, wifi.radio)
-                    if dev_reg.async_get_device(identifiers={(DOMAIN, radio_id)}):
+                    radio_identifier = (DOMAIN, radio_id)
+                    if hasattr(dev_reg, "async_get_device_by_identifier"):
+                        has_dev = (
+                            dev_reg.async_get_device_by_identifier(radio_identifier)
+                            is not None
+                        )
+                    elif hasattr(dev_reg.devices, "get_entry"):
+                        has_dev = (
+                            dev_reg.devices.get_entry(identifiers={radio_identifier})
+                            is not None
+                        )
+                    else:
+                        has_dev = (
+                            dev_reg.async_get_device(identifiers={radio_identifier})
+                            is not None
+                        )
+                    if has_dev:
                         via_device = (DOMAIN, radio_id)
                 break
 
@@ -247,7 +279,23 @@ def get_via_device(
             ):
                 # It's behind another mesh node. Verify it exists in registry.
                 dev_reg = dr.async_get(hass)
-                if dev_reg.async_get_device(identifiers={(DOMAIN, originator_mac)}):
+                orig_identifier = (DOMAIN, originator_mac)
+                if hasattr(dev_reg, "async_get_device_by_identifier"):
+                    has_dev = (
+                        dev_reg.async_get_device_by_identifier(orig_identifier)
+                        is not None
+                    )
+                elif hasattr(dev_reg.devices, "get_entry"):
+                    has_dev = (
+                        dev_reg.devices.get_entry(identifiers={orig_identifier})
+                        is not None
+                    )
+                else:
+                    has_dev = (
+                        dev_reg.async_get_device(identifiers={orig_identifier})
+                        is not None
+                    )
+                if has_dev:
                     via_device = (DOMAIN, originator_mac)
 
     return via_device
