@@ -1197,7 +1197,16 @@ class OpenWrtAccessControlSwitch(
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Unblock the device (Allow access)."""
         try:
-            await self._client.set_access_control_blocked(self._mac, False)
+            success = await self._client.set_access_control_blocked(
+                self._mac, False
+            )
+            if not success:
+                msg = (
+                    f"Router rejected the unblock request for {self._mac}; "
+                    "check the Home Assistant logs (search for "
+                    "'openwrt-access-control') for details."
+                )
+                raise HomeAssistantError(msg)
             # Optimistic update
             if self.coordinator.data:
                 for rule in self.coordinator.data.access_control:
@@ -1214,7 +1223,16 @@ class OpenWrtAccessControlSwitch(
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Block the device (Restrict access)."""
         try:
-            await self._client.set_access_control_blocked(self._mac, True)
+            success = await self._client.set_access_control_blocked(
+                self._mac, True
+            )
+            if not success:
+                msg = (
+                    f"Router rejected the block request for {self._mac}; "
+                    "check the Home Assistant logs (search for "
+                    "'openwrt-access-control') for details."
+                )
+                raise HomeAssistantError(msg)
             # Optimistic update
             if self.coordinator.data:
                 found = False

@@ -8,6 +8,7 @@ import contextlib
 import json
 import logging
 import re
+import shlex
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -1464,6 +1465,67 @@ class OpenWrtClient(abc.ABC):
     async def set_access_control_blocked(self, mac: str, blocked: bool) -> bool:
         """Block or unblock a device's internet access."""
         return False
+
+    async def _flush_conntrack_for_mac(self, mac: str) -> None:
+        """Drop already-established connections for a MAC's current IP(s).
+
+        A new firewall REJECT/DROP rule only stops *new* connection attempts.
+        Any sockets that were already open before the rule was applied are
+        already tracked by the kernel's connection tracker and will keep
+        flowing until they time out on their own. Explicitly flushing those
+        conntrack entries (equivalent to ``conntrack -D -s <ip>``) forces the
+        block to take effect immediately instead of waiting for existing
+        streams to finish.
+
+        All outcomes are logged at INFO/WARNING (not DEBUG) with the
+        "[openwrt-conntrack-flush]" tag so this is easy to find and confirm
+        in the Home Assistant log, since a silently-swallowed failure here is
+        indistinguishable from "nothing to flush" otherwise.
+        """
+        mac_lower = mac.lower()
+        try:
+            neighbors = await self.get_ip_neighbors()
+        except Exception as err:
+            _LOGGER.warning(
+                "[openwrt-conntrack-flush] Could not read the ARP/neighbor "
+                "table to resolve an IP for %s: %s",
+                mac,
+                err,
+            )
+            return
+
+        ips = {n.ip for n in neighbors if n.mac.lower() == mac_lower and n.ip}
+        if not ips:
+            _LOGGER.warning(
+                "[openwrt-conntrack-flush] No IP address found for %s in the "
+                "ARP/neighbor table; skipping conntrack flush (device may be "
+                "idle, or the table entry is stale)",
+                mac,
+            )
+            return
+
+        for ip in ips:
+            safe_ip = shlex.quote(ip)
+            try:
+                output = await self.execute_command(f"conntrack -D -s {safe_ip}")
+            except Exception as err:
+                _LOGGER.warning(
+                    "[openwrt-conntrack-flush] Failed to run conntrack for "
+                    "%s (%s): %s",
+                    mac,
+                    ip,
+                    err,
+                )
+                continue
+
+            summary = (output or "").strip().splitlines()
+            last_line = summary[-1] if summary else "no output (is conntrack-tools installed?)"
+            _LOGGER.info(
+                "[openwrt-conntrack-flush] %s (%s): %s",
+                mac,
+                ip,
+                last_line,
+            )
 
     async def get_external_ip(self) -> str | None:
         """Get public/external IP address."""
