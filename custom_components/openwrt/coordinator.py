@@ -1196,7 +1196,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                                 for d in data.connected_devices
                                 if d.mac and d.mac.lower() == mac_lower
                             )
-                            if not device.connected:
+                            if not device.connected or not device.is_wireless:
                                 device.connected = True
                                 device.is_wireless = True
                                 device.interface = (

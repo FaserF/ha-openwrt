@@ -227,7 +227,9 @@ def get_via_device(
                     ap_identifier = (DOMAIN, ap_id)
                     if hasattr(dev_reg, "async_get_device_by_identifier"):
                         has_dev = (
-                            dev_reg.async_get_device_by_identifier(ap_identifier)
+                            dev_reg.async_get_device_by_identifier(
+                                ap_identifier, entry.entry_id
+                            )
                             is not None
                         )
                     elif hasattr(dev_reg.devices, "get_entry"):
@@ -247,7 +249,9 @@ def get_via_device(
                     radio_identifier = (DOMAIN, radio_id)
                     if hasattr(dev_reg, "async_get_device_by_identifier"):
                         has_dev = (
-                            dev_reg.async_get_device_by_identifier(radio_identifier)
+                            dev_reg.async_get_device_by_identifier(
+                                radio_identifier, entry.entry_id
+                            )
                             is not None
                         )
                     elif hasattr(dev_reg.devices, "get_entry"):
@@ -282,7 +286,9 @@ def get_via_device(
                 orig_identifier = (DOMAIN, originator_mac)
                 if hasattr(dev_reg, "async_get_device_by_identifier"):
                     has_dev = (
-                        dev_reg.async_get_device_by_identifier(orig_identifier)
+                        dev_reg.async_get_device_by_identifier(
+                            orig_identifier, entry.entry_id
+                        )
                         is not None
                     )
                 elif hasattr(dev_reg.devices, "get_entry"):
