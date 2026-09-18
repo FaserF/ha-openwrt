@@ -173,7 +173,7 @@
       },
       "mqtt_presence": {
         "title": "MQTT Presence Detection (Optional)",
-        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n⚠️ **Note:** This is a third-party feature. Support is not provided by this integration. Bugs should be reported to the original repository.",
+        "description": "Enable MQTT-based presence detection for higher reliability and lower latency.",
         "data": {
           "mqtt_presence": "Enable MQTT Presence Detection",
           "mqtt_broker": "MQTT Broker (reachable from router)",
@@ -182,13 +182,20 @@
           "mqtt_password": "MQTT Password"
         }
       },
+      "mqtt_zone": {
+        "title": "MQTT Presence Location Zone",
+        "description": "Select the Home Assistant Zone entity that corresponds to the location of this router. The presence status reported by this router will be associated with this zone.",
+        "data": {
+          "mqtt_zone": "Target Zone Entity (e.g. Home, Office)"
+        }
+      },
       "deploy_mqtt_presence": {
         "title": "Deploying Scripts",
-        "description": "Downloading and deploying the presence detection scripts to your router. This may take a moment..."
+        "description": "Deploying the presence detection scripts to your router. This may take a moment..."
       },
       "deploy_failed": {
         "title": "Deployment Failed",
-        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's internet connection and free space."
+        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's connection and free space."
       }
     },
     "error": {
@@ -279,7 +286,7 @@
       },
       "options_mqtt_presence": {
         "title": "MQTT Presence Detection (Optional)",
-        "description": "Enable MQTT-based presence detection for higher reliability and lower latency. This uses a third-party script from [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n⚠️ **Note:** This is a third-party feature. Support is not provided by this integration. Bugs should be reported to the original repository.",
+        "description": "Enable MQTT-based presence detection for higher reliability and lower latency.",
         "data": {
           "mqtt_presence": "Enable MQTT Presence Detection",
           "mqtt_broker": "MQTT Broker (reachable from router)",
@@ -288,9 +295,20 @@
           "mqtt_password": "MQTT Password"
         }
       },
+      "options_mqtt_zone": {
+        "title": "MQTT Presence Location Zone",
+        "description": "Select the Home Assistant Zone entity that corresponds to the location of this router. The presence status reported by this router will be associated with this zone.",
+        "data": {
+          "mqtt_zone": "Target Zone Entity (e.g. Home, Office)"
+        }
+      },
       "options_deploy_failed": {
         "title": "Deployment Failed",
-        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's internet connection and free space."
+        "description": "The deployment of the MQTT presence scripts failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's connection and free space."
+      },
+      "options_remove_failed": {
+        "title": "Removal Failed",
+        "description": "The removal of the MQTT presence scripts from the router failed.\n\n**Error:**\n```\n{error}\n```\n\nPlease check your router's connection."
       },
       "options_redeploy_user": {
         "title": "Redeploy Home Assistant User",

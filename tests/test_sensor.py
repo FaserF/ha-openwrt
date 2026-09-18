@@ -121,7 +121,9 @@ def test_wifi_sensors_are_grouped_under_their_ssid_below_the_radio() -> None:
     assert {
         next(iter(sensor._attr_device_info["identifiers"])) for sensor in sensors
     } == {("openwrt", "router_mac_ap_Main_2.4 GHz")}
-    assert {sensor._attr_device_info["name"] for sensor in sensors} == {"SSID Main"}
+    assert {sensor._attr_device_info["name"] for sensor in sensors} == {
+        "SSID Main (2.4 GHz)"
+    }
     assert {sensor._attr_device_info["via_device"] for sensor in sensors} == {
         ("openwrt", "router_mac_radio_radio0")
     }

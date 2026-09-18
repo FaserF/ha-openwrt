@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,6 +15,7 @@ from custom_components.openwrt.const import (
     CONF_MQTT_PORT,
     CONF_MQTT_PRESENCE,
     CONF_MQTT_USERNAME,
+    CONF_MQTT_ZONE,
     CONF_REDEPLOY_MQTT,
     DOMAIN,
 )
@@ -83,6 +85,7 @@ async def test_config_flow_mqtt_steps(hass: HomeAssistant, mock_config_entry) ->
     hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
         "coordinator": MagicMock(data=MagicMock(permissions=MagicMock(write_mqtt=True)))
     }
+    created_entry_result = MagicMock()
     with (
         patch(
             "custom_components.openwrt.helpers.mqtt_presence.async_deploy_mqtt_presence",
@@ -92,12 +95,23 @@ async def test_config_flow_mqtt_steps(hass: HomeAssistant, mock_config_entry) ->
             "custom_components.openwrt.config_flow.create_client",
             return_value=AsyncMock(),
         ),
-        patch.object(flow, "_create_entry", return_value=AsyncMock()) as mock_create,
     ):
         result = await flow.async_step_mqtt_presence(user_input)
+        assert result["step_id"] == "mqtt_zone"
 
-        assert mock_deploy.called
-        assert mock_create.called
+        # 3. Submit Zone selection
+        with patch.object(
+            flow, "async_create_entry", return_value=created_entry_result
+        ) as mock_create_entry:
+            result = await flow.async_step_mqtt_zone({"mqtt_zone": "zone.work"})
+
+            assert mock_deploy.called
+            assert mock_create_entry.called
+            # Verify options passed to async_create_entry includes CONF_MQTT_ZONE
+            assert (
+                mock_create_entry.call_args.kwargs["options"][CONF_MQTT_ZONE]
+                == "zone.work"
+            )
 
 
 async def test_options_flow_mqtt_redeploy(
@@ -119,8 +133,12 @@ async def test_options_flow_mqtt_redeploy(
     }
 
     # Mock coordinator for permissions check
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
     hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
-        "coordinator": MagicMock(data=MagicMock(permissions=MagicMock(write_mqtt=True)))
+        "coordinator": mock_coord
     }
     with (
         patch(
@@ -131,9 +149,10 @@ async def test_options_flow_mqtt_redeploy(
             "custom_components.openwrt.config_flow.create_client",
             return_value=AsyncMock(),
         ),
-        patch.object(
-            flow, "async_step_options_permissions", return_value=AsyncMock()
-        ) as mock_perms,
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
     ):
         result = await flow.async_step_init(user_input)
 
@@ -142,19 +161,337 @@ async def test_options_flow_mqtt_redeploy(
 
         # Submit the details
         result = await flow.async_step_options_mqtt_presence(user_input)
+        assert result["step_id"] == "options_mqtt_zone"
 
+        # Submit Zone selection -> goes to permissions / select devices
+        result = await flow.async_step_options_mqtt_zone({"mqtt_zone": "zone.home"})
+        assert result["step_id"] == "options_permissions"
+
+        # Submit permissions -> packages
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        assert result["step_id"] == "options_packages"
+
+        # Submit packages -> select devices
+        result = await flow.async_step_options_packages({"track_devices": True})
+        assert result["step_id"] == "options_select_devices"
+
+        # Submit whitelist selection -> triggers deploy and finishes
+        result = await flow.async_step_options_select_devices(
+            {"tracked_devices": ["11:22:33:44:55:66"]}
+        )
         assert mock_deploy.called
-        assert mock_perms.called
+
+
+async def test_options_flow_consider_home_change_triggers_redeploy(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test that changing consider_home when MQTT is enabled auto-redeploys scripts to router."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+    from custom_components.openwrt.const import CONF_CONSIDER_HOME
+
+    mock_config_entry.options = {
+        CONF_MQTT_PRESENCE: True,
+        CONF_CONSIDER_HOME: 180,
+    }
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    user_input = {
+        CONF_MQTT_PRESENCE: True,
+        CONF_CONSIDER_HOME: 300,
+    }
+
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": mock_coord
+    }
+    with (
+        patch(
+            "custom_components.openwrt.helpers.mqtt_presence.async_deploy_mqtt_presence",
+            return_value=(True, None),
+        ) as mock_deploy,
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        result = await flow.async_step_init(user_input)
+        assert result["step_id"] == "options_mqtt_presence"
+
+        result = await flow.async_step_options_mqtt_presence(user_input)
+        assert result["step_id"] == "options_mqtt_zone"
+
+        result = await flow.async_step_options_mqtt_zone({"mqtt_zone": "zone.home"})
+        assert result["step_id"] == "options_permissions"
+
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        assert result["step_id"] == "options_packages"
+
+        result = await flow.async_step_options_packages({"track_devices": True})
+        assert result["step_id"] == "options_select_devices"
+
+        result = await flow.async_step_options_select_devices(
+            {"tracked_devices": ["11:22:33:44:55:66"]}
+        )
+        assert mock_deploy.called
+        # Verify consider_home parameter passed to async_deploy_mqtt_presence was 300
+        assert mock_deploy.call_args.args[4] == 300
+
+
+async def test_options_flow_mqtt_removal(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test disabling MQTT presence defers removal to finalization."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+
+    mock_config_entry.options = {CONF_MQTT_PRESENCE: True}
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": mock_coord
+    }
+
+    with (
+        patch(
+            "custom_components.openwrt.helpers.mqtt_presence.async_remove_mqtt_presence",
+            AsyncMock(return_value=(True, None)),
+        ) as mock_remove,
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        # 1. Disable MQTT in init
+        result = await flow.async_step_init({CONF_MQTT_PRESENCE: False})
+        assert result["step_id"] == "options_permissions"
+        assert not mock_remove.called
+
+        # 2. Advance to packages
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        assert result["step_id"] == "options_packages"
+        assert not mock_remove.called
+
+        # 3. Finalize from packages step
+        result = await flow.async_step_options_packages({"track_devices": False})
+        assert result["type"] in ("create_entry", "CREATE_ENTRY")
+        assert mock_remove.called
+
+
+async def test_options_flow_mqtt_disable_in_substep(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test disabling MQTT presence in options_mqtt_presence sub-step correctly removes presence."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+
+    mock_config_entry.options = {CONF_MQTT_PRESENCE: True}
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": mock_coord
+    }
+
+    with (
+        patch(
+            "custom_components.openwrt.helpers.mqtt_presence.async_remove_mqtt_presence",
+            AsyncMock(return_value=(True, None)),
+        ) as mock_remove,
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        # Trigger redeploy to enter sub-step options_mqtt_presence
+        result = await flow.async_step_init(
+            {CONF_MQTT_PRESENCE: True, CONF_REDEPLOY_MQTT: True}
+        )
+        assert result["step_id"] == "options_mqtt_presence"
+
+        # Disable MQTT in sub-step
+        result = await flow.async_step_options_mqtt_presence(
+            {CONF_MQTT_PRESENCE: False}
+        )
+        assert result["step_id"] == "options_permissions"
+        assert not mock_remove.called
+
+        # Finalize
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        result = await flow.async_step_options_packages({"track_devices": False})
+        assert result["type"] in ("create_entry", "CREATE_ENTRY")
+        assert mock_remove.called
+
+
+async def test_options_flow_mqtt_removal_failure(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test that failed removal stops entry creation and shows retry form."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+
+    mock_config_entry.options = {CONF_MQTT_PRESENCE: True}
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    mock_coord = MagicMock(
+        data=MagicMock(permissions=MagicMock(write_mqtt=True)),
+        _device_history={},
+    )
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": mock_coord
+    }
+
+    with (
+        patch(
+            "custom_components.openwrt.helpers.mqtt_presence.async_remove_mqtt_presence",
+            AsyncMock(return_value=(False, "SSH Connection Refused")),
+        ) as mock_remove,
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        result = await flow.async_step_init({CONF_MQTT_PRESENCE: False})
+        result = await flow.async_step_options_permissions({"acknowledge": True})
+        result = await flow.async_step_options_packages({"track_devices": False})
+
+        assert result["step_id"] == "options_remove_failed"
+        assert mock_remove.called
+
+
+async def test_options_flow_combined_redeploy_user_and_mqtt(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Test that requesting user redeploy and MQTT redeploy processes both sequentially."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+    from custom_components.openwrt.const import CONF_REDEPLOY_USER
+
+    mock_config_entry.options = {CONF_MQTT_PRESENCE: False}
+    mock_config_entry.add_to_hass(hass)
+
+    flow = OpenWrtOptionsFlow(mock_config_entry)
+    flow.hass = hass
+
+    with (
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=AsyncMock(provision_user=AsyncMock(return_value=(True, None))),
+        ),
+        patch(
+            "custom_components.openwrt.config_flow.translation.async_get_translations",
+            AsyncMock(return_value={}),
+        ),
+    ):
+        # 1. Enable MQTT AND request redeploy user simultaneously
+        result = await flow.async_step_init(
+            {CONF_MQTT_PRESENCE: True, CONF_REDEPLOY_USER: True}
+        )
+        # Should go to options_redeploy_user first
+        assert result["step_id"] == "options_redeploy_user"
+
+        # 2. Provide root credentials for user redeploy
+        result = await flow.async_step_options_redeploy_user(
+            {"username": "root", "password": "password"}
+        )
+        # Should transition to options_mqtt_presence next instead of skipping MQTT!
+        assert result["step_id"] == "options_mqtt_presence"
+
+
+async def test_should_redeploy_mqtt_presence_helper() -> None:
+    """Test the should_redeploy_mqtt_presence helper with various option changes."""
+    from custom_components.openwrt.config_flow import should_redeploy_mqtt_presence
+    from custom_components.openwrt.const import (
+        CONF_CONSIDER_HOME,
+        CONF_MQTT_BROKER,
+        CONF_MQTT_PRESENCE,
+        CONF_MQTT_ZONE,
+        CONF_TRACKED_DEVICES,
+    )
+
+    current = {
+        CONF_MQTT_PRESENCE: True,
+        CONF_CONSIDER_HOME: 180,
+        CONF_MQTT_ZONE: "zone.home",
+    }
+
+    # No changes
+    assert not should_redeploy_mqtt_presence(
+        current, {CONF_MQTT_PRESENCE: True, CONF_CONSIDER_HOME: 180}
+    )
+
+    # Newly enabled
+    assert should_redeploy_mqtt_presence(
+        {CONF_MQTT_PRESENCE: False}, {CONF_MQTT_PRESENCE: True}
+    )
+
+    # consider_home changed
+    assert should_redeploy_mqtt_presence(
+        current, {CONF_MQTT_PRESENCE: True, CONF_CONSIDER_HOME: 300}
+    )
+
+    # zone changed
+    assert should_redeploy_mqtt_presence(
+        current, {CONF_MQTT_PRESENCE: True, CONF_MQTT_ZONE: "zone.work"}
+    )
+
+    # broker changed
+    assert should_redeploy_mqtt_presence(
+        current, {CONF_MQTT_PRESENCE: True, CONF_MQTT_BROKER: "1.2.3.4"}
+    )
+
+    # tracked devices changed
+    assert should_redeploy_mqtt_presence(
+        current,
+        {CONF_MQTT_PRESENCE: True, CONF_TRACKED_DEVICES: ["AA:BB:CC:DD:EE:FF"]},
+    )
 
 
 async def test_deploy_helper_success(hass: HomeAssistant) -> None:
-    """Test the deployment helper logic (partial mock)."""
+    """Test the deployment helper logic using local templates."""
     from custom_components.openwrt.helpers.mqtt_presence import (
         async_deploy_mqtt_presence,
     )
 
+    hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
+
     mock_client = AsyncMock()
-    mock_client.execute_command.return_value = "OK"
+    mock_client.execute_command.return_value = (
+        "OK: presence_hostapd enabled and restarted"
+    )
     mqtt_config = {
         "broker": "127.0.0.1",
         "port": 1883,
@@ -162,28 +499,127 @@ async def test_deploy_helper_success(hass: HomeAssistant) -> None:
         "password": "p",
     }
 
-    # Mock aiohttp session
-    with patch(
-        "custom_components.openwrt.helpers.mqtt_presence.async_get_clientsession"
-    ) as mock_session_func:
-        mock_session = mock_session_func.return_value
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.text.return_value = 'file content with BROKER="192.168.1.10"'
-        mock_session.get.return_value.__aenter__.return_value = mock_resp
+    success, error = await async_deploy_mqtt_presence(hass, mock_client, mqtt_config)
 
-        success, error = await async_deploy_mqtt_presence(
-            hass, mock_client, mqtt_config
-        )
+    assert success is True
+    assert error is None
+    # Verify commands were called
+    mock_client.execute_command.assert_any_call("mkdir -p /etc/presence")
+    assert mock_client.execute_command.call_count >= 10
 
-        assert success is True
-        assert error is None
-        # Verify commands were called
-        mock_client.execute_command.assert_any_call("mkdir -p /etc/presence")
-        # Verify MQTT config replacement (check if execute_command was called with base64)
-        # We can't easily check the exact base64 without re-implementing,
-        # but we check if it was called multiple times for files
-        assert mock_client.execute_command.call_count >= 10
+
+async def test_deploy_helper_install_failure(hass: HomeAssistant) -> None:
+    """Test that deployment fails when install.sh reports failure."""
+    from custom_components.openwrt.helpers.mqtt_presence import (
+        async_deploy_mqtt_presence,
+    )
+
+    hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
+
+    mock_client = AsyncMock()
+    # Simulate healthcheck failure inside install.sh
+    mock_client.execute_command.side_effect = lambda cmd: (
+        "FAIL: no hostapd control socket responds to ping in /var/run/hostapd/"
+        if "install.sh" in cmd
+        else "OK"
+    )
+    mqtt_config = {
+        "broker": "127.0.0.1",
+        "port": 1883,
+        "username": "u",
+        "password": "p",
+    }
+
+    success, error = await async_deploy_mqtt_presence(hass, mock_client, mqtt_config)
+
+    assert success is False
+    assert "FAIL: no hostapd control socket responds to ping" in error
+
+
+async def test_deploy_helper_with_whitelist_and_consider_home(
+    hass: HomeAssistant,
+) -> None:
+    """Test deploying presence with tracked_devices whitelist and consider_home grace period."""
+    from custom_components.openwrt.helpers.mqtt_presence import (
+        async_deploy_mqtt_presence,
+    )
+
+    hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
+
+    mock_client = AsyncMock()
+    mock_client.host = "192.168.1.1"
+    mqtt_config = {
+        "broker": "127.0.0.1",
+        "port": 1883,
+        "username": "u",
+        "password": "p",
+    }
+
+    executed_cmds = []
+
+    async def capture_cmd(cmd):
+        executed_cmds.append(cmd)
+        return "OK"
+
+    mock_client.execute_command.side_effect = capture_cmd
+
+    tracked = ["11:22:33:44:55:66", "aa-bb-cc-dd-ee-ff"]
+    success, error = await async_deploy_mqtt_presence(
+        hass, mock_client, mqtt_config, tracked_devices=tracked, consider_home=120
+    )
+
+    assert success is True
+    assert error is None
+
+    # Verify presence.conf was written with ROUTER_ID, GRACE_SECONDS=120 and ZONE_ENTITY='zone.home'
+    presence_conf_cmd = next(
+        c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence.conf" in c
+    )
+    assert (
+        "ROUTER_ID=192.168.1.1" in presence_conf_cmd
+        or "ROUTER_ID='192.168.1.1'" in presence_conf_cmd
+    )
+    assert (
+        "GRACE_SECONDS=120" in presence_conf_cmd
+        or "GRACE_SECONDS='120'" in presence_conf_cmd
+    )
+    assert (
+        "ZONE_ENTITY=zone.home" in presence_conf_cmd
+        or "ZONE_ENTITY='zone.home'" in presence_conf_cmd
+    )
+
+    # Test consider_home=0 (valid zero grace period)
+    executed_cmds.clear()
+    success, error = await async_deploy_mqtt_presence(
+        hass, mock_client, mqtt_config, tracked_devices=tracked, consider_home=0
+    )
+    assert success is True
+    assert error is None
+    presence_conf_cmd_zero = next(
+        c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence.conf" in c
+    )
+    assert (
+        "GRACE_SECONDS=0" in presence_conf_cmd_zero
+        or "GRACE_SECONDS='0'" in presence_conf_cmd_zero
+    )
+
+    # Verify presence_devices.conf was written with formatted MAC entries and lowercase topic
+    dev_conf_cmd = next(
+        c
+        for c in executed_cmds
+        if "cat <<'EOF' > /etc/presence/presence_devices.conf" in c
+    )
+    assert "11:22:33:44:55:66 presence/11_22_33_44_55_66" in dev_conf_cmd
+    assert "aa:bb:cc:dd:ee:ff presence/aa_bb_cc_dd_ee_ff" in dev_conf_cmd
+
+    # Verify presence_event.sh formats JSON payload with in_zones and connected_ap
+    event_sh_cmd = next(
+        c for c in executed_cmds if "cat <<'EOF' > /etc/presence/presence_event.sh" in c
+    )
+    assert 'payload="{\\"in_zones\\":[\\"$' in event_sh_cmd
+    assert '\\"connected_ap\\":\\"${ROUTER_ID}\\"' in event_sh_cmd
+    assert "is_owned_by_other_ap" in event_sh_cmd
+    assert '-t "${TOPIC}/attributes"' in event_sh_cmd
 
 
 async def test_mqtt_discovery_cleanup_no_colons(hass: HomeAssistant) -> None:
@@ -342,3 +778,40 @@ async def test_mqtt_discovery_cleanup_active_topic_and_ownership(
     # Cleanup again on coord1 - now status topic SHOULD be cleared
     await coord1._async_discovery_mqtt_device_cleanup("aa:bb:cc:dd:ee:01")
     assert "presence/aa_bb_cc_dd_ee_01" in published_topics
+
+
+def test_presence_templates_shell_syntax() -> None:
+    """Test that all shell script templates pass sh -n syntax check.
+
+    Note: This is a static syntax check only (sh -n). It verifies shell script validity
+    and parsing, but does not test runtime behavioral logic or execution outcomes.
+    """
+    from custom_components.openwrt.helpers.mqtt_presence import (
+        FILE_TEMPLATE_MAP,
+        TEMPLATES_DIR,
+    )
+
+    script_templates = [
+        rel_path
+        for target, rel_path in FILE_TEMPLATE_MAP.items()
+        if rel_path.endswith(".sh") or rel_path.startswith("init.d/")
+    ]
+
+    assert len(script_templates) == 4, (
+        f"Expected 4 shell script templates, found {len(script_templates)}"
+    )
+
+    for rel_path in script_templates:
+        full_path = TEMPLATES_DIR / rel_path
+        assert full_path.is_file(), f"Template file missing: {full_path}"
+
+        result = subprocess.run(
+            ["sh", "-n", str(full_path)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"Shell syntax check (sh -n) failed for {rel_path}:\n"
+            f"stdout: {result.stdout}\n"
+            f"stderr: {result.stderr}"
+        )
