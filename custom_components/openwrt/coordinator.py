@@ -2418,7 +2418,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         ) or self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
             whitelist = self._async_get_tracked_devices_whitelist()
         entity_registry = er.async_get(self.hass)
-        untracked_client_devices: list[str] = []
+        untracked_client_devices: list[dr.DeviceEntry] = []
 
         devices_to_remove = []
         # Iterate over all devices for this config entry
@@ -2495,7 +2495,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     dev.name,
                     dev.id,
                 )
-                untracked_client_devices.append(dev.id)
+                untracked_client_devices.append(dev)
                 continue
 
             # Identify if this is an Access Point device (old or new style)
@@ -2565,12 +2565,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
             device_registry.async_remove_device(dev_id)
 
-        # Detach rather than delete: the same MAC can be a device another router
-        # or integration still provides. HA drops the device once no entry is left.
-        for dev_id in untracked_client_devices:
-            device_registry.async_update_device(
-                dev_id, remove_config_entry_id=self.config_entry.entry_id
-            )
+        # Since HA 2026.9 a device belongs to exactly one config entry, so ours can
+        # simply be removed. Before that the same MAC could be one device shared with
+        # another router or integration; there, only detach this entry from it.
+        for dev in untracked_client_devices:
+            if set(dev.config_entries) - {self.config_entry.entry_id}:
+                device_registry.async_update_device(
+                    dev.id, remove_config_entry_id=self.config_entry.entry_id
+                )
+            else:
+                device_registry.async_remove_device(dev.id)
 
     async def _check_firmware_update(self, data: OpenWrtData) -> None:
         """Check for firmware updates (official or custom)."""

@@ -25,11 +25,13 @@ def _entry(options: dict) -> MagicMock:
     return entry
 
 
-def _client_device(dev_id: str, mac: str) -> MagicMock:
+def _client_device(
+    dev_id: str, mac: str, config_entries: set[str] | None = None
+) -> MagicMock:
     device = MagicMock(
         id=dev_id,
         model="Tracked device",
-        config_entries={"test_entry_id"},
+        config_entries=config_entries or {"test_entry_id"},
         identifiers={(DOMAIN, mac)},
         via_device_id="dev_router",
         disabled_by=None,
@@ -40,15 +42,16 @@ def _client_device(dev_id: str, mac: str) -> MagicMock:
     return device
 
 
-async def _run_cleanup(options: dict) -> MagicMock:
+async def _run_cleanup(options: dict, stale_shared: bool = False) -> MagicMock:
     """Run the registry pass over three client devices and return the registry."""
     entry = _entry(options)
     coordinator = OpenWrtDataCoordinator(MagicMock(), entry, AsyncMock())
     coordinator.router_id = ROUTER_ID
 
+    stale_entries = {"test_entry_id", "other_entry"} if stale_shared else None
     devices = [
         _client_device("dev_tracked", TRACKED_MAC),
-        _client_device("dev_stale", STALE_MAC),
+        _client_device("dev_stale", STALE_MAC, stale_entries),
         _client_device("dev_untracked_entity", UNTRACKED_WITH_ENTITY_MAC),
     ]
     entities = {
@@ -79,24 +82,44 @@ async def _run_cleanup(options: dict) -> MagicMock:
     return dev_registry
 
 
+def _removed(dev_registry: MagicMock) -> set[str]:
+    return {call.args[0] for call in dev_registry.async_remove_device.call_args_list}
+
+
+def _detached(dev_registry: MagicMock) -> set[str]:
+    return {
+        call.args[0]
+        for call in dev_registry.async_update_device.call_args_list
+        if "remove_config_entry_id" in call.kwargs
+    }
+
+
+CLIENTS = {"dev_tracked", "dev_stale", "dev_untracked_entity"}
+
+
 @pytest.mark.asyncio
-async def test_untracked_client_device_without_entities_is_detached() -> None:
-    """A client outside the whitelist with no entities left loses this entry."""
+async def test_untracked_client_device_without_entities_is_removed() -> None:
+    """A client outside the whitelist with no entities left is removed."""
     dev_registry = await _run_cleanup(
         {"track_devices": True, "tracked_devices": [TRACKED_MAC]}
+    )
+
+    assert _removed(dev_registry) & CLIENTS == {"dev_stale"}
+    assert not _detached(dev_registry)
+
+
+@pytest.mark.asyncio
+async def test_untracked_shared_client_device_is_only_detached() -> None:
+    """Before HA 2026.9 a device could be shared; then only this entry is dropped."""
+    dev_registry = await _run_cleanup(
+        {"track_devices": True, "tracked_devices": [TRACKED_MAC]}, stale_shared=True
     )
 
     dev_registry.async_update_device.assert_any_call(
         "dev_stale", remove_config_entry_id="test_entry_id"
     )
-    detached = {
-        call.args[0]
-        for call in dev_registry.async_update_device.call_args_list
-        if "remove_config_entry_id" in call.kwargs
-    }
-    assert detached == {"dev_stale"}
-    removed = {call.args[0] for call in dev_registry.async_remove_device.call_args_list}
-    assert not removed & {"dev_tracked", "dev_stale", "dev_untracked_entity"}
+    assert _detached(dev_registry) == {"dev_stale"}
+    assert not _removed(dev_registry) & CLIENTS
 
 
 @pytest.mark.asyncio
@@ -104,10 +127,8 @@ async def test_client_devices_untouched_without_whitelist() -> None:
     """With no whitelist every client is tracked, so nothing is swept."""
     dev_registry = await _run_cleanup({"track_devices": True})
 
-    assert not any(
-        "remove_config_entry_id" in call.kwargs
-        for call in dev_registry.async_update_device.call_args_list
-    )
+    assert not _removed(dev_registry) & CLIENTS
+    assert not _detached(dev_registry)
 
 
 def _hass_with_coordinator(coordinator: MagicMock) -> MagicMock:
