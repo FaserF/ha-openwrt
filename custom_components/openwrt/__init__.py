@@ -326,6 +326,40 @@ async def async_unload_entry(hass: HomeAssistant, entry: OpenWrtConfigEntry) -> 
     return unload_ok
 
 
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    entry: OpenWrtConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow removing a device this entry no longer provides.
+
+    Refuses the router itself, its current radio and SSID devices, and any client
+    the entry is tracking right now -- those would be recreated on the next poll.
+    """
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if not entry_data:
+        return True
+    coordinator: OpenWrtDataCoordinator = entry_data[DATA_COORDINATOR]
+
+    if device_entry.identifiers & coordinator.active_device_identifiers:
+        return False
+
+    if coordinator.data:
+        tracked_macs = {
+            d.mac.lower() for d in coordinator.data.connected_devices if d.mac
+        }
+        tracked_macs.update(
+            lease.mac.lower() for lease in coordinator.data.dhcp_leases if lease.mac
+        )
+        if any(
+            ident[0] == DOMAIN and str(ident[1]).lower() in tracked_macs
+            for ident in device_entry.identifiers
+        ):
+            return False
+
+    return True
+
+
 async def _async_update_listener(
     hass: HomeAssistant,
     entry: OpenWrtConfigEntry,

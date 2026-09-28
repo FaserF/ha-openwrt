@@ -265,6 +265,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self._mqtt_presence_configured = False
         # Interface name to stable identifier mapping (for AP devices)
         self.interface_to_stable_id: dict[str, str] = {}
+        self.active_device_identifiers: set[tuple[str, str]] = set()
         unique_id = self.config_entry.unique_id
         if unique_id and len(unique_id.replace(":", "")) == 12:
             try:
@@ -2397,10 +2398,27 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 (DOMAIN, format_radio_device_id(self.router_id, radio))
             )
 
+        # Kept for async_remove_config_entry_device, which must refuse to delete
+        # a device this entry is still providing.
+        self.active_device_identifiers = active_identifiers
+
         _LOGGER.debug(
             "Starting deep device registry cleanup for %s active identifiers",
             len(active_identifiers),
         )
+
+        # A client device is created by its tracker entity, but outlives it: once
+        # the entity is gone (removed by hand, or never recreated because the MAC
+        # fell outside the whitelist) the device stays behind with nothing on it.
+        # Only sweep these while a whitelist is in force -- without one every
+        # client is fair game and the device will be refilled on the next poll.
+        whitelist = None
+        if self.config_entry.options.get(
+            CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES
+        ) or self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+            whitelist = self._async_get_tracked_devices_whitelist()
+        entity_registry = er.async_get(self.hass)
+        untracked_client_devices: list[str] = []
 
         devices_to_remove = []
         # Iterate over all devices for this config entry
@@ -2457,6 +2475,27 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                             is_active = True
                             break
             if is_active:
+                continue
+
+            if (
+                whitelist
+                and is_tracked_device
+                and tracked_mac
+                and tracked_mac.lower() not in whitelist
+                and not any(
+                    ent.config_entry_id == self.config_entry.entry_id
+                    for ent in er.async_entries_for_device(
+                        entity_registry, dev.id, include_disabled_entities=True
+                    )
+                )
+            ):
+                _LOGGER.info(
+                    "Removing untracked client device '%s' (id: %s): not in "
+                    "tracked_devices and no entities left",
+                    dev.name,
+                    dev.id,
+                )
+                untracked_client_devices.append(dev.id)
                 continue
 
             # Identify if this is an Access Point device (old or new style)
@@ -2525,6 +2564,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     )
 
             device_registry.async_remove_device(dev_id)
+
+        # Detach rather than delete: the same MAC can be a device another router
+        # or integration still provides. HA drops the device once no entry is left.
+        for dev_id in untracked_client_devices:
+            device_registry.async_update_device(
+                dev_id, remove_config_entry_id=self.config_entry.entry_id
+            )
 
     async def _check_firmware_update(self, data: OpenWrtData) -> None:
         """Check for firmware updates (official or custom)."""
