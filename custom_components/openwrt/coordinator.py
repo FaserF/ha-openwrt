@@ -1835,8 +1835,13 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         via_device = None
         if device_info.gateway_mac:
             gw_mac = device_info.gateway_mac.lower()
-            for dev_id in device_registry.devices:
-                dev = device_registry.async_get(dev_id)
+            devices_iterable = (
+                device_registry.devices.values()
+                if hasattr(device_registry.devices, "values")
+                else device_registry.devices
+            )
+            for item in devices_iterable:
+                dev = device_registry.async_get(item) if isinstance(item, str) else item
                 if not dev:
                     continue
                 if any(
