@@ -1510,8 +1510,7 @@ class OpenWrtClient(abc.ABC):
                 output = await self.execute_command(f"conntrack -D -s {safe_ip}")
             except Exception as err:
                 _LOGGER.warning(
-                    "[openwrt-conntrack-flush] Failed to run conntrack for "
-                    "%s (%s): %s",
+                    "[openwrt-conntrack-flush] Failed to run conntrack for %s (%s): %s",
                     mac,
                     ip,
                     err,
@@ -1519,7 +1518,9 @@ class OpenWrtClient(abc.ABC):
                 continue
 
             summary = (output or "").strip().splitlines()
-            last_line = summary[-1] if summary else "no output (is conntrack-tools installed?)"
+            last_line = (
+                summary[-1] if summary else "no output (is conntrack-tools installed?)"
+            )
             _LOGGER.info(
                 "[openwrt-conntrack-flush] %s (%s): %s",
                 mac,

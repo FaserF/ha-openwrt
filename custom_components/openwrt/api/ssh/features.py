@@ -331,9 +331,7 @@ class SshFeaturesMixin:
                 await self._exec(f"uci set {safe_dis}")
 
             await self._exec("uci commit firewall")
-            reload_result = await self._exec(
-                "/etc/init.d/firewall reload; echo RC=$?"
-            )
+            reload_result = await self._exec("/etc/init.d/firewall reload; echo RC=$?")
             if "RC=0" not in (reload_result or ""):
                 _LOGGER.warning(
                     "[openwrt-access-control] Firewall reload failed after "

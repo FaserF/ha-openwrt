@@ -1207,9 +1207,7 @@ class OpenWrtAccessControlSwitch(
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Unblock the device (Allow access)."""
         try:
-            success = await self._client.set_access_control_blocked(
-                self._mac, False
-            )
+            success = await self._client.set_access_control_blocked(self._mac, False)
             if not success:
                 msg = (
                     f"Router rejected the unblock request for {self._mac}; "
@@ -1233,9 +1231,7 @@ class OpenWrtAccessControlSwitch(
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Block the device (Restrict access)."""
         try:
-            success = await self._client.set_access_control_blocked(
-                self._mac, True
-            )
+            success = await self._client.set_access_control_blocked(self._mac, True)
             if not success:
                 msg = (
                     f"Router rejected the block request for {self._mac}; "
