@@ -362,4 +362,3 @@ async def test_wifi_sensor_cleanup_preserves_sensors_matching_ifname_or_radio() 
 
     # ent1 and ent2 must NOT be removed; orphan must be removed
     mock_ent_reg.async_remove.assert_called_once_with("sensor.ghost_clients")
-

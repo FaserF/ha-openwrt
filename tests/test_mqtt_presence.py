@@ -419,4 +419,3 @@ async def test_mqtt_cleanup_runs_when_presence_was_previously_enabled(
         mock_task.assert_called_once()
         # Close the unawaited coroutine passed to async_create_task
         mock_task.call_args[0][0].close()
-

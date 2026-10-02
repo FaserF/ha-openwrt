@@ -312,7 +312,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 if isinstance(stored_data, dict) and "devices" in stored_data:
                     loaded_devices = stored_data.get("devices", {})
                     self._last_version = stored_data.get("last_version")
-                    self._mqtt_cleanup_done = stored_data.get("mqtt_cleanup_done", False)
+                    self._mqtt_cleanup_done = stored_data.get(
+                        "mqtt_cleanup_done", False
+                    )
                     self._mqtt_presence_configured = stored_data.get(
                         "mqtt_presence_configured", False
                     )
