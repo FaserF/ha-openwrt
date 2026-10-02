@@ -257,9 +257,15 @@ async def test_check_official_firmware_update_skipped_for_non_openwrt() -> None:
     )
 
     with (
-        patch.object(coordinator, "_check_snapshot_update", new_callable=AsyncMock) as mock_snap,
-        patch.object(coordinator, "_check_stable_release_update", new_callable=AsyncMock) as mock_stable,
-        patch.object(coordinator, "_fetch_asu_info", new_callable=AsyncMock) as mock_asu,
+        patch.object(
+            coordinator, "_check_snapshot_update", new_callable=AsyncMock
+        ) as mock_snap,
+        patch.object(
+            coordinator, "_check_stable_release_update", new_callable=AsyncMock
+        ) as mock_stable,
+        patch.object(
+            coordinator, "_fetch_asu_info", new_callable=AsyncMock
+        ) as mock_asu,
     ):
         await coordinator._check_firmware_update(data)
 

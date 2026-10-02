@@ -265,7 +265,7 @@ class UbusFeaturesMixin:
             self._last_full_poll = 0
 
             if blocked:
-                await self._flush_conntrack_for_mac(mac_upper)
+                return await self._flush_conntrack_for_mac(mac_upper)
 
             return True
         except UbusError as err:

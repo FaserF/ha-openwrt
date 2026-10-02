@@ -1466,7 +1466,7 @@ class OpenWrtClient(abc.ABC):
         """Block or unblock a device's internet access."""
         return False
 
-    async def _flush_conntrack_for_mac(self, mac: str) -> None:
+    async def _flush_conntrack_for_mac(self, mac: str) -> bool:
         """Drop already-established connections for a MAC's current IP(s).
 
         A new firewall REJECT/DROP rule only stops *new* connection attempts.
@@ -1481,6 +1481,8 @@ class OpenWrtClient(abc.ABC):
         "[openwrt-conntrack-flush]" tag so this is easy to find and confirm
         in the Home Assistant log, since a silently-swallowed failure here is
         indistinguishable from "nothing to flush" otherwise.
+
+        Returns True if all flushed successfully or no IPs found, False on error.
         """
         mac_lower = mac.lower()
         try:
@@ -1492,7 +1494,7 @@ class OpenWrtClient(abc.ABC):
                 mac,
                 err,
             )
-            return
+            return False
 
         ips = {n.ip for n in neighbors if n.mac.lower() == mac_lower and n.ip}
         if not ips:
@@ -1502,12 +1504,15 @@ class OpenWrtClient(abc.ABC):
                 "idle, or the table entry is stale)",
                 mac,
             )
-            return
+            return True
 
+        overall_success = True
         for ip in ips:
             safe_ip = shlex.quote(ip)
             try:
-                output = await self.execute_command(f"conntrack -D -s {safe_ip}")
+                output = await self.execute_command(
+                    f"conntrack -D -s {safe_ip}; echo RC=$?"
+                )
             except Exception as err:
                 _LOGGER.warning(
                     "[openwrt-conntrack-flush] Failed to run conntrack for %s (%s): %s",
@@ -1515,9 +1520,24 @@ class OpenWrtClient(abc.ABC):
                     ip,
                     err,
                 )
+                overall_success = False
                 continue
 
-            summary = (output or "").strip().splitlines()
+            if "RC=0" not in (output or ""):
+                _LOGGER.warning(
+                    "[openwrt-conntrack-flush] Failed to flush conntrack for %s (%s): %s",
+                    mac,
+                    ip,
+                    output,
+                )
+                overall_success = False
+                continue
+
+            summary = [
+                line
+                for line in (output or "").strip().splitlines()
+                if not line.startswith("RC=")
+            ]
             last_line = (
                 summary[-1] if summary else "no output (is conntrack-tools installed?)"
             )
@@ -1527,6 +1547,8 @@ class OpenWrtClient(abc.ABC):
                 ip,
                 last_line,
             )
+
+        return overall_success
 
     async def get_external_ip(self) -> str | None:
         """Get public/external IP address."""

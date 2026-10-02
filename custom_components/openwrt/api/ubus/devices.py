@@ -475,7 +475,6 @@ class UbusDevicesMixin:
         except Exception as err:
             _LOGGER.debug("Failed to fetch bridge FDB: %s", err)
 
-
     async def _process_iwinfo_fallback(
         self, devices: dict[str, ConnectedDevice]
     ) -> None:

@@ -396,3 +396,47 @@ async def test_ssh_get_connected_devices_iwinfo_fallback_rates(ssh_client: SshCl
         assert dev.interface == "phy0-ap0"
         assert dev.rx_rate == 240200
         assert dev.tx_rate == 180100
+
+
+@pytest.mark.asyncio
+async def test_ssh_set_access_control_blocked_conntrack_failure(ssh_client: SshClient):
+    """Test SSH set_access_control_blocked returns False when conntrack flush fails."""
+    ssh_client._connected = True
+    with (
+        patch.object(
+            ssh_client, "get_access_control", new_callable=AsyncMock, return_value=[]
+        ),
+        patch.object(ssh_client, "_exec", new_callable=AsyncMock, return_value="RC=0"),
+        patch.object(
+            ssh_client,
+            "_flush_conntrack_for_mac",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_flush,
+    ):
+        result = await ssh_client.set_access_control_blocked("AA:BB:CC:DD:EE:FF", True)
+
+    assert result is False
+    mock_flush.assert_called_once_with("AA:BB:CC:DD:EE:FF")
+
+
+@pytest.mark.asyncio
+async def test_ssh_set_access_control_blocked_conntrack_success(ssh_client: SshClient):
+    """Test SSH set_access_control_blocked returns True when conntrack flush succeeds."""
+    ssh_client._connected = True
+    with (
+        patch.object(
+            ssh_client, "get_access_control", new_callable=AsyncMock, return_value=[]
+        ),
+        patch.object(ssh_client, "_exec", new_callable=AsyncMock, return_value="RC=0"),
+        patch.object(
+            ssh_client,
+            "_flush_conntrack_for_mac",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_flush,
+    ):
+        result = await ssh_client.set_access_control_blocked("AA:BB:CC:DD:EE:FF", True)
+
+    assert result is True
+    mock_flush.assert_called_once_with("AA:BB:CC:DD:EE:FF")
