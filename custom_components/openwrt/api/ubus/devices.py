@@ -401,6 +401,10 @@ class UbusDevicesMixin:
             if not device_status or not isinstance(device_status, dict):
                 return
 
+            # Track which wired MACs appear in any FDB entry.
+            # Used to resolve STALE-ARP-only devices when trust_bridge_fdb is set.
+            fdb_seen_macs: set[str] = set()
+
             # 2. For each device, fetch its FDB if it's a bridge or has members
             for dev_name, dev_info in device_status.items():
                 if not dev_info.get("up"):
@@ -418,6 +422,7 @@ class UbusDevicesMixin:
                             # Only apply to wired devices or as supplemental info
                             port = entry.get("port", "")
                             if port:
+                                fdb_seen_macs.add(mac)
                                 dev.port = port
                                 dev.fdb_age = entry.get("age")
                                 if dev.fdb_age is None or dev.fdb_age < 60:
@@ -437,6 +442,28 @@ class UbusDevicesMixin:
                     raise
                 except Exception:
                     continue
+
+            # 3. When trust_bridge_fdb is enabled, a wired device whose only evidence
+            # of presence is a STALE ARP entry (not confirmed by any FDB) should be
+            # treated as disconnected.  A STALE entry can linger for minutes after a
+            # device is powered off; the FDB is a more authoritative source for wired
+            # presence.
+            if self.trust_stale_arp:
+                for mac, dev in devices.items():
+                    if (
+                        not dev.is_wireless
+                        and dev.connected
+                        and dev.neighbor_state
+                        and dev.neighbor_state.upper() == "STALE"
+                        and mac not in fdb_seen_macs
+                    ):
+                        _LOGGER.debug(
+                            "Wired device %s has STALE ARP but is absent from bridge FDB;"
+                            " marking disconnected",
+                            mac,
+                        )
+                        dev.connected = False
+
         except (
             UbusTimeoutError,
             UbusConnectionError,
@@ -447,6 +474,7 @@ class UbusDevicesMixin:
             raise
         except Exception as err:
             _LOGGER.debug("Failed to fetch bridge FDB: %s", err)
+
 
     async def _process_iwinfo_fallback(
         self, devices: dict[str, ConnectedDevice]

@@ -1085,3 +1085,81 @@ async def test_ubus_set_wireless_network_enabled_resolves_wifinet_section(
             for c in set_calls
         )
         assert not any(c.get("section") == "wifinet3" for c in set_calls)
+
+
+@pytest.mark.asyncio
+async def test_ubus_set_access_control_blocked_conntrack_failure(ubus_client: UbusClient):
+    """Test set_access_control_blocked returns False when conntrack flush fails."""
+    with (
+        patch.object(ubus_client, "get_access_control", new_callable=AsyncMock, return_value=[]),
+        patch.object(ubus_client, "_call", new_callable=AsyncMock, return_value={"section": "cfg123"}),
+        patch.object(ubus_client, "execute_command", new_callable=AsyncMock, return_value="RC=0"),
+        patch.object(ubus_client, "_flush_conntrack_for_mac", new_callable=AsyncMock, return_value=False) as mock_flush,
+    ):
+        result = await ubus_client.set_access_control_blocked("AA:BB:CC:DD:EE:FF", True)
+
+    assert result is False
+    mock_flush.assert_called_once_with("AA:BB:CC:DD:EE:FF")
+
+
+@pytest.mark.asyncio
+async def test_ubus_set_access_control_blocked_conntrack_success(ubus_client: UbusClient):
+    """Test set_access_control_blocked returns True when conntrack flush succeeds."""
+    with (
+        patch.object(ubus_client, "get_access_control", new_callable=AsyncMock, return_value=[]),
+        patch.object(ubus_client, "_call", new_callable=AsyncMock, return_value={"section": "cfg123"}),
+        patch.object(ubus_client, "execute_command", new_callable=AsyncMock, return_value="RC=0"),
+        patch.object(ubus_client, "_flush_conntrack_for_mac", new_callable=AsyncMock, return_value=True) as mock_flush,
+    ):
+        result = await ubus_client.set_access_control_blocked("AA:BB:CC:DD:EE:FF", True)
+
+    assert result is True
+    mock_flush.assert_called_once_with("AA:BB:CC:DD:EE:FF")
+
+
+@pytest.mark.asyncio
+async def test_ubus_bridge_fdb_stale_arp_wired_device_disconnected(ubus_client: UbusClient):
+    """Test that a wired device with STALE ARP absent from bridge FDB is marked disconnected when trust_bridge_fdb is enabled."""
+    from custom_components.openwrt.api.base import ConnectedDevice
+
+    ubus_client.trust_stale_arp = True
+    ubus_client.trust_bridge_fdb = True
+
+    devices = {
+        "aa:bb:cc:dd:ee:01": ConnectedDevice(
+            mac="aa:bb:cc:dd:ee:01",
+            ip="192.168.1.101",
+            interface="br-lan",
+            connected=True,
+            is_wireless=False,
+            neighbor_state="STALE",
+        ),
+        "aa:bb:cc:dd:ee:02": ConnectedDevice(
+            mac="aa:bb:cc:dd:ee:02",
+            ip="192.168.1.102",
+            interface="br-lan",
+            connected=True,
+            is_wireless=False,
+            neighbor_state="REACHABLE",
+        ),
+    }
+
+    device_status = {
+        "br-lan": {"up": True, "type": "bridge"}
+    }
+    fdb_entries = [
+        {"mac": "aa:bb:cc:dd:ee:02", "port": "lan1", "age": 10}
+    ]
+
+    async def mock_call(obj, method, params=None):
+        if obj == "network.device" and method == "status":
+            return device_status
+        if obj == "network.device" and method == "fdb":
+            return fdb_entries
+        return {}
+
+    with patch.object(ubus_client, "_call", side_effect=mock_call):
+        await ubus_client._process_bridge_fdb(devices)
+
+    assert devices["aa:bb:cc:dd:ee:01"].connected is False
+    assert devices["aa:bb:cc:dd:ee:02"].connected is True
