@@ -240,10 +240,42 @@ class UbusFeaturesMixin:
                 )
 
             await self._call("uci", "commit", {"config": "firewall"})
-            await self._call("service", "reloading", {"service": "firewall"})
+
+            # NOTE: this previously called ubus "service"/"reloading", which is
+            # not a real ubus method on stock OpenWrt (the "service" object only
+            # exposes list/set/add/delete/signal/state/watchdog/event) and would
+            # raise UbusError, so the whole function returned False *silently*
+            # before ever actually reloading the firewall - the UCI rule was
+            # committed to config but never applied to the running ruleset.
+            # Use the same proven reload-and-verify pattern as
+            # set_firewall_rule_enabled() above instead.
+            reload_result = await self.execute_command(
+                "/etc/init.d/firewall reload; echo RC=$?"
+            )
+            if "RC=0" not in (reload_result or ""):
+                _LOGGER.warning(
+                    "[openwrt-access-control] Firewall reload failed after "
+                    "setting access control for %s (blocked=%s): %s",
+                    mac_upper,
+                    blocked,
+                    reload_result,
+                )
+                return False
+
             self._last_full_poll = 0
+
+            if blocked:
+                await self._flush_conntrack_for_mac(mac_upper)
+
             return True
-        except UbusError:
+        except UbusError as err:
+            _LOGGER.warning(
+                "[openwrt-access-control] Failed to set access control for "
+                "%s (blocked=%s): %s",
+                mac_upper,
+                blocked,
+                err,
+            )
             return False
 
     async def get_adblock_status(self) -> AdBlockStatus:

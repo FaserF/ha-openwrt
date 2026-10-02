@@ -331,8 +331,24 @@ class SshFeaturesMixin:
                 await self._exec(f"uci set {safe_dis}")
 
             await self._exec("uci commit firewall")
-            await self._exec("/etc/init.d/firewall reload")
+            reload_result = await self._exec(
+                "/etc/init.d/firewall reload; echo RC=$?"
+            )
+            if "RC=0" not in (reload_result or ""):
+                _LOGGER.warning(
+                    "[openwrt-access-control] Firewall reload failed after "
+                    "setting access control for %s (blocked=%s): %s",
+                    mac_upper,
+                    blocked,
+                    reload_result,
+                )
+                return False
+
             self._last_full_poll = 0
+
+            if blocked:
+                await self._flush_conntrack_for_mac(mac_upper)
+
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set access control via SSH: %s", err)
