@@ -412,6 +412,11 @@ async def test_coordinator_orphan_cleanup_ghost_sections(hass):
     data.device_info = DeviceInfo(mac_address="router_mac")
     data.wireless_interfaces = []
 
+    device_registry.async_get_or_create.return_value = MagicMock(
+        id="router_dev_id", name="router", manufacturer="OpenWrt", model="OpenWrt"
+    )
+    device_registry.async_update_device.return_value = None
+
     with (
         patch(
             "homeassistant.helpers.device_registry.async_get",
@@ -420,6 +425,10 @@ async def test_coordinator_orphan_cleanup_ghost_sections(hass):
         patch(
             "custom_components.openwrt.coordinator.format_ap_device_id",
             side_effect=lambda r, s: f"{r}_ap_{s}",
+        ),
+        patch(
+            "custom_components.openwrt.coordinator.dr.async_entries_for_config_entry",
+            return_value=[ghost_dev, router_dev],
         ),
     ):
         await coordinator._async_update_device_registry(data)

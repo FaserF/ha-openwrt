@@ -200,7 +200,10 @@ async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
     }
     # async_entries_for_config_entry is the module-level function the coordinator calls
     dev_registry.async_get_or_create.return_value = MagicMock(
-        id="created_device", name="SSID GL-MT6000-a11 (2.4 GHz)", manufacturer="OpenWrt", model="Wireless SSID",
+        id="created_device",
+        name="SSID GL-MT6000-a11 (2.4 GHz)",
+        manufacturer="OpenWrt",
+        model="Wireless SSID",
     )
     dev_registry.async_update_device.return_value = None
 
