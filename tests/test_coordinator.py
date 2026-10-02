@@ -233,3 +233,38 @@ async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
 
     # Orphaned AP device (dev_orphan_ap) should be removed
     dev_registry.async_remove_device.assert_called_once_with("dev_orphan_ap")
+
+
+@pytest.mark.asyncio
+async def test_check_official_firmware_update_skipped_for_non_openwrt() -> None:
+    """Verify official and ASU firmware updates are skipped for foreign distributions like RUTOS."""
+    from custom_components.openwrt.api.base import DeviceInfo
+
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.unique_id = "00:11:22:33:44:55"
+    entry.data = {"host": "192.168.1.1"}
+    entry.options = {}
+
+    coordinator = OpenWrtDataCoordinator(hass, entry, AsyncMock())
+    data = OpenWrtData()
+    data.device_info = DeviceInfo(
+        release_distribution="RUTOS",
+        release_version="R_00.07.24.5",
+        target="ipq40xx/generic",
+        board_name="teltonika,trb500",
+    )
+
+    with (
+        patch.object(coordinator, "_check_snapshot_update", new_callable=AsyncMock) as mock_snap,
+        patch.object(coordinator, "_check_stable_release_update", new_callable=AsyncMock) as mock_stable,
+        patch.object(coordinator, "_fetch_asu_info", new_callable=AsyncMock) as mock_asu,
+    ):
+        await coordinator._check_firmware_update(data)
+
+    mock_snap.assert_not_called()
+    mock_stable.assert_not_called()
+    mock_asu.assert_not_called()
+    assert data.firmware_upgradable is False
+    assert data.asu_update_available is False

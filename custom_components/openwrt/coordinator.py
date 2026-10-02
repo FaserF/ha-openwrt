@@ -2268,6 +2268,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     async def _check_official_firmware_update(self, data: OpenWrtData) -> None:
         """Check for firmware updates from the OpenWrt release API."""
+        # Skip update checks for non-OpenWrt firmware distributions (e.g. RUTOS, DDWRT).
+        # Promoting a cross-firmware upgrade could be harmful or confusing.
+        distribution = (data.device_info.release_distribution or "").strip()
+        if distribution and distribution.lower() not in ("openwrt", ""):
+            _LOGGER.debug(
+                "Skipping official firmware update check for non-OpenWrt distribution: %s",
+                distribution,
+            )
+            return
+
         current_version = data.device_info.release_version
         session = async_get_clientsession(self.hass)
 
@@ -2456,6 +2466,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
     async def _check_asu_update(self, data: OpenWrtData) -> None:
         """Check for updates via the ASU (Attended Sysupgrade) API."""
+        distribution = (data.device_info.release_distribution or "").strip()
+        if distribution and distribution.lower() not in ("openwrt", ""):
+            return
+
         target = self._get_target(data.device_info.target)
         if not target or not data.device_info.board_name:
             return
