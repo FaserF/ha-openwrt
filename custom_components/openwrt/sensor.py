@@ -58,10 +58,11 @@ from .const import (
 )
 from .coordinator import OpenWrtDataCoordinator
 from .helpers import (
+    _get_router_device_id,
     format_ap_device_id,
     format_ap_name,
     format_radio_device_id,
-    get_via_device,
+    get_via_device_id,
     is_random_mac,
     resolve_client_name,
 )
@@ -171,12 +172,19 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
             ),
             None,
         )
-        via_device = (DOMAIN, coordinator.router_id)
+        via_device_id: str | None = None
         if wifi and wifi.radio:
-            via_device = (
-                DOMAIN,
-                format_radio_device_id(coordinator.router_id, wifi.radio),
+            from homeassistant.helpers import device_registry as dr
+
+            dev_reg = dr.async_get(coordinator.hass)
+            radio_dev = dev_reg.async_get_device(
+                identifiers={
+                    (DOMAIN, format_radio_device_id(coordinator.router_id, wifi.radio))
+                }
             )
+            via_device_id = radio_dev.id if radio_dev else None
+        if via_device_id is None:
+            via_device_id = _get_router_device_id(coordinator.hass, coordinator, entry)
         self._attr_device_info = DeviceInfo(
             identifiers={
                 (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
@@ -184,7 +192,7 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
             name=name_label,
             manufacturer="OpenWrt",
             model="Wireless SSID",
-            via_device=via_device,
+            via_device_id=via_device_id,
         )
         self._attr_translation_placeholders = {"iface": iface_name}
 
@@ -251,10 +259,7 @@ class OpenWrtQModemSensorEntity(OpenWrtSensorEntity):
             name=f"QModem ({entry.title})",
             manufacturer=manufacturer,
             model=model,
-            via_device=(
-                DOMAIN,
-                cast(str, entry.unique_id or entry.data[CONF_HOST]),
-            ),
+            via_device_id=_get_router_device_id(coordinator.hass, coordinator, entry),
         )
 
     @property
@@ -318,7 +323,7 @@ class OpenWrtDeviceSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
             name=resolve_client_name(
                 self.coordinator.hass, self._mac, self._initial_name
             ),
-            via_device=get_via_device(
+            via_device_id=get_via_device_id(
                 self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),
         )
@@ -1408,7 +1413,7 @@ class OpenWrtNlbwmonRxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEn
             name=resolve_client_name(
                 self.coordinator.hass, self._mac, self._initial_name
             ),
-            via_device=get_via_device(
+            via_device_id=get_via_device_id(
                 self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),
         )
@@ -1459,7 +1464,7 @@ class OpenWrtNlbwmonTxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEn
             name=resolve_client_name(
                 self.coordinator.hass, self._mac, self._initial_name
             ),
-            via_device=get_via_device(
+            via_device_id=get_via_device_id(
                 self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),
         )

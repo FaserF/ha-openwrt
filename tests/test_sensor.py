@@ -107,7 +107,14 @@ def test_wifi_sensors_are_grouped_under_their_ssid_below_the_radio() -> None:
     )
     entry = MagicMock(entry_id="test", unique_id="router_mac")
 
-    with patch("custom_components.openwrt.sensor.DeviceInfo", side_effect=dict):
+    radio_dev = MagicMock(id="radio0_dev_id")
+    registry = MagicMock()
+    registry.async_get_device.return_value = radio_dev
+
+    with (
+        patch("homeassistant.helpers.device_registry.async_get", return_value=registry),
+        patch("custom_components.openwrt.sensor.DeviceInfo", side_effect=dict),
+    ):
         sensors = _create_wifi_sensors(
             coordinator,
             entry,
@@ -124,8 +131,8 @@ def test_wifi_sensors_are_grouped_under_their_ssid_below_the_radio() -> None:
     assert {sensor._attr_device_info["name"] for sensor in sensors} == {
         "SSID Main (2.4 GHz)"
     }
-    assert {sensor._attr_device_info["via_device"] for sensor in sensors} == {
-        ("openwrt", "router_mac_radio_radio0")
+    assert {sensor._attr_device_info["via_device_id"] for sensor in sensors} == {
+        "radio0_dev_id"
     }
 
 

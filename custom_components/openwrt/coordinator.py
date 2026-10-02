@@ -1857,7 +1857,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         )
 
         # Identify gateway device for topology mapping
-        via_device = None
+        via_device_id: str | None = None
         if device_info.gateway_mac:
             gw_mac = device_info.gateway_mac.lower()
             devices_iterable = (
@@ -1873,8 +1873,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                     conn[0] == dr.CONNECTION_NETWORK_MAC and conn[1].lower() == gw_mac
                     for conn in dev.connections
                 ):
-                    if dev.identifiers:
-                        via_device = next(iter(dev.identifiers))
+                    via_device_id = dev.id
                     break
 
         # Prefer MAC address for router identity to ensure consistency with legacy devices
@@ -1949,7 +1948,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         ):
             new_name = current_name
 
-        device_registry.async_get_or_create(
+        router_entry = device_registry.async_get_or_create(
             config_entry_id=self.config_entry.entry_id,
             identifiers=identifiers,
             connections=(
@@ -1962,7 +1961,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             name=new_name,
             sw_version=device_info.firmware_version,
             hw_version=device_info.board_name,
-            via_device=via_device,
+            via_device_id=via_device_id,
             configuration_url=f"http://{self.config_entry.data[CONF_HOST]}",
         )
 
@@ -1988,7 +1987,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 name=label,
                 manufacturer=manufacturer,
                 model="Wireless Radio",
-                via_device=(DOMAIN, self.router_id),
+                via_device_id=router_entry.id,
             )
             radio_devices[radio] = radio_device
             # async_get_or_create() preserves an existing device name. Explicitly
@@ -2038,12 +2037,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 name=label,
                 manufacturer=device_info.release_distribution or ATTR_MANUFACTURER,
                 model="Wireless SSID",
-                via_device=(
-                    DOMAIN,
-                    format_radio_device_id(self.router_id, radio),
-                )
-                if radio
-                else (DOMAIN, self.router_id),
+                via_device_id=radio_devices[radio].id
+                if radio and radio in radio_devices
+                else router_entry.id,
             )
             if radio and radio in radio_devices:
                 device_registry.async_update_device(

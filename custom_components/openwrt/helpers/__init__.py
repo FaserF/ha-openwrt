@@ -317,6 +317,44 @@ def get_via_device(
     return via_device
 
 
+def get_via_device_id(
+    hass: HomeAssistant,
+    coordinator: Any,  # Avoid circular import
+    entry: ConfigEntry,
+    mac: str,
+) -> str | None:
+    """Resolve the via_device for a connected device and return its registry ID.
+
+    Returns the device registry ``DeviceEntry.id`` (a plain string) or ``None``
+    if the parent device cannot be found.  Use this instead of the deprecated
+    ``via_device=(DOMAIN, identifier)`` form.
+    """
+    from homeassistant.helpers import device_registry as dr
+
+    identifier = get_via_device(hass, coordinator, entry, mac)
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_device(identifiers={identifier})
+    return device.id if device else None
+
+
+def _get_router_device_id(
+    hass: HomeAssistant,
+    coordinator: Any,  # Avoid circular import
+    entry: ConfigEntry,
+) -> str | None:
+    """Return the device registry ID for the router device of *entry*.
+
+    Looks up the device by its (DOMAIN, router_id) identifier.  Returns
+    ``None`` when the router device has not been registered yet.
+    """
+    from homeassistant.helpers import device_registry as dr
+
+    router_id = _router_id(entry)
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_device(identifiers={(DOMAIN, router_id)})
+    return device.id if device else None
+
+
 def resolve_client_name(
     hass: HomeAssistant,
     mac: str,

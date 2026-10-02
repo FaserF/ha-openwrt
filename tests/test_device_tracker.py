@@ -138,9 +138,19 @@ def test_device_tracker_stable_device_info(
     """Test that device_info uses stable entry.unique_id (MAC)."""
     mac = "aa:bb:cc:dd:ee:ff"
 
-    with patch(
-        "custom_components.openwrt.device_tracker.DeviceInfo",
-        side_effect=lambda **kwargs: kwargs,
+    router_dev = MagicMock(id="router_dev_id")
+    registry = MagicMock()
+    registry.async_get_device.return_value = router_dev
+
+    with (
+        patch(
+            "homeassistant.helpers.device_registry.async_get",
+            return_value=registry,
+        ),
+        patch(
+            "custom_components.openwrt.device_tracker.DeviceInfo",
+            side_effect=lambda **kwargs: kwargs,
+        ),
     ):
         tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
 
@@ -148,9 +158,10 @@ def test_device_tracker_stable_device_info(
         mock_config_entry.data[CONF_HOST] = "192.168.1.200"
 
         device_info = tracker.device_info
-        # via_device should be the router's stable unique_id (MAC), not the host IP
-        # We check the second part of the tuple as DOMAIN might be mocked
-        assert device_info["via_device"][1] == "11:22:33:44:55:66"
+        assert device_info["via_device_id"] == "router_dev_id"
+        registry.async_get_device.assert_called_with(
+            identifiers={("openwrt", "11:22:33:44:55:66")}
+        )
         assert (dr.CONNECTION_NETWORK_MAC, mac.lower()) in device_info["connections"]
         assert any(ident[1] == mac.lower() for ident in device_info["identifiers"])
 
@@ -182,7 +193,7 @@ def test_wireless_client_is_grouped_under_its_ssid(
         ],
     )
     mock_coordinator.interface_to_stable_id = {"phy0-ap0": "Main_2.4 GHz"}
-    radio_device = MagicMock()
+    radio_device = MagicMock(id="radio_dev_id")
     registry = MagicMock()
     registry.async_get_device.return_value = radio_device
 
@@ -198,15 +209,10 @@ def test_wireless_client_is_grouped_under_its_ssid(
     ):
         tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
         device_info = tracker.device_info
-
-    assert device_info["via_device"] == (
-        "openwrt",
-        "11:22:33:44:55:66_ap_Main_2.4 GHz",
-    )
-    registry.async_get_device_by_identifier.assert_called_with(
-        ("openwrt", "11:22:33:44:55:66_ap_Main_2.4 GHz"),
-        mock_config_entry.entry_id,
-    )
+        assert device_info["via_device_id"] == "radio_dev_id"
+        registry.async_get_device.assert_called_with(
+            identifiers={("openwrt", "11:22:33:44:55:66_ap_Main_2.4 GHz")}
+        )
 
 
 def test_device_tracker_randomized_mac(

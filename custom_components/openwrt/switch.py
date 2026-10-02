@@ -36,6 +36,7 @@ from .const import (
 )
 from .coordinator import OpenWrtDataCoordinator
 from .helpers import (
+    _get_router_device_id,
     format_ap_device_id,
     format_ap_name,
     format_radio_device_id,
@@ -784,7 +785,7 @@ class OpenWrtRadioSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
             name=label,
             manufacturer="OpenWrt",
             model="Wireless Radio",
-            via_device=(DOMAIN, coordinator.router_id),
+            via_device_id=_get_router_device_id(coordinator.hass, coordinator, entry),
         )
 
     @property
@@ -871,12 +872,19 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
 
         name_label = format_ap_name(ssid or iface_name, frequency)
 
-        via_device = (DOMAIN, coordinator.router_id)
+        via_device_id: str | None = None
         if radio:
-            via_device = (
-                DOMAIN,
-                format_radio_device_id(coordinator.router_id, radio),
+            from homeassistant.helpers import device_registry as dr
+
+            dev_reg = dr.async_get(coordinator.hass)
+            radio_dev = dev_reg.async_get_device(
+                identifiers={
+                    (DOMAIN, format_radio_device_id(coordinator.router_id, radio))
+                }
             )
+            via_device_id = radio_dev.id if radio_dev else None
+        if via_device_id is None:
+            via_device_id = _get_router_device_id(coordinator.hass, coordinator, entry)
         self._attr_device_info = DeviceInfo(
             identifiers={
                 (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
@@ -884,7 +892,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             name=name_label,
             manufacturer="OpenWrt",
             model="Wireless SSID",
-            via_device=via_device,
+            via_device_id=via_device_id,
         )
 
     @property
@@ -1184,7 +1192,7 @@ class OpenWrtAccessControlSwitch(
         self._attr_device_info = DeviceInfo(
             connections={("mac", self._mac)},
             name=resolve_client_name(coordinator.hass, self._mac, name),
-            via_device=(DOMAIN, cast(str, entry.unique_id)),
+            via_device_id=_get_router_device_id(coordinator.hass, coordinator, entry),
         )
 
     @property

@@ -94,7 +94,21 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
     client.set_radio_enabled = AsyncMock(return_value=True)
     entities = []
 
-    with patch("custom_components.openwrt.switch.DeviceInfo", side_effect=dict):
+    router_dev = MagicMock(id="router_dev_id")
+    radio_dev = MagicMock(id="radio0_dev_id")
+    registry = MagicMock()
+
+    def mock_get_dev(identifiers):
+        if ("openwrt", "router_id_radio_radio0") in identifiers:
+            return radio_dev
+        return router_dev
+
+    registry.async_get_device.side_effect = mock_get_dev
+
+    with (
+        patch("homeassistant.helpers.device_registry.async_get", return_value=registry),
+        patch("custom_components.openwrt.switch.DeviceInfo", side_effect=dict),
+    ):
         _add_wireless_switches(coordinator, entry, client, entities, set())
 
     radios = [entity for entity in entities if isinstance(entity, OpenWrtRadioSwitch)]
@@ -120,10 +134,7 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         "openwrt",
         "router_id_radio_radio0",
     )
-    assert radios[0]._attr_device_info["via_device"] == (
-        "openwrt",
-        "router_id",
-    )
+    assert radios[0]._attr_device_info["via_device_id"] == "router_dev_id"
     ssid_entities = [
         entity
         for entity in radio0_entities
@@ -135,8 +146,8 @@ async def test_radio_switches_are_deduplicated_and_control_radio() -> None:
         ("openwrt", "router_id_ap_phy0-ap0"),
         ("openwrt", "router_id_ap_phy0-ap1"),
     }
-    assert {entity._attr_device_info["via_device"] for entity in ssid_entities} == {
-        ("openwrt", "router_id_radio_radio0")
+    assert {entity._attr_device_info["via_device_id"] for entity in ssid_entities} == {
+        "radio0_dev_id"
     }
 
     await radios[1].async_turn_on()

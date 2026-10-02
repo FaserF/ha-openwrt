@@ -42,7 +42,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import get_via_device, is_random_mac, resolve_client_name
+from .helpers import get_via_device_id, is_random_mac, resolve_client_name
 from .helpers.mac_vendor import get_mac_vendor_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -357,7 +357,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             name=self.name or self._initial_name,
             manufacturer=manufacturer,
             model=model,
-            via_device=get_via_device(
+            via_device_id=get_via_device_id(
                 self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),
         )

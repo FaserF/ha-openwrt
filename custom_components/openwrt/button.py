@@ -36,7 +36,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers import get_via_device, is_random_mac, resolve_client_name
+from .helpers import get_via_device_id, is_random_mac, resolve_client_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -641,7 +641,7 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
             name=resolve_client_name(
                 self.coordinator.hass, self._mac, self._initial_name
             ),
-            via_device=get_via_device(
+            via_device_id=get_via_device_id(
                 self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),
         )
@@ -709,7 +709,7 @@ class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity)
             name=resolve_client_name(
                 self.coordinator.hass, self._mac, self._initial_name
             ),
-            via_device=get_via_device(
+            via_device_id=get_via_device_id(
                 self.coordinator.hass, self.coordinator, self._entry, self._mac
             ),
         )

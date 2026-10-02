@@ -124,16 +124,20 @@ def test_txpower_number_uses_canonical_router_id_without_entry_unique_id() -> No
     )
     entry = MagicMock(entry_id="test_entry", unique_id=None)
 
-    with patch("custom_components.openwrt.number.DeviceInfo", side_effect=dict):
+    router_dev = MagicMock(id="canonical_router_id")
+    registry = MagicMock()
+    registry.async_get_device.return_value = router_dev
+
+    with (
+        patch("homeassistant.helpers.device_registry.async_get", return_value=registry),
+        patch("custom_components.openwrt.number.DeviceInfo", side_effect=dict),
+    ):
         entity = OpenWrtTxPowerNumber(coordinator, entry, "radio0", "2.4 GHz")
 
     assert entity._attr_device_info["identifiers"] == {
         ("openwrt", "canonical_router_radio_radio0")
     }
-    assert entity._attr_device_info["via_device"] == (
-        "openwrt",
-        "canonical_router",
-    )
+    assert entity._attr_device_info["via_device_id"] == "canonical_router_id"
 
 
 def test_txpower_number_max_value() -> None:

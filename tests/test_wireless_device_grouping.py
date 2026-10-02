@@ -558,10 +558,7 @@ async def test_coordinator_preserves_active_radio_device(hass):
         in call.kwargs.get("identifiers", set())
     )
     assert ap_call.kwargs["name"] == "SSID Test (2.4 GHz)"
-    assert ap_call.kwargs["via_device"] == (
-        DOMAIN,
-        "router_mac_radio_radio0",
-    )
+    assert ap_call.kwargs["via_device_id"] == "radio_dev_id"
 
 
 def test_coordinator_reparents_existing_wireless_client_to_ssid(hass) -> None:
