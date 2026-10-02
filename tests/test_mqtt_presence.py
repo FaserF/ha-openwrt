@@ -342,3 +342,81 @@ async def test_mqtt_discovery_cleanup_active_topic_and_ownership(
     # Cleanup again on coord1 - now status topic SHOULD be cleared
     await coord1._async_discovery_mqtt_device_cleanup("aa:bb:cc:dd:ee:01")
     assert "presence/aa_bb_cc_dd_ee_01" in published_topics
+
+
+async def test_mqtt_cleanup_skipped_when_never_enabled(hass: HomeAssistant) -> None:
+    """Test that cleanup loop is NOT scheduled on startup when MQTT presence was never enabled."""
+    from custom_components.openwrt.api.base import OpenWrtData
+    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
+
+    config_entry = MagicMock()
+    config_entry.options = {CONF_MQTT_PRESENCE: False}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "11:22:33:44:55:66"
+
+    mock_client = AsyncMock()
+
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(
+            return_value={
+                "devices": {
+                    "aa:bb:cc:dd:ee:01": {
+                        "hostname": "test1",
+                        "last_seen": 100.0,
+                        "is_wireless": False,
+                    }
+                },
+                "last_version": "23.05.0",
+                "mqtt_cleanup_done": False,
+                "mqtt_presence_configured": False,
+            }
+        )
+        coord = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+        await coord._async_setup()
+
+    assert coord._mqtt_presence_configured is False
+    assert coord._mqtt_cleanup_done is False
+
+    with patch.object(coord, "_async_discovery_loop") as mock_loop:
+        data = OpenWrtData()
+        await coord._async_filter_and_track_devices(data)
+        mock_loop.assert_not_called()
+
+
+async def test_mqtt_cleanup_runs_when_presence_was_previously_enabled(
+    hass: HomeAssistant,
+) -> None:
+    """Test that cleanup loop runs when MQTT presence was previously enabled and is now disabled."""
+    from custom_components.openwrt.api.base import OpenWrtData
+    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
+
+    config_entry = MagicMock()
+    config_entry.options = {CONF_MQTT_PRESENCE: False}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "11:22:33:44:55:66"
+
+    mock_client = AsyncMock()
+
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(
+            return_value={
+                "devices": {},
+                "mqtt_presence_configured": True,
+                "mqtt_cleanup_done": False,
+            }
+        )
+        coord = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+        await coord._async_setup()
+
+    assert coord._mqtt_presence_configured is True
+    assert coord._mqtt_cleanup_done is False
+
+    with patch.object(hass, "async_create_task") as mock_task:
+        data = OpenWrtData()
+        await coord._async_filter_and_track_devices(data)
+        mock_task.assert_called_once()
+        # Close the unawaited coroutine passed to async_create_task
+        mock_task.call_args[0][0].close()
+
