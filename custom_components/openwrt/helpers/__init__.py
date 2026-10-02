@@ -184,6 +184,16 @@ def parse_uci_bool(value: Any, default: bool = False) -> bool:
     return default
 
 
+def parse_blocked_domains(value: Any) -> int:
+    """Parse adblock blocked domain count handling spaces, commas, dots as thousands separators."""
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+    digits = "".join(c for c in str(value) if c.isdigit())
+    return int(digits) if digits else 0
+
+
 def get_via_device(
     hass: HomeAssistant,
     coordinator: Any,  # Avoid circular import
