@@ -2240,7 +2240,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         router_dev_id = router_dev.id if router_dev else None
 
         # Build a mapping of via_device_id to find children efficiently without nested loops
-        via_map: dict[str, list[dr.DeviceEntry]] = {}
+        via_map: dict[str, list[Any]] = {}
         if router_dev_id:
             devices_iterable = (
                 device_registry.devices.values()
