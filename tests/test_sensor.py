@@ -297,3 +297,69 @@ def test_net_ipv4_sensor_availability() -> None:
     assert not any(
         s.entity_description.key == "net_lan1_ipv6" for s in sensors_physical
     )
+
+
+async def test_wifi_sensor_cleanup_preserves_sensors_matching_ifname_or_radio() -> None:
+    """Test that wireless sensors keyed with ifname or radio are not deleted as orphans (#151)."""
+    from custom_components.openwrt.api.base import WirelessInterface
+    from custom_components.openwrt.sensor import async_setup_entry
+
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {}
+    entry.options = {}
+
+    coordinator = MagicMock()
+    coordinator.data = OpenWrtData(
+        wireless_interfaces=[
+            WirelessInterface(
+                name="phy0-ap0",
+                section="default_radio0",
+                ifname="phy0-ap0",
+                radio="radio0",
+                ssid="MySSID",
+            )
+        ]
+    )
+    coordinator.async_add_listener = MagicMock(return_value=MagicMock())
+
+    hass.data = {"openwrt": {entry.entry_id: {"coordinator": coordinator}}}
+
+    mock_ent_reg = MagicMock()
+    ent1 = MagicMock(
+        domain="sensor",
+        entity_id="sensor.radio0_clients",
+        unique_id="test_entry_wifi_radio0_clients",
+    )
+    ent2 = MagicMock(
+        domain="sensor",
+        entity_id="sensor.phy0_ap0_clients",
+        unique_id="test_entry_wifi_phy0-ap0_clients",
+    )
+    orphan = MagicMock(
+        domain="sensor",
+        entity_id="sensor.ghost_clients",
+        unique_id="test_entry_wifi_ghost_clients",
+    )
+
+    job_callbacks = []
+    hass.add_job = lambda cb: job_callbacks.append(cb)
+
+    with (
+        patch(
+            "custom_components.openwrt.sensor.er.async_get",
+            return_value=mock_ent_reg,
+        ),
+        patch(
+            "custom_components.openwrt.sensor.er.async_entries_for_config_entry",
+            return_value=[ent1, ent2, orphan],
+        ),
+    ):
+        await async_setup_entry(hass, entry, MagicMock())
+        for cb in job_callbacks:
+            cb()
+
+    # ent1 and ent2 must NOT be removed; orphan must be removed
+    mock_ent_reg.async_remove.assert_called_once_with("sensor.ghost_clients")
+
