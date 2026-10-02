@@ -236,6 +236,94 @@ async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
 
 
 @pytest.mark.asyncio
+async def test_coordinator_cleanup_orphaned_ap_devices_with_device_entry_set() -> None:
+    """Test cleanup when device_registry.devices yields DeviceEntry instances."""
+    from custom_components.openwrt.api.base import WirelessInterface
+    from custom_components.openwrt.const import DOMAIN
+    from custom_components.openwrt.helpers import format_ap_device_id
+
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test_entry_id"
+    entry.unique_id = "94:83:c4:ac:7a:13"
+    entry.data = {"host": "192.168.1.1"}
+    entry.options = {}
+
+    mock_client = AsyncMock()
+    coordinator = OpenWrtDataCoordinator(hass, entry, mock_client)
+    coordinator.router_id = "94:83:c4:ac:7a:13"
+    coordinator.interface_to_stable_id = {}
+
+    dev_registry = MagicMock()
+    dev_active_ap = MagicMock(
+        id="dev_active_ap",
+        name="SSID GL-MT6000-a11 (2.4 GHz)",
+        model="Wireless SSID",
+        config_entries={entry.entry_id},
+        identifiers={
+            (DOMAIN, format_ap_device_id("94:83:c4:ac:7a:13", "GL-MT6000-a11_2.4 GHz"))
+        },
+        via_device_id="dev_router",
+        disabled_by=None,
+        entry_type=None,
+    )
+    dev_orphan_ap = MagicMock(
+        id="dev_orphan_ap",
+        name="SSID OldNetwork (2.4 GHz)",
+        model="Wireless SSID",
+        config_entries={entry.entry_id},
+        identifiers={
+            (DOMAIN, format_ap_device_id("94:83:c4:ac:7a:13", "OldNetwork_2.4 GHz"))
+        },
+        via_device_id="dev_router",
+        disabled_by=None,
+        entry_type=None,
+    )
+    dev_child = MagicMock(
+        id="dev_child",
+        name="Child Client",
+        model=None,
+        config_entries={entry.entry_id},
+        identifiers={(DOMAIN, "aa:bb:cc:dd:ee:ff")},
+        via_device_id="dev_orphan_ap",
+        disabled_by=None,
+        entry_type=None,
+    )
+
+    # In modern HA core versions, device_registry.devices can be a set of DeviceEntry or a dict-like view
+    dev_registry.devices = {dev_active_ap, dev_orphan_ap, dev_child}
+    dev_registry.async_get.side_effect = lambda dev_id: {
+        "dev_active_ap": dev_active_ap,
+        "dev_orphan_ap": dev_orphan_ap,
+        "dev_child": dev_child,
+    }.get(dev_id)
+    dev_registry.async_get_or_create.return_value = dev_active_ap
+    dev_registry.async_update_device.return_value = None
+
+    data = OpenWrtData()
+    data.device_info = MagicMock()
+    data.device_info.mac_address = ""
+    data.device_info.gateway_mac = ""
+    data.device_info.release_distribution = "OpenWrt"
+    data.wireless_interfaces = [
+        WirelessInterface(name="ra0", ssid="GL-MT6000-a11", band="2.4 GHz")
+    ]
+
+    with (
+        patch(
+            "homeassistant.helpers.device_registry.async_get", return_value=dev_registry
+        ),
+        patch(
+            "custom_components.openwrt.coordinator.dr.async_entries_for_config_entry",
+            return_value=[dev_active_ap, dev_orphan_ap],
+        ),
+    ):
+        await coordinator._async_update_device_registry(data)
+
+    dev_registry.async_remove_device.assert_called_once_with("dev_orphan_ap")
+
+
+@pytest.mark.asyncio
 async def test_check_official_firmware_update_skipped_for_non_openwrt() -> None:
     """Verify official and ASU firmware updates are skipped for foreign distributions like RUTOS."""
     from custom_components.openwrt.api.base import DeviceInfo

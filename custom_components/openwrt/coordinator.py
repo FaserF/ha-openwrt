@@ -720,8 +720,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             pass
 
         device_reg = dr.async_get(self.hass)
-        for dev_id in device_reg.devices:
-            dev = device_reg.async_get(dev_id)
+        devices_iterable = (
+            device_reg.devices.values()
+            if hasattr(device_reg.devices, "values")
+            else device_reg.devices
+        )
+        for dev_or_id in devices_iterable:
+            if isinstance(dev_or_id, str):
+                dev = device_reg.async_get(dev_or_id)
+            else:
+                dev = dev_or_id
             if not dev:
                 continue
             name = dev.name_by_user or dev.name
@@ -2234,8 +2242,16 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # Build a mapping of via_device_id to find children efficiently without nested loops
         via_map: dict[str, list[dr.DeviceEntry]] = {}
         if router_dev_id:
-            for other_dev_id in device_registry.devices:
-                other_dev = device_registry.async_get(other_dev_id)
+            devices_iterable = (
+                device_registry.devices.values()
+                if hasattr(device_registry.devices, "values")
+                else device_registry.devices
+            )
+            for item in devices_iterable:
+                if isinstance(item, str):
+                    other_dev = device_registry.async_get(item)
+                else:
+                    other_dev = item
                 if other_dev and other_dev.via_device_id:
                     via_map.setdefault(other_dev.via_device_id, []).append(other_dev)
 
