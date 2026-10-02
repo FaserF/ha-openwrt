@@ -283,7 +283,15 @@ class UbusNetworkMixin:
             try:
                 iwinfo = {}
                 if not skip_iwinfo_info:
-                    iwinfo = await self._call("iwinfo", "info", {"device": wifi.name})
+                    try:
+                        async with asyncio.timeout(5):
+                            iwinfo = await self._call(
+                                "iwinfo", "info", {"device": wifi.name}
+                            )
+                    except TimeoutError:
+                        _LOGGER.debug(
+                            "iwinfo info timed out for %s, skipping", wifi.name
+                        )
                 if iwinfo:
                     if not wifi.ssid:
                         wifi.ssid = iwinfo.get("ssid", "")
@@ -359,7 +367,7 @@ class UbusNetworkMixin:
                                     wifi.clients_count = count
                                     break
 
-            except UbusError:
+            except (TimeoutError, UbusError):
                 _LOGGER.debug(
                     "Failed to fetch detailed info for wifi interface %s", wifi.name
                 )
