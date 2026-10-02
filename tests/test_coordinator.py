@@ -198,8 +198,17 @@ async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
         "dev_active_ap": dev_active_ap,
         "dev_orphan_ap": dev_orphan_ap,
     }
+    # async_entries_for_config_entry is the module-level function the coordinator calls
+    dev_registry.async_get_or_create.return_value = MagicMock(
+        id="created_device", name="SSID GL-MT6000-a11 (2.4 GHz)", manufacturer="OpenWrt", model="Wireless SSID",
+    )
+    dev_registry.async_update_device.return_value = None
 
     data = OpenWrtData()
+    data.device_info = MagicMock()
+    data.device_info.mac_address = ""  # prevent router_id corruption in cleanup
+    data.device_info.gateway_mac = ""  # prevent gateway lookup side-effects
+    data.device_info.release_distribution = "OpenWrt"
     data.wireless_interfaces = [
         WirelessInterface(
             name="ra0",
@@ -208,8 +217,14 @@ async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
         )
     ]
 
-    with patch(
-        "homeassistant.helpers.device_registry.async_get", return_value=dev_registry
+    with (
+        patch(
+            "homeassistant.helpers.device_registry.async_get", return_value=dev_registry
+        ),
+        patch(
+            "custom_components.openwrt.coordinator.dr.async_entries_for_config_entry",
+            return_value=[dev_active_ap, dev_orphan_ap],
+        ),
     ):
         await coordinator._async_update_device_registry(data)
 
