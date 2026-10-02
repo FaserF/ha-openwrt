@@ -1,0 +1,57 @@
+#!/bin/sh /etc/rc.common
+# OpenWrt procd service for hostapd_cli action hooks
+
+START=95
+STOP=10
+USE_PROCD=1
+
+ACTION="/etc/presence/presence_event.sh"
+
+start_service() {
+  [ -x "$ACTION" ] || return 0
+
+  # Detect active interfaces purely from the live hostapd control sockets that
+  # respond to a ping. Never fall back to a hardcoded or snapshot list: a
+  # guessed interface would make procd watch a hostapd_cli target that may not
+  # exist, failing loudly and respawning forever.
+  ACTIVE_IFACES=""
+  for sock in /var/run/hostapd/*; do
+    [ -e "$sock" ] || continue
+    IFACE=$(basename "$sock")
+    [ "$IFACE" = "global" ] && continue
+    if hostapd_cli -i "$IFACE" ping 2>/dev/null | grep -q PONG; then
+      ACTIVE_IFACES="$ACTIVE_IFACES $IFACE"
+    fi
+  done
+
+  # No healthy interface: host nothing. The wireless reload trigger re-runs
+  # start_service when hostapd comes up later.
+  [ -n "$ACTIVE_IFACES" ] || return 0
+
+  for IFACE in $ACTIVE_IFACES; do
+    procd_open_instance "$IFACE"
+    procd_set_param command /usr/sbin/hostapd_cli -i "$IFACE" -a "$ACTION"
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+  done
+
+  # Initial scan of currently connected stations upon service start
+  (
+    sleep 10
+    for IFACE in $ACTIVE_IFACES; do
+      [ -d "/sys/class/net/$IFACE" ] || continue
+      iw dev "$IFACE" station dump 2>/dev/null \
+        | awk '/^Station/ {print $2}' \
+        | while read -r MAC; do
+            [ -n "$MAC" ] && "$ACTION" "$IFACE" "AP-STA-CONNECTED" "$MAC"
+          done
+    done
+  ) >/dev/null 2>&1 &
+}
+
+service_triggers() {
+  # Restart when wireless is reloaded
+  procd_add_reload_trigger "wireless"
+}

@@ -173,7 +173,7 @@
       },
       "mqtt_presence": {
         "title": "MQTT Präsenzerkennung (Optional)",
-        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz. Dies nutzt ein Drittanbieter-Skript von [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n⚠️ **Hinweis:** Dies ist eine Drittanbieter-Funktion. Support wird für dieses Feature nicht angeboten. Fehler sollten im ursprünglichen Repository gemeldet werden.",
+        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz.",
         "data": {
           "mqtt_presence": "MQTT Präsenzerkennung aktivieren",
           "mqtt_broker": "MQTT Broker (vom Router aus erreichbar)",
@@ -182,13 +182,20 @@
           "mqtt_password": "MQTT Passwort"
         }
       },
+      "mqtt_zone": {
+        "title": "MQTT Präsenz Standort-Zone",
+        "description": "Wähle die Home Assistant Zone-Entität aus, die dem Standort dieses Routers entspricht. Der von diesem Router gemeldete Präsenzstatus wird dieser Zone zugeordnet.",
+        "data": {
+          "mqtt_zone": "Ziel Zone-Entität (z. B. Home, Büro)"
+        }
+      },
       "deploy_mqtt_presence": {
         "title": "Skripte werden übertragen",
-        "description": "Lade die Präsenzerkennungs-Skripte herunter und übertrage sie auf deinen Router. Dies kann einen Moment dauern..."
+        "description": "Übertrage die Präsenzerkennungs-Skripte auf deinen Router. Dies kann einen Moment dauern..."
       },
       "deploy_failed": {
         "title": "Übertragung fehlgeschlagen",
-        "description": "Die Übertragung der MQTT-Präsenz-Skripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Internetverbindung und den freien Speicherplatz deines Routers."
+        "description": "Die Übertragung der MQTT-Präsenz-Skripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Verbindung und den freien Speicherplatz deines Routers."
       }
     },
     "error": {
@@ -279,7 +286,7 @@
       },
       "options_mqtt_presence": {
         "title": "MQTT Präsenzerkennung (Optional)",
-        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz. Dies nutzt ein Drittanbieter-Skript von [f45tb00t/OpenWRT_HA_Presence]({presence_repo_url}).\n\n⚠️ **Hinweis:** Dies ist eine Drittanbieter-Funktion. Support wird für dieses Feature nicht angeboten. Fehler sollten im ursprünglichen Repository gemeldet werden.",
+        "description": "Aktiviere die MQTT-basierte Präsenzerkennung für höhere Zuverlässigkeit und geringere Latenz.",
         "data": {
           "mqtt_presence": "MQTT Präsenzerkennung aktivieren",
           "mqtt_broker": "MQTT Broker (vom Router aus erreichbar)",
@@ -288,9 +295,20 @@
           "mqtt_password": "MQTT Passwort"
         }
       },
+      "options_mqtt_zone": {
+        "title": "MQTT Präsenz Standort-Zone",
+        "description": "Wähle die Home Assistant Zone-Entität aus, die dem Standort dieses Routers entspricht. Der von diesem Router gemeldete Präsenzstatus wird dieser Zone zugeordnet.",
+        "data": {
+          "mqtt_zone": "Ziel Zone-Entität (z. B. Home, Büro)"
+        }
+      },
       "options_deploy_failed": {
         "title": "Übertragung fehlgeschlagen",
-        "description": "Die Übertragung der MQTT-Präsenz-Skripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Internetverbindung und den freien Speicherplatz deines Routers."
+        "description": "Die Übertragung der MQTT-Präsenz-Skripte ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Verbindung und den freien Speicherplatz deines Routers."
+      },
+      "options_remove_failed": {
+        "title": "Entfernung fehlgeschlagen",
+        "description": "Das Entfernen der MQTT-Präsenz-Skripte vom Router ist fehlgeschlagen.\n\n**Fehler:**\n```\n{error}\n```\n\nBitte prüfe die Verbindung deines Routers."
       },
       "options_redeploy_user": {
         "title": "Home Assistant Benutzer neu übertragen",

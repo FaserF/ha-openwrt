@@ -8,7 +8,6 @@ from homeassistant.const import Platform
 
 DOMAIN: Final = "openwrt"
 DOCS_URL: Final = "https://github.com/FaserF/ha-openwrt"
-MQTT_PRESENCE_URL: Final = "https://github.com/f45tb00t/OpenWRT_HA_Presence"
 
 CONF_HOST: Final = "host"
 CONF_USERNAME: Final = "username"
@@ -32,6 +31,7 @@ CONF_MQTT_BROKER: Final = "mqtt_broker"
 CONF_MQTT_PORT: Final = "mqtt_port"
 CONF_MQTT_USERNAME: Final = "mqtt_username"
 CONF_MQTT_PASSWORD: Final = "mqtt_password"
+CONF_MQTT_ZONE: Final = "mqtt_zone"
 CONF_REDEPLOY_MQTT: Final = "redeploy_mqtt"
 CONF_TRUST_STALE_ARP: Final = "trust_stale_arp"
 CONF_TRUST_BRIDGE_FDB: Final = "trust_bridge_fdb"
