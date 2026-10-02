@@ -142,3 +142,51 @@ async def test_luci_rpc_adblock_formatted_domains_dot() -> None:
 
         status = await client.get_adblock_status()
         assert status.blocked_domains == 1234
+
+
+@pytest.mark.asyncio
+async def test_ubus_adblock_space_separated_domains() -> None:
+    """Test parsing AdBlock blocked_domains with space thousands separators (Issue #145)."""
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
+    client._connected = True
+
+    with patch.object(client, "_call", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "adblock_status": "enabled",
+            "adblock_version": "4.5.7-r4",
+            "blocked_domains": "125 495",
+            "last_run": "mode: start, date/time: 02/05/2026 11:08:55",
+        }
+
+        status = await client.get_adblock_status()
+        assert status.enabled is True
+        assert status.blocked_domains == 125495
+        assert status.version == "4.5.7-r4"
+
+
+@pytest.mark.asyncio
+async def test_luci_rpc_adblock_space_separated_domains() -> None:
+    """Test LuCI RPC parsing of AdBlock status with space as thousands separator (Issue #145)."""
+    client = LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
+    client._auth_token = "test_token"
+    client._connected = True
+
+    with patch.object(client, "_rpc_call", new_callable=AsyncMock) as mock_rpc:
+        mock_rpc.return_value = json.dumps(
+            {"adblock_status": "enabled", "blocked_domains": "125 495"}
+        )
+
+        status = await client.get_adblock_status()
+        assert status.blocked_domains == 125495

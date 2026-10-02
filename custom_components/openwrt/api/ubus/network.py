@@ -337,19 +337,27 @@ class UbusNetworkMixin:
                     wifi.clients_count = len(assoc.get("results", []))
 
                 if not wifi.clients_count:
-                    with contextlib.suppress(Exception):
-                        hostapd_clients = await self._call(
-                            f"hostapd.{wifi.name}", "get_clients"
-                        )
-                        if hostapd_clients and isinstance(hostapd_clients, dict):
-                            clients = hostapd_clients.get("clients", {})
-                            count = sum(
-                                1
-                                for c in clients.values()
-                                if isinstance(c, dict) and c.get("authorized", True)
+                    candidate_names = [wifi.name]
+                    if wifi.ifname and wifi.ifname not in candidate_names:
+                        candidate_names.append(wifi.ifname)
+                    if wifi.section and wifi.section not in candidate_names:
+                        candidate_names.append(wifi.section)
+
+                    for cand in candidate_names:
+                        with contextlib.suppress(Exception):
+                            hostapd_clients = await self._call(
+                                f"hostapd.{cand}", "get_clients"
                             )
-                            if count > 0:
-                                wifi.clients_count = count
+                            if hostapd_clients and isinstance(hostapd_clients, dict):
+                                clients = hostapd_clients.get("clients", {})
+                                count = sum(
+                                    1
+                                    for c in clients.values()
+                                    if isinstance(c, dict) and c.get("authorized", True)
+                                )
+                                if count > 0:
+                                    wifi.clients_count = count
+                                    break
 
             except UbusError:
                 _LOGGER.debug(

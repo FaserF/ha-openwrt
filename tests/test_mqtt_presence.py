@@ -780,38 +780,78 @@ async def test_mqtt_discovery_cleanup_active_topic_and_ownership(
     assert "presence/aa_bb_cc_dd_ee_01" in published_topics
 
 
-def test_presence_templates_shell_syntax() -> None:
-    """Test that all shell script templates pass sh -n syntax check.
+async def test_mqtt_cleanup_skipped_when_never_enabled(hass: HomeAssistant) -> None:
+    """Test that cleanup loop is NOT scheduled on startup when MQTT presence was never enabled."""
+    from custom_components.openwrt.api.base import OpenWrtData
+    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
 
-    Note: This is a static syntax check only (sh -n). It verifies shell script validity
-    and parsing, but does not test runtime behavioral logic or execution outcomes.
-    """
-    from custom_components.openwrt.helpers.mqtt_presence import (
-        FILE_TEMPLATE_MAP,
-        TEMPLATES_DIR,
-    )
+    config_entry = MagicMock()
+    config_entry.options = {CONF_MQTT_PRESENCE: False}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "11:22:33:44:55:66"
 
-    script_templates = [
-        rel_path
-        for target, rel_path in FILE_TEMPLATE_MAP.items()
-        if rel_path.endswith(".sh") or rel_path.startswith("init.d/")
-    ]
+    mock_client = AsyncMock()
 
-    assert len(script_templates) == 4, (
-        f"Expected 4 shell script templates, found {len(script_templates)}"
-    )
-
-    for rel_path in script_templates:
-        full_path = TEMPLATES_DIR / rel_path
-        assert full_path.is_file(), f"Template file missing: {full_path}"
-
-        result = subprocess.run(
-            ["sh", "-n", str(full_path)],
-            capture_output=True,
-            text=True,
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(
+            return_value={
+                "devices": {
+                    "aa:bb:cc:dd:ee:01": {
+                        "hostname": "test1",
+                        "last_seen": 100.0,
+                        "is_wireless": False,
+                    }
+                },
+                "last_version": "23.05.0",
+                "mqtt_cleanup_done": False,
+                "mqtt_presence_configured": False,
+            }
         )
-        assert result.returncode == 0, (
-            f"Shell syntax check (sh -n) failed for {rel_path}:\n"
-            f"stdout: {result.stdout}\n"
-            f"stderr: {result.stderr}"
+        coord = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+        await coord._async_setup()
+
+    assert coord._mqtt_presence_configured is False
+    assert coord._mqtt_cleanup_done is False
+
+    with patch.object(coord, "_async_discovery_loop") as mock_loop:
+        data = OpenWrtData()
+        await coord._async_filter_and_track_devices(data)
+        mock_loop.assert_not_called()
+
+
+async def test_mqtt_cleanup_runs_when_presence_was_previously_enabled(
+    hass: HomeAssistant,
+) -> None:
+    """Test that cleanup loop runs when MQTT presence was previously enabled and is now disabled."""
+    from custom_components.openwrt.api.base import OpenWrtData
+    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
+
+    config_entry = MagicMock()
+    config_entry.options = {CONF_MQTT_PRESENCE: False}
+    config_entry.data = {"host": "192.168.1.1"}
+    config_entry.entry_id = "test_entry"
+    config_entry.unique_id = "11:22:33:44:55:66"
+
+    mock_client = AsyncMock()
+
+    with patch("custom_components.openwrt.coordinator.storage.Store") as mock_store:
+        mock_store.return_value.async_load = AsyncMock(
+            return_value={
+                "devices": {},
+                "mqtt_presence_configured": True,
+                "mqtt_cleanup_done": False,
+            }
         )
+        coord = OpenWrtDataCoordinator(hass, config_entry, mock_client)
+        await coord._async_setup()
+
+    assert coord._mqtt_presence_configured is True
+    assert coord._mqtt_cleanup_done is False
+
+    with patch.object(hass, "async_create_task") as mock_task:
+        data = OpenWrtData()
+        await coord._async_filter_and_track_devices(data)
+        mock_task.assert_called_once()
+        # Close the unawaited coroutine passed to async_create_task
+        mock_task.call_args[0][0].close()

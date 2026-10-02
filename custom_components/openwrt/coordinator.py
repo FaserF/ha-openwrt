@@ -256,6 +256,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         self._mqtt_discovered: set[str] = set()
         self._mqtt_discovery_started = False
         self._mqtt_cleanup_done = False
+        self._mqtt_presence_configured = False
         # Interface name to stable identifier mapping (for AP devices)
         self.interface_to_stable_id: dict[str, str] = {}
         unique_id = self.config_entry.unique_id
@@ -311,6 +312,12 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 if isinstance(stored_data, dict) and "devices" in stored_data:
                     loaded_devices = stored_data.get("devices", {})
                     self._last_version = stored_data.get("last_version")
+                    self._mqtt_cleanup_done = stored_data.get(
+                        "mqtt_cleanup_done", False
+                    )
+                    self._mqtt_presence_configured = stored_data.get(
+                        "mqtt_presence_configured", False
+                    )
                 elif isinstance(stored_data, dict):
                     # Legacy structure (direct dict of devices)
                     loaded_devices = stored_data
@@ -478,6 +485,8 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 {
                     "devices": self._device_history,
                     "last_version": self._last_version,
+                    "mqtt_cleanup_done": self._mqtt_cleanup_done,
+                    "mqtt_presence_configured": self._mqtt_presence_configured,
                 }
             )
         except Exception as err:
@@ -711,7 +720,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             pass
 
         device_reg = dr.async_get(self.hass)
-        for dev in device_reg.devices.values():
+        for dev_id in device_reg.devices:
+            dev = device_reg.async_get(dev_id)
+            if not dev:
+                continue
             name = dev.name_by_user or dev.name
             if not name:
                 continue
@@ -1193,7 +1205,7 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                                 for d in data.connected_devices
                                 if d.mac and d.mac.lower() == mac_lower
                             )
-                            if not device.connected:
+                            if not device.connected or not device.is_wireless:
                                 device.connected = True
                                 device.is_wireless = True
                                 device.interface = (
@@ -1469,13 +1481,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # Handle MQTT Discovery (Start or Cleanup)
         # Initial MQTT discovery if enabled, or cleanup if disabled
         if self.config_entry.options.get(CONF_MQTT_PRESENCE, False):
+            self._mqtt_presence_configured = True
+            self._mqtt_cleanup_done = False
             if not self._mqtt_discovery_started:
                 self._mqtt_discovery_started = True
                 self.hass.async_create_task(self._async_discovery_loop(clean=False))
         else:
-            # If MQTT is disabled, ensure we clean up at least once per coordinator instance
-            if not self._mqtt_cleanup_done:
-                self._mqtt_cleanup_done = True
+            # If MQTT is disabled, only clean up if it was previously configured/enabled
+            # or if a pending cleanup has not yet completed.
+            if self._mqtt_presence_configured and not self._mqtt_cleanup_done:
                 self.hass.async_create_task(self._async_discovery_loop(clean=True))
 
     async def _async_discovery_loop(self, clean: bool = False) -> None:
@@ -1531,8 +1545,22 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 await asyncio.sleep(0.05)
 
         # Global registry cleanup (independent of device history)
-        if clean and mqtt_ready:
-            await self._async_global_registry_cleanup()
+        if clean:
+            if mqtt_ready:
+                await self._async_global_registry_cleanup()
+            self._mqtt_cleanup_done = True
+            self._mqtt_presence_configured = False
+            try:
+                await self._store.async_save(
+                    {
+                        "devices": self._device_history,
+                        "last_version": self._last_version,
+                        "mqtt_cleanup_done": self._mqtt_cleanup_done,
+                        "mqtt_presence_configured": self._mqtt_presence_configured,
+                    }
+                )
+            except Exception as err:
+                _LOGGER.warning("Could not persist MQTT cleanup state: %s", err)
 
         _LOGGER.debug("MQTT discovery loop finished")
 
@@ -1832,7 +1860,15 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         via_device = None
         if device_info.gateway_mac:
             gw_mac = device_info.gateway_mac.lower()
-            for dev in device_registry.devices.values():
+            devices_iterable = (
+                device_registry.devices.values()
+                if hasattr(device_registry.devices, "values")
+                else device_registry.devices
+            )
+            for item in devices_iterable:
+                dev = device_registry.async_get(item) if isinstance(item, str) else item
+                if not dev:
+                    continue
                 if any(
                     conn[0] == dr.CONNECTION_NETWORK_MAC and conn[1].lower() == gw_mac
                     for conn in dev.connections
@@ -1881,7 +1917,25 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         # Determine current name to prevent downgrading to less descriptive versions
         current_name = None
-        existing_device = device_registry.async_get_device(identifiers=identifiers)
+        if hasattr(device_registry, "async_get_device_by_identifier"):
+            existing_device = next(
+                (
+                    dev
+                    for ident in identifiers
+                    if (
+                        dev := device_registry.async_get_device_by_identifier(
+                            ident, self.config_entry.entry_id
+                        )
+                    )
+                    is not None
+                ),
+                None,
+            )
+        elif hasattr(device_registry.devices, "get_entry"):
+            existing_device = device_registry.devices.get_entry(identifiers=identifiers)
+        else:
+            existing_device = device_registry.async_get_device(identifiers=identifiers)
+
         if existing_device and existing_device.name:
             current_name = existing_device.name
 
@@ -2008,11 +2062,9 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         # devices that were registered before the OUI mapping was added or that were created
         # with the generic "OpenWrt" / "Tracked device" defaults.
         mac_pattern = re.compile(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$", re.IGNORECASE)
-        for dev in device_registry.devices.values():
-            # Only touch devices that belong to our specific config entry
-            if self.config_entry.entry_id not in dev.config_entries:
-                continue
-
+        for dev in dr.async_entries_for_config_entry(
+            device_registry, self.config_entry.entry_id
+        ):
             # Skip the root router device itself and merged/auxiliary entries
             if (
                 dev.via_device_id is None
@@ -2076,12 +2128,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         )
 
         devices_to_remove = []
-        # Iterate over all devices in the registry
-        for dev in list(device_registry.devices.values()):
-            # Only process devices that belong to our specific config entry
-            if self.config_entry.entry_id not in dev.config_entries:
-                continue
-
+        # Iterate over all devices for this config entry
+        for dev in dr.async_entries_for_config_entry(
+            device_registry, self.config_entry.entry_id
+        ):
             # Check if any identifier belonging to our domain matches this router
             is_ours = False
             is_tracked_device = False
@@ -2170,16 +2220,27 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 devices_to_remove.append(dev.id)
 
         # Get the ID of our main router device to use as a fallback for orphans
-        router_dev = device_registry.async_get_device(
-            identifiers={(DOMAIN, self.router_id)}
-        )
+        router_identifier = (DOMAIN, self.router_id)
+        if hasattr(device_registry, "async_get_device_by_identifier"):
+            router_dev = device_registry.async_get_device_by_identifier(
+                router_identifier, self.config_entry.entry_id
+            )
+        elif hasattr(device_registry.devices, "get_entry"):
+            router_dev = device_registry.devices.get_entry(
+                identifiers={router_identifier}
+            )
+        else:
+            router_dev = device_registry.async_get_device(
+                identifiers={router_identifier}
+            )
         router_dev_id = router_dev.id if router_dev else None
 
         # Build a mapping of via_device_id to find children efficiently without nested loops
         via_map: dict[str, list[dr.DeviceEntry]] = {}
         if router_dev_id:
-            for other_dev in device_registry.devices.values():
-                if other_dev.via_device_id:
+            for other_dev_id in device_registry.devices:
+                other_dev = device_registry.async_get(other_dev_id)
+                if other_dev and other_dev.via_device_id:
                     via_map.setdefault(other_dev.via_device_id, []).append(other_dev)
 
         for dev_id in devices_to_remove:

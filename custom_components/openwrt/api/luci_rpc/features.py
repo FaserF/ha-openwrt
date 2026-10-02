@@ -370,11 +370,9 @@ class LuciRpcFeaturesMixin:
                         )
 
                         blocked = res.get("blocked_domains") or res.get("blocked") or 0
-                        blocked_str = str(blocked).replace(",", "").replace(".", "")
-                        try:
-                            status.blocked_domains = int(float(blocked_str))
-                        except (ValueError, TypeError):
-                            pass
+                        from ...helpers import parse_blocked_domains
+
+                        status.blocked_domains = parse_blocked_domains(blocked)
 
                         last_run = res.get("last_run") or res.get("last_update")
                         if isinstance(last_run, dict):
@@ -401,16 +399,11 @@ class LuciRpcFeaturesMixin:
                         status.enabled = res.get("adblock_status") == "enabled"
                         status.status = res.get("adblock_status", "disabled")
                         status.version = res.get("adblock_version")
-                        # Handle formatted numbers like "57,861" or "57.861"
-                        blocked = (
-                            str(res.get("blocked_domains", 0))
-                            .replace(",", "")
-                            .replace(".", "")
+                        from ...helpers import parse_blocked_domains
+
+                        status.blocked_domains = parse_blocked_domains(
+                            res.get("blocked_domains", 0)
                         )
-                        try:
-                            status.blocked_domains = int(float(blocked))
-                        except (ValueError, TypeError):
-                            pass
                         status.last_update = res.get("last_run")
                         return status
                 except json.JSONDecodeError:
