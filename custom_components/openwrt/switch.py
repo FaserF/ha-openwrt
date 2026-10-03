@@ -37,6 +37,7 @@ from .const import (
 from .coordinator import OpenWrtDataCoordinator
 from .helpers import (
     _get_router_device_id,
+    _lookup_device,
     format_ap_device_id,
     format_ap_name,
     format_radio_device_id,
@@ -877,10 +878,10 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             from homeassistant.helpers import device_registry as dr
 
             dev_reg = dr.async_get(coordinator.hass)
-            radio_dev = dev_reg.async_get_device(
-                identifiers={
-                    (DOMAIN, format_radio_device_id(coordinator.router_id, radio))
-                }
+            radio_dev = _lookup_device(
+                dev_reg,
+                (DOMAIN, format_radio_device_id(coordinator.router_id, radio)),
+                entry.entry_id,
             )
             via_device_id = radio_dev.id if radio_dev else None
         if via_device_id is None:

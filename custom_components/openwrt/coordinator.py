@@ -98,6 +98,7 @@ from .const import (
     OPENWRT_RELEASE_API,
 )
 from .helpers import (
+    _lookup_device,
     format_ap_device_id,
     format_ap_name,
     format_ap_stable_id,
@@ -1794,9 +1795,6 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         device_registry: dr.DeviceRegistry,
     ) -> None:
         """Move existing wireless client devices below their current SSID."""
-        get_by_identifier = getattr(
-            device_registry, "async_get_device_by_identifier", None
-        )
         get_by_connection = getattr(
             device_registry, "async_get_device_by_connection", None
         )
@@ -1810,18 +1808,26 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 continue
 
             mac = connected.mac.lower()
-            if get_by_identifier is not None:
-                client_device = get_by_identifier(
-                    (DOMAIN, mac), self.config_entry.entry_id
-                )
-            else:
-                client_device = device_registry.async_get_device(
-                    identifiers={(DOMAIN, mac)}
-                )
+            client_device = _lookup_device(
+                device_registry,
+                (DOMAIN, mac),
+                self.config_entry.entry_id,
+            )
             if client_device is None:
                 if get_by_connection is not None:
                     client_device = get_by_connection(
                         (dr.CONNECTION_NETWORK_MAC, mac), self.config_entry.entry_id
+                    )
+                elif hasattr(device_registry, "async_get_devices"):
+                    conns = device_registry.async_get_devices(
+                        connections={(dr.CONNECTION_NETWORK_MAC, mac)},
+                        config_entry_id=self.config_entry.entry_id,
+                    )
+                    client_device = conns[0] if conns else None
+                elif hasattr(device_registry.devices, "get_entry"):
+                    client_device = device_registry.devices.get_entry(
+                        connections={(dr.CONNECTION_NETWORK_MAC, mac)},
+                        config_entry_id=self.config_entry.entry_id,
                     )
                 else:
                     client_device = device_registry.async_get_device(
@@ -1836,14 +1842,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 self.config_entry,
                 mac,
             )
-            if get_by_identifier is not None:
-                parent_device = get_by_identifier(
-                    parent_identifier, self.config_entry.entry_id
-                )
-            else:
-                parent_device = device_registry.async_get_device(
-                    identifiers={parent_identifier}
-                )
+            parent_device = _lookup_device(
+                device_registry,
+                parent_identifier,
+                self.config_entry.entry_id,
+            )
             if (
                 parent_device is not None
                 and client_device.via_device_id != parent_device.id
@@ -1924,24 +1927,19 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
 
         # Determine current name to prevent downgrading to less descriptive versions
         current_name = None
-        if hasattr(device_registry, "async_get_device_by_identifier"):
-            existing_device = next(
-                (
-                    dev
-                    for ident in identifiers
-                    if (
-                        dev := device_registry.async_get_device_by_identifier(
-                            ident, self.config_entry.entry_id
-                        )
+        existing_device = next(
+            (
+                dev
+                for ident in identifiers
+                if (
+                    dev := _lookup_device(
+                        device_registry, ident, self.config_entry.entry_id
                     )
-                    is not None
-                ),
-                None,
-            )
-        elif hasattr(device_registry.devices, "get_entry"):
-            existing_device = device_registry.devices.get_entry(identifiers=identifiers)
-        else:
-            existing_device = device_registry.async_get_device(identifiers=identifiers)
+                )
+                is not None
+            ),
+            None,
+        )
 
         if existing_device and existing_device.name:
             current_name = existing_device.name
@@ -2224,34 +2222,19 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
                 devices_to_remove.append(dev.id)
 
         # Get the ID of our main router device to use as a fallback for orphans
-        router_identifier = (DOMAIN, self.router_id)
-        if hasattr(device_registry, "async_get_device_by_identifier"):
-            router_dev = device_registry.async_get_device_by_identifier(
-                router_identifier, self.config_entry.entry_id
-            )
-        elif hasattr(device_registry.devices, "get_entry"):
-            router_dev = device_registry.devices.get_entry(
-                identifiers={router_identifier}
-            )
-        else:
-            router_dev = device_registry.async_get_device(
-                identifiers={router_identifier}
-            )
+        router_dev = _lookup_device(
+            device_registry,
+            (DOMAIN, self.router_id),
+            self.config_entry.entry_id,
+        )
         router_dev_id = router_dev.id if router_dev else None
 
         # Build a mapping of via_device_id to find children efficiently without nested loops
         via_map: dict[str, list[Any]] = {}
         if router_dev_id:
-            devices_iterable = (
-                device_registry.devices.values()
-                if hasattr(device_registry.devices, "values")
-                else device_registry.devices
-            )
-            for item in devices_iterable:
-                if isinstance(item, str):
-                    other_dev = device_registry.async_get(item)
-                else:
-                    other_dev = item
+            for other_dev in dr.async_entries_for_config_entry(
+                device_registry, self.config_entry.entry_id
+            ):
                 if other_dev and other_dev.via_device_id:
                     via_map.setdefault(other_dev.via_device_id, []).append(other_dev)
 

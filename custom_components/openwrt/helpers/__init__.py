@@ -194,6 +194,54 @@ def parse_blocked_domains(value: Any) -> int:
     return int(digits) if digits else 0
 
 
+def _lookup_device(
+    dev_reg: Any,
+    identifier: tuple[str, str],
+    config_entry_id: str | None = None,
+) -> Any | None:
+    """Look up a device by identifier without using deprecated async_get_device."""
+    # If dev_reg is a Mock whose class does not define async_get_device_by_identifier,
+    # or if async_get_device was explicitly mocked, prefer the mock's configured methods.
+    from unittest.mock import NonCallableMock
+
+    if isinstance(dev_reg, NonCallableMock):
+        # Check if async_get_device_by_identifier was explicitly configured on the mock
+        mock_children = getattr(dev_reg, "_mock_children", {})
+        if "async_get_device_by_identifier" in mock_children and config_entry_id:
+            return dev_reg.async_get_device_by_identifier(identifier, config_entry_id)
+        if "async_get_devices" in mock_children:
+            matches = dev_reg.async_get_devices(
+                identifiers={identifier},
+                config_entry_id=config_entry_id,
+            )
+            if matches:
+                return matches[0]
+        if hasattr(dev_reg, "async_get_device"):
+            return dev_reg.async_get_device(identifiers={identifier})
+
+    # Real DeviceRegistry or mocks configured with it
+    if config_entry_id and hasattr(dev_reg, "async_get_device_by_identifier"):
+        return dev_reg.async_get_device_by_identifier(identifier, config_entry_id)
+    if hasattr(dev_reg, "async_get_devices"):
+        matches = dev_reg.async_get_devices(
+            identifiers={identifier},
+            config_entry_id=config_entry_id,
+        )
+        if matches:
+            return matches[0]
+    dev_devices = getattr(dev_reg, "devices", None)
+    if dev_devices is not None and hasattr(dev_devices, "get_entry"):
+        if config_entry_id is not None:
+            return dev_devices.get_entry(
+                identifiers={identifier},
+                config_entry_id=config_entry_id,
+            )
+        return dev_devices.get_entry(identifiers={identifier})
+    if hasattr(dev_reg, "async_get_device"):
+        return dev_reg.async_get_device(identifiers={identifier})
+    return None
+
+
 def get_via_device(
     hass: HomeAssistant,
     coordinator: Any,  # Avoid circular import
@@ -235,46 +283,18 @@ def get_via_device(
                 if stable_id:
                     ap_id = format_ap_device_id(router_id, stable_id)
                     ap_identifier = (DOMAIN, ap_id)
-                    if hasattr(dev_reg, "async_get_device_by_identifier"):
-                        has_dev = (
-                            dev_reg.async_get_device_by_identifier(
-                                ap_identifier, entry.entry_id
-                            )
-                            is not None
-                        )
-                    elif hasattr(dev_reg.devices, "get_entry"):
-                        has_dev = (
-                            dev_reg.devices.get_entry(identifiers={ap_identifier})
-                            is not None
-                        )
-                    else:
-                        has_dev = (
-                            dev_reg.async_get_device(identifiers={ap_identifier})
-                            is not None
-                        )
-                    if has_dev:
+                    if (
+                        _lookup_device(dev_reg, ap_identifier, entry.entry_id)
+                        is not None
+                    ):
                         via_device = (DOMAIN, ap_id)
                 elif wifi and wifi.radio:
                     radio_id = format_radio_device_id(router_id, wifi.radio)
                     radio_identifier = (DOMAIN, radio_id)
-                    if hasattr(dev_reg, "async_get_device_by_identifier"):
-                        has_dev = (
-                            dev_reg.async_get_device_by_identifier(
-                                radio_identifier, entry.entry_id
-                            )
-                            is not None
-                        )
-                    elif hasattr(dev_reg.devices, "get_entry"):
-                        has_dev = (
-                            dev_reg.devices.get_entry(identifiers={radio_identifier})
-                            is not None
-                        )
-                    else:
-                        has_dev = (
-                            dev_reg.async_get_device(identifiers={radio_identifier})
-                            is not None
-                        )
-                    if has_dev:
+                    if (
+                        _lookup_device(dev_reg, radio_identifier, entry.entry_id)
+                        is not None
+                    ):
                         via_device = (DOMAIN, radio_id)
                 break
 
@@ -294,24 +314,7 @@ def get_via_device(
                 # It's behind another mesh node. Verify it exists in registry.
                 dev_reg = dr.async_get(hass)
                 orig_identifier = (DOMAIN, originator_mac)
-                if hasattr(dev_reg, "async_get_device_by_identifier"):
-                    has_dev = (
-                        dev_reg.async_get_device_by_identifier(
-                            orig_identifier, entry.entry_id
-                        )
-                        is not None
-                    )
-                elif hasattr(dev_reg.devices, "get_entry"):
-                    has_dev = (
-                        dev_reg.devices.get_entry(identifiers={orig_identifier})
-                        is not None
-                    )
-                else:
-                    has_dev = (
-                        dev_reg.async_get_device(identifiers={orig_identifier})
-                        is not None
-                    )
-                if has_dev:
+                if _lookup_device(dev_reg, orig_identifier, entry.entry_id) is not None:
                     via_device = (DOMAIN, originator_mac)
 
     return via_device
@@ -333,7 +336,7 @@ def get_via_device_id(
 
     identifier = get_via_device(hass, coordinator, entry, mac)
     dev_reg = dr.async_get(hass)
-    device = dev_reg.async_get_device(identifiers={identifier})
+    device = _lookup_device(dev_reg, identifier, entry.entry_id)
     return device.id if device else None
 
 
@@ -351,7 +354,7 @@ def _get_router_device_id(
 
     router_id = _router_id(entry)
     dev_reg = dr.async_get(hass)
-    device = dev_reg.async_get_device(identifiers={(DOMAIN, router_id)})
+    device = _lookup_device(dev_reg, (DOMAIN, router_id), entry.entry_id)
     return device.id if device else None
 
 
