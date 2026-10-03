@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, cast
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
@@ -155,10 +156,15 @@ async def async_setup_entry(
                 and coordinator.data.wireless_interfaces
             ):
                 iface_name = unique_id.split("_wireless_")[-1]
-                if not any(
+                # Never remove anonymous-section style IDs (wifinetN / @wifi-iface[N])
+                # or entries that match any current interface by name, section, ifname, or SSID
+                if not re.match(
+                    r"^(?:wifinet\d+|@?wifi-iface\[\d+\])$", iface_name, re.IGNORECASE
+                ) and not any(
                     w.name == iface_name
                     or w.section == iface_name
                     or (w.ifname and w.ifname == iface_name)
+                    or (w.ssid and w.ssid == iface_name)
                     for w in coordinator.data.wireless_interfaces
                 ):
                     ent_reg.async_remove(ent.entity_id)

@@ -160,6 +160,31 @@ class UbusWirelessMixin:
                 if len(radio_ifaces) == 1:
                     return radio_ifaces[0][0]
 
+            # 5. Map kernel ifname back to UCI section via network.wireless status
+            # (kernel ifnames like phy1-ap0 are assigned dynamically by netifd/hostapd
+            # and are not stored in UCI, so UCI lookups above cannot find them)
+            try:
+                wireless_status = await self._call("network.wireless", "status")
+                if isinstance(wireless_status, dict):
+                    for radio_data in wireless_status.values():
+                        if not isinstance(radio_data, dict):
+                            continue
+                        for iface in radio_data.get("interfaces", []):
+                            iface_ifname = iface.get("ifname") or iface.get(
+                                "device", ""
+                            )
+                            iface_section = iface.get("section", "")
+                            if (
+                                iface_ifname == interface
+                                and iface_section
+                                and iface_section in vals
+                            ):
+                                return iface_section
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug(
+                    "Failed network.wireless status lookup for %s: %s", interface, err
+                )
+
         except Exception as err:
             _LOGGER.debug(
                 "Failed to resolve wireless UCI section for %s: %s", interface, err
