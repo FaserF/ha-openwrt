@@ -64,71 +64,86 @@ class UbusDevicesMixin:
         # 3. Process wireless associations (iwinfo)
         if wireless_ifaces:
             for wifi_iface in wireless_ifaces:
-                ifname = wifi_iface.name
-                if not ifname:
-                    continue
-                try:
-                    assoc = await self._call("iwinfo", "assoclist", {"device": ifname})
-                    if assoc and isinstance(assoc, dict):
-                        for client in assoc.get("results", []):
-                            mac = client.get("mac", "").lower()
-                            dev = devices.setdefault(
-                                mac, ConnectedDevice(mac=mac, connected=True)
-                            )
-                            dev.connected = True
-                            dev.is_wireless = True
-                            dev.interface = ifname
-                            self._set_wireless_connection_type(dev, ifname)
-                            dev.signal = client.get("signal", 0)
-                            dev.noise = client.get("noise", 0)
-                            dev.rx_rate = self._get_assoc_rate(client, "rx")
-                            dev.tx_rate = self._get_assoc_rate(client, "tx")
-                except (
-                    UbusTimeoutError,
-                    UbusConnectionError,
-                    UbusSslError,
-                    UbusPermissionError,
-                    UbusAuthError,
-                ):
-                    raise
-                except UbusError:
-                    if (
-                        self.coordinator
-                        and self.coordinator.data
-                        and self.coordinator.data.all_connected_devices
-                    ):
-                        for prev_dev in self.coordinator.data.all_connected_devices:
-                            if (
-                                prev_dev.is_wireless
-                                and prev_dev.connected
-                                and prev_dev.interface == ifname
-                            ):
+                candidate_names = [wifi_iface.name]
+                if wifi_iface.ifname and wifi_iface.ifname not in candidate_names:
+                    candidate_names.append(wifi_iface.ifname)
+                if wifi_iface.section and wifi_iface.section not in candidate_names:
+                    candidate_names.append(wifi_iface.section)
+
+                found_assoc = False
+                for ifname in candidate_names:
+                    if not ifname:
+                        continue
+                    try:
+                        assoc = await self._call(
+                            "iwinfo", "assoclist", {"device": ifname}
+                        )
+                        if assoc and isinstance(assoc, dict):
+                            results = assoc.get("results", [])
+                            for client in results:
+                                mac = client.get("mac", "").lower()
                                 dev = devices.setdefault(
-                                    prev_dev.mac,
-                                    ConnectedDevice(
-                                        mac=prev_dev.mac,
-                                        ip=prev_dev.ip,
-                                        hostname=prev_dev.hostname,
-                                        connected=True,
-                                        is_wireless=True,
-                                        interface=ifname,
-                                        connection_type=prev_dev.connection_type,
-                                        signal=prev_dev.signal,
-                                        noise=prev_dev.noise,
-                                        rx_rate=prev_dev.rx_rate,
-                                        tx_rate=prev_dev.tx_rate,
-                                    ),
+                                    mac, ConnectedDevice(mac=mac, connected=True)
                                 )
                                 dev.connected = True
                                 dev.is_wireless = True
-                                dev.interface = ifname
-                                dev.connection_type = (
-                                    prev_dev.connection_type or dev.connection_type
-                                )
-                                dev.signal = prev_dev.signal or dev.signal
-                                dev.noise = prev_dev.noise or dev.noise
-                                dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
-                                dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
+                                dev.interface = wifi_iface.name or ifname
+                                self._set_wireless_connection_type(dev, ifname)
+                                dev.signal = client.get("signal", 0)
+                                dev.noise = client.get("noise", 0)
+                                dev.rx_rate = self._get_assoc_rate(client, "rx")
+                                dev.tx_rate = self._get_assoc_rate(client, "tx")
+                            if results:
+                                found_assoc = True
+                                break
+                    except (
+                        UbusTimeoutError,
+                        UbusConnectionError,
+                        UbusSslError,
+                        UbusPermissionError,
+                        UbusAuthError,
+                    ):
+                        raise
+                    except UbusError:
+                        pass
+
+                if not found_assoc and (
+                    self.coordinator
+                    and self.coordinator.data
+                    and self.coordinator.data.all_connected_devices
+                ):
+                    for prev_dev in self.coordinator.data.all_connected_devices:
+                        if (
+                            prev_dev.is_wireless
+                            and prev_dev.connected
+                            and prev_dev.interface in candidate_names
+                        ):
+                            dev = devices.setdefault(
+                                prev_dev.mac,
+                                ConnectedDevice(
+                                    mac=prev_dev.mac,
+                                    ip=prev_dev.ip,
+                                    hostname=prev_dev.hostname,
+                                    connected=True,
+                                    is_wireless=True,
+                                    interface=wifi_iface.name or prev_dev.interface,
+                                    connection_type=prev_dev.connection_type,
+                                    signal=prev_dev.signal,
+                                    noise=prev_dev.noise,
+                                    rx_rate=prev_dev.rx_rate,
+                                    tx_rate=prev_dev.tx_rate,
+                                ),
+                            )
+                            dev.connected = True
+                            dev.is_wireless = True
+                            dev.interface = wifi_iface.name or prev_dev.interface
+                            dev.connection_type = (
+                                prev_dev.connection_type or dev.connection_type
+                            )
+                            dev.signal = prev_dev.signal or dev.signal
+                            dev.noise = prev_dev.noise or dev.noise
+                            dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
+                            dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
         elif wireless_data:
             await self._process_iwinfo_assoc(devices, wireless_data)
         else:
@@ -141,61 +156,77 @@ class UbusDevicesMixin:
         # 5. Process wireless client details (hostapd)
         if wireless_ifaces:
             for wifi_iface in wireless_ifaces:
-                ifname = wifi_iface.name
-                if not ifname:
-                    continue
-                try:
-                    hostapd_data = await self._call(f"hostapd.{ifname}", "get_clients")
-                    if hostapd_data and isinstance(hostapd_data, dict):
-                        clients = hostapd_data.get("clients")
-                        if isinstance(clients, dict):
-                            self._merge_hostapd_clients(devices, clients, ifname)
-                except (
-                    UbusTimeoutError,
-                    UbusConnectionError,
-                    UbusSslError,
-                    UbusPermissionError,
-                    UbusAuthError,
-                ):
-                    raise
-                except UbusError:
-                    if (
-                        self.coordinator
-                        and self.coordinator.data
-                        and self.coordinator.data.all_connected_devices
+                candidate_names = [wifi_iface.name]
+                if wifi_iface.ifname and wifi_iface.ifname not in candidate_names:
+                    candidate_names.append(wifi_iface.ifname)
+                if wifi_iface.section and wifi_iface.section not in candidate_names:
+                    candidate_names.append(wifi_iface.section)
+
+                found_hostapd = False
+                for ifname in candidate_names:
+                    if not ifname:
+                        continue
+                    try:
+                        hostapd_data = await self._call(
+                            f"hostapd.{ifname}", "get_clients"
+                        )
+                        if hostapd_data and isinstance(hostapd_data, dict):
+                            clients = hostapd_data.get("clients")
+                            if isinstance(clients, dict):
+                                self._merge_hostapd_clients(
+                                    devices, clients, wifi_iface.name or ifname
+                                )
+                                if clients:
+                                    found_hostapd = True
+                                    break
+                    except (
+                        UbusTimeoutError,
+                        UbusConnectionError,
+                        UbusSslError,
+                        UbusPermissionError,
+                        UbusAuthError,
                     ):
-                        for prev_dev in self.coordinator.data.all_connected_devices:
-                            if (
-                                prev_dev.is_wireless
-                                and prev_dev.connected
-                                and prev_dev.interface == ifname
-                            ):
-                                dev = devices.setdefault(
-                                    prev_dev.mac,
-                                    ConnectedDevice(
-                                        mac=prev_dev.mac,
-                                        ip=prev_dev.ip,
-                                        hostname=prev_dev.hostname,
-                                        connected=True,
-                                        is_wireless=True,
-                                        interface=ifname,
-                                        connection_type=prev_dev.connection_type,
-                                        signal=prev_dev.signal,
-                                        noise=prev_dev.noise,
-                                        rx_rate=prev_dev.rx_rate,
-                                        tx_rate=prev_dev.tx_rate,
-                                    ),
-                                )
-                                dev.connected = True
-                                dev.is_wireless = True
-                                dev.interface = ifname
-                                dev.connection_type = (
-                                    prev_dev.connection_type or dev.connection_type
-                                )
-                                dev.signal = prev_dev.signal or dev.signal
-                                dev.noise = prev_dev.noise or dev.noise
-                                dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
-                                dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
+                        raise
+                    except UbusError:
+                        pass
+
+                if not found_hostapd and (
+                    self.coordinator
+                    and self.coordinator.data
+                    and self.coordinator.data.all_connected_devices
+                ):
+                    for prev_dev in self.coordinator.data.all_connected_devices:
+                        if (
+                            prev_dev.is_wireless
+                            and prev_dev.connected
+                            and prev_dev.interface in candidate_names
+                        ):
+                            dev = devices.setdefault(
+                                prev_dev.mac,
+                                ConnectedDevice(
+                                    mac=prev_dev.mac,
+                                    ip=prev_dev.ip,
+                                    hostname=prev_dev.hostname,
+                                    connected=True,
+                                    is_wireless=True,
+                                    interface=wifi_iface.name or prev_dev.interface,
+                                    connection_type=prev_dev.connection_type,
+                                    signal=prev_dev.signal,
+                                    noise=prev_dev.noise,
+                                    rx_rate=prev_dev.rx_rate,
+                                    tx_rate=prev_dev.tx_rate,
+                                ),
+                            )
+                            dev.connected = True
+                            dev.is_wireless = True
+                            dev.interface = wifi_iface.name or prev_dev.interface
+                            dev.connection_type = (
+                                prev_dev.connection_type or dev.connection_type
+                            )
+                            dev.signal = prev_dev.signal or dev.signal
+                            dev.noise = prev_dev.noise or dev.noise
+                            dev.rx_rate = prev_dev.rx_rate or dev.rx_rate
+                            dev.tx_rate = prev_dev.tx_rate or dev.tx_rate
         elif wireless_data and self.packages.wireless is not False:
             await self._process_hostapd_clients(devices, wireless_data)
 

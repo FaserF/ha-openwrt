@@ -340,17 +340,24 @@ class UbusNetworkMixin:
                         wifi.htmode = str(iwinfo["htmode"])
 
                 # Association list
-                assoc = await self._call("iwinfo", "assoclist", {"device": wifi.name})
-                if assoc:
-                    wifi.clients_count = len(assoc.get("results", []))
+                candidate_names = [wifi.name]
+                if wifi.ifname and wifi.ifname not in candidate_names:
+                    candidate_names.append(wifi.ifname)
+                if wifi.section and wifi.section not in candidate_names:
+                    candidate_names.append(wifi.section)
+
+                for cand in candidate_names:
+                    with contextlib.suppress(Exception):
+                        assoc = await self._call(
+                            "iwinfo", "assoclist", {"device": cand}
+                        )
+                        if assoc and isinstance(assoc, dict):
+                            results = assoc.get("results", [])
+                            if results:
+                                wifi.clients_count = len(results)
+                                break
 
                 if not wifi.clients_count:
-                    candidate_names = [wifi.name]
-                    if wifi.ifname and wifi.ifname not in candidate_names:
-                        candidate_names.append(wifi.ifname)
-                    if wifi.section and wifi.section not in candidate_names:
-                        candidate_names.append(wifi.section)
-
                     for cand in candidate_names:
                         with contextlib.suppress(Exception):
                             hostapd_clients = await self._call(
