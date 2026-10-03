@@ -344,6 +344,11 @@ async def test_wifi_sensor_cleanup_preserves_sensors_matching_ifname_or_radio() 
         entity_id="sensor.phy0_ap0_clients",
         unique_id="test_entry_wifi_phy0-ap0_clients",
     )
+    ent3 = MagicMock(
+        domain="sensor",
+        entity_id="sensor.myssid_clients",
+        unique_id="test_entry_wifi_MySSID_clients",
+    )
     orphan = MagicMock(
         domain="sensor",
         entity_id="sensor.ghost_clients",
@@ -360,12 +365,12 @@ async def test_wifi_sensor_cleanup_preserves_sensors_matching_ifname_or_radio() 
         ),
         patch(
             "custom_components.openwrt.sensor.er.async_entries_for_config_entry",
-            return_value=[ent1, ent2, orphan],
+            return_value=[ent1, ent2, ent3, orphan],
         ),
     ):
         await async_setup_entry(hass, entry, MagicMock())
         for cb in job_callbacks:
             cb()
 
-    # ent1 and ent2 must NOT be removed; orphan must be removed
+    # ent1, ent2 and ent3 must NOT be removed; orphan must be removed
     mock_ent_reg.async_remove.assert_called_once_with("sensor.ghost_clients")

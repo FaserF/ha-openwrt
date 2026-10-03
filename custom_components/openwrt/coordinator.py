@@ -2034,6 +2034,10 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             # Group virtual interfaces only within the same physical radio.
             stable_id = format_ap_stable_id(wifi.ssid, band, wifi.radio)
             self.interface_to_stable_id[wifi.name] = stable_id
+            if wifi.section:
+                self.interface_to_stable_id[wifi.section] = stable_id
+            if wifi.ifname:
+                self.interface_to_stable_id[wifi.ifname] = stable_id
             ap_info[stable_id] = (label, wifi.radio)
 
         for stable_id, (label, radio) in ap_info.items():

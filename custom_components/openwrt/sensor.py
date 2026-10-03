@@ -1301,6 +1301,8 @@ async def async_setup_entry(
                         or (w.section and f"_wifi_{w.section}_" in unique_id)
                         or (w.ifname and f"_wifi_{w.ifname}_" in unique_id)
                         or (w.radio and f"_wifi_{w.radio}_" in unique_id)
+                        or (w.ssid and f"_{w.ssid}_" in unique_id)
+                        or (w.ssid and unique_id.endswith(f"_{w.ssid}"))
                     ):
                         found = True
                         break
