@@ -2370,7 +2370,8 @@ class OpenWrtClient(abc.ABC):
                 k: data.__dict__.get(k)
                 for k in [
                     "ip_neighbors",
-                    "mwan_status",
+                    # No mwan_status: it is fetched on every update, and
+                    # restoring a cached copy would hide the fresh state.
                     "qmodem_info",
                     "vpn_interfaces",
                     "wireguard_interfaces",
