@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, cast
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -45,6 +44,30 @@ from .helpers import (
     format_radio_name,
     normalize_band,
 )
+from .switches import (
+    SERVICE_ICONS,
+    OpenWrtAccessControlSwitch,
+    OpenWrtAdBlockSwitch,
+    OpenWrtBanIpSwitch,
+    OpenWrtFirewallRuleSwitch,
+    OpenWrtFirewallSwitch,
+    OpenWrtLedSwitch,
+    OpenWrtRadioSwitch,
+    OpenWrtServiceSwitch,
+    OpenWrtSimpleAdBlockSwitch,
+    OpenWrtSqmSwitch,
+    OpenWrtWireGuardSwitch,
+    OpenWrtWirelessSwitch,
+    OpenWrtWpsSwitch,
+    _add_access_control_switches,
+    _add_firewall_switches,
+    _add_led_switches,
+    _add_package_switches,
+    _add_service_switches,
+    _add_sqm_switches,
+    _add_vpn_switches,
+    _add_wireless_switches,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,26 +92,20 @@ async def async_setup_entry(
 
         perms = coordinator.data.permissions
         pkgs = coordinator.data.packages
-        new_entities: list[SwitchEntity] = []
+        entities: list[SwitchEntity] = []
 
         if perms.write_wireless:
-            _add_wireless_switches(
-                coordinator, entry, client, new_entities, tracked_keys
-            )
+            _add_wireless_switches(coordinator, entry, client, entities, tracked_keys)
 
         if perms.write_services and entry.options.get(CONF_ENABLE_SERVICES, True):
-            _add_service_switches(
-                coordinator, entry, client, new_entities, tracked_keys
-            )
+            _add_service_switches(coordinator, entry, client, entities, tracked_keys)
 
         if perms.write_firewall and entry.options.get(CONF_ENABLE_FIREWALL, True):
-            _add_firewall_switches(
-                coordinator, entry, client, new_entities, tracked_keys
-            )
+            _add_firewall_switches(coordinator, entry, client, entities, tracked_keys)
 
         if perms.write_access_control:
             _add_access_control_switches(
-                coordinator, entry, client, new_entities, tracked_keys
+                coordinator, entry, client, entities, tracked_keys
             )
 
         if (
@@ -96,30 +113,26 @@ async def async_setup_entry(
             and pkgs.sqm_scripts is not False
             and entry.options.get(CONF_ENABLE_SQM, True)
         ):
-            _add_sqm_switches(coordinator, entry, client, new_entities, tracked_keys)
+            _add_sqm_switches(coordinator, entry, client, entities, tracked_keys)
 
         if perms.write_vpn and entry.options.get(CONF_ENABLE_VPN, True):
-            _add_vpn_switches(coordinator, entry, client, new_entities, tracked_keys)
+            _add_vpn_switches(coordinator, entry, client, entities, tracked_keys)
 
         if perms.write_led and entry.options.get(CONF_ENABLE_LED, True):
-            _add_led_switches(coordinator, entry, client, new_entities, tracked_keys)
+            _add_led_switches(coordinator, entry, client, entities, tracked_keys)
 
-        _add_package_switches(
-            coordinator, entry, client, new_entities, tracked_keys, pkgs
-        )
+        _add_package_switches(coordinator, entry, client, entities, tracked_keys, pkgs)
 
-        if new_entities:
-            async_add_entities(new_entities)
+        if entities:
+            async_add_entities(entities)
 
-    # Initial setup
-    _async_add_new_entities()
-
-    # Dynamic setup
+    # Register listener and run initial discovery
     entry.async_on_unload(coordinator.async_add_listener(_async_add_new_entities))
+    _async_add_new_entities()
 
     @callback
     def _async_cleanup_entities() -> None:
-        """Clean up entities."""
+        """Clean up stale entities from the entity registry."""
         ent_reg = er.async_get(hass)
         entries = er.async_entries_for_config_entry(ent_reg, entry.entry_id)
 
@@ -137,13 +150,14 @@ async def async_setup_entry(
                 continue
 
             unique_id = ent.unique_id
-            # Cleanup access control switches if settings changed
-            if "_access_control_" in unique_id:
+            # Cleanup access control switches if device tracking is disabled
+            if "_access_" in unique_id:
                 if not track_devices:
                     ent_reg.async_remove(ent.entity_id)
                     continue
 
-                mac = unique_id.split("_access_control_")[-1].lower()
+                mac = unique_id.split("_access_")[-1].replace("_", ":").lower()
+                # Remove wired access switches if wired tracking is disabled
                 if not track_wired and mac in coordinator._device_history:
                     if not coordinator._device_history[mac].get("is_wireless"):
                         ent_reg.async_remove(ent.entity_id)
@@ -156,8 +170,6 @@ async def async_setup_entry(
                 and coordinator.data.wireless_interfaces
             ):
                 iface_name = unique_id.split("_wireless_")[-1]
-                # Never remove anonymous-section style IDs (wifinetN / @wifi-iface[N])
-                # or entries that match any current interface by name, section, ifname, or SSID
                 if not re.match(
                     r"^(?:wifinet\d+|@?wifi-iface\[\d+\])$", iface_name, re.IGNORECASE
                 ) and not any(
@@ -185,1349 +197,61 @@ async def async_setup_entry(
     hass.add_job(_async_cleanup_entities)
 
 
-def _add_vpn_switches(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    entities: list[SwitchEntity],
-    tracked_keys: set[str],
-) -> None:
-    """Add VPN switches."""
-    if not coordinator.data:
-        return
-
-    for vpn in coordinator.data.wireguard_interfaces:
-        key = f"wg_switch_{vpn.name}"
-        if key not in tracked_keys:
-            tracked_keys.add(key)
-            entities.append(
-                OpenWrtWireGuardSwitch(coordinator, entry, client, vpn.name)
-            )
-
-
-def _add_led_switches(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    entities: list[SwitchEntity],
-    tracked_keys: set[str],
-) -> None:
-    """Add LED switches."""
-    if not coordinator.data:
-        return
-
-    for led in coordinator.data.leds:
-        key = f"led_{led.name}"
-        if key not in tracked_keys:
-            tracked_keys.add(key)
-            entities.append(OpenWrtLedSwitch(coordinator, entry, client, led.name))
-
-
-class OpenWrtWireGuardSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to enable/disable a WireGuard interface."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-    _attr_entity_registry_enabled_default = False
-    _attr_icon = "mdi:vpn"
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        iface_name: str,
-    ) -> None:
-        """Initialize."""
-        super().__init__(coordinator)
-        self._client = client
-        self._iface_name = iface_name
-        self._attr_unique_id = f"{entry.entry_id}_wg_switch_{iface_name}"
-        self._attr_name = f"WireGuard: {iface_name}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return status."""
-        if not self.coordinator.data:
-            return None
-        for wg in self.coordinator.data.wireguard_interfaces:
-            if wg.name == self._iface_name:
-                return wg.enabled
-        return None
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable."""
-        try:
-            # We use ifup to bring up the interface
-            await self._client.execute_command(f"ifup {self._iface_name}")
-            # Optimistic update
-            if self.coordinator.data:
-                for wg in self.coordinator.data.wireguard_interfaces:
-                    if wg.name == self._iface_name:
-                        wg.enabled = True
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to enable WireGuard interface {self._iface_name}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable."""
-        try:
-            # We use ifdown to bring down the interface
-            await self._client.execute_command(f"ifdown {self._iface_name}")
-            # Optimistic update
-            if self.coordinator.data:
-                for wg in self.coordinator.data.wireguard_interfaces:
-                    if wg.name == self._iface_name:
-                        wg.enabled = False
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to disable WireGuard interface {self._iface_name}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-
-def _add_wireless_switches(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    entities: list[SwitchEntity],
-    tracked_keys: set[str],
-) -> None:
-    """Add wireless switches."""
-    if "wps" not in tracked_keys:
-        tracked_keys.add("wps")
-        entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
-    for wifi in coordinator.data.wireless_interfaces:
-        if wifi.radio:
-            key = f"radio_{wifi.radio}"
-            if key not in tracked_keys:
-                tracked_keys.add(key)
-                entities.append(
-                    OpenWrtRadioSwitch(
-                        coordinator,
-                        entry,
-                        client,
-                        wifi.radio,
-                        wifi.band,
-                    )
-                )
-    for wifi in coordinator.data.wireless_interfaces:
-        if wifi.name:
-            key = f"wireless_{wifi.section or wifi.name}"
-            if key not in tracked_keys:
-                tracked_keys.add(key)
-                entities.append(
-                    OpenWrtWirelessSwitch(
-                        coordinator,
-                        entry,
-                        client,
-                        wifi.name,
-                        wifi.ssid,
-                        wifi.frequency or wifi.band,
-                        wifi.section,
-                        wifi.radio,
-                    ),
-                )
-
-
-SERVICE_ICONS = {
-    "pbr": "mdi:router-network",
-    "adguardhome": "mdi:shield-check",
-    "unbound": "mdi:dns",
-    "stubby": "mdi:dns-lock",
-    "sqm": "mdi:speedometer",
-    "wireguard": "mdi:vpn",
-    "openvpn": "mdi:vpn",
-    "miniupnpd": "mdi:folder-network",
-}
-
-
-def _add_service_switches(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    entities: list[SwitchEntity],
-    tracked_keys: set[str],
-) -> None:
-    """Add service switches."""
-    for service in coordinator.data.services:
-        if service.name:
-            key = f"service_{service.name}"
-            if key not in tracked_keys:
-                tracked_keys.add(key)
-                icon = SERVICE_ICONS.get(service.name)
-                entities.append(
-                    OpenWrtServiceSwitch(
-                        coordinator, entry, client, service.name, icon=icon
-                    )
-                )
-
-
-def _add_firewall_switches(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    entities: list[SwitchEntity],
-    tracked_keys: set[str],
-) -> None:
-    """Add firewall switches."""
-    for redirect in coordinator.data.firewall_redirects:
-        if redirect.section_id:
-            key = f"firewall_{redirect.section_id}"
-            if key not in tracked_keys:
-                tracked_keys.add(key)
-                entities.append(
-                    OpenWrtFirewallSwitch(
-                        coordinator,
-                        entry,
-                        client,
-                        redirect.section_id,
-                        redirect.name,
-                    ),
-                )
-    for rule in coordinator.data.firewall_rules:
-        if rule.name and rule.section_id and not rule.name.startswith("cfg"):
-            key = f"firewall_rule_{rule.section_id}"
-            if key not in tracked_keys:
-                tracked_keys.add(key)
-                entities.append(
-                    OpenWrtFirewallRuleSwitch(
-                        coordinator,
-                        entry,
-                        client,
-                        rule.section_id,
-                        rule.name,
-                    ),
-                )
-
-
-def _add_access_control_switches(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    entities: list[SwitchEntity],
-    tracked_keys: set[str],
-) -> None:
-    """Add access control switches."""
-    router_hostname = (
-        coordinator.data.device_info.hostname if coordinator.data.device_info else ""
-    )
-    track_devices = entry.options.get(
-        CONF_TRACK_DEVICES,
-        entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
-    )
-    if not track_devices:
-        return
-
-    track_wired = entry.options.get(
-        CONF_TRACK_WIRED,
-        entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
-    )
-    skip_random = entry.options.get(CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC)
-    from .helpers import is_random_mac
-
-    for device in coordinator.data.connected_devices:
-        if not device.mac:
-            continue
-
-        mac = device.mac.lower()
-        if skip_random and is_random_mac(mac):
-            continue
-
-        if not track_wired and not device.is_wireless:
-            continue
-
-        key = f"access_{mac.replace(':', '_')}"
-        if key not in tracked_keys:
-            tracked_keys.add(key)
-            dev_name = (
-                device.hostname
-                if device.hostname and device.hostname not in ("*", router_hostname)
-                else device.mac
-            )
-            ac_rule = next(
-                (
-                    r
-                    for r in coordinator.data.access_control
-                    if r.mac and r.mac.lower() == device.mac.lower()
-                ),
-                None,
-            )
-            entities.append(
-                OpenWrtAccessControlSwitch(
-                    coordinator,
-                    entry,
-                    client,
-                    device.mac.lower(),
-                    dev_name,
-                    ac_rule.section_id if ac_rule else None,
-                ),
-            )
-
-
-def _add_sqm_switches(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    entities: list[SwitchEntity],
-    tracked_keys: set[str],
-) -> None:
-    """Add SQM switches."""
-    for sqm in coordinator.data.sqm:
-        if sqm.section_id:
-            key = f"sqm_{sqm.section_id}"
-            if key not in tracked_keys:
-                tracked_keys.add(key)
-                entities.append(
-                    OpenWrtSqmSwitch(
-                        coordinator, entry, client, sqm.section_id, sqm.name
-                    )
-                )
-
-
-def _add_package_switches(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    entities: list[SwitchEntity],
-    tracked_keys: set[str],
-    pkgs: Any,
-) -> None:
-    """Add package switches."""
-    if pkgs.adblock and "adblock" not in tracked_keys:
-        tracked_keys.add("adblock")
-        entities.append(OpenWrtAdBlockSwitch(coordinator, entry, client))
-    if pkgs.simple_adblock and "simple_adblock" not in tracked_keys:
-        tracked_keys.add("simple_adblock")
-        entities.append(OpenWrtSimpleAdBlockSwitch(coordinator, entry, client))
-    if pkgs.ban_ip and "banip" not in tracked_keys:
-        tracked_keys.add("banip")
-        entities.append(OpenWrtBanIpSwitch(coordinator, entry, client))
-
-
-class OpenWrtAdBlockSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to enable/disable AdBlock."""
-
-    _attr_has_entity_name = True
-    _attr_name = "AdBlock"
-    _attr_translation_key = "adblock"
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-    ) -> None:
-        """Initialize."""
-        super().__init__(coordinator)
-        self._client = client
-        self._attr_unique_id = f"{entry.entry_id}_adblock"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return status."""
-        if self.coordinator.data is None:
-            return None
-        return self.coordinator.data.adblock.enabled
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable."""
-        try:
-            await self._client.set_adblock_enabled(True)
-            # Optimistic update
-            if self.coordinator.data:
-                self.coordinator.data.adblock.enabled = True
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to enable AdBlock: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable."""
-        try:
-            await self._client.set_adblock_enabled(False)
-            # Optimistic update
-            if self.coordinator.data:
-                self.coordinator.data.adblock.enabled = False
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to disable AdBlock: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-
-class OpenWrtSimpleAdBlockSwitch(
-    CoordinatorEntity[OpenWrtDataCoordinator],
-    SwitchEntity,
-):
-    """Switch to enable/disable Simple AdBlock."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Simple AdBlock"
-    _attr_translation_key = "simple_adblock"
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-    ) -> None:
-        """Initialize the simple-adblock switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._attr_unique_id = f"{entry.entry_id}_simple_adblock"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return simple-adblock status."""
-        if self.coordinator.data is None:
-            return None
-        return self.coordinator.data.simple_adblock.enabled
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable Simple AdBlock."""
-        try:
-            await self._client.set_simple_adblock_enabled(True)
-            # Optimistic update
-            if self.coordinator.data:
-                self.coordinator.data.simple_adblock.enabled = True
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to enable Simple AdBlock: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable Simple AdBlock."""
-        try:
-            await self._client.set_simple_adblock_enabled(False)
-            # Optimistic update
-            if self.coordinator.data:
-                self.coordinator.data.simple_adblock.enabled = False
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to disable Simple AdBlock: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-
-class OpenWrtBanIpSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to enable/disable Ban-IP."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Ban-IP"
-    _attr_translation_key = "banip"
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-    _attr_entity_registry_enabled_default = False
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-    ) -> None:
-        """Initialize the ban-ip switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._attr_unique_id = f"{entry.entry_id}_banip"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return ban-ip status."""
-        if self.coordinator.data is None:
-            return None
-        return self.coordinator.data.ban_ip.enabled
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable Ban-IP."""
-        try:
-            await self._client.set_banip_enabled(True)
-            # Optimistic update
-            if self.coordinator.data:
-                self.coordinator.data.ban_ip.enabled = True
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to enable Ban-IP: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable Ban-IP."""
-        try:
-            await self._client.set_banip_enabled(False)
-            # Optimistic update
-            if self.coordinator.data:
-                self.coordinator.data.ban_ip.enabled = False
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to disable Ban-IP: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-
-class OpenWrtWpsSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to control WPS."""
-
-    _attr_has_entity_name = True
-    _attr_name = "WPS"
-    _attr_translation_key = "wps"
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-    ) -> None:
-        """Initialize the WPS switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._attr_unique_id = f"{entry.entry_id}_wps"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return WPS status."""
-        if self.coordinator.data is None:
-            return None
-        return self.coordinator.data.wps_status.enabled
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable WPS."""
-        try:
-            await self._client.set_wps(True)
-            # Optimistic update
-            if self.coordinator.data:
-                self.coordinator.data.wps_status.enabled = True
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to enable WPS: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable WPS."""
-        try:
-            await self._client.set_wps(False)
-            # Optimistic update
-            if self.coordinator.data:
-                self.coordinator.data.wps_status.enabled = False
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to disable WPS: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-
-class OpenWrtRadioSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to physically enable or disable a wireless radio."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        radio: str,
-        band: str,
-    ) -> None:
-        """Initialize the physical radio switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._radio = radio
-        label = format_radio_name(radio, band)
-        self._attr_name = "Physical radio"
-        self._attr_unique_id = f"{entry.entry_id}_radio_{radio}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={
-                (DOMAIN, format_radio_device_id(coordinator.router_id, radio))
-            },
-            name=label,
-            manufacturer="OpenWrt",
-            model="Wireless Radio",
-            via_device_id=_get_router_device_id(coordinator.hass, coordinator, entry),
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return the configured physical radio state."""
-        if self.coordinator.data is None:
-            return None
-        for wifi in self.coordinator.data.wireless_interfaces:
-            if wifi.radio == self._radio:
-                return wifi.radio_enabled
-        return None
-
-    async def _async_set_enabled(self, enabled: bool) -> None:
-        """Set the configured physical radio state."""
-        try:
-            if not await self._client.set_radio_enabled(self._radio, enabled):
-                msg = f"OpenWrt rejected radio state change for {self._radio}"
-                raise HomeAssistantError(msg)
-            if self.coordinator.data:
-                for wifi in self.coordinator.data.wireless_interfaces:
-                    if wifi.radio == self._radio:
-                        wifi.radio_enabled = enabled
-                        wifi.enabled = enabled and wifi.interface_enabled
-            self.async_write_ha_state()
-        except HomeAssistantError:
-            raise
-        except Exception as err:
-            msg = f"Failed to change physical radio {self._radio}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Physically enable the radio."""
-        await self._async_set_enabled(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Physically disable the radio."""
-        await self._async_set_enabled(False)
-
-
-class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to enable/disable a wireless radio."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        iface_name: str,
-        ssid: str,
-        frequency: str = "",
-        section_id: str | None = None,
-        radio: str = "",
-    ) -> None:
-        """Initialize the wireless switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._iface_name = iface_name
-        self._section_id = section_id
-        self._radio = radio
-
-        # Build descriptive labels
-        self._attr_unique_id = f"{entry.entry_id}_wireless_{section_id or iface_name}"
-        self._attr_translation_key = "wireless_radio"
-
-        # Calculate band for placeholders
-        band = normalize_band(frequency) if frequency else ""
-
-        self._attr_translation_placeholders = {
-            "ssid": ssid or iface_name,
-            "band": band,
-        }
-        self._attr_name = f"SSID {ssid or iface_name}"
-        # Use section ID as stable identifier if available
-        stable_id = coordinator.interface_to_stable_id.get(
-            iface_name, section_id if section_id else iface_name
-        )
-
-        name_label = format_ap_name(ssid or iface_name, frequency)
-
-        via_device_id: str | None = None
-        if radio:
-            from homeassistant.helpers import device_registry as dr
-
-            dev_reg = dr.async_get(coordinator.hass)
-            radio_dev = _lookup_device(
-                dev_reg,
-                (DOMAIN, format_radio_device_id(coordinator.router_id, radio)),
-                entry.entry_id,
-            )
-            via_device_id = radio_dev.id if radio_dev else None
-        if via_device_id is None:
-            via_device_id = _get_router_device_id(coordinator.hass, coordinator, entry)
-        self._attr_device_info = DeviceInfo(
-            identifiers={
-                (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
-            },
-            name=name_label,
-            manufacturer="OpenWrt",
-            model="Wireless SSID",
-            via_device_id=via_device_id,
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return wireless interface status."""
-        if self.coordinator.data is None:
-            return None
-        for wifi in self.coordinator.data.wireless_interfaces:
-            if wifi.name == self._iface_name or (
-                self._section_id and wifi.section == self._section_id
-            ):
-                return wifi.interface_enabled
-        return None
-
-    async def _async_set_network_enabled(self, enabled: bool) -> None:
-        """Set the SSID and coordinate its physical radio."""
-        disable_radio = False
-        if not enabled and self._radio and self.coordinator.data:
-            target = self._section_id or self._iface_name
-            disable_radio = not any(
-                wifi.radio == self._radio
-                and (wifi.section or wifi.name) != target
-                and wifi.interface_enabled
-                for wifi in self.coordinator.data.wireless_interfaces
-            )
-
-        try:
-            if self._radio:
-                changed = await self._client.set_wireless_network_enabled(
-                    self._section_id or self._iface_name,
-                    self._radio,
-                    enabled,
-                    disable_radio=disable_radio,
-                )
-            else:
-                changed = await self._client.set_wireless_enabled(
-                    self._section_id or self._iface_name,
-                    enabled,
-                )
-            if not changed:
-                msg = f"OpenWrt rejected wireless state change for {self._iface_name}"
-                raise HomeAssistantError(msg)
-
-            if self.coordinator.data:
-                for wifi in self.coordinator.data.wireless_interfaces:
-                    if wifi.name == self._iface_name or (
-                        self._section_id and wifi.section == self._section_id
-                    ):
-                        wifi.interface_enabled = enabled
-                        wifi.enabled = enabled
-                    if self._radio and wifi.radio == self._radio:
-                        if enabled:
-                            wifi.radio_enabled = True
-                        elif disable_radio:
-                            wifi.radio_enabled = False
-                        wifi.enabled = wifi.radio_enabled and wifi.interface_enabled
-            self.async_write_ha_state()
-        except HomeAssistantError:
-            raise
-        except Exception as err:
-            msg = f"Failed to change wireless interface {self._iface_name}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable the wireless interface."""
-        await self._async_set_network_enabled(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable the wireless interface."""
-        await self._async_set_network_enabled(False)
-
-
-class OpenWrtServiceSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to enable/disable a system service."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-    _attr_entity_registry_enabled_default = False
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        service_name: str,
-        name: str | None = None,
-        icon: str | None = None,
-    ) -> None:
-        """Initialize the service switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._service_name = service_name
-        self._attr_unique_id = f"{entry.entry_id}_service_{service_name}"
-        self._attr_name = name or service_name
-        if icon:
-            self._attr_icon = icon
-        self._attr_translation_key = "service_toggle"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return service running status."""
-        if self.coordinator.data is None:
-            return None
-        for service in self.coordinator.data.services:
-            if service.name == self._service_name:
-                return service.running
-        return None
-
-    @property
-    def _service(self) -> ServiceInfo | None:
-        """Return the coordinator entry for this service."""
-        if self.coordinator.data is None:
-            return None
-        for service in self.coordinator.data.services:
-            if service.name == self._service_name:
-                return service
-        return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
-        service = self._service
-        if service is None:
-            return {}
-        return {"enabled_at_boot": service.enabled, "one_shot": service.one_shot}
-
-    async def _async_manage(self, action: str) -> None:
-        """Run one service action, treating a False result as a failure."""
-        try:
-            ok = await self._client.manage_service(self._service_name, action)
-        except Exception as err:
-            msg = f"Failed to {action} service {self._service_name}: {err}"
-            raise HomeAssistantError(msg) from err
-        if not ok:
-            msg = f"Failed to {action} service {self._service_name}"
-            raise HomeAssistantError(msg)
-
-    async def _async_set_service(self, turn_on: bool) -> None:
-        """Apply the requested state, honouring one-shot semantics."""
-        service = self._service
-        action = "start" if turn_on else "stop"
-
-        # A one-shot script exits as soon as it has applied its config, so
-        # start/stop alone would be reverted on the next poll. Its boot flag is
-        # what the switch actually reflects, so toggle that first -- and do not
-        # go on to start/stop if it failed, or the two would disagree.
-        if service is not None and service.one_shot:
-            await self._async_manage("enable" if turn_on else "disable")
-
-        await self._async_manage(action)
-
-        # Optimistic update, only once the router has accepted the change.
-        if service is not None:
-            service.running = turn_on
-            if service.one_shot:
-                service.enabled = turn_on
-        self.async_write_ha_state()
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Start the service."""
-        await self._async_set_service(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Stop the service."""
-        await self._async_set_service(False)
-
-
-class OpenWrtFirewallSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to enable/disable a firewall port forward."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        section_id: str,
-        name: str,
-    ) -> None:
-        """Initialize the firewall switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._section_id = section_id
-        self._attr_unique_id = f"{entry.entry_id}_firewall_{section_id}"
-        self._attr_name = f"Port Forward: {name}"
-        self._attr_translation_key = "firewall_port_forward"
-        self._attr_translation_placeholders = {"name": name}
-        if name.lower().startswith("allow"):
-            self._attr_entity_registry_enabled_default = False
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
-        if self.coordinator.data is None:
-            return {}
-        for redirect in self.coordinator.data.firewall_redirects:
-            if redirect.section_id == self._section_id:
-                return {
-                    "external_port": redirect.external_port,
-                    "target_ip": redirect.target_ip,
-                    "target_port": redirect.target_port,
-                    "protocol": redirect.protocol,
-                }
-        return {}
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return firewall redirect status."""
-        if self.coordinator.data is None:
-            return None
-        for redirect in self.coordinator.data.firewall_redirects:
-            if redirect.section_id == self._section_id:
-                return redirect.enabled
-        return None
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable the firewall redirect."""
-        try:
-            await self._client.set_firewall_redirect_enabled(self._section_id, True)
-            # Optimistic update
-            if self.coordinator.data:
-                for redirect in self.coordinator.data.firewall_redirects:
-                    if redirect.section_id == self._section_id:
-                        redirect.enabled = True
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to enable firewall redirect {self._section_id}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable the firewall redirect."""
-        try:
-            await self._client.set_firewall_redirect_enabled(self._section_id, False)
-            # Optimistic update
-            if self.coordinator.data:
-                for redirect in self.coordinator.data.firewall_redirects:
-                    if redirect.section_id == self._section_id:
-                        redirect.enabled = False
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to disable firewall redirect {self._section_id}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-
-class OpenWrtAccessControlSwitch(
-    CoordinatorEntity[OpenWrtDataCoordinator],
-    SwitchEntity,
-):
-    """Switch to block/unblock internet access for a device (Parental Control)."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-    _attr_entity_registry_enabled_default = False
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        mac: str,
-        name: str,
-        section_id: str | None = None,
-    ) -> None:
-        """Initialize the access control switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._mac = mac.lower()
-        self._attr_unique_id = f"{entry.entry_id}_access_{self._mac.replace(':', '_')}"
-        self._attr_translation_key = "device_access"
-        from .helpers import is_random_mac, resolve_client_name
-
-        if is_random_mac(self._mac):
-            self._attr_entity_registry_enabled_default = False
-        self._attr_device_info = DeviceInfo(
-            connections={("mac", self._mac)},
-            name=resolve_client_name(coordinator.hass, self._mac, name),
-            via_device_id=_get_router_device_id(coordinator.hass, coordinator, entry),
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return access status (On = Not Blocked)."""
-        if self.coordinator.data is None:
-            return None
-        rule = next(
-            (
-                r
-                for r in self.coordinator.data.access_control
-                if r.mac and r.mac.lower() == self._mac
-            ),
-            None,
-        )
-        if not rule:
-            return True
-        return not rule.blocked
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Unblock the device (Allow access)."""
-        try:
-            success = await self._client.set_access_control_blocked(self._mac, False)
-            if not success:
-                msg = (
-                    f"Router rejected the unblock request for {self._mac}; "
-                    "check the Home Assistant logs (search for "
-                    "'openwrt-access-control') for details."
-                )
-                raise HomeAssistantError(msg)
-            # Optimistic update
-            if self.coordinator.data:
-                for rule in self.coordinator.data.access_control:
-                    if rule.mac and rule.mac.lower() == self._mac:
-                        rule.blocked = False
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to unblock device {self._mac}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Block the device (Restrict access)."""
-        try:
-            success = await self._client.set_access_control_blocked(self._mac, True)
-            if not success:
-                msg = (
-                    f"Router rejected the block request for {self._mac}; "
-                    "check the Home Assistant logs (search for "
-                    "'openwrt-access-control') for details."
-                )
-                raise HomeAssistantError(msg)
-            # Optimistic update
-            if self.coordinator.data:
-                found = False
-                for rule in self.coordinator.data.access_control:
-                    if rule.mac and rule.mac.lower() == self._mac:
-                        rule.blocked = True
-                        found = True
-                if not found:
-                    # If no rule existed, we should theoretically add one to the local data
-                    # but usually there is one if we have a switch.
-                    pass
-            self.async_write_ha_state()
-        except Exception as err:
-            msg = f"Failed to block device {self._mac}: {err}"
-            raise HomeAssistantError(msg) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-
-class OpenWrtFirewallRuleSwitch(
-    CoordinatorEntity[OpenWrtDataCoordinator],
-    SwitchEntity,
-):
-    """Switch to enable/disable a general firewall rule."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        section_id: str,
-        name: str,
-    ) -> None:
-        """Initialize the firewall rule switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._section_id = section_id
-        self._attr_unique_id = f"{entry.entry_id}_firewall_rule_{section_id}"
-        self._attr_name = f"Firewall Rule: {name}"
-        self._attr_translation_key = "firewall_rule"
-        self._attr_translation_placeholders = {"name": name}
-        if name.lower().startswith("allow"):
-            self._attr_entity_registry_enabled_default = False
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return firewall rule status."""
-        if self.coordinator.data is None:
-            return None
-        for rule in self.coordinator.data.firewall_rules:
-            if rule.section_id == self._section_id:
-                return rule.enabled
-        return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
-        if self.coordinator.data is None:
-            return {}
-        for rule in self.coordinator.data.firewall_rules:
-            if rule.section_id == self._section_id:
-                return {
-                    "target": rule.target,
-                    "src": rule.src,
-                    "dest": rule.dest,
-                }
-        return {}
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable the firewall rule."""
-        try:
-            success = await self._client.set_firewall_rule_enabled(
-                self._section_id, True
-            )
-        except Exception as err:
-            msg = f"Failed to enable firewall rule {self._section_id}: {err}"
-            raise HomeAssistantError(msg) from err
-
-        if not success:
-            raise HomeAssistantError(
-                f"Router rejected request to enable firewall rule {self._section_id} "
-                "(no exception raised, but result was falsy)"
-            )
-
-        if self.coordinator.data:
-            for rule in self.coordinator.data.firewall_rules:
-                if rule.section_id == self._section_id:
-                    rule.enabled = True
-        self.async_write_ha_state()
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable the firewall rule."""
-        try:
-            success = await self._client.set_firewall_rule_enabled(
-                self._section_id, False
-            )
-        except Exception as err:
-            msg = f"Failed to disable firewall rule {self._section_id}: {err}"
-            raise HomeAssistantError(msg) from err
-
-        if not success:
-            raise HomeAssistantError(
-                f"Router rejected request to disable firewall rule {self._section_id} "
-                "(no exception raised, but result was falsy)"
-            )
-
-        if self.coordinator.data:
-            for rule in self.coordinator.data.firewall_rules:
-                if rule.section_id == self._section_id:
-                    rule.enabled = False
-        self.async_write_ha_state()
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-
-class OpenWrtSqmSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to enable/disable SQM."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        section_id: str,
-        name: str,
-    ) -> None:
-        """Initialize the SQM switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._section_id = section_id
-        self._attr_unique_id = f"{entry.entry_id}_sqm_{section_id}"
-        self._attr_name = name
-        self._attr_translation_key = "sqm_enabled"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
-        }
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return SQM enabled status."""
-        if self.coordinator.data is None:
-            return None
-        for sqm in self.coordinator.data.sqm:
-            if sqm.section_id == self._section_id:
-                return sqm.enabled
-        return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
-        if self.coordinator.data is None:
-            return {}
-        for sqm in self.coordinator.data.sqm:
-            if sqm.section_id == self._section_id:
-                return {
-                    "interface": sqm.interface,
-                    "download_limit": sqm.download,
-                    "upload_limit": sqm.upload,
-                    "qdisc": sqm.qdisc,
-                    "script": sqm.script,
-                }
-        return {}
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable SQM."""
-        try:
-            await self._client.set_sqm_config(self._section_id, enabled=True)
-            # Optimistic update
-            if self.coordinator.data:
-                for sqm in self.coordinator.data.sqm:
-                    if sqm.section_id == self._section_id:
-                        sqm.enabled = True
-            self.async_write_ha_state()
-        except Exception as err:
-            raise HomeAssistantError(f"Failed to manage SQM: {err}") from err
-        await self.coordinator.async_request_refresh()
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable SQM."""
-        try:
-            await self._client.set_sqm_config(self._section_id, enabled=False)
-            # Optimistic update
-            if self.coordinator.data:
-                for sqm in self.coordinator.data.sqm:
-                    if sqm.section_id == self._section_id:
-                        sqm.enabled = False
-            self.async_write_ha_state()
-        except Exception as err:
-            raise HomeAssistantError(f"Failed to manage SQM: {err}") from err
-        await self.coordinator.async_request_refresh()
-
-
-class OpenWrtLedSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity):
-    """Switch to enable/disable an LED."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = SwitchDeviceClass.SWITCH
-    _attr_entity_registry_enabled_default = False
-    _attr_icon = "mdi:led-on"
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        name: str,
-    ) -> None:
-        """Initialize the switch."""
-        super().__init__(coordinator)
-        self._client = client
-        self._name = name
-        self._attr_name = f"LED {name.replace('_', ' ').replace('-', ' ').title()}"
-        self._attr_unique_id = f"{entry.entry_id}_led_{name}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, cast(str, entry.unique_id or entry.data[CONF_HOST]))},
-        )
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if LED is on."""
-        if not self.coordinator.data:
-            return False
-        for led in self.coordinator.data.leds:
-            if led.name == self._name:
-                return led.active
-        return False
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the LED on."""
-        try:
-            await self._client.set_led(self._name, True)
-            # Optimistic update
-            if self.coordinator.data:
-                for led in self.coordinator.data.leds:
-                    if led.name == self._name:
-                        led.active = True
-            self.async_write_ha_state()
-        except Exception as err:
-            raise HomeAssistantError(
-                f"Failed to turn on LED {self._name}: {err}"
-            ) from err
-        self.coordinator.hass.async_create_task(
-            self.coordinator.async_request_refresh()
-        )
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the LED off."""
-        try:
-            await self._client.set_led(self._name, False)
-            # Optimistic update
-            if self.coordinator.data:
-                for led in self.coordinator.data.leds:
-                    if led.name == self._name:
-                        led.active = False
-            self.async_write_ha_state()
-        except Exception as err:
-            raise HomeAssistantError(
-                f"Failed to turn off LED {self._name}: {err}"
-            ) from err
-        self.hass.async_create_task(self.coordinator.async_request_refresh())
+__all__ = [
+    "CONF_ENABLE_FIREWALL",
+    "CONF_ENABLE_LED",
+    "CONF_ENABLE_SERVICES",
+    "CONF_ENABLE_SQM",
+    "CONF_ENABLE_VPN",
+    "CONF_HOST",
+    "CONF_SKIP_RANDOM_MAC",
+    "CONF_TRACK_DEVICES",
+    "CONF_TRACK_WIRED",
+    "CoordinatorEntity",
+    "DATA_CLIENT",
+    "DATA_COORDINATOR",
+    "DEFAULT_SKIP_RANDOM_MAC",
+    "DEFAULT_TRACK_DEVICES",
+    "DEFAULT_TRACK_WIRED",
+    "DOMAIN",
+    "DeviceInfo",
+    "EntityCategory",
+    "HomeAssistant",
+    "HomeAssistantError",
+    "OpenWrtAccessControlSwitch",
+    "OpenWrtAdBlockSwitch",
+    "OpenWrtBanIpSwitch",
+    "OpenWrtClient",
+    "OpenWrtDataCoordinator",
+    "OpenWrtFirewallRuleSwitch",
+    "OpenWrtFirewallSwitch",
+    "OpenWrtLedSwitch",
+    "OpenWrtRadioSwitch",
+    "OpenWrtServiceSwitch",
+    "OpenWrtSimpleAdBlockSwitch",
+    "OpenWrtSqmSwitch",
+    "OpenWrtWireGuardSwitch",
+    "OpenWrtWirelessSwitch",
+    "OpenWrtWpsSwitch",
+    "SERVICE_ICONS",
+    "ServiceInfo",
+    "SwitchDeviceClass",
+    "SwitchEntity",
+    "_add_access_control_switches",
+    "_add_firewall_switches",
+    "_add_led_switches",
+    "_add_package_switches",
+    "_add_service_switches",
+    "_add_sqm_switches",
+    "_add_vpn_switches",
+    "_add_wireless_switches",
+    "_get_router_device_id",
+    "_lookup_device",
+    "async_setup_entry",
+    "er",
+    "format_ap_device_id",
+    "format_ap_name",
+    "format_radio_device_id",
+    "format_radio_name",
+    "normalize_band",
+]
