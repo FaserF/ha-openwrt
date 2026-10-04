@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,11 +14,26 @@ from custom_components.openwrt.api.base import (
     OpenWrtData,
     OpenWrtPackages,
 )
+from custom_components.openwrt.api.luci_rpc import LuciRpcClient
+from custom_components.openwrt.api.ssh import SshClient
 from custom_components.openwrt.api.ubus import UbusClient, UbusTimeoutError
 from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
 from custom_components.openwrt.sensor import _create_mwan_sensors
 
 BOOT = datetime(2026, 10, 3, 3, 2, 0, tzinfo=UTC)
+
+# The reply of "ubus call mwan3 status": every backend reads this structure.
+MWAN_REPLY = {
+    "interfaces": {
+        "wan": {"status": "online", "online": 55090, "offline": 0, "uptime": 61245},
+        "backup": {
+            "status": "offline",
+            "online": 0,
+            "offline": 42,
+            "uptime": 61226,
+        },
+    }
+}
 
 
 def _make_coordinator(
@@ -228,19 +244,33 @@ async def test_ubus_mwan_status_passes_the_state_counters_through() -> None:
         password="password",
     )
     client._session_id = "test_token"
-    reply = {
-        "interfaces": {
-            "wan": {"status": "online", "online": 55090, "offline": 0, "uptime": 61245},
-            "backup": {
-                "status": "offline",
-                "online": 0,
-                "offline": 42,
-                "uptime": 61226,
-            },
-        }
-    }
 
-    with patch.object(client, "_call", new_callable=AsyncMock, return_value=reply):
+    with patch.object(client, "_call", new_callable=AsyncMock, return_value=MWAN_REPLY):
+        statuses = {m.interface_name: m for m in await client.get_mwan_status()}
+
+    assert (statuses["wan"].online, statuses["wan"].offline) == (55090, 0)
+    assert (statuses["backup"].online, statuses["backup"].offline) == (0, 42)
+
+
+@pytest.mark.parametrize(
+    ("client_class", "runner"),
+    [(LuciRpcClient, "execute_command"), (SshClient, "_exec")],
+)
+async def test_shell_backends_pass_the_state_counters_through(
+    client_class: type[LuciRpcClient] | type[SshClient], runner: str
+) -> None:
+    """LuCI RPC and SSH read the same reply, so the ratio works there too."""
+    client = client_class(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="root",
+        password="password",
+    )
+
+    with patch.object(
+        client, runner, new_callable=AsyncMock, return_value=json.dumps(MWAN_REPLY)
+    ):
         statuses = {m.interface_name: m for m in await client.get_mwan_status()}
 
     assert (statuses["wan"].online, statuses["wan"].offline) == (55090, 0)
