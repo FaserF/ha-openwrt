@@ -8,7 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.openwrt.api.base import MwanStatus, OpenWrtData
+from custom_components.openwrt.api.base import (
+    MwanStatus,
+    OpenWrtData,
+    OpenWrtPackages,
+)
 from custom_components.openwrt.api.ubus import UbusClient
 from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
 from custom_components.openwrt.sensor import _create_mwan_sensors
@@ -266,3 +270,72 @@ def test_ratio_sensor_reports_the_boot_ratio_and_its_window() -> None:
     # No window yet: unknown rather than a misleading 0 %.
     assert backup.native_value is None
     assert backup.extra_state_attributes == {"coverage_start": None}
+
+
+def _mock_fetchers(client: UbusClient) -> None:
+    """Stub every fetch get_all_data makes, so only the MWAN path matters."""
+    for name in (
+        "get_system_resources",
+        "get_device_info",
+        "get_qmodem_info",
+        "get_latency",
+        "get_external_ip",
+        "get_gateway_mac",
+        "get_wps_status",
+    ):
+        setattr(client, name, AsyncMock())
+    for name in (
+        "get_network_interfaces",
+        "get_connected_devices",
+        "get_services",
+        "get_leds",
+        "get_firewall_redirects",
+        "get_firewall_rules",
+        "get_access_control",
+        "get_sqm_status",
+        "get_wireguard_interfaces",
+        "get_system_logs",
+        "get_ip_neighbors",
+        "get_vpn_status",
+        "get_wifi_credentials",
+        "get_dhcp_leases",
+        "get_lldp_neighbors",
+        "get_upnp_mappings",
+    ):
+        setattr(client, name, AsyncMock(return_value=[]))
+    client.get_local_macs = AsyncMock(return_value=set())
+    client.get_local_ips = AsyncMock(return_value=set())
+    client.check_packages = AsyncMock(return_value=OpenWrtPackages(mwan3=True))
+    client.check_permissions = AsyncMock()
+    client.is_reboot_required = AsyncMock(return_value=False)
+    client._call = AsyncMock(return_value={})
+    client.execute_command = AsyncMock(return_value="")
+    client.read_file = AsyncMock(return_value=None)
+
+
+async def test_fresh_mwan_status_is_not_replaced_by_the_medium_cache() -> None:
+    """MWAN status is fetched on every update; a cached copy must not win.
+
+    The medium tier caches its results for 180 s and restores them on the
+    updates in between. MWAN status used to be part of that cache, so every
+    fresh fetch was overwritten again until the next medium poll.
+    """
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="ha-user",
+        password="password",
+    )
+    _mock_fetchers(client)
+    first = [MwanStatus(interface_name="wan", status="online", uptime=100, online=100)]
+    second = [MwanStatus(interface_name="wan", status="offline", uptime=160, offline=5)]
+    client.get_mwan_status = AsyncMock(side_effect=[first, second])
+    client.coordinator = MagicMock()
+    client.coordinator.data = OpenWrtData()
+
+    await client.get_all_data()  # first update: every tier runs, medium data cached
+    data = await client.get_all_data()  # next update: fast tier only
+
+    assert data.mwan_status is second
+    assert data.mwan_status[0].status == "offline"
