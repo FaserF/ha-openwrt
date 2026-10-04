@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
-from typing import Any, cast
 
 from homeassistant.components.button import (
     ButtonDeviceClass,
@@ -24,61 +21,29 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.base import OpenWrtClient
+from .buttons import (
+    BUTTONS,
+    OpenWrtButtonDescription,
+    OpenWrtButtonEntity,
+    OpenWrtKickButton,
+    OpenWrtWakeOnLanButton,
+    _add_device_buttons,
+    _add_extra_service_buttons,
+    _add_interface_buttons,
+    _add_service_buttons,
+    _add_static_buttons,
+    _add_wireless_buttons,
+    _get_unique_devices,
+)
 from .const import (
-    CONF_SKIP_RANDOM_MAC,
-    CONF_TRACK_DEVICES,
-    CONF_TRACK_WIRED,
     DATA_CLIENT,
     DATA_COORDINATOR,
-    DEFAULT_SKIP_RANDOM_MAC,
-    DEFAULT_TRACK_DEVICES,
-    DEFAULT_TRACK_WIRED,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
 from .helpers import get_via_device_id, is_random_mac, resolve_client_name
 
 _LOGGER = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, kw_only=True)
-class OpenWrtButtonDescription(ButtonEntityDescription):
-    """OpenWrt button description."""
-
-    press_fn: Callable[[OpenWrtClient], Coroutine[Any, Any, Any]]
-
-
-BUTTONS: tuple[OpenWrtButtonDescription, ...] = (
-    OpenWrtButtonDescription(
-        key="reboot",
-        name="Reboot",
-        translation_key="reboot",
-        device_class=ButtonDeviceClass.RESTART,
-        entity_category=EntityCategory.CONFIG,
-        press_fn=lambda client: client.reboot(),
-    ),
-    OpenWrtButtonDescription(
-        key="wps_start",
-        name="Start WPS",
-        translation_key="wps_start",
-        entity_category=EntityCategory.CONFIG,
-        press_fn=lambda client: client.set_wps(True),
-    ),
-    OpenWrtButtonDescription(
-        key="wps_cancel",
-        name="Cancel WPS",
-        translation_key="wps_cancel",
-        entity_category=EntityCategory.CONFIG,
-        press_fn=lambda client: client.set_wps(False),
-    ),
-    OpenWrtButtonDescription(
-        key="create_backup",
-        name="Create Backup",
-        translation_key="create_backup",
-        entity_category=EntityCategory.CONFIG,
-        press_fn=lambda client: client.create_backup(),
-    ),
-)
 
 
 async def async_setup_entry(
@@ -152,14 +117,11 @@ async def async_setup_entry(
             unique_id = ent.unique_id
             # Cleanup WoL/Kick buttons
             if "_wol" in unique_id or "_kick" in unique_id:
-                # Format: {entry_id}_{mac}_wol or {entry_id}_{mac}_kick_{iface}
                 parts = unique_id.split("_")
                 mac = ""
                 if "_wol" in unique_id:
                     mac = unique_id.split("_")[-2].lower()
                 elif "_kick" in unique_id:
-                    # Logic might be complex due to underscores in entry_id,
-                    # but usually it's [entry_id, mac, 'kick', interface]
                     for i, part in enumerate(parts):
                         if part == "kick" and i > 0:
                             mac = parts[i - 1].lower()
@@ -193,7 +155,7 @@ async def async_setup_entry(
                         ent_reg.async_remove(ent.entity_id)
                         continue
 
-                # NEW cleanup: Kick buttons with legacy interface names
+                # Cleanup: Kick buttons with legacy interface names
                 if "_kick_" in unique_id:
                     iface = unique_id.split("_kick_")[-1]
                     if iface and active_interfaces and iface not in active_interfaces:
@@ -209,521 +171,31 @@ async def async_setup_entry(
     _async_add_new_entities()
 
 
-def _add_static_buttons(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    tracked_keys: set[str],
-    new_entities: list[ButtonEntity],
-) -> None:
-    """Add static buttons."""
-    perms = coordinator.data.permissions
-    for description in BUTTONS:
-        if description.key in tracked_keys:
-            continue
-        if description.key == "reboot" and not perms.write_system:
-            continue
-        if description.key in ("wps_start", "wps_cancel") and not perms.write_wireless:
-            continue
-        if description.key == "create_backup" and not perms.write_system:
-            continue
-
-        tracked_keys.add(description.key)
-        new_entities.append(
-            OpenWrtButtonEntity(coordinator, entry, description, client)
-        )
-
-
-def _add_service_buttons(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    tracked_keys: set[str],
-    new_entities: list[ButtonEntity],
-) -> None:
-    """Add service buttons."""
-    for service in coordinator.data.services:
-        if not service.name:
-            continue
-        for action in ("restart", "stop"):
-            key = f"{action}_{service.name}"
-            if key in tracked_keys:
-                continue
-
-            tracked_keys.add(key)
-            new_entities.append(
-                OpenWrtButtonEntity(
-                    coordinator,
-                    entry,
-                    OpenWrtButtonDescription(
-                        key=key,
-                        name=f"{action.capitalize()} {service.name}",
-                        translation_key=f"service_{action}",
-                        translation_placeholders={"service": service.name},
-                        entity_category=EntityCategory.CONFIG,
-                        entity_registry_enabled_default=False,
-                        press_fn=lambda c, n=service.name, a=action: c.manage_service(
-                            n, a
-                        ),
-                    ),
-                    client,
-                )
-            )
-
-
-def _add_interface_buttons(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    tracked_keys: set[str],
-    new_entities: list[ButtonEntity],
-) -> None:
-    """Add interface buttons."""
-    for iface in coordinator.data.network_interfaces:
-        if iface.name in ("wan", "wan6"):
-            key = f"reconnect_{iface.name}"
-            if key in tracked_keys:
-                continue
-
-            tracked_keys.add(key)
-            new_entities.append(
-                OpenWrtButtonEntity(
-                    coordinator,
-                    entry,
-                    OpenWrtButtonDescription(
-                        key=key,
-                        name=iface.name.upper(),
-                        translation_key="interface_reconnect",
-                        translation_placeholders={"interface": iface.name.upper()},
-                        entity_category=EntityCategory.CONFIG,
-                        press_fn=lambda c, n=iface.name: c.manage_interface(
-                            n, "reconnect"
-                        ),
-                    ),
-                    client,
-                )
-            )
-
-
-def _add_wireless_buttons(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    tracked_keys: set[str],
-    new_entities: list[ButtonEntity],
-) -> None:
-    """Add wireless buttons (WPS Push)."""
-    if not coordinator.data or not coordinator.data.permissions.write_wireless:
-        return
-
-    wireless_ifaces = {
-        wifi.name for wifi in coordinator.data.wireless_interfaces if wifi.name
-    }
-
-    for iface in wireless_ifaces:
-        key = f"wps_push_{iface}"
-        if key in tracked_keys:
-            continue
-
-        tracked_keys.add(key)
-        new_entities.append(
-            OpenWrtButtonEntity(
-                coordinator,
-                entry,
-                OpenWrtButtonDescription(
-                    key=key,
-                    name=f"WPS Push ({iface})",
-                    icon="mdi:wifi-sync",
-                    entity_category=EntityCategory.CONFIG,
-                    entity_registry_enabled_default=False,
-                    press_fn=lambda c, i=iface: c.trigger_wps_push(i),
-                ),
-                client,
-            )
-        )
-
-
-def _add_extra_service_buttons(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    tracked_keys: set[str],
-    new_entities: list[ButtonEntity],
-) -> None:
-    """Add extra service buttons."""
-    if not coordinator.data or not coordinator.data.permissions.write_services:
-        return
-
-    pkgs = coordinator.data.packages
-
-    # AdBlock
-    if pkgs.adblock:
-        for action in ("reload", "suspend", "resume"):
-            key = f"adblock_{action}"
-            if key in tracked_keys:
-                continue
-            tracked_keys.add(key)
-            new_entities.append(
-                OpenWrtButtonEntity(
-                    coordinator,
-                    entry,
-                    OpenWrtButtonDescription(
-                        key=key,
-                        name=f"AdBlock {action.capitalize()}",
-                        icon=(
-                            "mdi:shield-refresh"
-                            if action == "reload"
-                            else "mdi:shield-off"
-                        ),
-                        entity_category=EntityCategory.CONFIG,
-                        entity_registry_enabled_default=False,
-                        press_fn=lambda c, a=action: c.manage_service("adblock", a),
-                    ),
-                    client,
-                )
-            )
-
-    # AdGuardHome
-    if pkgs.adguardhome:
-        key = "adguardhome_reload"
-        if key not in tracked_keys:
-            tracked_keys.add(key)
-            new_entities.append(
-                OpenWrtButtonEntity(
-                    coordinator,
-                    entry,
-                    OpenWrtButtonDescription(
-                        key=key,
-                        name="AdGuard Home Reload",
-                        icon="mdi:shield-sync",
-                        entity_category=EntityCategory.CONFIG,
-                        entity_registry_enabled_default=False,
-                        press_fn=lambda c: c.manage_service("adguardhome", "reload"),
-                    ),
-                    client,
-                )
-            )
-
-    # Unbound
-    if pkgs.unbound:
-        key = "unbound_reload"
-        if key not in tracked_keys:
-            tracked_keys.add(key)
-            new_entities.append(
-                OpenWrtButtonEntity(
-                    coordinator,
-                    entry,
-                    OpenWrtButtonDescription(
-                        key=key,
-                        name="Unbound Reload",
-                        icon="mdi:dns-sync",
-                        entity_category=EntityCategory.CONFIG,
-                        entity_registry_enabled_default=False,
-                        press_fn=lambda c: c.manage_service("unbound", "reload"),
-                    ),
-                    client,
-                )
-            )
-
-    # DNS Cache
-    key = "dns_flush"
-    if key not in tracked_keys and coordinator.data.permissions.write_services:
-        tracked_keys.add(key)
-        new_entities.append(
-            OpenWrtButtonEntity(
-                coordinator,
-                entry,
-                OpenWrtButtonDescription(
-                    key=key,
-                    name="Flush DNS Cache",
-                    icon="mdi:dns-sync",
-                    entity_category=EntityCategory.CONFIG,
-                    entity_registry_enabled_default=False,
-                    press_fn=lambda c: c.execute_command("/etc/init.d/dnsmasq restart"),
-                ),
-                client,
-            )
-        )
-
-
-def _add_device_buttons(
-    coordinator: OpenWrtDataCoordinator,
-    entry: ConfigEntry,
-    client: OpenWrtClient,
-    tracked_keys: set[str],
-    new_entities: list[ButtonEntity],
-) -> None:
-    """Add device buttons (WoL, Kick)."""
-    unique_devices = _get_unique_devices(coordinator)
-    perms = coordinator.data.permissions
-    pkgs = coordinator.data.packages
-    router_hostname = (
-        coordinator.data.device_info.hostname if coordinator.data.device_info else ""
-    )
-
-    track_devices = entry.options.get(
-        CONF_TRACK_DEVICES,
-        entry.data.get(CONF_TRACK_DEVICES, DEFAULT_TRACK_DEVICES),
-    )
-    if not track_devices:
-        return
-
-    track_wired = entry.options.get(
-        CONF_TRACK_WIRED,
-        entry.data.get(CONF_TRACK_WIRED, DEFAULT_TRACK_WIRED),
-    )
-
-    from .helpers import is_random_mac
-
-    skip_random = entry.options.get(CONF_SKIP_RANDOM_MAC, DEFAULT_SKIP_RANDOM_MAC)
-
-    for mac_lower, info in unique_devices.items():
-        mac = info["mac"]
-
-        if skip_random and is_random_mac(mac_lower):
-            continue
-
-        if not track_wired and not info["is_wireless"]:
-            continue
-        hostname = info["hostname"]
-        dev_name = (
-            hostname
-            if hostname and hostname != "*" and hostname != router_hostname
-            else mac
-        )
-
-        # WoL Button
-        wol_key = f"wol_{mac_lower}"
-        if (
-            wol_key not in tracked_keys
-            and pkgs.etherwake is not False
-            and not info["is_wireless"]
-        ):
-            tracked_keys.add(wol_key)
-            new_entities.append(
-                OpenWrtWakeOnLanButton(
-                    coordinator, entry, client, mac, dev_name, info["interface"]
-                )
-            )
-
-        # Kick Button
-        kick_key = f"kick_{mac_lower}_{info['interface']}"
-        if (
-            kick_key not in tracked_keys
-            and info["active"]
-            and perms.read_wireless
-            and info["is_wireless"]
-            and info["interface"]
-            and pkgs.iwinfo is not False
-        ):
-            tracked_keys.add(kick_key)
-            new_entities.append(
-                OpenWrtKickButton(
-                    coordinator, entry, client, mac, info["interface"], dev_name
-                )
-            )
-
-
-def _get_unique_devices(
-    coordinator: OpenWrtDataCoordinator,
-) -> dict[str, dict[str, Any]]:
-    """Aggregate unique devices."""
-    unique: dict[str, dict[str, Any]] = {}
-
-    for device in coordinator.data.connected_devices:
-        if not device.mac:
-            continue
-        mac_lower = device.mac.lower()
-        is_wireless = device.is_wireless
-        if not is_wireless and device.interface:
-            iface_lower = device.interface.lower()
-            if any(k in iface_lower for k in ("wlan", "ap", "radio")):
-                is_wireless = True
-        unique[mac_lower] = {
-            "mac": device.mac,
-            "hostname": device.hostname,
-            "is_wireless": is_wireless,
-            "interface": device.interface,
-            "active": True,
-        }
-
-    for lease in coordinator.data.dhcp_leases:
-        if not lease.mac:
-            continue
-        mac_lower = lease.mac.lower()
-        if mac_lower not in unique:
-            # Check history to see if it's a known wireless device
-            hist_wireless = False
-            if mac_lower in coordinator._device_history:
-                hist_wireless = coordinator._device_history[mac_lower].get(
-                    "is_wireless", False
-                )
-
-            unique[mac_lower] = {
-                "mac": lease.mac,
-                "hostname": lease.hostname,
-                "is_wireless": hist_wireless,
-                "interface": None,
-                "active": False,
-            }
-        elif not unique[mac_lower]["hostname"] or unique[mac_lower]["hostname"] == "*":
-            unique[mac_lower]["hostname"] = lease.hostname
-    return unique
-
-
-class OpenWrtButtonEntity(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity):
-    """Representation of an OpenWrt button."""
-
-    entity_description: OpenWrtButtonDescription
-    _attr_has_entity_name = True
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        description: OpenWrtButtonDescription,
-        client: OpenWrtClient,
-    ) -> None:
-        """Initialize."""
-        super().__init__(coordinator)
-        self.entity_description = description
-        self._client = client
-        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, cast(str, entry.unique_id or entry.data[CONF_HOST]))},
-        )
-
-    async def async_press(self) -> None:
-        """Handle press."""
-        try:
-            await self.entity_description.press_fn(self._client)
-        except Exception as err:
-            msg = f"Failed to execute {self.entity_description.key}: {err}"
-            raise HomeAssistantError(
-                msg,
-            ) from err
-        await self.coordinator.async_request_refresh()
-
-
-class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity):
-    """Representation of an OpenWrt Wake on LAN button."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Wake on LAN"
-    _attr_translation_key = "wake_on_lan"
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        mac: str,
-        name: str,
-        interface: str | None = None,
-    ) -> None:
-        """Initialize."""
-        super().__init__(coordinator)
-        self._client = client
-        self._mac = mac.lower()
-        self._interface = interface
-        self._attr_unique_id = f"{entry.entry_id}_{self._mac}_wol"
-        self._entry = entry
-        self._initial_name = name
-
-        if is_random_mac(self._mac):
-            self._attr_entity_registry_enabled_default = False
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device info."""
-        return DeviceInfo(
-            connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
-            name=resolve_client_name(
-                self.coordinator.hass, self._mac, self._initial_name
-            ),
-            via_device_id=get_via_device_id(
-                self.coordinator.hass, self.coordinator, self._entry, self._mac
-            ),
-        )
-
-    async def async_press(self) -> None:
-        """Press button."""
-        # Use ether-wake with optional interface
-        # We try both names as some distros use one or the other
-        command = f"ether-wake {self._mac}"
-        if self._interface:
-            command = f"ether-wake -i {self._interface} {self._mac}"
-
-        try:
-            output = await self._client.execute_command(command)
-            if output and "not found" in output.lower():
-                # Try etherwake (without hyphen)
-                command = command.replace("ether-wake", "etherwake")
-                await self._client.execute_command(command)
-        except Exception as err:
-            if "not found" in str(err).lower():
-                msg = (
-                    "Wake on LAN command (ether-wake/etherwake) not found on router. "
-                    "Please install the 'etherwake' package on OpenWrt."
-                )
-                raise HomeAssistantError(
-                    msg,
-                ) from err
-            msg = f"Failed to send WoL packet: {err}"
-            raise HomeAssistantError(msg) from err
-
-
-class OpenWrtKickButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEntity):
-    """Representation of an OpenWrt kick device button."""
-
-    _attr_has_entity_name = True
-    _attr_translation_key = "kick_device"
-    _attr_entity_registry_enabled_default = False
-
-    def __init__(
-        self,
-        coordinator: OpenWrtDataCoordinator,
-        entry: ConfigEntry,
-        client: OpenWrtClient,
-        mac: str,
-        interface: str,
-        hostname: str,
-    ) -> None:
-        """Initialize."""
-        super().__init__(coordinator)
-        self._client = client
-        self._mac = mac.lower()
-        self._interface = interface
-        self._attr_unique_id = f"{entry.entry_id}_{self._mac}_kick_{interface}"
-        self._entry = entry
-        self._initial_name = hostname
-
-        if is_random_mac(self._mac):
-            self._attr_entity_registry_enabled_default = False
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device info."""
-        return DeviceInfo(
-            connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
-            name=resolve_client_name(
-                self.coordinator.hass, self._mac, self._initial_name
-            ),
-            via_device_id=get_via_device_id(
-                self.coordinator.hass, self.coordinator, self._entry, self._mac
-            ),
-        )
-
-    async def async_press(self) -> None:
-        """Disconnect device."""
-        try:
-            success = await self._client.kick_device(self._mac, self._interface)
-            if not success:
-                msg = f"Failed to disconnect {self._mac} from {self._interface}. Ensure hostapd is running."
-                raise HomeAssistantError(
-                    msg,
-                )
-        except Exception as err:
-            msg = f"Failed to execute device kick: {err}"
-            raise HomeAssistantError(msg) from err
-        await self.coordinator.async_request_refresh()
+__all__ = [
+    "BUTTONS",
+    "ButtonDeviceClass",
+    "ButtonEntity",
+    "ButtonEntityDescription",
+    "CONF_HOST",
+    "CoordinatorEntity",
+    "DeviceInfo",
+    "EntityCategory",
+    "HomeAssistantError",
+    "OpenWrtButtonDescription",
+    "OpenWrtButtonEntity",
+    "OpenWrtKickButton",
+    "OpenWrtWakeOnLanButton",
+    "_add_device_buttons",
+    "_add_extra_service_buttons",
+    "_add_interface_buttons",
+    "_add_service_buttons",
+    "_add_static_buttons",
+    "_add_wireless_buttons",
+    "_get_unique_devices",
+    "async_setup_entry",
+    "dr",
+    "er",
+    "get_via_device_id",
+    "is_random_mac",
+    "resolve_client_name",
+]
