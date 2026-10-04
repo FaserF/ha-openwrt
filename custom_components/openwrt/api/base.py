@@ -371,6 +371,10 @@ class MwanStatus:
     interface_name: str = ""
     status: str = ""
     online_ratio: float = 0.0
+    online: float = 0.0
+    offline: float = 0.0
+    boot_online_ratio: float | None = None
+    coverage_start: datetime | None = None
     uptime: int = 0
     enabled: bool = False
     latency: float | None = None
@@ -2138,6 +2142,12 @@ class OpenWrtClient(abc.ABC):
             core_dynamic_tasks["wireless"] = self.get_wireless_interfaces()
         if data.packages.dhcp is not False:
             core_dynamic_tasks["dhcp"] = self.get_dhcp_leases()
+        if data.packages.mwan3 is not False:
+            # Fast tier on purpose: the MWAN3 counters bound both the
+            # accuracy of the online ratio and how quickly the mwan_online
+            # binary sensor reacts to an outage. One extra ubus call per
+            # cycle is negligible against a local router.
+            core_dynamic_tasks["mwan"] = self.get_mwan_status()
 
         core_dyn_keys = list(core_dynamic_tasks.keys())
 
@@ -2172,6 +2182,10 @@ class OpenWrtClient(abc.ABC):
         if "dhcp" in core_dyn_results:
             data.dhcp_leases = get_val(
                 core_dyn_results["dhcp"], data.dhcp_leases, "DHCP"
+            )
+        if "mwan" in core_dyn_results:
+            data.mwan_status = get_val(
+                core_dyn_results["mwan"], data.mwan_status, "MWAN"
             )
 
         # 2. Slow-changing optional data (Slow Poll) - Reduces router load
@@ -2267,7 +2281,6 @@ class OpenWrtClient(abc.ABC):
         if is_medium_poll:
             medium_tasks = {
                 "ip_neighbors": self.get_ip_neighbors(),
-                "mwan": self.get_mwan_status(),
                 "qmodem": self.get_qmodem_info(),
                 "vpn": self.get_vpn_status(),
                 "latency": self.get_latency(),
@@ -2303,7 +2316,6 @@ class OpenWrtClient(abc.ABC):
             data.ip_neighbors = get_val(
                 med_map.get("ip_neighbors"), data.ip_neighbors, "IP neighbors"
             )
-            data.mwan_status = get_val(med_map.get("mwan"), data.mwan_status, "MWAN")
             data.qmodem_info = get_val(med_map.get("qmodem"), data.qmodem_info, "modem")
             data.vpn_interfaces = get_val(
                 med_map.get("vpn"), data.vpn_interfaces, "VPN"
