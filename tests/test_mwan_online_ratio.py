@@ -13,7 +13,7 @@ from custom_components.openwrt.api.base import (
     OpenWrtData,
     OpenWrtPackages,
 )
-from custom_components.openwrt.api.ubus import UbusClient
+from custom_components.openwrt.api.ubus import UbusClient, UbusTimeoutError
 from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
 from custom_components.openwrt.sensor import _create_mwan_sensors
 
@@ -339,3 +339,43 @@ async def test_fresh_mwan_status_is_not_replaced_by_the_medium_cache() -> None:
 
     assert data.mwan_status is second
     assert data.mwan_status[0].status == "offline"
+
+
+async def test_failed_mwan_query_keeps_the_previous_status() -> None:
+    """A failed ubus query must not read as "no MWAN interfaces".
+
+    An empty list would turn the MWAN online binary sensor off and the ratio
+    unknown until the next update, as if the uplink had failed.
+    """
+    client = UbusClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="ha-user",
+        password="password",
+    )
+    _mock_fetchers(client)
+    replies: list[Any] = [
+        {"interfaces": {"wan": {"status": "online", "online": 100, "uptime": 100}}},
+        UbusTimeoutError("mwan3 status timed out"),
+    ]
+
+    async def _call(obj: str, method: str, *args: Any, **kwargs: Any) -> Any:
+        if (obj, method) != ("mwan3", "status"):
+            return {}
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    client._call = AsyncMock(side_effect=_call)
+    client.coordinator = MagicMock()
+    client.coordinator.data = OpenWrtData()
+
+    client.coordinator.data = await client.get_all_data()
+    previous = client.coordinator.data.mwan_status
+    data = await client.get_all_data()
+
+    assert not replies
+    assert data.mwan_status is previous
+    assert data.mwan_status[0].status == "online"
