@@ -181,13 +181,28 @@ async def test_uptime_going_backwards_reanchors_the_window() -> None:
     assert result["wan"].boot_online_ratio == 1.0
 
 
-async def test_mwan_sample_from_before_the_reboot_is_ignored() -> None:
-    """A tracking session cannot be older than the router itself."""
+async def test_mwan_sample_from_before_the_reboot_is_dropped() -> None:
+    """A tracking session cannot be older than the router itself.
+
+    Such a sample was retained from before the reboot, e.g. because the mwan3
+    query failed. Its state and ratio describe the previous boot.
+    """
     coordinator, _ = _make_coordinator()
+    data = OpenWrtData()
+    data.mwan_status = [
+        MwanStatus(
+            interface_name="wan",
+            status="online",
+            uptime=5000,
+            online=4000,
+            boot_online_ratio=0.97,
+            coverage_start=BOOT,
+        )
+    ]
 
-    result = await _poll(coordinator, 100, wan=(5000, 4000, 0))
+    await coordinator._async_update_mwan_boot_totals(data, 100, True)
 
-    assert result["wan"].boot_online_ratio is None
+    assert data.mwan_status == []
 
 
 async def test_totals_survive_a_home_assistant_restart() -> None:
