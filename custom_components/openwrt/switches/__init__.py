@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+from .hardware import (
+    OpenWrtLedSwitch,
+    OpenWrtWireGuardSwitch,
+    _add_led_switches,
+    _add_vpn_switches,
+)
 from .security import (
     OpenWrtAccessControlSwitch,
     OpenWrtFirewallRuleSwitch,
     OpenWrtFirewallSwitch,
-    OpenWrtLedSwitch,
-    OpenWrtWireGuardSwitch,
     _add_access_control_switches,
     _add_firewall_switches,
-    _add_led_switches,
-    _add_vpn_switches,
 )
 from .services import (
     SERVICE_ICONS,
