@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,6 +17,14 @@ from homeassistant.const import CONF_HOST
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+
+def _get_device_info(*args: Any, **kwargs: Any) -> DeviceInfo:
+    """Return DeviceInfo, respecting any runtime patches on custom_components.openwrt.sensor."""
+    sensor_mod = sys.modules.get("custom_components.openwrt.sensor")
+    device_info_cls = getattr(sensor_mod, "DeviceInfo", DeviceInfo)
+    return device_info_cls(*args, **kwargs)
+
 
 from ..api.base import OpenWrtData, StorageUsage
 from ..const import DOMAIN
@@ -69,7 +78,7 @@ class OpenWrtSensorEntity(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntit
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_device_info = DeviceInfo(
+        self._attr_device_info = _get_device_info(
             identifiers={(DOMAIN, cast(str, entry.unique_id or entry.data[CONF_HOST]))},
         )
         if hasattr(description, "entity_registry_enabled_default"):

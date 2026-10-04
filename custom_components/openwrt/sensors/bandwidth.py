@@ -16,11 +16,10 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .. import sensor
 from ..const import DOMAIN
 from ..coordinator import OpenWrtDataCoordinator
 from ..helpers import get_via_device_id, resolve_client_name
-from .base import _format_bytes
+from .base import _format_bytes, _get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,7 +70,7 @@ class OpenWrtNlbwmonTopHostsSensor(
     @property
     def device_info(self) -> DeviceInfo:
         """Return device info."""
-        return sensor.DeviceInfo(
+        return _get_device_info(
             identifiers={(DOMAIN, self.coordinator.router_id)},
         )
 
@@ -130,7 +129,7 @@ class OpenWrtNlbwmonRxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEn
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return sensor.DeviceInfo(
+        return _get_device_info(
             identifiers={(DOMAIN, self._mac.lower())},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac.lower())},
             name=resolve_client_name(
@@ -181,7 +180,7 @@ class OpenWrtNlbwmonTxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEn
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return sensor.DeviceInfo(
+        return _get_device_info(
             identifiers={(DOMAIN, self._mac.lower())},
             connections={(dr.CONNECTION_NETWORK_MAC, self._mac.lower())},
             name=resolve_client_name(

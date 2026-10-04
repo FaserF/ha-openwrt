@@ -12,7 +12,9 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_ENABLE_LOAD,
@@ -81,6 +83,7 @@ from .sensors import (
 _LOGGER = logging.getLogger(__name__)
 
 __all__ = [
+    "DeviceInfo",
     "OpenWrtDeviceSensor",
     "OpenWrtMwanMetricSensor",
     "OpenWrtNlbwmonRxSensor",
@@ -127,6 +130,7 @@ __all__ = [
     "_get_system_sensors",
     "_get_upnp_sensors",
     "async_setup_entry",
+    "dt_util",
 ]
 
 

@@ -13,7 +13,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.helpers import device_registry as dr
 
-from .. import sensor
 from ..const import DOMAIN
 from ..coordinator import OpenWrtDataCoordinator
 from ..helpers import (
@@ -23,7 +22,7 @@ from ..helpers import (
     format_ap_name,
     format_radio_device_id,
 )
-from .base import OpenWrtSensorDescription, OpenWrtSensorEntity
+from .base import OpenWrtSensorDescription, OpenWrtSensorEntity, _get_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
             via_device_id = radio_dev.id if radio_dev else None
         if via_device_id is None:
             via_device_id = _get_router_device_id(coordinator.hass, coordinator, entry)
-        self._attr_device_info = sensor.DeviceInfo(
+        self._attr_device_info = _get_device_info(
             identifiers={
                 (DOMAIN, format_ap_device_id(coordinator.router_id, stable_id))
             },
