@@ -703,6 +703,8 @@ class UbusNetworkMixin:
                         ),
                         uptime=iface_data.get("uptime", 0),
                         enabled=iface_data.get("enabled", False),
+                        latency=iface_data.get("latency"),
+                        packet_loss=iface_data.get("packet_loss"),
                     ),
                 )
         except UbusError:

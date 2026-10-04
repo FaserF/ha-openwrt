@@ -1164,7 +1164,9 @@ async def async_setup_entry(
             )
 
         # Network Sensors
-        _async_setup_network_sensors(coordinator, entry, new_entities, tracked_keys)
+        _async_setup_network_sensors(
+            coordinator, entry, new_entities, pkgs, tracked_keys
+        )
 
         # Specialized Sensors
         _async_setup_specialized_sensors(
@@ -1767,6 +1769,7 @@ def _async_setup_network_sensors(
     coordinator: OpenWrtDataCoordinator,
     entry: ConfigEntry,
     entities: list[SensorEntity],
+    pkgs: Any,
     tracked_keys: set[str],
 ) -> None:
     """Set up interface-specific network sensors."""
@@ -1781,7 +1784,7 @@ def _async_setup_network_sensors(
                 tracked_keys.add(key)
                 entities.append(
                     OpenWrtMwanMetricSensor(
-                        coordinator, entry, mwan.interface_name, metric
+                        coordinator, entry, mwan.interface_name, metric, pkgs
                     )
                 )
 
@@ -2839,7 +2842,6 @@ class OpenWrtMwanMetricSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorE
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self,
@@ -2847,12 +2849,14 @@ class OpenWrtMwanMetricSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorE
         entry: ConfigEntry,
         iface: str,
         metric: str,
+        pkgs: Any = None,
     ) -> None:
         super().__init__(coordinator)
         self._iface = iface
         self._metric = metric
         self._attr_unique_id = f"{entry.entry_id}_mwan_{iface}_{metric}"
         self._attr_name = f"MWAN {iface} {metric.replace('_', ' ').title()}"
+        self._attr_entity_registry_enabled_default = bool(pkgs and pkgs.mwan3 is True)
         if metric == "latency":
             self._attr_native_unit_of_measurement = "ms"
             self._attr_icon = "mdi:timer-outline"
