@@ -1216,16 +1216,18 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             self._mwan_boot_epoch = boot_ts
             changed = True
 
+        # A tracking session cannot be older than the router itself. A sample
+        # that looks that way is stale - kept from before a reboot while the
+        # system data already refreshed, e.g. because the mwan3 query failed
+        # and the previous status was retained. Drop it: its state and ratio
+        # describe the previous boot, and mixing it with the fresh uptime
+        # would place the transitions derived from it at the wrong second.
+        data.mwan_status = [
+            m for m in data.mwan_status if m.uptime <= system_uptime + 60
+        ]
+
         for m in data.mwan_status:
             name = m.interface_name
-
-            # A tracking session cannot be older than the router itself. If
-            # it looks that way, this mwan3 sample is stale - kept from
-            # before a reboot while the system data already refreshed - and
-            # mixing it with the fresh uptime would place the transitions
-            # derived from it at the wrong second.
-            if m.uptime > system_uptime + 60:
-                continue
 
             first = self._mwan_first_online.get(name)
             if first is not None and first > system_uptime:
