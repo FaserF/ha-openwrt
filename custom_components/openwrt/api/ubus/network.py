@@ -707,6 +707,9 @@ class UbusNetworkMixin:
                 )
         except UbusError:
             _LOGGER.debug("MWAN3 not available (not installed or no permissions)")
+            # Let the caller keep the previous status: an empty list would
+            # read as "no MWAN interfaces" and turn the sensors off.
+            raise
 
         return statuses
 
