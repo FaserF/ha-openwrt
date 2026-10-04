@@ -694,6 +694,8 @@ class UbusNetworkMixin:
                     MwanStatus(
                         interface_name=iface_name,
                         status=iface_data.get("status", "unknown"),
+                        online=online_secs,
+                        offline=_as_seconds(iface_data.get("offline")),
                         online_ratio=(
                             min(online_secs / uptime_secs, 1.0)
                             if uptime_secs > 0
