@@ -2736,11 +2736,25 @@ def _create_mwan_sensors(
                 suggested_display_precision=2,
                 value_fn=lambda data, n=iface_name: next(
                     (
-                        m.online_ratio * 100
+                        m.boot_online_ratio * 100
+                        for m in data.mwan_status
+                        if m.interface_name == n and m.boot_online_ratio is not None
+                    ),
+                    None,
+                ),
+                attrs_fn=lambda data, n=iface_name: next(
+                    (
+                        {
+                            "coverage_start": (
+                                m.coverage_start.isoformat()
+                                if m.coverage_start
+                                else None
+                            )
+                        }
                         for m in data.mwan_status
                         if m.interface_name == n
                     ),
-                    0,
+                    {},
                 ),
             ),
         ),

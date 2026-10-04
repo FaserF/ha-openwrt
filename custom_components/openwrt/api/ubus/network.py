@@ -694,6 +694,8 @@ class UbusNetworkMixin:
                     MwanStatus(
                         interface_name=iface_name,
                         status=iface_data.get("status", "unknown"),
+                        online=online_secs,
+                        offline=_as_seconds(iface_data.get("offline")),
                         online_ratio=(
                             min(online_secs / uptime_secs, 1.0)
                             if uptime_secs > 0
@@ -705,6 +707,9 @@ class UbusNetworkMixin:
                 )
         except UbusError:
             _LOGGER.debug("MWAN3 not available (not installed or no permissions)")
+            # Let the caller keep the previous status: an empty list would
+            # read as "no MWAN interfaces" and turn the sensors off.
+            raise
 
         return statuses
 

@@ -815,6 +815,8 @@ class SshNetworkMixin:
                     MwanStatus(
                         interface_name=name,
                         status=data.get("status", "unknown"),
+                        online=float(data.get("online") or 0),
+                        offline=float(data.get("offline") or 0),
                         online_ratio=float(data.get("online_ratio", 0.0)),
                         uptime=int(data.get("uptime", 0)),
                         enabled=bool(data.get("enabled", False)),
