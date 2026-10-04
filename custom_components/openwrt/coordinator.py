@@ -1204,7 +1204,11 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             and self._mwan_boot_epoch is not None
             and abs(boot_ts - self._mwan_boot_epoch) > 120
         )
-        if rebooted or boot_changed:
+        reset = rebooted or boot_changed
+        # The last sample of each interface before the reboot: a failed query
+        # right after it hands back exactly that reply.
+        before_reboot = self._mwan_sample if reset else {}
+        if reset:
             self._mwan_first_online = {}
             self._mwan_offline_total = {}
             self._mwan_offline_since = {}
@@ -1216,16 +1220,26 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             self._mwan_boot_epoch = boot_ts
             changed = True
 
+        # Drop samples that belong to the previous boot. A tracking session
+        # cannot be older than the router itself, and a reply identical to the
+        # last one before the reboot was handed back by a failed query - a
+        # real reply always differs, as its counters advance every second.
+        # The state and ratio of such a sample describe the previous boot,
+        # and mixing it with the fresh uptime would place the transitions
+        # derived from it at the wrong second.
+        data.mwan_status = [
+            m
+            for m in data.mwan_status
+            if m.uptime <= system_uptime + 60
+            and before_reboot.get(m.interface_name) != (m.uptime, m.online, m.offline)
+        ]
+
         for m in data.mwan_status:
             name = m.interface_name
-
-            # A tracking session cannot be older than the router itself. If
-            # it looks that way, this mwan3 sample is stale - kept from
-            # before a reboot while the system data already refreshed - and
-            # mixing it with the fresh uptime would place the transitions
-            # derived from it at the wrong second.
-            if m.uptime > system_uptime + 60:
-                continue
+            # Publish only what this update computes: a reply handed back by a
+            # failed query still carries the values of an earlier update.
+            m.boot_online_ratio = None
+            m.coverage_start = None
 
             first = self._mwan_first_online.get(name)
             if first is not None and first > system_uptime:

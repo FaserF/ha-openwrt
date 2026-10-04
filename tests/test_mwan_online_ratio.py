@@ -181,13 +181,81 @@ async def test_uptime_going_backwards_reanchors_the_window() -> None:
     assert result["wan"].boot_online_ratio == 1.0
 
 
-async def test_mwan_sample_from_before_the_reboot_is_ignored() -> None:
-    """A tracking session cannot be older than the router itself."""
+async def test_mwan_sample_from_before_the_reboot_is_dropped() -> None:
+    """A tracking session cannot be older than the router itself.
+
+    Such a sample was retained from before the reboot, e.g. because the mwan3
+    query failed. Its state and ratio describe the previous boot.
+    """
     coordinator, _ = _make_coordinator()
+    data = OpenWrtData()
+    data.mwan_status = [
+        MwanStatus(
+            interface_name="wan",
+            status="online",
+            uptime=5000,
+            online=4000,
+            boot_online_ratio=0.97,
+            coverage_start=BOOT,
+        )
+    ]
 
-    result = await _poll(coordinator, 100, wan=(5000, 4000, 0))
+    await coordinator._async_update_mwan_boot_totals(data, 100, True)
 
+    assert data.mwan_status == []
+
+
+async def test_reply_handed_back_after_a_reboot_is_dropped() -> None:
+    """A failed query right after a reboot hands back the last reply before it.
+
+    Its session can be shorter than the new uptime - here the line came up
+    50 s before the reboot - so only its identity with that reply gives it
+    away.
+    """
+    coordinator, _ = _make_coordinator()
+    data = OpenWrtData()
+    data.mwan_status = [
+        MwanStatus(interface_name="wan", status="online", uptime=50, online=50)
+    ]
+    await coordinator._async_update_mwan_boot_totals(data, 7200, False)
+
+    await coordinator._async_update_mwan_boot_totals(data, 100, True)
+
+    assert data.mwan_status == []
+
+
+async def test_fresh_reply_after_a_reboot_is_kept() -> None:
+    """Only a handed-back reply is dropped; a real one always differs."""
+    coordinator, _ = _make_coordinator()
+    data = OpenWrtData()
+    data.mwan_status = [
+        MwanStatus(interface_name="wan", status="online", uptime=50, online=50)
+    ]
+    await coordinator._async_update_mwan_boot_totals(data, 7200, False)
+
+    result = await _poll(coordinator, 100, rebooted=True, wan=(40, 0, 40))
+
+    assert list(result) == ["wan"]
     assert result["wan"].boot_online_ratio is None
+
+
+async def test_short_window_publishes_no_earlier_ratio() -> None:
+    """Below a minute nothing is published, even on a reply handed back."""
+    coordinator, _ = _make_coordinator()
+    data = OpenWrtData()
+    data.mwan_status = [
+        MwanStatus(
+            interface_name="wan",
+            uptime=40,
+            online=40,
+            boot_online_ratio=0.97,
+            coverage_start=BOOT,
+        )
+    ]
+
+    await coordinator._async_update_mwan_boot_totals(data, 1000, False)
+
+    assert data.mwan_status[0].boot_online_ratio is None
 
 
 async def test_totals_survive_a_home_assistant_restart() -> None:
