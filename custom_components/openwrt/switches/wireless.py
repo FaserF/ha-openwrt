@@ -10,7 +10,7 @@ from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, EntityCategory
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -312,13 +312,16 @@ def _add_wireless_switches(
     tracked_keys: set[str],
 ) -> None:
     """Add wireless switches."""
-    if "wps" not in tracked_keys:
+    ent_reg = er.async_get(coordinator.hass)
+    wps_uid = f"{entry.entry_id}_wps"
+    if "wps" not in tracked_keys or not ent_reg.async_get_entity_id("switch", DOMAIN, wps_uid):
         tracked_keys.add("wps")
         entities.append(OpenWrtWpsSwitch(coordinator, entry, client))
     for wifi in coordinator.data.wireless_interfaces:
         if wifi.radio:
             key = f"radio_{wifi.radio}"
-            if key not in tracked_keys:
+            radio_uid = f"{entry.entry_id}_radio_{wifi.radio}"
+            if key not in tracked_keys or not ent_reg.async_get_entity_id("switch", DOMAIN, radio_uid):
                 tracked_keys.add(key)
                 entities.append(
                     OpenWrtRadioSwitch(
@@ -332,7 +335,8 @@ def _add_wireless_switches(
     for wifi in coordinator.data.wireless_interfaces:
         if wifi.name:
             key = f"wireless_{wifi.section or wifi.name}"
-            if key not in tracked_keys:
+            switch_uid = f"{entry.entry_id}_wireless_{wifi.section or wifi.name}"
+            if key not in tracked_keys or not ent_reg.async_get_entity_id("switch", DOMAIN, switch_uid):
                 tracked_keys.add(key)
                 entities.append(
                     OpenWrtWirelessSwitch(

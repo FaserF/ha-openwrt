@@ -322,7 +322,11 @@ async def async_setup_entry(
                     continue
 
             # Cleanup orphaned wireless sensors (e.g. ghost radios)
-            if "_wifi_" in unique_id and coordinator.data:
+            if (
+                "_wifi_" in unique_id
+                and coordinator.data
+                and coordinator.data.wireless_interfaces
+            ):
                 found = False
                 for w in coordinator.data.wireless_interfaces:
                     if (
@@ -342,6 +346,7 @@ async def async_setup_entry(
                         unique_id,
                     )
                     ent_reg.async_remove(ent.entity_id)
+                    tracked_keys.discard(unique_id)
                     continue
 
             # Cleanup orphaned network address sensors for physical devices, removed interfaces, or interfaces without an IP

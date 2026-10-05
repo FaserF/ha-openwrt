@@ -531,7 +531,16 @@ class DeviceRegistryMixin(_Base):
                 if is_random_mac(tracked_mac):
                     is_random_tracked = True
 
-            if is_ap_related or is_ghost_name or is_random_tracked:
+            # Outage & reboot resilience guard:
+            # 1. Never purge AP or radio devices when wireless data is empty or during reboots.
+            # 2. Never purge legitimate named SSIDs; only remove ghost names (default_radio, wifinet).
+            if is_ap_related or dev.model in ("Access Point", "Wireless SSID", "Wireless Radio"):
+                if not (data.wireless_interfaces and ap_info):
+                    continue
+                if not is_ghost_name:
+                    continue
+
+            if is_ghost_name or is_random_tracked:
                 _LOGGER.info(
                     "Removing orphaned/ghost/randomized device '%s' (id: %s, identifiers: %s)",
                     dev.name,
