@@ -743,11 +743,17 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
             pass
 
         device_reg = dr.async_get(self.hass)
-        devices_iterable = (
-            device_reg.devices.values()
-            if hasattr(device_reg.devices, "values")
-            else device_reg.devices
-        )
+        devices_iterable: Any
+        if hasattr(device_reg.devices, "values"):
+            # Avoid deprecated mapping access on modern DeviceRegistry while supporting older mock dicts
+            dev_devices = device_reg.devices
+            devices_iterable = (
+                dev_devices
+                if not isinstance(dev_devices, dict)
+                else dev_devices.values()
+            )
+        else:
+            devices_iterable = device_reg.devices
         for dev_or_id in devices_iterable:
             if isinstance(dev_or_id, str):
                 dev = device_reg.async_get(dev_or_id)
@@ -2140,21 +2146,41 @@ class OpenWrtDataCoordinator(DataUpdateCoordinator[OpenWrtData]):
         via_device_id: str | None = None
         if device_info.gateway_mac:
             gw_mac = device_info.gateway_mac.lower()
-            devices_iterable = (
-                device_registry.devices.values()
-                if hasattr(device_registry.devices, "values")
-                else device_registry.devices
-            )
-            for item in devices_iterable:
-                dev = device_registry.async_get(item) if isinstance(item, str) else item
-                if not dev:
-                    continue
-                if any(
-                    conn[0] == dr.CONNECTION_NETWORK_MAC and conn[1].lower() == gw_mac
-                    for conn in dev.connections
-                ):
-                    via_device_id = dev.id
-                    break
+            if hasattr(device_registry, "async_get_device_by_connection"):
+                gw_dev = device_registry.async_get_device_by_connection(
+                    (dr.CONNECTION_NETWORK_MAC, gw_mac),
+                    self.config_entry.entry_id,
+                )
+                if gw_dev:
+                    via_device_id = gw_dev.id
+            elif hasattr(device_registry, "async_get_devices"):
+                matches = device_registry.async_get_devices(
+                    connections={(dr.CONNECTION_NETWORK_MAC, gw_mac)}
+                )
+                if matches:
+                    via_device_id = matches[0].id
+            else:
+                dev_devices = getattr(device_registry, "devices", None)
+                devices_iterable = (
+                    dev_devices.values()
+                    if isinstance(dev_devices, dict)
+                    else (dev_devices or ())
+                )
+                for item in devices_iterable:
+                    dev = (
+                        device_registry.async_get(item)
+                        if isinstance(item, str)
+                        else item
+                    )
+                    if not dev:
+                        continue
+                    if any(
+                        conn[0] == dr.CONNECTION_NETWORK_MAC
+                        and conn[1].lower() == gw_mac
+                        for conn in dev.connections
+                    ):
+                        via_device_id = dev.id
+                        break
 
         # Prefer MAC address for router identity to ensure consistency with legacy devices
         if device_info.mac_address:
