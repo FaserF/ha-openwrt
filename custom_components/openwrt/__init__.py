@@ -333,8 +333,10 @@ async def async_remove_config_entry_device(
 ) -> bool:
     """Allow removing a device this entry no longer provides.
 
-    Refuses the router itself, its current radio and SSID devices, and any client
-    the entry is tracking right now -- those would be recreated on the next poll.
+    Refuses the router itself, its current radio and SSID devices, any client the
+    entry is tracking right now, and any device that still carries one of this
+    entry's entities -- those would be recreated on the next poll, or lose a live
+    entity until the entry is reloaded.
     """
     entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if not entry_data:
@@ -342,6 +344,17 @@ async def async_remove_config_entry_device(
     coordinator: OpenWrtDataCoordinator = entry_data[DATA_COORDINATOR]
 
     if device_entry.identifiers & coordinator.active_device_identifiers:
+        return False
+
+    # An offline client keeps its tracker (whitelisted, or remembered in the
+    # device history), so being absent from the poll does not make it stale.
+    ent_reg = er.async_get(hass)
+    if any(
+        ent.config_entry_id == entry.entry_id
+        for ent in er.async_entries_for_device(
+            ent_reg, device_entry.id, include_disabled_entities=True
+        )
+    ):
         return False
 
     if coordinator.data:

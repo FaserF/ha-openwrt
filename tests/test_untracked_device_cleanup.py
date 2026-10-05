@@ -166,9 +166,46 @@ async def test_remove_config_entry_device(identifier: str, expected: bool) -> No
     from custom_components.openwrt import async_remove_config_entry_device
 
     hass = _hass_with_coordinator(_coordinator([TRACKED_MAC]))
-    device = MagicMock(identifiers={(DOMAIN, identifier)})
+    device = MagicMock(id="dev", identifiers={(DOMAIN, identifier)})
 
-    assert await async_remove_config_entry_device(hass, _entry({}), device) is expected
+    with (
+        patch("custom_components.openwrt.er.async_get"),
+        patch("custom_components.openwrt.er.async_entries_for_device", return_value=[]),
+    ):
+        result = await async_remove_config_entry_device(hass, _entry({}), device)
+
+    assert result is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("entity_entry_id", "expected"),
+    [
+        ("test_entry_id", False),
+        ("other_entry", True),
+    ],
+)
+async def test_remove_config_entry_device_offline_with_entities(
+    entity_entry_id: str, expected: bool
+) -> None:
+    """An offline client that still has this entry's tracker is not stale."""
+    from custom_components.openwrt import async_remove_config_entry_device
+
+    hass = _hass_with_coordinator(_coordinator([]))
+    device = MagicMock(id="dev_offline", identifiers={(DOMAIN, STALE_MAC)})
+    entities = [MagicMock(config_entry_id=entity_entry_id)]
+
+    with (
+        patch("custom_components.openwrt.er.async_get"),
+        patch(
+            "custom_components.openwrt.er.async_entries_for_device",
+            return_value=entities,
+        ) as entries_for_device,
+    ):
+        result = await async_remove_config_entry_device(hass, _entry({}), device)
+
+    assert result is expected
+    assert entries_for_device.call_args.kwargs == {"include_disabled_entities": True}
 
 
 @pytest.mark.asyncio
