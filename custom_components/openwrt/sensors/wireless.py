@@ -11,7 +11,8 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, EntityCategory
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from ..const import DOMAIN
 from ..coordinator import OpenWrtDataCoordinator
@@ -321,7 +322,9 @@ def _async_setup_wireless_sensors(
         # Use signal as a representative key for the group of sensors created by _create_wifi_sensors
         key = f"wifi_{wifi.section or wifi.name}_signal"
         uid_clients = f"{entry.entry_id}_wifi_{wifi.section or wifi.name}_clients"
-        if key not in tracked_keys or not ent_reg.async_get_entity_id("sensor", DOMAIN, uid_clients):
+        if key not in tracked_keys or not ent_reg.async_get_entity_id(
+            "sensor", DOMAIN, uid_clients
+        ):
             tracked_keys.add(key)
             entities.extend(
                 _create_wifi_sensors(
