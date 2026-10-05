@@ -360,8 +360,13 @@ def test_ratio_sensor_reports_the_boot_ratio_and_its_window() -> None:
     entry = MagicMock()
     entry.entry_id = "test"
 
-    (wan,) = _create_mwan_sensors(coordinator, entry, "wan")
-    (backup,) = _create_mwan_sensors(coordinator, entry, "backup")
+    sensors = {
+        sensor.entity_description.key: sensor
+        for iface in ("wan", "backup")
+        for sensor in _create_mwan_sensors(coordinator, entry, iface)
+    }
+    wan = sensors["mwan_wan_ratio"]
+    backup = sensors["mwan_backup_ratio"]
 
     assert wan.native_value == pytest.approx(98.579)
     assert wan.extra_state_attributes == {"coverage_start": coverage.isoformat()}

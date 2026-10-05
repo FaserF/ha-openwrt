@@ -4,6 +4,16 @@
       "public_ip": {
         "default": "mdi:earth"
       },
+      "mwan_status": {
+        "default": "mdi:wan",
+        "state": {
+          "online": "mdi:lan-connect",
+          "offline": "mdi:lan-disconnect",
+          "connecting": "mdi:lan-pending",
+          "disconnecting": "mdi:lan-pending",
+          "disabled": "mdi:lan-disconnect"
+        }
+      },
       "qmodem_manufacturer": {
         "default": "mdi:sim"
       },

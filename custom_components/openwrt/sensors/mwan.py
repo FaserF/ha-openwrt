@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
@@ -18,11 +19,30 @@ from homeassistant.const import (
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from ..api.base import OpenWrtData
 from ..const import DOMAIN
 from ..coordinator import OpenWrtDataCoordinator
 from .base import OpenWrtSensorDescription, OpenWrtSensorEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+# Tracking states mwan3track writes for an interface. "connecting" means the
+# link answers again but has not yet passed the configured number of
+# successful checks, so mwan3 does not route traffic over it yet.
+MWAN_STATES = ["online", "offline", "connecting", "disconnecting", "disabled"]
+
+
+def _mwan_status(data: OpenWrtData, iface_name: str) -> str | None:
+    """Return the tracking state of an MWAN3 interface.
+
+    mwan3 reports "unknown" before the first check; that and any state not in
+    MWAN_STATES become None, so the enum sensor shows unknown.
+    """
+    status = next(
+        (m.status for m in data.mwan_status if m.interface_name == iface_name),
+        None,
+    )
+    return status if status in MWAN_STATES else None
 
 
 def _create_mwan_sensors(
@@ -65,6 +85,20 @@ def _create_mwan_sensors(
                     ),
                     {},
                 ),
+            ),
+        ),
+        OpenWrtSensorEntity(
+            coordinator,
+            entry,
+            OpenWrtSensorDescription(
+                key=f"mwan_{iface_name}_status",
+                translation_key="mwan_status",
+                translation_placeholders={"interface": iface_name},
+                name=f"MWAN {iface_name} Status",
+                device_class=SensorDeviceClass.ENUM,
+                options=MWAN_STATES,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                value_fn=lambda data, n=iface_name: _mwan_status(data, n),
             ),
         ),
     ]

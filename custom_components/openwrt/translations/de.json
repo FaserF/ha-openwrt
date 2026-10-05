@@ -519,6 +519,16 @@
       "mwan_ratio": {
         "name": "{interface} Online-Verhältnis"
       },
+      "mwan_status": {
+        "name": "MWAN {interface} Status",
+        "state": {
+          "online": "Online",
+          "offline": "Offline",
+          "connecting": "Verbindet",
+          "disconnecting": "Trennt",
+          "disabled": "Inaktiv"
+        }
+      },
       "wifi_txpower": {
         "name": "Sendeleistung"
       },
