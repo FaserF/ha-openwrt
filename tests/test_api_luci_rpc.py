@@ -540,3 +540,35 @@ async def test_luci_403_without_token_logs_in_and_retries(
 
     assert await luci_client._rpc_call("sys", "hostname") == "ok"
     assert len(logins) == 1
+
+
+@pytest.mark.asyncio
+async def test_luci_failed_relogin_lets_the_next_caller_try(
+    luci_client: LuciRpcClient,
+):
+    """If the first re-login fails, a waiting call logs in itself instead of
+    retrying with no token."""
+    attempts: list[int] = []
+
+    def _post(url, json=None, **_kwargs):
+        if url.endswith("/rpc/auth"):
+            attempts.append(1)
+            if len(attempts) == 1:
+                return _YieldingResponse(200, {"id": 1, "result": None})
+            return _YieldingResponse(200, {"id": 1, "result": "fresh"})
+        if url.endswith("?auth=fresh"):
+            return _YieldingResponse(200, {"id": 1, "result": "ok"})
+        return _YieldingResponse(403, {})
+
+    luci_client._auth_token = "expired"
+    luci_client.session.post = MagicMock(side_effect=_post)
+
+    results = await asyncio.gather(
+        luci_client._rpc_call("sys", "hostname"),
+        luci_client._rpc_call("sys", "hostname"),
+        return_exceptions=True,
+    )
+
+    assert isinstance(results[0], LuciRpcAuthError)
+    assert results[1] == "ok"
+    assert len(attempts) == 2

@@ -148,9 +148,10 @@ class LuciRpcClient(
                 async with self._reauth_lock:
                     # An expired token fails every in-flight call at once. Only
                     # the first to get here logs in; the rest reuse its token
-                    # instead of each opening another rpcd session.
+                    # instead of each opening another rpcd session. The old token
+                    # stays until a login succeeds, so if this login fails the
+                    # next caller in line tries again rather than going tokenless.
                     if self._auth_token == token:
-                        self._auth_token = ""
                         await self.connect()
                 return await self._rpc_call(
                     endpoint,
