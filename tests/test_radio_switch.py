@@ -255,6 +255,7 @@ async def test_disabling_ssid_powers_down_only_an_unused_radio(
         "radio0",
         False,
         disable_radio=expected_disable_radio,
+        ssid="Main",
     )
     assert target.interface_enabled is False
     assert target.enabled is False
@@ -299,6 +300,7 @@ async def test_enabling_ssid_also_enables_its_radio() -> None:
         "radio1",
         True,
         disable_radio=False,
+        ssid="Main",
     )
     assert wifi.interface_enabled is True
     assert wifi.enabled is True
@@ -529,3 +531,43 @@ async def test_setup_does_not_remove_wireless_switches_when_interfaces_empty(
 
     # Neither switch should be removed because wireless interfaces are not known yet
     registry.async_remove.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_wireless_switch_passes_ssid_to_client() -> None:
+    """Ensure OpenWrtWirelessSwitch forwards ssid to client."""
+    wifi = WirelessInterface(
+        name="wifinet6",
+        section=None,
+        radio="radio1",
+        ssid="Guest_Network",
+        interface_enabled=True,
+        radio_enabled=True,
+    )
+    coordinator = MagicMock()
+    coordinator.router_id = "router_id"
+    coordinator.data = OpenWrtData(wireless_interfaces=[wifi])
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.hass.async_create_task = MagicMock(
+        side_effect=lambda task: task.close()
+    )
+    client = MagicMock()
+    client.set_wireless_network_enabled = AsyncMock(return_value=True)
+    switch = OpenWrtWirelessSwitch(
+        coordinator,
+        MagicMock(entry_id="test_entry", unique_id="router_id"),
+        client,
+        wifi.name,
+        wifi.ssid,
+        radio=wifi.radio,
+    )
+
+    await switch.async_turn_off()
+
+    client.set_wireless_network_enabled.assert_called_once_with(
+        "wifinet6",
+        "radio1",
+        False,
+        disable_radio=True,
+        ssid="Guest_Network",
+    )

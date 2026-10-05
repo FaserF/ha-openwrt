@@ -189,6 +189,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         super().__init__(coordinator)
         self._client = client
         self._iface_name = iface_name
+        self._ssid = ssid
         self._section_id = section_id
         self._radio = radio
 
@@ -260,6 +261,7 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
                     self._radio,
                     enabled,
                     disable_radio=disable_radio,
+                    ssid=self._ssid,
                 )
             else:
                 changed = await self._client.set_wireless_enabled(

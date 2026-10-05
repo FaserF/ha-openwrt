@@ -579,6 +579,7 @@ class SshNetworkMixin:
         enabled: bool,
         *,
         disable_radio: bool,
+        ssid: str = "",
     ) -> bool:
         """Set an SSID and its radio in one UCI transaction."""
         try:

@@ -1426,6 +1426,7 @@ class OpenWrtClient(abc.ABC):
         enabled: bool,
         *,
         disable_radio: bool,
+        ssid: str = "",
     ) -> bool:
         """Set an SSID and coordinate its physical radio."""
         if enabled and not await self.set_radio_enabled(radio, True):

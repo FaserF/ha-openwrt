@@ -1088,6 +1088,57 @@ async def test_ubus_set_wireless_network_enabled_resolves_wifinet_section(
 
 
 @pytest.mark.asyncio
+async def test_ubus_set_wireless_network_enabled_resolves_wifinet_by_radio_and_ssid(
+    ubus_client: UbusClient,
+) -> None:
+    """Test resolving wifinet when global index is out of bounds or radio-scoped."""
+    uci_data = {
+        "values": {
+            "radio0": {".type": "wifi-device"},
+            "radio1": {".type": "wifi-device"},
+            "cfg01": {
+                ".type": "wifi-iface",
+                "device": "radio0",
+                "mode": "ap",
+                "ssid": "Home",
+            },
+            "cfg02": {
+                ".type": "wifi-iface",
+                "device": "radio1",
+                "mode": "ap",
+                "ssid": "Guest_5G",
+            },
+        }
+    }
+
+    recorded_calls = []
+
+    async def mock_call(obj, method, params=None):
+        recorded_calls.append((obj, method, params))
+        if obj == "uci" and method == "get":
+            return uci_data
+        return {}
+
+    with patch.object(ubus_client, "_call", side_effect=mock_call):
+        # wifinet6 is out of index bounds, but ssid="Guest_5G" matches cfg02
+        success = await ubus_client.set_wireless_network_enabled(
+            "wifinet6", "radio1", True, disable_radio=False, ssid="Guest_5G"
+        )
+        assert success is True
+
+        set_calls = [
+            params
+            for obj, method, params in recorded_calls
+            if obj == "uci" and method == "set"
+        ]
+        assert any(
+            c.get("section") == "cfg02" and c.get("values") == {"disabled": "0"}
+            for c in set_calls
+        )
+        assert not any(c.get("section") == "wifinet6" for c in set_calls)
+
+
+@pytest.mark.asyncio
 async def test_ubus_set_access_control_blocked_conntrack_failure(
     ubus_client: UbusClient,
 ):

@@ -106,7 +106,12 @@ class UbusWirelessMixin:
 
         return False
 
-    async def _resolve_wireless_section(self, interface: str, radio: str = "") -> str:
+    async def _resolve_wireless_section(
+        self,
+        interface: str,
+        radio: str = "",
+        ssid: str = "",
+    ) -> str:
         """Resolve an interface name (e.g. wifinet0, wlan0) to a valid UCI section."""
         try:
             uci_data = await self._call("uci", "get", {"config": "wireless"})
@@ -138,8 +143,18 @@ class UbusWirelessMixin:
             elif match_anon:
                 idx = int(match_anon.group(1))
 
-            if idx is not None and 0 <= idx < len(wifi_ifaces):
-                return wifi_ifaces[idx][0]
+            if idx is not None:
+                # First check radio-scoped ifaces if radio is specified
+                if radio:
+                    radio_ifaces = [
+                        (s_name, s_data)
+                        for s_name, s_data in wifi_ifaces
+                        if s_data.get("device") == radio
+                    ]
+                    if 0 <= idx < len(radio_ifaces):
+                        return radio_ifaces[idx][0]
+                if 0 <= idx < len(wifi_ifaces):
+                    return wifi_ifaces[idx][0]
 
             # 3. Match by ifname or section field or .name
             for sect_name, sect_data in wifi_ifaces:
@@ -150,7 +165,15 @@ class UbusWirelessMixin:
                 ):
                     return sect_name
 
-            # 4. If radio provided, match wifi-iface for this radio if only one exists
+            # 4. Match by SSID if provided
+            if ssid:
+                for sect_name, sect_data in wifi_ifaces:
+                    if sect_data.get("ssid") == ssid and (
+                        not radio or sect_data.get("device") == radio
+                    ):
+                        return sect_name
+
+            # 5. If radio provided, match wifi-iface for this radio if only one exists
             if radio:
                 radio_ifaces = [
                     (s_name, s_data)
@@ -160,14 +183,14 @@ class UbusWirelessMixin:
                 if len(radio_ifaces) == 1:
                     return radio_ifaces[0][0]
 
-            # 5. Map kernel ifname back to UCI section via network.wireless status
-            # (kernel ifnames like phy1-ap0 are assigned dynamically by netifd/hostapd
-            # and are not stored in UCI, so UCI lookups above cannot find them)
+            # 6. Map kernel ifname back to UCI section via network.wireless status
             try:
                 wireless_status = await self._call("network.wireless", "status")
                 if isinstance(wireless_status, dict):
-                    for radio_data in wireless_status.values():
+                    for r_name, radio_data in wireless_status.items():
                         if not isinstance(radio_data, dict):
+                            continue
+                        if radio and r_name != radio:
                             continue
                         for iface in radio_data.get("interfaces", []):
                             iface_ifname = iface.get("ifname") or iface.get(
@@ -176,6 +199,13 @@ class UbusWirelessMixin:
                             iface_section = iface.get("section", "")
                             if (
                                 iface_ifname == interface
+                                and iface_section
+                                and iface_section in vals
+                            ):
+                                return iface_section
+                            if (
+                                ssid
+                                and iface.get("config", {}).get("ssid") == ssid
                                 and iface_section
                                 and iface_section in vals
                             ):
@@ -231,11 +261,14 @@ class UbusWirelessMixin:
         enabled: bool,
         *,
         disable_radio: bool,
+        ssid: str = "",
     ) -> bool:
         """Set an SSID and its radio in one UCI transaction."""
         committed = False
         try:
-            target_section = await self._resolve_wireless_section(interface, radio)
+            target_section = await self._resolve_wireless_section(
+                interface, radio, ssid=ssid
+            )
             if enabled:
                 await self._call(
                     "uci",
