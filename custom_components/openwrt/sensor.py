@@ -321,11 +321,12 @@ async def async_setup_entry(
                     tracked_keys.discard(unique_id)
                     continue
 
-            # Cleanup orphaned wireless sensors (e.g. ghost radios)
+            # Cleanup orphaned wireless sensors (e.g. ghost radios) only when discovery is complete
             if (
                 "_wifi_" in unique_id
                 and coordinator.data
-                and coordinator.data.wireless_interfaces
+                and coordinator.data.wireless_interfaces is not None
+                and len(coordinator.data.wireless_interfaces) > 0
             ):
                 found = False
                 for w in coordinator.data.wireless_interfaces:

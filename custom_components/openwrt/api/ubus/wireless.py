@@ -134,56 +134,7 @@ class UbusWirelessMixin:
                 and sect_data.get(".type") == "wifi-iface"
             ]
 
-            # 2. Check if interface is wifinetN or @wifi-iface[N]
-            match_net = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
-            match_anon = re.match(r"^@?wifi-iface\[(\d+)\]$", interface, re.IGNORECASE)
-            idx = None
-            if match_net:
-                idx = int(match_net.group(1))
-            elif match_anon:
-                idx = int(match_anon.group(1))
-
-            if idx is not None:
-                # First check radio-scoped ifaces if radio is specified
-                if radio:
-                    radio_ifaces = [
-                        (s_name, s_data)
-                        for s_name, s_data in wifi_ifaces
-                        if s_data.get("device") == radio
-                    ]
-                    if 0 <= idx < len(radio_ifaces):
-                        return radio_ifaces[idx][0]
-                if 0 <= idx < len(wifi_ifaces):
-                    return wifi_ifaces[idx][0]
-
-            # 3. Match by ifname or section field or .name
-            for sect_name, sect_data in wifi_ifaces:
-                if (
-                    sect_data.get("ifname") == interface
-                    or sect_data.get("section") == interface
-                    or sect_data.get(".name") == interface
-                ):
-                    return sect_name
-
-            # 4. Match by SSID if provided
-            if ssid:
-                for sect_name, sect_data in wifi_ifaces:
-                    if sect_data.get("ssid") == ssid and (
-                        not radio or sect_data.get("device") == radio
-                    ):
-                        return sect_name
-
-            # 5. If radio provided, match wifi-iface for this radio if only one exists
-            if radio:
-                radio_ifaces = [
-                    (s_name, s_data)
-                    for s_name, s_data in wifi_ifaces
-                    if s_data.get("device") == radio
-                ]
-                if len(radio_ifaces) == 1:
-                    return radio_ifaces[0][0]
-
-            # 6. Map kernel ifname back to UCI section via network.wireless status
+            # 2. Map kernel ifname / interface back to UCI section via network.wireless status
             try:
                 wireless_status = await self._call("network.wireless", "status")
                 if isinstance(wireless_status, dict):
@@ -214,6 +165,55 @@ class UbusWirelessMixin:
                 _LOGGER.debug(
                     "Failed network.wireless status lookup for %s: %s", interface, err
                 )
+
+            # 3. Check if interface is wifinetN or @wifi-iface[N]
+            match_net = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
+            match_anon = re.match(r"^@?wifi-iface\[(\d+)\]$", interface, re.IGNORECASE)
+            idx = None
+            if match_net:
+                idx = int(match_net.group(1))
+            elif match_anon:
+                idx = int(match_anon.group(1))
+
+            if idx is not None:
+                # First check radio-scoped ifaces if radio is specified
+                if radio:
+                    radio_ifaces = [
+                        (s_name, s_data)
+                        for s_name, s_data in wifi_ifaces
+                        if s_data.get("device") == radio
+                    ]
+                    if 0 <= idx < len(radio_ifaces):
+                        return radio_ifaces[idx][0]
+                if 0 <= idx < len(wifi_ifaces):
+                    return wifi_ifaces[idx][0]
+
+            # 4. Match by ifname or section field or .name
+            for sect_name, sect_data in wifi_ifaces:
+                if (
+                    sect_data.get("ifname") == interface
+                    or sect_data.get("section") == interface
+                    or sect_data.get(".name") == interface
+                ):
+                    return sect_name
+
+            # 5. Match by SSID if provided
+            if ssid:
+                for sect_name, sect_data in wifi_ifaces:
+                    if sect_data.get("ssid") == ssid and (
+                        not radio or sect_data.get("device") == radio
+                    ):
+                        return sect_name
+
+            # 6. If radio provided, match wifi-iface for this radio if only one exists
+            if radio:
+                radio_ifaces = [
+                    (s_name, s_data)
+                    for s_name, s_data in wifi_ifaces
+                    if s_data.get("device") == radio
+                ]
+                if len(radio_ifaces) == 1:
+                    return radio_ifaces[0][0]
 
         except Exception as err:
             _LOGGER.debug(

@@ -1139,6 +1139,69 @@ async def test_ubus_set_wireless_network_enabled_resolves_wifinet_by_radio_and_s
 
 
 @pytest.mark.asyncio
+async def test_ubus_set_wireless_network_enabled_resolves_kernel_ifname(
+    ubus_client: UbusClient,
+) -> None:
+    """Test resolving dynamic kernel ifname (e.g. phy1-ap1) via network.wireless status."""
+    uci_data = {
+        "values": {
+            "radio0": {".type": "wifi-device"},
+            "radio1": {".type": "wifi-device"},
+            "default_radio0": {
+                ".type": "wifi-iface",
+                "device": "radio0",
+                "mode": "ap",
+                "ssid": "Home",
+            },
+            "wifinet1": {
+                ".type": "wifi-iface",
+                "device": "radio1",
+                "mode": "ap",
+                "ssid": "Guest_5G",
+            },
+        }
+    }
+    wireless_status = {
+        "radio1": {
+            "interfaces": [
+                {
+                    "section": "wifinet1",
+                    "ifname": "phy1-ap1",
+                    "config": {"mode": "ap", "ssid": "Guest_5G"},
+                }
+            ]
+        }
+    }
+
+    recorded_calls = []
+
+    async def mock_call(obj, method, params=None):
+        recorded_calls.append((obj, method, params))
+        if obj == "uci" and method == "get":
+            return uci_data
+        if obj == "network.wireless" and method == "status":
+            return wireless_status
+        return {}
+
+    with patch.object(ubus_client, "_call", side_effect=mock_call):
+        success = await ubus_client.set_wireless_network_enabled(
+            "phy1-ap1", "radio1", False, disable_radio=False, ssid="Guest_5G"
+        )
+        assert success is True
+
+        set_calls = [
+            params
+            for obj, method, params in recorded_calls
+            if obj == "uci" and method == "set"
+        ]
+        assert any(
+            c.get("section") == "wifinet1" and c.get("values") == {"disabled": "1"}
+            for c in set_calls
+        )
+        assert not any(c.get("section") == "phy1-ap1" for c in set_calls)
+
+
+@pytest.mark.asyncio
 async def test_ubus_set_access_control_blocked_conntrack_failure(
     ubus_client: UbusClient,
 ):

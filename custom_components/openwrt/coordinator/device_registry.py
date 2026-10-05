@@ -520,10 +520,10 @@ class DeviceRegistryMixin(_Base):
                 or dev.model == "Access Point"
                 or (dev.name and dev.name.startswith("AP "))
             )
+            # Identify ghost section names (e.g. default_radio0, wifinet0) while preserving legitimate radios like radio0
             is_ghost_name = any(
-                ghost in (dev.name or "")
-                for ghost in ["default_radio", "wifinet", "radio"]
-            )
+                ghost in (dev.name or "") for ghost in ["default_radio", "wifinet"]
+            ) or bool(re.search(r"\bradio\b", dev.name or "", re.IGNORECASE))
 
             # Identify if this is a randomized MAC device and skip_random is enabled
             is_random_tracked = False
@@ -533,7 +533,7 @@ class DeviceRegistryMixin(_Base):
 
             # Outage & reboot resilience guard:
             # 1. Never purge AP or radio devices when wireless data is empty or during reboots.
-            # 2. Never purge legitimate named SSIDs; only remove ghost names (default_radio, wifinet).
+            # 2. Never purge legitimate named SSIDs or physical radios; only remove ghost names.
             if is_ap_related or dev.model in (
                 "Access Point",
                 "Wireless SSID",
