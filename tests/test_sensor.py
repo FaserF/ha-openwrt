@@ -374,3 +374,47 @@ async def test_wifi_sensor_cleanup_preserves_sensors_matching_ifname_or_radio() 
 
     # ent1, ent2 and ent3 must NOT be removed; orphan must be removed
     mock_ent_reg.async_remove.assert_called_once_with("sensor.ghost_clients")
+
+
+async def test_wifi_sensor_individual_self_healing_recovery() -> None:
+    """Test that missing individual sensors are recreated even if key was tracked."""
+    from custom_components.openwrt.sensors.wireless import _async_setup_wireless_sensors
+
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+
+    mock_ent_reg = MagicMock()
+    # Simulate that clients sensor exists in registry, but channel sensor is missing
+    mock_ent_reg.async_get_entity_id.side_effect = lambda domain, domain_name, uid: (
+        "sensor.existing_clients" if uid.endswith("_clients") else None
+    )
+
+    coordinator = MagicMock()
+    coordinator.hass = hass
+    coordinator.data = OpenWrtData(
+        wireless_interfaces=[
+            WirelessInterface(
+                name="wlan0",
+                section="cfg0",
+                ssid="TestSSID",
+                mode="ap",
+            )
+        ]
+    )
+
+    entities = []
+    # tracked_keys already has the clients uid
+    tracked_keys = {"test_entry_wifi_cfg0_clients"}
+
+    with patch(
+        "custom_components.openwrt.sensors.wireless.er.async_get",
+        return_value=mock_ent_reg,
+    ):
+        _async_setup_wireless_sensors(coordinator, entry, entities, tracked_keys)
+
+    # Missing sensors (e.g., channel) should be added, but existing clients sensor should NOT be duplicated
+    added_uids = [e.unique_id for e in entities]
+    assert "test_entry_wifi_cfg0_clients" not in added_uids
+    assert "test_entry_wifi_cfg0_channel" in added_uids
+    assert "test_entry_wifi_cfg0_channel" in tracked_keys

@@ -321,13 +321,21 @@ async def async_setup_entry(
                     tracked_keys.discard(unique_id)
                     continue
 
-            # Cleanup orphaned wireless sensors (e.g. ghost radios) only when discovery is complete
+            # Cleanup orphaned wireless sensors (e.g. ghost placeholders) only when discovery is complete.
+            # Only unconfigured ghost placeholders are pruned; legitimate entities are preserved during
+            # partial reboots, dynamic DFS scans, or temporary interface omissions.
             if (
                 "_wifi_" in unique_id
                 and coordinator.data
                 and coordinator.data.wireless_interfaces is not None
                 and len(coordinator.data.wireless_interfaces) > 0
             ):
+                # Extract the interface/section part from unique_id: {entry_id}_wifi_{iface_key}_{metric}
+                parts = unique_id.split("_wifi_", 1)
+                iface_key = parts[1].rsplit("_", 1)[0] if len(parts) == 2 else ""
+                is_ghost_sensor = iface_key == "ghost" or iface_key.startswith("ghost_")
+                if not is_ghost_sensor:
+                    continue
                 found = False
                 for w in coordinator.data.wireless_interfaces:
                     if (
