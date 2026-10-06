@@ -511,19 +511,31 @@ class DeviceRegistryMixin(_Base):
 
             # Identify if this is an Access Point device (old or new style)
             # We also check the model and name as a fallback for old/migrated installations
+            raw_name = getattr(dev, "name", None)
+            dev_name: str = str(raw_name) if isinstance(raw_name, str) else ""
+            if not dev_name:
+                mock_name = getattr(dev, "_mock_name", None)
+                if isinstance(mock_name, str):
+                    dev_name = mock_name
             is_ap_related = (
                 any(
                     "_ap_" in str(ident[1])
                     for ident in dev.identifiers
                     if ident[0] == DOMAIN
                 )
-                or dev.model == "Access Point"
-                or (dev.name and dev.name.startswith("AP "))
+                or dev.model in ("Access Point", "Wireless SSID")
+                or dev_name.startswith("AP ")
             )
-            # Identify ghost section names (e.g. default_radio0, wifinet0) while preserving legitimate radios like radio0
-            is_ghost_name = any(
-                ghost in (dev.name or "") for ghost in ["default_radio", "wifinet"]
-            ) or bool(re.search(r"\bradio\b", dev.name or "", re.IGNORECASE))
+            # Ghost names are unconfigured or legacy placeholder names (e.g., default_radio0, wifinet0, or bare 'radio').
+            # Legitimate SSIDs containing those words (e.g., 'SSID my_wifinet') and physical radios ('radio0', '2.4 GHz')
+            # must not be treated as ghosts.
+            is_ghost_name = bool(
+                re.match(
+                    r"^(?:(?:SSID|AP)\s+)?(default_radio\d*|wifinet\d*|radio)(?:\s+\([^)]+\))?$",
+                    dev_name,
+                    re.IGNORECASE,
+                )
+            )
 
             # Identify if this is a randomized MAC device and skip_random is enabled
             is_random_tracked = False
@@ -532,22 +544,30 @@ class DeviceRegistryMixin(_Base):
                     is_random_tracked = True
 
             # Outage & reboot resilience guard:
-            # 1. Never purge AP or radio devices when wireless data is empty or during reboots.
+            # 1. Never purge legitimate AP or radio devices when wireless data is empty (reboot / wifi restart).
             # 2. Never purge legitimate named SSIDs or physical radios; only remove ghost names.
             if is_ap_related or dev.model in (
                 "Access Point",
                 "Wireless SSID",
                 "Wireless Radio",
             ):
-                if not (data.wireless_interfaces and ap_info):
+                if not is_ghost_name and not (data.wireless_interfaces and ap_info):
                     continue
+
+            # 3. Do not remove a physical radio device solely because another AP is active.
+            #    Preserve legitimate physical radio devices (e.g., radio0, 2.4 GHz).
+            if dev.model == "Wireless Radio" or any(
+                "_radio_" in str(ident[1])
+                for ident in dev.identifiers
+                if ident[0] == DOMAIN
+            ):
                 if not is_ghost_name:
                     continue
 
-            if is_ghost_name or is_random_tracked:
+            if is_ap_related or is_ghost_name or is_random_tracked:
                 _LOGGER.info(
                     "Removing orphaned/ghost/randomized device '%s' (id: %s, identifiers: %s)",
-                    dev.name,
+                    dev_name or dev.id,
                     dev.id,
                     dev.identifiers,
                 )
