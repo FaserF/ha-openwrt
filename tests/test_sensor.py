@@ -418,3 +418,48 @@ async def test_wifi_sensor_individual_self_healing_recovery() -> None:
     assert "test_entry_wifi_cfg0_clients" not in added_uids
     assert "test_entry_wifi_cfg0_channel" in added_uids
     assert "test_entry_wifi_cfg0_channel" in tracked_keys
+
+
+def test_wireless_client_count_fallback() -> None:
+    """Test that wireless clients sensor falls back to interface clients_count."""
+    from custom_components.openwrt.sensors.wireless import _create_wifi_base_sensors
+
+    wifi_iface = WirelessInterface(
+        name="phy1-ap0",
+        section="cfg03a",
+        ifname="wlan1",
+        ssid="MyWiFi",
+        clients_count=5,
+    )
+    data = OpenWrtData(
+        wireless_interfaces=[wifi_iface],
+        connected_devices=[],
+    )
+
+    mock_coordinator = MagicMock()
+    mock_coordinator.data = data
+    mock_entry = MagicMock()
+    mock_entry.entry_id = "test_entry"
+
+    entities: list = []
+    _create_wifi_base_sensors(
+        mock_coordinator,
+        mock_entry,
+        "phy1-ap0",
+        "MyWiFi",
+        "5 GHz",
+        "cfg03a",
+        "wlan1",
+        entities,
+    )
+    clients_sensor = next(
+        s for s in entities if s.entity_description.key == "wifi_cfg03a_clients"
+    )
+    assert clients_sensor.native_value == 5
+
+    # Check system level wireless clients fallback
+    sys_sensors = _get_system_sensors()
+    system_wireless_clients = next(
+        s for s in sys_sensors if s.key == "wireless_clients"
+    )
+    assert system_wireless_clients.value_fn(data) == 5

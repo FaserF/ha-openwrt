@@ -130,15 +130,34 @@ def _create_wifi_base_sensors(
                 translation_key="wifi_clients",
                 name=f"{label} Clients",
                 state_class=SensorStateClass.MEASUREMENT,
-                value_fn=lambda data, n=iface_name, s=section_id, i=ifname: sum(
-                    1
-                    for d in data.all_connected_devices
-                    if d.is_wireless
-                    and d.connected
-                    and (
-                        d.interface == n
-                        or (s and d.interface == s)
-                        or (i and d.interface == i)
+                value_fn=lambda data, n=iface_name, s=section_id, i=ifname: (
+                    cnt
+                    if (
+                        cnt := sum(
+                            1
+                            for d in data.all_connected_devices
+                            if d.is_wireless
+                            and d.connected
+                            and (
+                                d.interface == n
+                                or (s and d.interface == s)
+                                or (i and d.interface == i)
+                            )
+                        )
+                    )
+                    > 0
+                    else next(
+                        (
+                            w.clients_count
+                            for w in data.wireless_interfaces
+                            if (
+                                w.name == n
+                                or (s and w.section == s)
+                                or (i and w.ifname == i)
+                            )
+                            and w.clients_count is not None
+                        ),
+                        0,
                     )
                 ),
             ),

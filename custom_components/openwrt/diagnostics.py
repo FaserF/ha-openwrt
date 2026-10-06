@@ -100,8 +100,21 @@ async def async_get_config_entry_diagnostics(
             diag["connected_devices_count"] = sum(
                 1 for d in data.all_connected_devices if d.connected
             )
-            diag["wireless_clients_count"] = sum(
-                1 for d in data.all_connected_devices if d.is_wireless and d.connected
+            diag["wireless_clients_count"] = (
+                wl_cnt
+                if (
+                    wl_cnt := sum(
+                        1
+                        for d in data.all_connected_devices
+                        if d.is_wireless and d.connected
+                    )
+                )
+                > 0
+                else sum(
+                    w.clients_count
+                    for w in data.wireless_interfaces
+                    if w.clients_count is not None
+                )
             )
             diag["firmware"] = {
                 "upgradable": data.firmware_upgradable,
