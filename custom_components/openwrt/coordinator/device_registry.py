@@ -132,19 +132,26 @@ class DeviceRegistryMixin(_Base):
         via_device_id: str | None = None
         if device_info.gateway_mac:
             gw_mac = device_info.gateway_mac.lower()
-            if hasattr(device_registry, "async_get_device_by_connection"):
-                gw_dev = device_registry.async_get_device_by_connection(
-                    (dr.CONNECTION_NETWORK_MAC, gw_mac),
-                    self.config_entry.entry_id,
+            if hasattr(device_registry, "async_get_devices"):
+                # The gateway is another config entry's device (the upstream
+                # router, or another integration's), so search every entry.
+                # async_get_device_by_connection only searches the one given.
+                # Skip this entry's own devices: a client device it tracks for
+                # the gateway's MAC is not the gateway, and would make a loop.
+                entry_id = self.config_entry.entry_id
+                gw_dev = next(
+                    (
+                        dev
+                        for dev in device_registry.async_get_devices(
+                            connections={(dr.CONNECTION_NETWORK_MAC, gw_mac)}
+                        )
+                        if getattr(dev, "config_entry_id", None) != entry_id
+                        and entry_id not in getattr(dev, "config_entries", ())
+                    ),
+                    None,
                 )
                 if gw_dev:
                     via_device_id = gw_dev.id
-            elif hasattr(device_registry, "async_get_devices"):
-                matches = device_registry.async_get_devices(
-                    connections={(dr.CONNECTION_NETWORK_MAC, gw_mac)}
-                )
-                if matches:
-                    via_device_id = matches[0].id
             else:
                 dev_devices = getattr(device_registry, "devices", None)
                 devices_iterable = (
