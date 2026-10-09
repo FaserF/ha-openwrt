@@ -1821,6 +1821,9 @@ class OpenWrtClient(abc.ABC):
                         parts = line.split()
                         if len(parts) >= 2:
                             iface_name = parts[0]
+                            if iface_name.startswith("tailscale"):
+                                # Tailscale's TUN device is not an OpenVPN tunnel
+                                continue
                             state = parts[1]
                             vpn = VpnInterface(
                                 name=iface_name,
