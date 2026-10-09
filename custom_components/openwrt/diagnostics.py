@@ -170,6 +170,7 @@ async def async_get_config_entry_diagnostics(
                 "adblock": data.packages.adblock,
                 "simple_adblock": data.packages.simple_adblock,
                 "ban_ip": data.packages.ban_ip,
+                "tailscale": data.packages.tailscale,
             }
             diag["top_processes"] = [
                 {

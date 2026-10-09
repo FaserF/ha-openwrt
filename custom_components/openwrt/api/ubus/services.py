@@ -269,13 +269,21 @@ class UbusServicesMixin:
             #  9: asu (menu.d)             -> asu
             # 10: /etc/init.d/adblock      -> adblock
             # 11: /etc/init.d/simple-adblock -> simple_adblock
-            # 12: /etc/init.d/ban-ip       -> ban_ip
+            # 12: /etc/init.d/banip        -> ban_ip
             # 13: /etc/init.d/miniupnpd   -> miniupnpd
             # 14: /etc/init.d/nlbwmon     -> nlbwmon
             # 15: /etc/init.d/pbr         -> pbr
             # 16: /etc/init.d/adguardhome -> adguardhome
             # 17: /etc/init.d/unbound     -> unbound
-            # 18: /etc/config/sqm         -> sqm_scripts (fallback)
+            # 18: /usr/sbin/batctl        -> batctl
+            # 19: /sys/module/batman_adv  -> batman_adv
+            # 20: /etc/config/sqm         -> sqm_scripts (fallback)
+            # 21: /usr/bin/stty           -> stty
+            # 22: /bin/stty               -> stty
+            # 23: /usr/bin/timeout        -> timeout
+            # 24: /bin/timeout            -> timeout
+            # 25: /usr/sbin/tailscale     -> tailscale
+            # 26: /usr/bin/tailscale      -> tailscale
             try:
                 cmd = (
                     "for f in /etc/init.d/sqm /etc/init.d/mwan3 /usr/bin/iwinfo "
@@ -295,7 +303,8 @@ class UbusServicesMixin:
                     "/usr/sbin/batctl "
                     "/sys/module/batman_adv "
                     "/etc/config/sqm "
-                    "/usr/bin/stty /bin/stty /usr/bin/timeout /bin/timeout; do "
+                    "/usr/bin/stty /bin/stty /usr/bin/timeout /bin/timeout "
+                    "/usr/sbin/tailscale /usr/bin/tailscale; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
@@ -347,6 +356,8 @@ class UbusServicesMixin:
                 packages.batman_adv = detect_status(19)
                 packages.stty = detect_status(21) or detect_status(22)
                 packages.timeout = detect_status(23) or detect_status(24)
+                if packages.tailscale is not True:
+                    packages.tailscale = detect_status(25) or detect_status(26)
 
             except Exception as err:
                 _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)
@@ -390,6 +401,7 @@ class UbusServicesMixin:
             ("mwan3", "mwan3"),
             ("openvpn", "openvpn"),
             ("attendedsysupgrade", "asu"),
+            ("tailscale", "tailscale"),
         ]
         for config, attr in configs:
             if getattr(packages, attr) is not True:
@@ -429,6 +441,8 @@ class UbusServicesMixin:
             ("/etc/init.d/simple-adblock", "simple_adblock"),
             ("/etc/init.d/banip", "ban_ip"),
             ("/etc/init.d/snort", "snort"),
+            ("/usr/sbin/tailscale", "tailscale"),
+            ("/usr/bin/tailscale", "tailscale"),
         ]
         for path, attr in check_list:
             if getattr(packages, attr) is not True:
@@ -456,6 +470,7 @@ class UbusServicesMixin:
             "simple_adblock": "simple-adblock",
             "ban_ip": "banip",
             "snort": "snort",
+            "tailscale": "tailscale",
         }
         for attr, pkg_name in mapping.items():
             if getattr(packages, attr) is not True:

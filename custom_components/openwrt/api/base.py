@@ -801,6 +801,7 @@ class OpenWrtPackages:
     lldp: bool | None = None
     stty: bool | None = None
     timeout: bool | None = None
+    tailscale: bool | None = None
 
 
 @dataclass
