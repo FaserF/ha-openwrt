@@ -157,6 +157,22 @@ def test_parse_running_status() -> None:
     assert peers["peer-a"].last_seen is None
 
 
+def test_parse_offline_peer_with_stale_relay_session() -> None:
+    """A just-disconnected peer still marked Active is reported as idle."""
+    doc = make_status()
+    doc["Peer"]["nodekey:bbbb"].update(
+        Online=False, Active=True, CurAddr="", LastSeen="2026-10-09T18:40:00.1Z"
+    )
+    status = parse_tailscale_output(wrap(json.dumps(doc)))
+
+    assert status is not None
+    peer = next(p for p in status.peers if p.hostname == "peer-b")
+    assert peer.online is False
+    assert peer.active is True
+    assert peer.connection == "idle"
+    assert peer.last_seen is not None
+
+
 def test_parse_drops_personal_data() -> None:
     """User, tailnet name, auth URL, keys and public endpoints are not kept."""
     doc = make_status(BackendState="NeedsLogin", AuthURL=AUTH_URL)

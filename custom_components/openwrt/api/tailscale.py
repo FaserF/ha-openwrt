@@ -73,7 +73,11 @@ def _parse_node(raw: Any) -> TailscalePeer:
     node = raw if isinstance(raw, dict) else {}
     cur_addr = node.get("CurAddr") or ""
     active = bool(node.get("Active"))
-    if cur_addr:
+    online = bool(node.get("Online"))
+    if not online:
+        # A just-disconnected peer can still report an active relayed session.
+        connection = "idle"
+    elif cur_addr:
         connection = "direct"
     elif active:
         connection = "relay"
@@ -85,7 +89,7 @@ def _parse_node(raw: Any) -> TailscalePeer:
         dns_name=str(node.get("DNSName") or "").rstrip("."),
         os=str(node.get("OS") or ""),
         ip_addresses=_str_list(node.get("TailscaleIPs")),
-        online=bool(node.get("Online")),
+        online=online,
         active=active,
         exit_node=bool(node.get("ExitNode")),
         exit_node_option=bool(node.get("ExitNodeOption")),
