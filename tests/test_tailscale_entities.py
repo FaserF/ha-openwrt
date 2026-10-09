@@ -507,3 +507,24 @@ async def test_config_flow_vpn_default_with_only_tailscale() -> None:
     vpn_key = next(key for key in schema if str(key) == CONF_ENABLE_VPN)
     assert vpn_key.default() is True
     assert "**tailscale** | ✅" in str(result["description_placeholders"])
+
+
+async def test_options_flow_keeps_vpn_enabled_with_only_tailscale() -> None:
+    """Re-opening options must not silently turn VPN off on Tailscale-only routers."""
+    from custom_components.openwrt.config_flow import OpenWrtOptionsFlow
+
+    flow = OpenWrtOptionsFlow(make_entry({CONF_ENABLE_VPN: True}))
+    flow.hass = MagicMock()
+    flow._packages = OpenWrtPackages(tailscale=True, wireguard=False, openvpn=False)
+
+    with patch(
+        "custom_components.openwrt.config_flow.translation.async_get_translations",
+        new_callable=AsyncMock,
+        return_value={},
+    ):
+        result = await flow.async_step_options_packages(None)
+
+    assert result["step_id"] == "options_packages"
+    schema = result["data_schema"].schema
+    vpn_key = next(key for key in schema if str(key) == CONF_ENABLE_VPN)
+    assert vpn_key.default() is True

@@ -2701,7 +2701,11 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 CONF_ENABLE_VPN,
                 default=(
                     current.get(CONF_ENABLE_VPN, True)
-                    if (self._packages.wireguard or self._packages.openvpn)
+                    if (
+                        self._packages.wireguard
+                        or self._packages.openvpn
+                        or self._packages.tailscale
+                    )
                     else False
                 ),
             )
