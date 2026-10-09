@@ -675,6 +675,43 @@ class VpnInterface:
 
 
 @dataclass
+class TailscalePeer:
+    """A Tailscale node (the router itself or a peer)."""
+
+    node_id: str = ""  # StableNodeID, stable across re-authentication
+    hostname: str = ""
+    dns_name: str = ""
+    os: str = ""
+    ip_addresses: list[str] = field(default_factory=list)
+    online: bool = False
+    active: bool = False
+    exit_node: bool = False
+    exit_node_option: bool = False
+    relay: str = ""  # DERP region code
+    connection: str = "idle"  # "direct", "relay" or "idle"
+    last_seen: datetime | None = None
+    key_expiry: datetime | None = None
+
+
+@dataclass
+class TailscaleStatus:
+    """Tailscale daemon status and tailscale0 traffic counters."""
+
+    daemon_running: bool = False
+    backend_state: str = "unknown"
+    version: str = ""
+    needs_login: bool = False
+    self_node: TailscalePeer = field(default_factory=TailscalePeer)
+    advertised_routes: list[str] = field(default_factory=list)
+    magic_dns_suffix: str = ""
+    health: list[str] = field(default_factory=list)
+    exit_node_in_use: bool = False
+    peers: list[TailscalePeer] = field(default_factory=list)
+    rx_bytes: int | None = None
+    tx_bytes: int | None = None
+
+
+@dataclass
 class SqmStatus:
     """SQM (Smart Queue Management) status."""
 
@@ -833,6 +870,7 @@ class OpenWrtData:
     firewall_rules: list[FirewallRule] = field(default_factory=list)
     access_control: list[AccessControl] = field(default_factory=list)
     vpn_interfaces: list[VpnInterface] = field(default_factory=list)
+    tailscale: TailscaleStatus | None = None
     latency: LatencyResult = field(default_factory=LatencyResult)
     external_ip: str | None = None
     firmware_upgradable: bool = False
@@ -1818,6 +1856,13 @@ class OpenWrtClient(abc.ABC):
 
         return vpn_interfaces
 
+    async def get_tailscale_status(self) -> TailscaleStatus | None:
+        """Get Tailscale status; None means unknown (keep previous data)."""
+        from .tailscale import TAILSCALE_STATUS_COMMAND, parse_tailscale_output
+
+        raw = await self.execute_command(TAILSCALE_STATUS_COMMAND)
+        return parse_tailscale_output(raw)
+
     async def get_adblock_status(self) -> AdBlockStatus:
         """Get status of the adblock package."""
         return AdBlockStatus()
@@ -2304,6 +2349,8 @@ class OpenWrtClient(abc.ABC):
                 medium_tasks["simple_adblock"] = self.get_simple_adblock_status()
             if data.packages.ban_ip:
                 medium_tasks["ban_ip"] = self.get_banip_status()
+            if data.packages.tailscale:
+                medium_tasks["tailscale"] = self.get_tailscale_status()
             if (data.packages.batman_adv or data.packages.batctl) and (
                 not self.coordinator or data.permissions.read_batman
             ):
@@ -2359,6 +2406,13 @@ class OpenWrtClient(abc.ABC):
                 )
             if "ban_ip" in med_map:
                 data.ban_ip = get_val(med_map["ban_ip"], data.ban_ip, "ban-ip")
+            if "tailscale" in med_map:
+                data.tailscale = get_val(
+                    med_map["tailscale"], data.tailscale, "tailscale"
+                )
+            elif data.packages.tailscale is False:
+                # Uninstalled: drop old status instead of keeping it forever.
+                data.tailscale = None
             if "batman" in med_map:
                 batman = get_val(med_map["batman"], None, "batman")
                 if batman:
@@ -2386,6 +2440,7 @@ class OpenWrtClient(abc.ABC):
                     "adblock",
                     "simple_adblock",
                     "ban_ip",
+                    "tailscale",
                     "batman_originators",
                     "batman_neighbors",
                     "batman_gateways",
