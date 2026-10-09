@@ -54,6 +54,7 @@ async def _router_via_device(gateway_matches: list[MagicMock]) -> object:
 
 
 def _device(dev_id: str, config_entry_id: str) -> MagicMock:
+    """Build a registry device owned by the given config entry."""
     device = MagicMock(id=dev_id, config_entry_id=config_entry_id)
     device.config_entries = {config_entry_id}
     return device
@@ -77,5 +78,6 @@ async def test_own_client_device_for_gateway_mac_is_skipped() -> None:
 
 @pytest.mark.asyncio
 async def test_no_gateway_device_leaves_router_unlinked() -> None:
+    """Without a gateway device in another entry, the router has no via device."""
     via = await _router_via_device([_device("own_client", "this_entry")])
     assert via is None
