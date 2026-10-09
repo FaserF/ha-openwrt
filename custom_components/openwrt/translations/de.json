@@ -709,8 +709,40 @@
           "batman_adv": "Batman-adv Mesh-Netzwerk",
           "batctl": "Batman-adv Steuerung (batctl)",
           "nlbwmon": "Top-Bandbreiten-Hosts-Sensor",
-          "snort": "Snort IDS-Sensor"
+          "snort": "Snort IDS-Sensor",
+          "tailscale": "Tailscale Sensoren"
         }
+      },
+      "tsvpn_backend_state": {
+        "name": "Tailscale VPN Status",
+        "state": {
+          "no_state": "Kein Status",
+          "needs_login": "Anmeldung erforderlich",
+          "needs_machine_auth": "Gerätefreigabe erforderlich",
+          "stopped": "Gestoppt",
+          "starting": "Startet",
+          "running": "Läuft",
+          "daemon_unavailable": "Dienst nicht erreichbar",
+          "unknown": "Unbekannt"
+        }
+      },
+      "tsvpn_ip": {
+        "name": "Tailscale VPN IP"
+      },
+      "tsvpn_home_derp": {
+        "name": "Tailscale VPN Heim-DERP"
+      },
+      "tsvpn_peers_online": {
+        "name": "Tailscale VPN Peers online"
+      },
+      "tsvpn_key_expiry": {
+        "name": "Tailscale VPN Schlüsselablauf"
+      },
+      "tsvpn_rx": {
+        "name": "Tailscale VPN Tunnel RX"
+      },
+      "tsvpn_tx": {
+        "name": "Tailscale VPN Tunnel TX"
       }
     },
     "binary_sensor": {
@@ -731,6 +763,15 @@
       },
       "batman_mesh_active": {
         "name": "Batman Mesh Aktiv"
+      },
+      "tsvpn_connected": {
+        "name": "Tailscale VPN verbunden"
+      },
+      "tsvpn_health": {
+        "name": "Tailscale VPN Problem"
+      },
+      "tsvpn_peer_online": {
+        "name": "Tailscale Peer {peer}"
       }
     },
     "button": {

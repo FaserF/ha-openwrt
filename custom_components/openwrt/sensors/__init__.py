@@ -60,6 +60,9 @@ from .system import (
     _async_setup_system_sensors,
     _get_system_sensors,
 )
+from .tailscale import (
+    _async_setup_tailscale_sensors,
+)
 from .wireguard import (
     OpenWrtWireGuardPeerSensor,
     _async_setup_wireguard_sensors,
@@ -91,6 +94,7 @@ __all__ = [
     "_async_setup_specialized_sensors",
     "_async_setup_storage_sensors",
     "_async_setup_system_sensors",
+    "_async_setup_tailscale_sensors",
     "_async_setup_wireguard_sensors",
     "_async_setup_wireless_sensors",
     "_bytes_to_mb",

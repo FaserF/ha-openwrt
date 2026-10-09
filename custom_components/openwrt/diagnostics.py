@@ -172,6 +172,18 @@ async def async_get_config_entry_diagnostics(
                 "ban_ip": data.packages.ban_ip,
                 "tailscale": data.packages.tailscale,
             }
+            if data.tailscale is not None:
+                # Counts and states only: no IPs, hostnames or tailnet names.
+                diag["tailscale"] = {
+                    "backend_state": data.tailscale.backend_state,
+                    "version": data.tailscale.version,
+                    "daemon_running": data.tailscale.daemon_running,
+                    "needs_login": data.tailscale.needs_login,
+                    "peers_total": len(data.tailscale.peers),
+                    "peers_online": sum(1 for p in data.tailscale.peers if p.online),
+                    "health_count": len(data.tailscale.health),
+                    "exit_node_in_use": data.tailscale.exit_node_in_use,
+                }
             diag["top_processes"] = [
                 {
                     "pid": p.pid,
