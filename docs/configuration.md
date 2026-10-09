@@ -50,7 +50,7 @@ If you are using a non-root user (e.g. for security reasons), you need to grant 
 | **Wireless** | Read WiFi radios, SSIDs, signal levels, client lists | Toggling radios/SSIDs, WPS control |
 | **Firewall** | Read firewall rules & port forwards | Toggling rules/forwards, Parental Control (Device Blocking) |
 | **Devices** | Read DHCP Leases, ARP/Neighbor table (Connected devices) | Wake on LAN, Kicking wireless clients |
-| **VPN** | Read WireGuard & OpenVPN status | - |
+| **VPN** | Read WireGuard, OpenVPN & Tailscale status (Tailscale via `tailscale status --json`, requires `file.exec` for `/bin/sh`) | - |
 | **UPnP** | Read active UPnP/NAT-PMP port mappings | - |
 | **SQM** | Read SQM instance status | Toggling SQM, Changing bandwidth limits |
 | **Services** | Read active system services (OpenVPN, AdGuard, etc.) | Toggling & restarting services |
@@ -73,6 +73,7 @@ Some features require additional OpenWrt packages to be installed on your router
 | **etherwake** | Wake on LAN functionality |
 | **wireguard-tools** | WireGuard VPN Sensors |
 | **openvpn** | OpenVPN Sensors |
+| **tailscale** | Tailscale VPN Sensors (enable the VPN option) |
 | **kmod-batman-adv** | Batman-adv Mesh Support (Kernel module) |
 | **batctl-full** | Batman-adv Control (Required for mesh data) |
 | **nlbwmon** | NLBWMon Top Bandwidth Hosts sensor (opt-in, requires `file.exec` rpcd ACL) |
