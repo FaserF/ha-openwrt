@@ -95,7 +95,9 @@ def _parse_node(raw: Any) -> TailscalePeer:
         exit_node_option=bool(node.get("ExitNodeOption")),
         relay=str(node.get("Relay") or ""),
         connection=connection,
-        last_seen=_parse_time(node.get("LastSeen")),
+        # Tailscale keeps the last disconnect time after a reconnect; only
+        # report it while the node is offline.
+        last_seen=None if online else _parse_time(node.get("LastSeen")),
         key_expiry=_parse_time(node.get("KeyExpiry")),
     )
 

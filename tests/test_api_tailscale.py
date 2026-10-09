@@ -173,6 +173,18 @@ def test_parse_offline_peer_with_stale_relay_session() -> None:
     assert peer.last_seen is not None
 
 
+def test_parse_reconnected_peer_has_no_last_seen() -> None:
+    """An online peer keeps a stale LastSeen from its last disconnect; hide it."""
+    doc = make_status()
+    doc["Peer"]["nodekey:aaaa"]["LastSeen"] = "2026-10-09T18:40:00.1Z"
+    status = parse_tailscale_output(wrap(json.dumps(doc)))
+
+    assert status is not None
+    peer = next(p for p in status.peers if p.hostname == "peer-a")
+    assert peer.online is True
+    assert peer.last_seen is None
+
+
 def test_parse_drops_personal_data() -> None:
     """User, tailnet name, auth URL, keys and public endpoints are not kept."""
     doc = make_status(BackendState="NeedsLogin", AuthURL=AUTH_URL)
