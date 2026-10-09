@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from homeassistant.helpers import device_registry as dr
@@ -81,3 +81,14 @@ async def test_no_gateway_device_leaves_router_unlinked() -> None:
     """Without a gateway device in another entry, the router has no via device."""
     via = await _router_via_device([_device("own_client", "this_entry")])
     assert via is None
+
+
+@pytest.mark.asyncio
+async def test_single_owner_devices_skip_deprecated_config_entries() -> None:
+    """HA 2026.10 deprecates DeviceEntry.config_entries; read config_entry_id only."""
+    gateway = MagicMock(id="gw", config_entry_id="upstream_router_entry")
+    config_entries = PropertyMock(return_value={"upstream_router_entry"})
+    type(gateway).config_entries = config_entries
+
+    assert await _router_via_device([gateway]) == "gw"
+    config_entries.assert_not_called()

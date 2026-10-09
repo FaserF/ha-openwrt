@@ -28,9 +28,12 @@ def _entry(options: dict) -> MagicMock:
 def _client_device(
     dev_id: str, mac: str, config_entries: set[str] | None = None
 ) -> MagicMock:
+    # A shared device (config_entries given) has the pre-2026.9 shape: no single
+    # owner. Otherwise it has HA 2026.9's single config_entry_id.
     device = MagicMock(
         id=dev_id,
         model="Tracked device",
+        config_entry_id=None if config_entries else "test_entry_id",
         config_entries=config_entries or {"test_entry_id"},
         identifiers={(DOMAIN, mac)},
         via_device_id="dev_router",

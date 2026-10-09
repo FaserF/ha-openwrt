@@ -232,7 +232,11 @@ async def async_get_config_entry_diagnostics(
                     "manufacturer": str(_dev.manufacturer or ""),
                     "sw_version": str(_dev.sw_version or ""),
                     "via_device_id": str(_dev.via_device_id or ""),
-                    "config_entries": list(_dev.config_entries),
+                    "config_entries": (
+                        [_dev.config_entry_id]
+                        if getattr(_dev, "config_entry_id", None)
+                        else list(_dev.config_entries)
+                    ),
                     "identifiers": [list(i) for i in _dev.identifiers],
                     "connections": [list(c) for c in _dev.connections],
                 }
