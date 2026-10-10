@@ -142,6 +142,27 @@ def _create_wifi_base_sensors(
                                 d.interface == n
                                 or (s and d.interface == s)
                                 or (i and d.interface == i)
+                                or (
+                                    coordinator.interface_to_stable_id.get(d.interface)
+                                    and coordinator.interface_to_stable_id.get(
+                                        d.interface
+                                    )
+                                    == (
+                                        coordinator.interface_to_stable_id.get(n)
+                                        or (
+                                            s
+                                            and coordinator.interface_to_stable_id.get(
+                                                s
+                                            )
+                                        )
+                                        or (
+                                            i
+                                            and coordinator.interface_to_stable_id.get(
+                                                i
+                                            )
+                                        )
+                                    )
+                                )
                             )
                         )
                     )
@@ -154,6 +175,25 @@ def _create_wifi_base_sensors(
                                 w.name == n
                                 or (s and w.section == s)
                                 or (i and w.ifname == i)
+                                or (
+                                    coordinator.interface_to_stable_id.get(w.name)
+                                    and coordinator.interface_to_stable_id.get(w.name)
+                                    == (
+                                        coordinator.interface_to_stable_id.get(n)
+                                        or (
+                                            s
+                                            and coordinator.interface_to_stable_id.get(
+                                                s
+                                            )
+                                        )
+                                        or (
+                                            i
+                                            and coordinator.interface_to_stable_id.get(
+                                                i
+                                            )
+                                        )
+                                    )
+                                )
                             )
                             and w.clients_count is not None
                         ),

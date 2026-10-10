@@ -6,11 +6,13 @@ from unittest.mock import MagicMock, patch
 from homeassistant.components.sensor import SensorDeviceClass
 
 from custom_components.openwrt.api.base import (
+    ConnectedDevice,
     OpenWrtData,
     SystemResources,
     WirelessInterface,
 )
 from custom_components.openwrt.sensor import OpenWrtSensorEntity, _get_system_sensors
+from custom_components.openwrt.sensors.wireless import _create_wifi_base_sensors
 
 
 def test_uptime_conversion() -> None:
@@ -463,3 +465,56 @@ def test_wireless_client_count_fallback() -> None:
         s for s in sys_sensors if s.key == "wireless_clients"
     )
     assert system_wireless_clients.value_fn(data) == 5
+
+
+def test_wifi_clients_sensor_stable_id_matching() -> None:
+    """Test that wifi client count matches devices via stable_id mapping."""
+    wifi_iface = WirelessInterface(
+        name="wifinet0",
+        section="default_radio0",
+        ifname="",
+        ssid="MyHomeWiFi",
+    )
+    device = ConnectedDevice(
+        mac="11:22:33:44:55:66",
+        interface="phy0-ap0",
+        is_wireless=True,
+        connected=True,
+    )
+    data = OpenWrtData(
+        wireless_interfaces=[wifi_iface],
+        connected_devices=[device],
+    )
+
+    mock_coordinator = MagicMock()
+    mock_coordinator.data = data
+    mock_coordinator.interface_to_stable_id = {
+        "phy0-ap0": "MyHomeWiFi_2.4 GHz",
+        "wifinet0": "MyHomeWiFi_2.4 GHz",
+        "default_radio0": "MyHomeWiFi_2.4 GHz",
+    }
+    mock_entry = MagicMock()
+    mock_entry.entry_id = "test_entry"
+
+    entities: list = []
+    _create_wifi_base_sensors(
+        mock_coordinator,
+        mock_entry,
+        "wifinet0",
+        "MyHomeWiFi",
+        "2.4 GHz",
+        "default_radio0",
+        "",
+        entities,
+    )
+    clients_sensor = next(
+        s for s in entities if s.entity_description.key == "wifi_default_radio0_clients"
+    )
+    assert clients_sensor.native_value == 1
+
+    sys_sensors = _get_system_sensors()
+    connected_clients = next(s for s in sys_sensors if s.key == "connected_clients")
+    assert connected_clients.value_fn(data) == 1
+    attrs = connected_clients.attrs_fn(data)
+    assert attrs["wireless"] == 1
+    assert attrs["wired"] == 0

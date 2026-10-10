@@ -237,17 +237,6 @@ class TrackingMixin(_Base):
             if mac in own_macs:
                 continue
 
-            # Filter out randomized MACs if option is set
-            if is_random_mac(mac):
-                if skip_random:
-                    _LOGGER.debug(
-                        "Skipping randomized MAC device (option enabled): %s", mac
-                    )
-                    continue
-                _LOGGER.debug(
-                    "Keeping randomized MAC device (option disabled): %s", mac
-                )
-
             # Filter out router's own IP addresses
             if device.ip and device.ip in own_ips:
                 continue
@@ -272,6 +261,17 @@ class TrackingMixin(_Base):
 
             # Device passes internal filters — count it in the totals regardless of whitelist
             all_devices.append(device)
+
+            # Filter out randomized MACs for entity tracking if option is set
+            if is_random_mac(mac):
+                if skip_random:
+                    _LOGGER.debug(
+                        "Skipping randomized MAC device from entity tracking: %s", mac
+                    )
+                    continue
+                _LOGGER.debug(
+                    "Keeping randomized MAC device for entity tracking: %s", mac
+                )
 
             # Publish the hostname to the registry shared by every config entry.
             # Deliberately before the whitelist check: an AP with no DHCP server

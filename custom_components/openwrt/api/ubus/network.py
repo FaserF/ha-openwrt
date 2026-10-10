@@ -230,15 +230,28 @@ class UbusNetworkMixin:
             except Exception as e:
                 _LOGGER.debug("UCI wireless fallback failed: %s", e)
 
-        # 2. Supplement/Fallback: iwinfo devices
+        # 2. Supplement/Fallback: iwinfo devices and hostapd.* objects
         # This is critical for devices where interfaces aren't in network.wireless or UCI names differ
         try:
-            iw_devs = await self._call("iwinfo", "devices")
             candidates = []
-            if isinstance(iw_devs, list):
-                candidates = iw_devs
-            elif isinstance(iw_devs, dict) and "devices" in iw_devs:
-                candidates = iw_devs["devices"]
+            try:
+                iw_devs = await self._call("iwinfo", "devices")
+                if isinstance(iw_devs, list):
+                    candidates.extend(iw_devs)
+                elif isinstance(iw_devs, dict) and "devices" in iw_devs:
+                    candidates.extend(iw_devs["devices"])
+            except Exception:
+                _LOGGER.debug("iwinfo devices call failed")
+
+            try:
+                ubus_objs = await self._list_objects()
+                for obj in ubus_objs:
+                    if obj.startswith("hostapd."):
+                        h_name = obj.split(".", 1)[1]
+                        if h_name and h_name not in candidates:
+                            candidates.append(h_name)
+            except Exception:
+                pass
 
             for name in candidates:
                 if skip_iwinfo_info or name in iface_names or name in radio_names:
@@ -271,12 +284,35 @@ class UbusNetworkMixin:
                     pass
 
                 if not found_match:
+                    try:
+                        h_status = await self._call(f"hostapd.{name}", "get_status")
+                        if (
+                            h_status
+                            and isinstance(h_status, dict)
+                            and h_status.get("ssid")
+                        ):
+                            h_ssid = h_status.get("ssid")
+                            for wifi in interfaces:
+                                if (
+                                    not wifi.ifname or wifi.ifname == wifi.section
+                                ) and (wifi.ssid == h_ssid or not wifi.ssid):
+                                    wifi.name = name
+                                    wifi.ifname = name
+                                    if not wifi.ssid:
+                                        wifi.ssid = h_ssid
+                                    iface_names.add(name)
+                                    found_match = True
+                                    break
+                    except Exception:
+                        pass
+
+                if not found_match:
                     # Found a new interface not in UCI status
                     wifi = WirelessInterface(name=name, enabled=True, up=True)
                     interfaces.append(wifi)
                     iface_names.add(name)
-        except UbusError:
-            _LOGGER.debug("iwinfo devices call failed")
+        except Exception as err:
+            _LOGGER.debug("Supplemental wireless interface discovery failed: %s", err)
 
         # 3. Populate metrics for all discovered interfaces in parallel
         async def _fetch_metrics(wifi: WirelessInterface) -> None:
