@@ -337,7 +337,7 @@ class UbusClient(
                 result = self._unwrap_list_result(data.get("result"))
                 return result.get(object_name, {})
         except Exception:
-            pass
+            return {}
 
     async def _is_session_valid(self) -> bool:
         """Check if current ubus session token is still valid via session.access."""

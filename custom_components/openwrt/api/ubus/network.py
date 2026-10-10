@@ -298,8 +298,8 @@ class UbusNetworkMixin:
                                 ) and (wifi.ssid == h_ssid or not wifi.ssid):
                                     wifi.name = name
                                     wifi.ifname = name
-                                    if not wifi.ssid:
-                                        wifi.ssid = h_ssid
+                                    if not wifi.ssid and h_ssid:
+                                        wifi.ssid = str(h_ssid)
                                     iface_names.add(name)
                                     found_match = True
                                     break
