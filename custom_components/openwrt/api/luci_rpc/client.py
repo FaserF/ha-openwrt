@@ -70,6 +70,8 @@ class LuciRpcClient(
 
         self._rpc_id: int = 0
         self._semaphore = asyncio.Semaphore(5)
+        # Serialises re-login after a 403 so parallel calls share one new session
+        self._reauth_lock = asyncio.Lock()
 
     @property
     def _base_url(self) -> str:
@@ -91,8 +93,11 @@ class LuciRpcClient(
         self._rpc_id += 1
 
         url = f"{self._base_url}/cgi-bin/luci/rpc/{endpoint}"
-        if self._auth_token:
-            url += f"?auth={self._auth_token}"
+        # Remember the token this request carries, so a 403 can tell whether
+        # another call has already logged in again since it was sent.
+        token = self._auth_token
+        if token:
+            url += f"?auth={token}"
 
         payload = {
             "id": self._rpc_id,
@@ -111,7 +116,9 @@ class LuciRpcClient(
                     ssl=self.verify_ssl if self.use_ssl else False,
                 ) as response:
                     if response.status == 403:
-                        if self._auth_token and not reauthenticated:
+                        # Retry once even without a token: a call sent while
+                        # another one was mid-login carried none at all.
+                        if not reauthenticated:
                             reauth_needed = True
                         else:
                             msg = f"Access denied to LuCI RPC on {self.host}"
@@ -138,8 +145,14 @@ class LuciRpcClient(
                         data = await response.json()
 
             if reauth_needed:
-                self._auth_token = ""
-                await self.connect()
+                async with self._reauth_lock:
+                    # An expired token fails every in-flight call at once. Only
+                    # the first to get here logs in; the rest reuse its token
+                    # instead of each opening another rpcd session. The old token
+                    # stays until a login succeeds, so if this login fails the
+                    # next caller in line tries again rather than going tokenless.
+                    if self._auth_token == token:
+                        await self.connect()
                 return await self._rpc_call(
                     endpoint,
                     method,

@@ -1,5 +1,6 @@
 """Test the OpenWrt LuCI RPC API client."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -474,3 +475,100 @@ async def test_luci_get_network_interfaces_stats(luci_client: LuciRpcClient):
         eth3 = next(i for i in ifaces if i.name == "eth3")
         assert eth3.device == "eth3"
         assert eth3.rx_bytes == 0
+
+
+class _YieldingResponse(MockResponse):
+    """Response that yields on entry, so parallel calls genuinely interleave."""
+
+    async def __aenter__(self):
+        await asyncio.sleep(0)
+        return self
+
+
+def _fake_router(valid_token: str, logins: list[str]):
+    """Return a session.post side effect: rpc calls need valid_token, auth logs in."""
+
+    def _post(url, json=None, **_kwargs):
+        if url.endswith("/rpc/auth"):
+            logins.append(valid_token)
+            return _YieldingResponse(200, {"id": 1, "result": valid_token})
+        if url.endswith(f"?auth={valid_token}"):
+            return _YieldingResponse(200, {"id": 1, "result": "ok"})
+        return _YieldingResponse(403, {})
+
+    return _post
+
+
+@pytest.mark.asyncio
+async def test_luci_expired_token_parallel_calls_log_in_once(
+    luci_client: LuciRpcClient,
+):
+    """Every in-flight call 403s together on expiry; only one may log in again."""
+    logins: list[str] = []
+    luci_client._auth_token = "expired"
+    luci_client.session.post = MagicMock(side_effect=_fake_router("fresh", logins))
+
+    results = await asyncio.gather(
+        *(luci_client._rpc_call("sys", "hostname") for _ in range(10))
+    )
+
+    assert results == ["ok"] * 10
+    assert len(logins) == 1
+    assert luci_client._auth_token == "fresh"
+
+
+@pytest.mark.asyncio
+async def test_luci_expired_token_single_call_logs_in_and_retries(
+    luci_client: LuciRpcClient,
+):
+    """A lone call with an expired token must log in again, not fail."""
+    logins: list[str] = []
+    luci_client._auth_token = "expired"
+    luci_client.session.post = MagicMock(side_effect=_fake_router("fresh", logins))
+
+    assert await luci_client._rpc_call("sys", "hostname") == "ok"
+    assert len(logins) == 1
+
+
+@pytest.mark.asyncio
+async def test_luci_403_without_token_logs_in_and_retries(
+    luci_client: LuciRpcClient,
+):
+    """A call sent with no token (e.g. mid-login elsewhere) retries after login."""
+    logins: list[str] = []
+    luci_client.session.post = MagicMock(side_effect=_fake_router("fresh", logins))
+
+    assert await luci_client._rpc_call("sys", "hostname") == "ok"
+    assert len(logins) == 1
+
+
+@pytest.mark.asyncio
+async def test_luci_failed_relogin_lets_the_next_caller_try(
+    luci_client: LuciRpcClient,
+):
+    """If the first re-login fails, a waiting call logs in itself instead of
+    retrying with no token."""
+    attempts: list[int] = []
+
+    def _post(url, json=None, **_kwargs):
+        if url.endswith("/rpc/auth"):
+            attempts.append(1)
+            if len(attempts) == 1:
+                return _YieldingResponse(200, {"id": 1, "result": None})
+            return _YieldingResponse(200, {"id": 1, "result": "fresh"})
+        if url.endswith("?auth=fresh"):
+            return _YieldingResponse(200, {"id": 1, "result": "ok"})
+        return _YieldingResponse(403, {})
+
+    luci_client._auth_token = "expired"
+    luci_client.session.post = MagicMock(side_effect=_post)
+
+    results = await asyncio.gather(
+        luci_client._rpc_call("sys", "hostname"),
+        luci_client._rpc_call("sys", "hostname"),
+        return_exceptions=True,
+    )
+
+    assert isinstance(results[0], LuciRpcAuthError)
+    assert results[1] == "ok"
+    assert len(attempts) == 2
