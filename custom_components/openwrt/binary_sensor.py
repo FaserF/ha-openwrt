@@ -26,6 +26,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
+from .sensors.tailscale import find_tailscale_peer, tailscale_entities_enabled
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -34,6 +35,7 @@ class OpenWrtBinarySensorDescription(BinarySensorEntityDescription):
 
     is_on_fn: Callable[[OpenWrtData], bool | None]
     available_fn: Callable[[OpenWrtData], bool] | None = None
+    attrs_fn: Callable[[OpenWrtData], dict[str, Any]] | None = None
 
 
 BINARY_SENSORS: tuple[OpenWrtBinarySensorDescription, ...] = (
@@ -104,6 +106,10 @@ async def async_setup_entry(
                 coordinator, entry, entities, tracked_keys
             )
 
+        _async_setup_tailscale_binary_sensors(
+            coordinator, entry, entities, tracked_keys
+        )
+
         # WPS Status
         key = "wps_active"
         if key not in tracked_keys:
@@ -172,6 +178,17 @@ async def async_setup_entry(
                     for i in coordinator.data.network_interfaces
                 )
                 if not found:
+                    ent_reg.async_remove(ent.entity_id)
+            elif unique_id.startswith(f"{entry.entry_id}_tsvpn_peer_"):
+                ts = coordinator.data.tailscale if coordinator.data else None
+                # Only trust a complete peer list from a running daemon;
+                # never prune during outages or while logged out.
+                if ts is None or not ts.daemon_running or ts.backend_state != "running":
+                    continue
+                node_id = unique_id.removeprefix(
+                    f"{entry.entry_id}_tsvpn_peer_"
+                ).removesuffix("_online")
+                if not any(p.node_id == node_id for p in ts.peers):
                     ent_reg.async_remove(ent.entity_id)
 
     hass.add_job(_async_cleanup_entities)
@@ -378,6 +395,13 @@ class OpenWrtBinarySensorEntity(
             return self.entity_description.available_fn(self.coordinator.data)
         return True
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return attributes."""
+        if self.coordinator.data is None or not self.entity_description.attrs_fn:
+            return None
+        return self.entity_description.attrs_fn(self.coordinator.data)
+
 
 def _async_setup_service_binary_sensors(
     coordinator: OpenWrtDataCoordinator,
@@ -410,3 +434,88 @@ def _async_setup_service_binary_sensors(
                     ),
                 )
             )
+
+
+def _tailscale_peer_attrs(data: OpenWrtData, node_id: str) -> dict[str, Any]:
+    peer = find_tailscale_peer(data, node_id)
+    if peer is None:
+        return {}
+    return {
+        "hostname": peer.hostname,
+        "os": peer.os,
+        "ip_addresses": peer.ip_addresses,
+        "connection": peer.connection,
+        "relay": peer.relay,
+        "last_seen": peer.last_seen.isoformat() if peer.last_seen else None,
+        "exit_node": peer.exit_node,
+    }
+
+
+def _async_setup_tailscale_binary_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    entities: list[OpenWrtBinarySensorEntity],
+    tracked_keys: set[str],
+) -> None:
+    """Set up Tailscale VPN binary sensors (router status and peers)."""
+    data = coordinator.data
+    if not tailscale_entities_enabled(data, entry) or data.tailscale is None:
+        return
+
+    def ts_available(d: OpenWrtData) -> bool:
+        return d.tailscale is not None
+
+    descriptions = [
+        OpenWrtBinarySensorDescription(
+            key="tsvpn_connected",
+            name="Tailscale VPN Connected",
+            translation_key="tsvpn_connected",
+            device_class=BinarySensorDeviceClass.CONNECTIVITY,
+            is_on_fn=lambda d: bool(
+                d.tailscale
+                and d.tailscale.backend_state == "running"
+                and d.tailscale.self_node.online
+            ),
+            available_fn=ts_available,
+        ),
+        OpenWrtBinarySensorDescription(
+            key="tsvpn_health",
+            name="Tailscale VPN Problem",
+            translation_key="tsvpn_health",
+            device_class=BinarySensorDeviceClass.PROBLEM,
+            is_on_fn=lambda d: bool(
+                d.tailscale and (d.tailscale.health or d.tailscale.needs_login)
+            ),
+            attrs_fn=lambda d: {
+                "messages": d.tailscale.health if d.tailscale else [],
+                "needs_login": bool(d.tailscale and d.tailscale.needs_login),
+            },
+            available_fn=ts_available,
+        ),
+    ]
+
+    # Peers are keyed by StableNodeID (hostnames change, node keys rotate) and
+    # disabled by default to keep large tailnets out of the registry.
+    for peer in data.tailscale.peers:
+        descriptions.append(
+            OpenWrtBinarySensorDescription(
+                key=f"tsvpn_peer_{peer.node_id}_online",
+                name=f"Tailscale Peer {peer.hostname or peer.node_id}",
+                translation_key="tsvpn_peer_online",
+                translation_placeholders={"peer": peer.hostname or peer.node_id},
+                device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                entity_registry_enabled_default=False,
+                is_on_fn=lambda d, n=peer.node_id: bool(
+                    (p := find_tailscale_peer(d, n)) and p.online
+                ),
+                attrs_fn=lambda d, n=peer.node_id: _tailscale_peer_attrs(d, n),
+                available_fn=lambda d, n=peer.node_id: (
+                    find_tailscale_peer(d, n) is not None
+                ),
+            )
+        )
+
+    for description in descriptions:
+        if description.key not in tracked_keys:
+            tracked_keys.add(description.key)
+            entities.append(OpenWrtBinarySensorEntity(coordinator, entry, description))

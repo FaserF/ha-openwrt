@@ -347,6 +347,7 @@ def _generate_package_table(
         f"| **etherwake** | {to_icon(packages.etherwake)} | {get_missing(packages.etherwake, 'Wake on LAN', 'etherwake')} |\n"
         f"| **wireguard-tools** | {to_icon(packages.wireguard)} | {get_missing(packages.wireguard, 'WireGuard Sensors', 'wireguard')} |\n"
         f"| **openvpn** | {to_icon(packages.openvpn)} | {get_missing(packages.openvpn, 'OpenVPN Sensors', 'openvpn')} |\n"
+        f"| **tailscale** | {to_icon(packages.tailscale)} | {get_missing(packages.tailscale, 'Tailscale Sensors', 'tailscale')} |\n"
         f"| **luci-mod-rpc** | {to_icon(packages.luci_mod_rpc)} | {get_missing(packages.luci_mod_rpc, luci_info, 'luci_mod_rpc', required=luci_required)} |\n"
         f"| **luci-app-attendedsysupgrade** | {to_icon(packages.asu)} | {get_missing(packages.asu, 'Firmware Upgrade (ASU)', 'asu')} |\n"
         f"| **kmod-batman-adv** | {to_icon(packages.batman_adv)} | {get_missing(packages.batman_adv, 'Batman-adv Mesh', 'batman_adv')} |\n"
@@ -1961,7 +1962,11 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
         schema_dict[
             vol.Optional(
                 CONF_ENABLE_VPN,
-                default=bool(self._packages.wireguard or self._packages.openvpn),
+                default=bool(
+                    self._packages.wireguard
+                    or self._packages.openvpn
+                    or self._packages.tailscale
+                ),
             )
         ] = bool
         schema_dict[
@@ -2696,7 +2701,11 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 CONF_ENABLE_VPN,
                 default=(
                     current.get(CONF_ENABLE_VPN, True)
-                    if (self._packages.wireguard or self._packages.openvpn)
+                    if (
+                        self._packages.wireguard
+                        or self._packages.openvpn
+                        or self._packages.tailscale
+                    )
                     else False
                 ),
             )

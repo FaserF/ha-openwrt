@@ -42,6 +42,27 @@
       },
       "qmodem_nr5g_sinr": {
         "default": "mdi:signal-5g"
+      },
+      "tsvpn_backend_state": {
+        "default": "mdi:vpn"
+      },
+      "tsvpn_ip": {
+        "default": "mdi:ip-network"
+      },
+      "tsvpn_home_derp": {
+        "default": "mdi:server-network"
+      },
+      "tsvpn_peers_online": {
+        "default": "mdi:account-network"
+      },
+      "tsvpn_key_expiry": {
+        "default": "mdi:key-chain-variant"
+      },
+      "tsvpn_rx": {
+        "default": "mdi:download-network"
+      },
+      "tsvpn_tx": {
+        "default": "mdi:upload-network"
       }
     },
     "button": {
@@ -50,6 +71,17 @@
       },
       "kick_device": {
         "default": "mdi:account-cancel"
+      }
+    },
+    "binary_sensor": {
+      "tsvpn_connected": {
+        "default": "mdi:vpn"
+      },
+      "tsvpn_health": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "tsvpn_peer_online": {
+        "default": "mdi:lan-connect"
       }
     }
   }

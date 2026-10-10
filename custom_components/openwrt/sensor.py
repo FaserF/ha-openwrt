@@ -51,6 +51,7 @@ from .sensors import (
     _async_setup_specialized_sensors,
     _async_setup_storage_sensors,
     _async_setup_system_sensors,
+    _async_setup_tailscale_sensors,
     _async_setup_wireguard_sensors,
     _async_setup_wireless_sensors,
     _bytes_to_mb,
@@ -102,6 +103,7 @@ __all__ = [
     "_async_setup_specialized_sensors",
     "_async_setup_storage_sensors",
     "_async_setup_system_sensors",
+    "_async_setup_tailscale_sensors",
     "_async_setup_wireguard_sensors",
     "_async_setup_wireless_sensors",
     "_bytes_to_mb",
@@ -183,6 +185,7 @@ async def async_setup_entry(
             _async_setup_wireguard_sensors(
                 coordinator, entry, new_entities, tracked_keys
             )
+        _async_setup_tailscale_sensors(coordinator, entry, new_entities, tracked_keys)
 
         # Wireless Sensors
         if perms.read_wireless and pkgs.iwinfo is not False:

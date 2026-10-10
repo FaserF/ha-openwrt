@@ -188,7 +188,7 @@ async def _async_cleanup_disabled_features(
         if not enable_services and "_service_" in ent_unique_id:
             should_remove = True
 
-        if not enable_vpn and "_wg_" in ent_unique_id:
+        if not enable_vpn and ("_wg_" in ent_unique_id or "_tsvpn_" in ent_unique_id):
             should_remove = True
 
         if not enable_sqm and "_sqm_" in ent_unique_id:

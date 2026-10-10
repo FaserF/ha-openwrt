@@ -25,6 +25,7 @@ SERVICE_ICONS = {
     "sqm": "mdi:speedometer",
     "wireguard": "mdi:vpn",
     "openvpn": "mdi:vpn",
+    "tailscale": "mdi:vpn",
     "miniupnpd": "mdi:folder-network",
 }
 

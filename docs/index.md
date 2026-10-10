@@ -7,6 +7,7 @@ A secure, production-ready Home Assistant integration for OpenWrt devices. Monit
 - **VPN Monitoring**:
     - Tracks status (Up/Down) for WireGuard and OpenVPN tunnels.
     - Monitors throughput (RX/TX) and detailed WireGuard peer statistics (handshake, transfer, allowed IPs).
+    - Tailscale: backend state, node IP, key expiry, problem indicator (health warnings / login required) and online peer count. Per-peer connectivity sensors and tunnel traffic counters are created disabled by default.
 - **Network & Connectivity**:
     - **Latency/Ping**: Monitor network latency to a target (e.g. 8.8.8.8) with packet loss tracking.
     - **DHCP Monitoring**: Track the number of active DHCP leases.
