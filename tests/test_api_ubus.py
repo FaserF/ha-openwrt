@@ -1202,6 +1202,38 @@ async def test_ubus_set_wireless_network_enabled_resolves_kernel_ifname(
 
 
 @pytest.mark.asyncio
+async def test_ubus_set_wireless_network_enabled_succeeds_even_if_notify_fails(
+    ubus_client: UbusClient,
+) -> None:
+    """Test that wireless switch toggle succeeds even if network.wireless notify errors."""
+    uci_data = {
+        "values": {
+            "default_radio0": {
+                ".type": "wifi-iface",
+                "device": "radio0",
+                "mode": "ap",
+                "ssid": "Home",
+            },
+        }
+    }
+
+    async def mock_call(obj, method, params=None):
+        if obj == "uci" and method == "get":
+            return uci_data
+        if obj == "network.wireless" and method == "notify":
+            from custom_components.openwrt.api.ubus import UbusError
+
+            raise UbusError("Invalid argument")
+        return {}
+
+    with patch.object(ubus_client, "_call", side_effect=mock_call):
+        success = await ubus_client.set_wireless_network_enabled(
+            "default_radio0", "radio0", True, disable_radio=False, ssid="Home"
+        )
+        assert success is True
+
+
+@pytest.mark.asyncio
 async def test_ubus_set_access_control_blocked_conntrack_failure(
     ubus_client: UbusClient,
 ):

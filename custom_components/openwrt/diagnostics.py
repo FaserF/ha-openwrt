@@ -248,7 +248,7 @@ async def async_get_config_entry_diagnostics(
                     "config_entries": (
                         [_dev.config_entry_id]
                         if getattr(_dev, "config_entry_id", None)
-                        else list(_dev.config_entries)
+                        else [entry.entry_id]
                     ),
                     "identifiers": [list(i) for i in _dev.identifiers],
                     "connections": [list(c) for c in _dev.connections],

@@ -239,13 +239,29 @@ class UbusWirelessMixin:
             )
             await self._call("uci", "commit", {"config": "wireless"})
             committed = True
-            await self._call("network.wireless", "notify")
+            await self._reload_wireless()
             self._last_full_poll = 0
             return True
         except UbusError:
             if not committed:
                 await self._revert_wireless_changes()
             return False
+
+    async def _reload_wireless(self) -> None:
+        """Best-effort wireless service reload after committing UCI."""
+        # 1. Prefer wifi reload via execute_command if available
+        if hasattr(self, "execute_command"):
+            try:
+                await self.execute_command("wifi reload")
+                return
+            except Exception as err:
+                _LOGGER.debug("wifi reload command failed: %s", err)
+
+        # 2. Try ubus network.wireless notify (best-effort)
+        try:
+            await self._call("network.wireless", "notify")
+        except UbusError as err:
+            _LOGGER.debug("network.wireless notify failed (non-fatal): %s", err)
 
     async def _revert_wireless_changes(self) -> None:
         """Best-effort discard of an incomplete wireless UCI transaction."""
@@ -300,7 +316,7 @@ class UbusWirelessMixin:
                 )
             await self._call("uci", "commit", {"config": "wireless"})
             committed = True
-            await self._call("network.wireless", "notify")
+            await self._reload_wireless()
             self._last_full_poll = 0
             return True
         except UbusError:

@@ -725,11 +725,38 @@ class LuciRpcNetworkMixin:
         self._sys_to_uci = sys_to_uci
         return uci_to_sys, sys_to_uci
 
+    async def _resolve_wireless_section_luci(
+        self, interface: str, radio: str = "", ssid: str = ""
+    ) -> str:
+        """Resolve interface or kernel name to a valid UCI section."""
+        try:
+            uci_str = await self.execute_command("uci show wireless 2>/dev/null")
+            if uci_str:
+                sections = set()
+                wifi_ifaces = []
+                for line in uci_str.splitlines():
+                    if "=wifi-iface" in line:
+                        sect = line.split("=")[0].split(".")[-1].strip()
+                        sections.add(sect)
+                        wifi_ifaces.append(sect)
+                if interface in sections:
+                    return interface
+                match = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
+                if match:
+                    idx = int(match.group(1))
+                    if 0 <= idx < len(wifi_ifaces):
+                        return wifi_ifaces[idx]
+                    return f"@wifi-iface[{idx}]"
+        except Exception as err:
+            _LOGGER.debug("Failed to resolve wireless UCI section via LuCI: %s", err)
+
+        match = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
+        return f"@wifi-iface[{match.group(1)}]" if match else interface
+
     async def set_wireless_enabled(self, interface: str, enabled: bool) -> bool:
         """Enable or disable a wireless radio via UCI."""
         try:
-            match = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
-            target = f"@wifi-iface[{match.group(1)}]" if match else interface
+            target = await self._resolve_wireless_section_luci(interface)
             action = "0" if enabled else "1"
             cmd = (
                 f"uci set wireless.{target}.disabled={action} && "
@@ -753,8 +780,9 @@ class LuciRpcNetworkMixin:
     ) -> bool:
         """Set an SSID and its radio in one UCI transaction."""
         try:
-            match = re.match(r"^wifinet(\d+)$", interface, re.IGNORECASE)
-            target = f"@wifi-iface[{match.group(1)}]" if match else interface
+            target = await self._resolve_wireless_section_luci(
+                interface, radio=radio, ssid=ssid
+            )
             assignments = []
             if enabled:
                 assignments.append(f"wireless.{radio}.disabled=0")

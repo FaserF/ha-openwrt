@@ -212,6 +212,8 @@ async def test_coordinator_cleanup_orphaned_ap_devices() -> None:
     data.device_info.mac_address = ""  # prevent router_id corruption in cleanup
     data.device_info.gateway_mac = ""  # prevent gateway lookup side-effects
     data.device_info.release_distribution = "OpenWrt"
+    data.device_info.model = "Test Model"
+    data.device_info.hostname = "openwrt"
     data.wireless_interfaces = [
         WirelessInterface(
             name="ra0",
@@ -305,6 +307,8 @@ async def test_coordinator_cleanup_orphaned_ap_devices_with_device_entry_set() -
     data.device_info.mac_address = ""
     data.device_info.gateway_mac = ""
     data.device_info.release_distribution = "OpenWrt"
+    data.device_info.model = "Test Model"
+    data.device_info.hostname = "openwrt"
     data.wireless_interfaces = [
         WirelessInterface(name="ra0", ssid="GL-MT6000-a11", band="2.4 GHz")
     ]

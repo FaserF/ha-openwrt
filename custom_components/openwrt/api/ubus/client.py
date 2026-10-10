@@ -135,21 +135,24 @@ class UbusClient(
                     data = await response.json()
 
                     # Check for session expiration in ubus response
+                    # Code -32002 explicitly indicates an invalid/expired session token.
+                    # Code 6 (UBUS_STATUS_PERMISSION_DENIED) might be method-specific or session expired.
                     if (
-                        data.get("result")
-                        and isinstance(data["result"], list)
-                        and len(data["result"]) > 0
-                        and data["result"][0] == 6  # Permission denied/Session expired
-                    ):
-                        reauth_needed = True
-                    elif (
                         isinstance(data.get("error"), dict)
                         and data["error"].get("code") == -32002
                     ):
-                        # The ubus JSON-RPC gateway reports an invalid/expired session this way
-                        # on some rpcd/uhttpd-mod-ubus versions, instead of embedding code 6 in
-                        # a "result" array. Treat it the same as a session expiry.
                         reauth_needed = True
+                    elif (
+                        data.get("result")
+                        and isinstance(data["result"], list)
+                        and len(data["result"]) > 0
+                        and data["result"][0]
+                        == 6  # Permission denied / potentially expired
+                    ):
+                        # Verify whether the session itself is actually expired before logging in again
+                        # to avoid creating a new session on every poll when a method lacks permission.
+                        if not reauthenticated and not await self._is_session_valid():
+                            reauth_needed = True
 
             if reauth_needed and not reauthenticated:
                 if self._session_id == failed_session:
@@ -335,7 +338,41 @@ class UbusClient(
                 return result.get(object_name, {})
         except Exception:
             pass
-        return {}
+
+    async def _is_session_valid(self) -> bool:
+        """Check if current ubus session token is still valid via session.access."""
+        if not self._session_id or self.session is None:
+            return False
+        payload = self._build_request(
+            "call",
+            [
+                self._session_id,
+                "session",
+                "access",
+                {"scope": "ubus", "object": "session", "function": "access"},
+            ],
+        )
+        try:
+            async with self.session.post(
+                self._base_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                ssl=self.verify_ssl if self.use_ssl else False,
+            ) as response:
+                if response.status != 200:
+                    return False
+                res_data = await response.json()
+                if (
+                    isinstance(res_data.get("error"), dict)
+                    and res_data["error"].get("code") == -32002
+                ):
+                    return False
+                result = res_data.get("result")
+                if isinstance(result, list) and len(result) > 0 and result[0] == 6:
+                    return False
+                return True
+        except Exception:
+            return False
 
     async def connect(self) -> bool:
         """Authenticate with ubus."""
