@@ -47,6 +47,18 @@ else:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _owned_by_entry(device: Any, entry_id: str) -> bool:
+    """Return whether a registry device belongs to the given config entry.
+
+    Since HA 2026.9 a device has a single config_entry_id; reading the old
+    config_entries set logs a deprecation, so it is only the fallback.
+    """
+    owner = getattr(device, "config_entry_id", None)
+    if owner is not None:
+        return bool(owner == entry_id)
+    return entry_id in getattr(device, "config_entries", ())
+
+
 class DeviceRegistryMixin(_Base):
     """Mixin for updating Home Assistant device registry with router, APs, radios and clients."""
 
@@ -132,19 +144,25 @@ class DeviceRegistryMixin(_Base):
         via_device_id: str | None = None
         if device_info.gateway_mac:
             gw_mac = device_info.gateway_mac.lower()
-            if hasattr(device_registry, "async_get_device_by_connection"):
-                gw_dev = device_registry.async_get_device_by_connection(
-                    (dr.CONNECTION_NETWORK_MAC, gw_mac),
-                    self.config_entry.entry_id,
+            if hasattr(device_registry, "async_get_devices"):
+                # The gateway is another config entry's device (the upstream
+                # router, or another integration's), so search every entry.
+                # async_get_device_by_connection only searches the one given.
+                # Skip this entry's own devices: a client device it tracks for
+                # the gateway's MAC is not the gateway, and would make a loop.
+                entry_id = self.config_entry.entry_id
+                gw_dev = next(
+                    (
+                        dev
+                        for dev in device_registry.async_get_devices(
+                            connections={(dr.CONNECTION_NETWORK_MAC, gw_mac)}
+                        )
+                        if not _owned_by_entry(dev, entry_id)
+                    ),
+                    None,
                 )
                 if gw_dev:
                     via_device_id = gw_dev.id
-            elif hasattr(device_registry, "async_get_devices"):
-                matches = device_registry.async_get_devices(
-                    connections={(dr.CONNECTION_NETWORK_MAC, gw_mac)}
-                )
-                if matches:
-                    via_device_id = matches[0].id
             else:
                 dev_devices = getattr(device_registry, "devices", None)
                 devices_iterable = (
@@ -612,8 +630,11 @@ class DeviceRegistryMixin(_Base):
         # Since HA 2026.9 a device belongs to exactly one config entry, so ours can
         # simply be removed. Before that the same MAC could be one device shared with
         # another router or integration; there, only detach this entry from it.
+        # (Reading config_entries on a single-owner device logs a deprecation.)
         for dev in untracked_client_devices:
-            if set(dev.config_entries) - {self.config_entry.entry_id}:
+            if getattr(dev, "config_entry_id", None) is None and set(
+                getattr(dev, "config_entries", ())
+            ) - {self.config_entry.entry_id}:
                 device_registry.async_update_device(
                     dev.id, remove_config_entry_id=self.config_entry.entry_id
                 )
