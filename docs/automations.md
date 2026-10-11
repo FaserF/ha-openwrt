@@ -37,6 +37,30 @@ action:
       message: "The main WAN interface on the OpenWrt router went down."
 ```
 
+## 🔌 Power-Cycle the Modem Only When the WAN Is Really Down
+
+With mwan3, the `MWAN <iface> Online` binary sensor is also `off` while a line that answers again is still in its recovery checks. The `MWAN <iface> Status` sensor tells the two apart: `offline` and `disabled` mean the line is down (mwan3 switches between them during an outage), `connecting` means it is recovering. A template trigger keeps counting while the state changes between `offline` and `disabled`:
+
+```yaml
+alias: "Network: Power-Cycle Modem When WAN Is Down"
+trigger:
+  - platform: template
+    value_template: "{{ states('sensor.openwrt_mwan_wan_status') in ['offline', 'disabled'] }}"
+    for:
+      minutes: 30
+action:
+  - service: switch.turn_off
+    target:
+      entity_id: switch.modem_plug
+  - delay:
+      seconds: 10
+  - service: switch.turn_on
+    target:
+      entity_id: switch.modem_plug
+```
+
+A failed check during the recovery restarts mwan3's count but keeps the state at `connecting`, so a line that only answers now and then can stay there. A second trigger on the binary sensor being `off` for, say, two hours covers that case.
+
 ## 🔄 Firmware Update Notification
 
 ```yaml

@@ -33,6 +33,7 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
   - **DHCP Monitoring**: Track the number of active DHCP leases.
   - **Public IP**: Track your external WAN IP address with change detection.
   - **Advanced Interface Diagnostics**: Individual sensors/attributes for IPv6 addresses, link speed (Mbps), duplex mode, and interface uptime.
+  - **Multi-WAN (mwan3)**: Per interface an online binary sensor, the online ratio since the router booted, and a status sensor with mwan3's tracking state: `online`, `connecting` (answers again, recovery checks still running), `offline`, `disabled` (interface down) or `disconnecting`.
 - **4G/5G QModem Support (ModemManager integration)**:
   - Comprehensive signal diagnostics: RSRP, RSRQ, RSSI, SINR for LTE and 5G.
   - Device health: Modem temperature, voltage, and ISP detection.
