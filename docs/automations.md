@@ -61,6 +61,8 @@ action:
 
 A failed check during the recovery restarts mwan3's count but keeps the state at `connecting`, so a line that only answers now and then can stay there. A second trigger on the binary sensor being `off` for, say, two hours covers that case.
 
+Note that Home Assistant does not keep a pending `for` across a restart or an automation reload. After a restart the count starts over once the integration reports the state again; after a reload during an outage, a trigger only fires again after the state has changed once.
+
 ## 🔄 Firmware Update Notification
 
 ```yaml
