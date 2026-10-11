@@ -75,12 +75,15 @@ class _DevicesWithoutMapping:
     """Device collection that, like HA 2026.9+, may only be iterated."""
 
     def __init__(self, devices: list[MagicMock]) -> None:
+        """Hold the devices to iterate."""
         self._devices = devices
 
     def __iter__(self):
+        """Yield the devices, as HA 2026.9+ does."""
         return iter(self._devices)
 
     def __getattr__(self, name: str):
+        """Fail on any mapping attribute such as `.values`."""
         raise AssertionError(f"registry.devices.{name} is deprecated mapping access")
 
 
