@@ -177,17 +177,13 @@ class FeaturesMixin(_Base):
             pass
 
         device_reg = dr.async_get(self.hass)
-        devices_iterable: Any
-        if hasattr(device_reg.devices, "values"):
-            # Avoid deprecated mapping access on modern DeviceRegistry while supporting older mock dicts
-            dev_devices = device_reg.devices
-            devices_iterable = (
-                dev_devices
-                if not isinstance(dev_devices, dict)
-                else dev_devices.values()
-            )
-        else:
-            devices_iterable = device_reg.devices
+        # Iterate the registry directly: since HA 2026.9 that yields DeviceEntry
+        # objects, and touching mapping attributes such as `.values` logs a
+        # deprecation. Older HA yields device ids; plain dicts come from mocks.
+        dev_devices: Any = device_reg.devices
+        devices_iterable = (
+            dev_devices.values() if isinstance(dev_devices, dict) else dev_devices
+        )
         for dev_or_id in devices_iterable:
             if isinstance(dev_or_id, str):
                 dev = device_reg.async_get(dev_or_id)
