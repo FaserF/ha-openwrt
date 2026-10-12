@@ -94,7 +94,8 @@ class UbusDevicesMixin:
                                 dev.rx_rate = self._get_assoc_rate(client, "rx")
                                 dev.tx_rate = self._get_assoc_rate(client, "tx")
                             found_assoc = True
-                            break
+                            if results:
+                                break
                     except (
                         UbusTimeoutError,
                         UbusConnectionError,
@@ -176,7 +177,8 @@ class UbusDevicesMixin:
                                     devices, clients, wifi_iface.name or ifname
                                 )
                                 found_hostapd = True
-                                break
+                                if clients:
+                                    break
                     except (
                         UbusTimeoutError,
                         UbusConnectionError,
