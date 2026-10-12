@@ -300,10 +300,18 @@ def test_batman_count_sensors_unavailable_with_batctl_tiny() -> None:
     assert all(s.available is False for s in sensors)
 
 
-@pytest.mark.parametrize("probe_output", ["", "   \n"])
+@pytest.mark.parametrize(
+    "probe_output",
+    [
+        "",
+        "   \n",
+        "sh: batctl: not found\n",
+        "Error - interface bat0 is not present or not a batman-adv interface\n",
+    ],
+)
 @pytest.mark.asyncio
 async def test_get_batman_data_unreadable_tables(probe_output) -> None:
-    """An empty probe is a failed read: neither supported nor batctl-tiny."""
+    """An empty or failed probe is unreadable: neither supported nor batctl-tiny."""
     client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "user", "pass")
     client.packages.batctl = True
     mock = _mock_batctl(probe_output, "phy1-mesh0: active\n")

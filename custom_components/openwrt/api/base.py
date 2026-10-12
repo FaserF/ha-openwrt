@@ -1758,11 +1758,12 @@ class OpenWrtClient(abc.ABC):
     async def _batctl_tables_supported(self) -> bool | None:
         """Probe whether batctl can list its debug tables.
 
-        Returns True when it can (an empty table still prints its header),
-        False for batctl-tiny, which only ships the configuration subcommands
-        ("o", "n", "gwl" and "tg" print the usage text to stderr and nothing to
-        stdout), and None when the probe itself failed or returned nothing, so
-        the tables could not be read.
+        Returns True when it can (an empty table still prints its
+        "[B.A.T.M.A.N. adv ...]" header), False for batctl-tiny, which only
+        ships the configuration subcommands ("o", "n", "gwl" and "tg" print the
+        usage text to stderr and nothing to stdout), and None when the probe
+        failed, returned nothing or returned an error (e.g. "batctl: not found"
+        or "interface bat0 is not present"), so the tables could not be read.
         """
         try:
             out = await self.execute_command("batctl o 2>&1")
@@ -1772,8 +1773,13 @@ class OpenWrtClient(abc.ABC):
         if not out or not out.strip():
             _LOGGER.debug("batctl capability probe returned no output")
             return None
-        if "Usage:" not in out:
+        if "[B.A.T.M.A.N. adv" in out:
             return True
+        if "Usage:" not in out:
+            _LOGGER.debug(
+                "batctl capability probe failed: %s", out.strip().splitlines()[0]
+            )
+            return None
         if not getattr(self, "_batctl_tiny_warned", False):
             self._batctl_tiny_warned = True
             _LOGGER.warning(
