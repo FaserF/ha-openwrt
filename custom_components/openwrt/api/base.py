@@ -900,6 +900,7 @@ class OpenWrtData:
     mqtt_presence_logs: list[str] | None = None
     snort_status: dict[str, Any] = field(default_factory=dict)
     batman_mesh_active: bool = False
+    batman_tables_supported: bool | None = None
     batman_originators: list[BatmanOriginator] = field(default_factory=list)
     batman_neighbors: list[BatmanNeighbor] = field(default_factory=list)
     batman_gateways: list[BatmanGateway] = field(default_factory=list)
@@ -1738,10 +1739,52 @@ class OpenWrtClient(abc.ABC):
             _LOGGER.debug("Failed to get Batman translation table: %s", err)
 
         # Determine if mesh is active (has any data)
-        data["mesh_active"] = any(
-            [data["originators"], data["neighbors"], data["gateways"]]
-        )
+        has_tables = any([data["originators"], data["neighbors"], data["gateways"]])
+        data["tables_supported"] = True
+        if not has_tables:
+            data["tables_supported"] = await self._batctl_tables_supported()
+        if data["tables_supported"]:
+            data["mesh_active"] = has_tables
+        else:
+            # batctl-tiny cannot list originators/neighbors/gateways, so the
+            # mesh would always look inactive. Fall back to the hard interface
+            # state, which batctl-tiny still reports.
+            data["mesh_active"] = await self._batman_hardif_active()
         return data
+
+    async def _batctl_tables_supported(self) -> bool:
+        """Return False when batctl has no debug tables (e.g. batctl-tiny).
+
+        batctl-tiny only ships the configuration subcommands: "o", "n", "gwl"
+        and "tg" print the usage text to stderr and nothing to stdout.
+        """
+        try:
+            out = await self.execute_command("batctl o 2>&1")
+        except Exception as err:
+            _LOGGER.debug("Failed to probe batctl capabilities: %s", err)
+            return True
+        if not out or "Usage:" not in out:
+            return True
+        if not getattr(self, "_batctl_tiny_warned", False):
+            self._batctl_tiny_warned = True
+            _LOGGER.warning(
+                "%s: batctl cannot list Batman originators/neighbors/gateways "
+                "(batctl-tiny?). Install batctl-default or batctl-full for "
+                "Batman mesh statistics",
+                self.host,
+            )
+        return False
+
+    async def _batman_hardif_active(self) -> bool:
+        """Return True if batman-adv has at least one active hard interface."""
+        try:
+            out = await self.execute_command("batctl if 2>/dev/null")
+        except Exception as err:
+            _LOGGER.debug("Failed to get Batman interfaces: %s", err)
+            return False
+        return any(
+            line.strip().endswith(": active") for line in (out or "").splitlines()
+        )
 
     async def get_vpn_status(self) -> list[VpnInterface]:
         """Get VPN tunnel status (WireGuard/OpenVPN)."""
@@ -2424,6 +2467,7 @@ class OpenWrtClient(abc.ABC):
                     data.batman_gateways = batman.get("gateways", [])
                     data.batman_translation_table = batman.get("translation_table", {})
                     data.batman_mesh_active = batman.get("mesh_active", False)
+                    data.batman_tables_supported = batman.get("tables_supported")
 
             self._cached_medium_data = {
                 k: data.__dict__.get(k)
@@ -2449,6 +2493,7 @@ class OpenWrtClient(abc.ABC):
                     "batman_gateways",
                     "batman_translation_table",
                     "batman_mesh_active",
+                    "batman_tables_supported",
                 ]
             }
             if data.device_info:

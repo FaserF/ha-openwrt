@@ -195,3 +195,106 @@ async def test_get_all_data_batman_permissions_check(client_class) -> None:
     # This should not raise an AttributeError
     res = await client.get_all_data()
     assert res.batman_mesh_active is True
+
+
+BATCTL_TINY_USAGE = """Usage: batctl [options] command|debug table|debug json [parameters]
+options:
+  -h print this help (or 'batctl <command|debug table|debug json> -h' for the parameter help)
+  -v print version
+
+commands:
+  meshif <netdev> interface|if  [add|del iface(s)]  display or modify the interface settings
+
+debug tables:  display the corresponding debug table
+
+JSON queries:  display results of netlink query as JSON
+"""
+
+BATCTL_O_NO_PEERS = (
+    "[B.A.T.M.A.N. adv 2025.4, MainIF/MAC: phy1-mesh0/d2:0d:ab:3e:f8:3b "
+    "(bat0/d2:0d:ab:3e:f8:3a BATMAN_IV)]\n"
+    "   Originator        last-seen (#/255) Nexthop           [outgoingIF]\n"
+)
+
+
+def _mock_batctl(probe_output: str, if_output: str):
+    """Return an execute_command mock with empty tables."""
+
+    async def mock_execute(command):
+        if command.startswith("batctl o 2>&1"):
+            return probe_output
+        if command.startswith("batctl if"):
+            return if_output
+        return ""
+
+    return mock_execute
+
+
+@pytest.mark.parametrize("client_class", [UbusClient, SshClient, LuciRpcClient])
+@pytest.mark.asyncio
+async def test_get_batman_data_batctl_tiny(client_class, caplog) -> None:
+    """batctl-tiny has no tables: mesh state comes from the hard interfaces."""
+    client = client_class(MagicMock(), MagicMock(), "192.168.1.1", "user", "pass")
+    client.packages.batctl = True
+    mock = _mock_batctl(BATCTL_TINY_USAGE, "phy1-mesh0: active\n")
+
+    with patch.object(client, "execute_command", side_effect=mock):
+        data = await client.get_batman_data()
+        await client.get_batman_data()
+
+    assert data["tables_supported"] is False
+    assert data["mesh_active"] is True
+    assert data["originators"] == []
+    assert data["neighbors"] == []
+    assert data["gateways"] == []
+    # warned once, not on every poll
+    assert caplog.text.count("batctl-tiny") == 1
+
+
+@pytest.mark.asyncio
+async def test_get_batman_data_batctl_tiny_inactive_hardif() -> None:
+    """batctl-tiny with no active hard interface reports the mesh as inactive."""
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "user", "pass")
+    client.packages.batctl = True
+    mock = _mock_batctl(BATCTL_TINY_USAGE, "phy1-mesh0: inactive\n")
+
+    with patch.object(client, "execute_command", side_effect=mock):
+        data = await client.get_batman_data()
+
+    assert data["tables_supported"] is False
+    assert data["mesh_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_batman_data_full_batctl_without_peers() -> None:
+    """Full batctl with empty tables is a real inactive mesh, not batctl-tiny."""
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "user", "pass")
+    client.packages.batctl = True
+    mock = _mock_batctl(BATCTL_O_NO_PEERS, "phy1-mesh0: active\n")
+
+    with patch.object(client, "execute_command", side_effect=mock):
+        data = await client.get_batman_data()
+
+    assert data["tables_supported"] is True
+    assert data["mesh_active"] is False
+
+
+def test_batman_count_sensors_unavailable_with_batctl_tiny() -> None:
+    """Count sensors are unavailable (not 0) when batctl cannot list the tables."""
+    from custom_components.openwrt.api.base import OpenWrtData
+    from custom_components.openwrt.sensors.mesh import _get_batman_global_sensors
+
+    coordinator = MagicMock()
+    coordinator.last_update_success = True
+    sensors = _get_batman_global_sensors(coordinator, MagicMock())
+    assert len(sensors) == 3
+
+    coordinator.data = OpenWrtData(batman_tables_supported=False)
+    assert all(s.available is False for s in sensors)
+
+    coordinator.data = OpenWrtData(batman_tables_supported=True)
+    assert all(s.available is True for s in sensors)
+
+    # older data without the flag stays available
+    coordinator.data = OpenWrtData()
+    assert all(s.available is True for s in sensors)

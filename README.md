@@ -204,7 +204,7 @@ Some features require additional OpenWrt packages to be installed on your router
 | **wireguard-tools** | WireGuard VPN Sensors |
 | **openvpn** | OpenVPN Sensors |
 | **kmod-batman-adv** | Batman-adv Mesh Support (Kernel module) |
-| **batctl-full** | Batman-adv Control (Required for mesh data) |
+| **batctl-default** or **batctl-full** | Batman-adv Control (Required for mesh data; `batctl-tiny` cannot list originators/neighbors/gateways, so only the mesh state is shown) |
 | **nlbwmon** | NLBWMon Top Bandwidth Hosts sensor (opt-in, requires `file.exec` rpcd ACL) |
 
 ### 🛠️ Options Flow
