@@ -295,6 +295,41 @@ def test_batman_count_sensors_unavailable_with_batctl_tiny() -> None:
     coordinator.data = OpenWrtData(batman_tables_supported=True)
     assert all(s.available is True for s in sensors)
 
-    # older data without the flag stays available
+    # not read yet, or the tables could not be read
     coordinator.data = OpenWrtData()
-    assert all(s.available is True for s in sensors)
+    assert all(s.available is False for s in sensors)
+
+
+@pytest.mark.parametrize("probe_output", ["", "   \n"])
+@pytest.mark.asyncio
+async def test_get_batman_data_unreadable_tables(probe_output) -> None:
+    """An empty probe is a failed read: neither supported nor batctl-tiny."""
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "user", "pass")
+    client.packages.batctl = True
+    mock = _mock_batctl(probe_output, "phy1-mesh0: active\n")
+
+    with patch.object(client, "execute_command", side_effect=mock):
+        data = await client.get_batman_data()
+
+    assert data["tables_supported"] is None
+    assert data["mesh_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_batman_data_probe_exception() -> None:
+    """A probe that raises is a failed read, not a supported empty table."""
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "user", "pass")
+    client.packages.batctl = True
+
+    async def mock_execute(command):
+        if command.startswith("batctl o 2>&1"):
+            raise RuntimeError("exec failed")
+        if command.startswith("batctl if"):
+            return ""
+        return ""
+
+    with patch.object(client, "execute_command", side_effect=mock_execute):
+        data = await client.get_batman_data()
+
+    assert data["tables_supported"] is None
+    assert data["mesh_active"] is False

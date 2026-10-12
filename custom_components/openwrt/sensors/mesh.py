@@ -22,8 +22,12 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _batman_tables_available(data: OpenWrtData) -> bool:
-    """Counts are unknown (not 0) when batctl cannot list them (batctl-tiny)."""
-    return data.batman_tables_supported is not False
+    """Counts are only known after batctl listed its tables.
+
+    They are unavailable (not 0) with batctl-tiny and while the tables could
+    not be read, until a later poll reads them.
+    """
+    return data.batman_tables_supported is True
 
 
 def _get_batman_global_sensors(

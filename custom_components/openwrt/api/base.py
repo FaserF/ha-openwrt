@@ -900,6 +900,8 @@ class OpenWrtData:
     mqtt_presence_logs: list[str] | None = None
     snort_status: dict[str, Any] = field(default_factory=dict)
     batman_mesh_active: bool = False
+    # True: batctl tables read; False: batctl-tiny (no tables);
+    # None: not read yet, or the tables could not be read
     batman_tables_supported: bool | None = None
     batman_originators: list[BatmanOriginator] = field(default_factory=list)
     batman_neighbors: list[BatmanNeighbor] = field(default_factory=list)
@@ -1743,27 +1745,34 @@ class OpenWrtClient(abc.ABC):
         data["tables_supported"] = True
         if not has_tables:
             data["tables_supported"] = await self._batctl_tables_supported()
-        if data["tables_supported"]:
+        if data["tables_supported"] is True:
             data["mesh_active"] = has_tables
         else:
-            # batctl-tiny cannot list originators/neighbors/gateways, so the
-            # mesh would always look inactive. Fall back to the hard interface
-            # state, which batctl-tiny still reports.
+            # batctl-tiny (False) cannot list originators/neighbors/gateways and
+            # unreadable tables (None) say nothing either, so the mesh would
+            # always look inactive. Fall back to the hard interface state,
+            # which batctl-tiny still reports.
             data["mesh_active"] = await self._batman_hardif_active()
         return data
 
-    async def _batctl_tables_supported(self) -> bool:
-        """Return False when batctl has no debug tables (e.g. batctl-tiny).
+    async def _batctl_tables_supported(self) -> bool | None:
+        """Probe whether batctl can list its debug tables.
 
-        batctl-tiny only ships the configuration subcommands: "o", "n", "gwl"
-        and "tg" print the usage text to stderr and nothing to stdout.
+        Returns True when it can (an empty table still prints its header),
+        False for batctl-tiny, which only ships the configuration subcommands
+        ("o", "n", "gwl" and "tg" print the usage text to stderr and nothing to
+        stdout), and None when the probe itself failed or returned nothing, so
+        the tables could not be read.
         """
         try:
             out = await self.execute_command("batctl o 2>&1")
         except Exception as err:
             _LOGGER.debug("Failed to probe batctl capabilities: %s", err)
-            return True
-        if not out or "Usage:" not in out:
+            return None
+        if not out or not out.strip():
+            _LOGGER.debug("batctl capability probe returned no output")
+            return None
+        if "Usage:" not in out:
             return True
         if not getattr(self, "_batctl_tiny_warned", False):
             self._batctl_tiny_warned = True
