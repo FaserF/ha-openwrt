@@ -440,3 +440,100 @@ async def test_ssh_set_access_control_blocked_conntrack_success(ssh_client: SshC
 
     assert result is True
     mock_flush.assert_called_once_with("AA:BB:CC:DD:EE:FF")
+
+
+@pytest.mark.asyncio
+async def test_concurrent_connect_reuses_one_transport(ssh_client: SshClient) -> None:
+    """Concurrent retries must not orphan live SSH transports."""
+    import asyncio
+
+    ssh_client.hass = None
+    with patch("paramiko.SSHClient") as factory:
+        await asyncio.gather(*(ssh_client.connect() for _ in range(20)))
+        assert factory.call_count == 1
+        factory.return_value.connect.assert_called_once()
+        ssh_client._connected = False
+        await ssh_client.connect()
+        assert factory.call_count == 1
+        await ssh_client.disconnect()
+        factory.return_value.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_reconnect_closes_inactive_transport(ssh_client: SshClient) -> None:
+    """Replace an inactive transport only after closing its client."""
+    ssh_client.hass = None
+    previous = MagicMock()
+    previous.get_transport.return_value.is_active.return_value = False
+    ssh_client._client = previous
+    with patch("paramiko.SSHClient") as factory:
+        await ssh_client.connect()
+        previous.close.assert_called_once()
+        assert ssh_client._client is factory.return_value
+
+
+@pytest.mark.asyncio
+async def test_failed_connect_closes_partial_client(ssh_client: SshClient) -> None:
+    """Authentication failures must not leave a Paramiko transport alive."""
+    import paramiko
+
+    ssh_client.hass = None
+    with patch("paramiko.SSHClient") as factory:
+        factory.return_value.connect.side_effect = paramiko.AuthenticationException()
+        with pytest.raises(SshAuthError):
+            await ssh_client.connect()
+        factory.return_value.close.assert_called_once()
+        assert ssh_client._client is None
+        assert not ssh_client.connected
+
+
+@pytest.mark.asyncio
+async def test_parallel_commands_recover_once(ssh_client: SshClient) -> None:
+    """A command failure must not race other commands into duplicate reconnects."""
+    import asyncio
+
+    ssh_client.hass = None
+    old = MagicMock()
+    old.exec_command.side_effect = OSError("connection lost")
+    ssh_client._client = old
+    stream = MagicMock()
+    stream.read.return_value = b"ok"
+    stream.channel.recv_exit_status.return_value = 0
+    with patch("paramiko.SSHClient") as factory:
+        factory.return_value.exec_command.return_value = (None, stream, stream)
+        results = await asyncio.gather(*(ssh_client._exec("status") for _ in range(20)))
+        assert results == ["ok"] * 20
+        old.close.assert_called_once()
+        factory.return_value.connect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_connect_waits_and_closes_client(ssh_client: SshClient) -> None:
+    """Cancellation cannot release ownership while the blocking worker is running."""
+    import asyncio
+    import threading
+
+    ssh_client.hass = None
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_connect(**kwargs: object) -> None:
+        started.set()
+        assert release.wait(5)
+
+    with patch("paramiko.SSHClient") as factory:
+        factory.return_value.connect.side_effect = blocking_connect
+        task = asyncio.create_task(ssh_client.connect())
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            task.cancel()
+            await asyncio.sleep(0)
+            assert not task.done()
+            assert ssh_client._connection_lock.locked()
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        factory.return_value.close.assert_called_once()
+        assert ssh_client._client is None
+        assert not ssh_client._connection_lock.locked()

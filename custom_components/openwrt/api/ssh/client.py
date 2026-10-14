@@ -70,11 +70,26 @@ class SshClient(
         )
         self._ssh_key = ssh_key
         self._client: Any = None
-        self._semaphore = asyncio.Semaphore(2)
+        self._connection_lock = asyncio.Lock()
+
+    async def _run_executor(self, func: Any) -> Any:
+        """Keep ownership until a blocking SSH operation finishes, even on cancellation."""
+        future = asyncio.get_running_loop().run_in_executor(None, func)
+        try:
+            return await asyncio.shield(future)
+        except asyncio.CancelledError:
+            try:
+                await future
+            except Exception:
+                _LOGGER.debug("SSH worker failed during cancellation", exc_info=True)
+            raise
 
     async def _exec(self, command: str, retry: bool = True) -> str:
+        async with self._connection_lock:
+            return await self._exec_locked(command, retry)
+
+    async def _exec_locked(self, command: str, retry: bool = True) -> str:
         """Execute a command via SSH and return stdout."""
-        loop = asyncio.get_event_loop()
 
         def _run() -> str:
             if self._client is None:
@@ -99,8 +114,7 @@ class SshClient(
             return output or error
 
         try:
-            async with self._semaphore:
-                return await loop.run_in_executor(None, _run)
+            return await self._run_executor(_run)
         except Exception as err:
             _LOGGER.debug("SSH command failed, marking as disconnected: %s", err)
             self._connected = False
@@ -112,8 +126,8 @@ class SshClient(
             if retry:
                 _LOGGER.debug("Attempting to reconnect and retry SSH command...")
                 try:
-                    if await self.connect():
-                        return await self._exec(command, retry=False)
+                    if await self._connect_locked():
+                        return await self._exec_locked(command, retry=False)
                 except Exception as reconnect_err:
                     _LOGGER.debug(
                         "SSH reconnection failed during retry: %s",
@@ -218,17 +232,27 @@ class SshClient(
             return False, str(err)
 
     async def connect(self) -> bool:
-        """Connect via SSH."""
-        try:
-            return await self._connect()
-        except Exception as err:
-            self._last_connect_error = err
-            raise
+        """Reuse a live connection and serialize reconnects with command execution."""
+        async with self._connection_lock:
+            try:
+                return await self._connect_locked()
+            except BaseException as err:
+                if isinstance(err, Exception):
+                    self._last_connect_error = err
+                await self._disconnect_locked()
+                raise
+
+    async def _connect_locked(self) -> bool:
+        if self._client is not None:
+            transport = self._client.get_transport()
+            if transport and transport.is_active() and transport.is_authenticated():
+                self._connected = True
+                return True
+        await self._disconnect_locked()
+        return await self._connect()
 
     async def _connect(self) -> bool:
         """Connect via SSH."""
-        loop = asyncio.get_event_loop()
-
         pinned_data: dict[str, Any] = {}
         store: storage.Store | None = None
         if self.hass:
@@ -248,96 +272,100 @@ class SshClient(
             import io
 
             client = paramiko.SSHClient()
-            client.load_system_host_keys()
+            try:
+                client.load_system_host_keys()
 
-            class PinningHostKeyPolicy(paramiko.MissingHostKeyPolicy):
-                def missing_host_key(
-                    self, client_: Any, hostname: str, key: Any
-                ) -> None:
-                    key_type = key.get_name()
-                    key_b64 = key.get_base64()
+                class PinningHostKeyPolicy(paramiko.MissingHostKeyPolicy):
+                    def missing_host_key(
+                        self, client_: Any, hostname: str, key: Any
+                    ) -> None:
+                        key_type = key.get_name()
+                        key_b64 = key.get_base64()
 
-                    if not expected_keys:
-                        new_keys[key_type] = key_b64
-                        client_.get_host_keys().add(hostname, key_type, key)
-                        return
-
-                    if key_type in expected_keys:
-                        if expected_keys[key_type] == key_b64:
+                        if not expected_keys:
+                            new_keys[key_type] = key_b64
                             client_.get_host_keys().add(hostname, key_type, key)
                             return
+
+                        if key_type in expected_keys:
+                            if expected_keys[key_type] == key_b64:
+                                client_.get_host_keys().add(hostname, key_type, key)
+                                return
+                            raise paramiko.SSHException(
+                                f"SSH host key mismatch for {hostname}! Expected pinned key for {key_type}, but received a different key. Possible security intercept."
+                            )
+
                         raise paramiko.SSHException(
-                            f"SSH host key mismatch for {hostname}! Expected pinned key for {key_type}, but received a different key. Possible security intercept."
+                            f"SSH host key mismatch for {hostname}! Host key algorithm {key_type} not in pinned keys."
                         )
 
-                    raise paramiko.SSHException(
-                        f"SSH host key mismatch for {hostname}! Host key algorithm {key_type} not in pinned keys."
-                    )
+                client.set_missing_host_key_policy(PinningHostKeyPolicy())
 
-            client.set_missing_host_key_policy(PinningHostKeyPolicy())
+                connect_kwargs: dict[str, Any] = {
+                    "hostname": self.host,
+                    "port": self.port,
+                    "username": self.username,
+                    "timeout": 10,
+                    "allow_agent": False,
+                    "look_for_keys": False,
+                }
 
-            connect_kwargs: dict[str, Any] = {
-                "hostname": self.host,
-                "port": self.port,
-                "username": self.username,
-                "timeout": 10,
-                "allow_agent": False,
-                "look_for_keys": False,
-            }
-
-            if self._ssh_key:
-                key_file = io.StringIO(self._ssh_key)
-                try:
-                    pkey = paramiko.RSAKey.from_private_key(key_file)
-                except Exception:
-                    key_file.seek(0)
+                if self._ssh_key:
+                    key_file = io.StringIO(self._ssh_key)
                     try:
-                        pkey = paramiko.Ed25519Key.from_private_key(key_file)
+                        pkey = paramiko.RSAKey.from_private_key(key_file)
                     except Exception:
                         key_file.seek(0)
-                        pkey = paramiko.ECDSAKey.from_private_key(key_file)
-                connect_kwargs["pkey"] = pkey
-            else:
-                connect_kwargs["password"] = self.password
+                        try:
+                            pkey = paramiko.Ed25519Key.from_private_key(key_file)
+                        except Exception:
+                            key_file.seek(0)
+                            pkey = paramiko.ECDSAKey.from_private_key(key_file)
+                    connect_kwargs["pkey"] = pkey
+                else:
+                    connect_kwargs["password"] = self.password
 
-            try:
-                client.connect(**connect_kwargs)
-            except paramiko.AuthenticationException as err:
-                msg = f"SSH auth failed for {self.username}@{self.host}. Check credentials/key."
-                raise SshAuthError(
-                    msg,
-                ) from err
-            except TimeoutError as err:
-                msg = f"SSH connection timed out for {self.host}"
-                raise SshTimeoutError(
-                    msg,
-                ) from err
-            except (OSError, paramiko.SSHException) as err:
-                err_str = str(err).lower()
-                if "connection refused" in err_str:
-                    msg = f"SSH connection refused on {self.host}:{self.port}. Is SSH enabled?"
-                    raise SshConnectionError(
+                try:
+                    client.connect(**connect_kwargs)
+                except paramiko.AuthenticationException as err:
+                    msg = f"SSH auth failed for {self.username}@{self.host}. Check credentials/key."
+                    raise SshAuthError(
                         msg,
                     ) from err
-                if "no route to host" in err_str:
-                    msg = f"Host {self.host} is unreachable."
-                    raise SshConnectionError(
+                except TimeoutError as err:
+                    msg = f"SSH connection timed out for {self.host}"
+                    raise SshTimeoutError(
                         msg,
                     ) from err
-                msg = f"SSH connection failed: {err}"
-                raise SshError(msg) from err
-            except Exception as err:
-                msg = f"SSH connection failed: {err}"
-                raise SshError(msg) from err
+                except (OSError, paramiko.SSHException) as err:
+                    err_str = str(err).lower()
+                    if "connection refused" in err_str:
+                        msg = f"SSH connection refused on {self.host}:{self.port}. Is SSH enabled?"
+                        raise SshConnectionError(
+                            msg,
+                        ) from err
+                    if "no route to host" in err_str:
+                        msg = f"Host {self.host} is unreachable."
+                        raise SshConnectionError(
+                            msg,
+                        ) from err
+                    msg = f"SSH connection failed: {err}"
+                    raise SshError(msg) from err
+                except Exception as err:
+                    msg = f"SSH connection failed: {err}"
+                    raise SshError(msg) from err
 
-            transport = client.get_transport()
-            if transport:
-                transport.set_keepalive(30)
+                transport = client.get_transport()
+                if transport:
+                    transport.set_keepalive(30)
 
-            self._client = client
+                self._client = client
+            except BaseException:
+                client.close()
+                raise
 
         try:
-            await loop.run_in_executor(None, _connect)
+            await self._run_executor(_connect)
             self._connected = True
             _LOGGER.debug("SSH connected to %s", self.host)
             if new_keys and store:
@@ -357,12 +385,15 @@ class SshClient(
             raise SshError(msg) from err
 
     async def disconnect(self) -> None:
-        """Disconnect SSH."""
-        if self._client:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._client.close)
-            self._client = None
+        """Close the connection after any in-flight SSH operation."""
+        async with self._connection_lock:
+            await self._disconnect_locked()
+
+    async def _disconnect_locked(self) -> None:
+        client, self._client = self._client, None
         self._connected = False
+        if client is not None:
+            await self._run_executor(client.close)
 
     async def check_permissions(self) -> OpenWrtPermissions:
         """Check user permissions via SSH.
