@@ -322,8 +322,18 @@ class OpenWrtUpdateEntity(
             try:
                 # Mark coordinator that a reboot/sysupgrade is expected
                 self.coordinator.in_reboot_installation = True
+                # Never force (-F): sysupgrade's own image/board checks are the
+                # last guard against a wrong image. Custom repository images are
+                # verified against the release's published sha256 when present.
+                checksum = data.firmware_checksum if data.is_custom_build else ""
+                if data.is_custom_build and not checksum:
+                    _LOGGER.warning(
+                        "No SHA256 checksum published for %s; flashing without "
+                        "checksum verification",
+                        url,
+                    )
                 await self.coordinator.client.install_firmware(
-                    url, keep_settings=True, force=data.is_custom_build
+                    url, keep_settings=True, force=False, sha256=checksum
                 )
             except Exception as err:
                 msg = f"Failed to initiate firmware installation: {err}"

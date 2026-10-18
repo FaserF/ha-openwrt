@@ -440,12 +440,18 @@ class FirmwareMixin(AsuFirmwareMixin):
     ) -> None:
         """Fetch and parse checksum file from GitHub."""
         with contextlib.suppress(Exception):
-            async with session.get(sha_url) as resp:
+            async with session.get(
+                sha_url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
                 if resp.status == 200:
                     content = await resp.text()
                     for line in content.splitlines():
-                        if asset_name in line:
-                            data.firmware_checksum = line.split()[0]
+                        # "<sha256>  <name>" or "<sha256> *<name>" (binary mode).
+                        # Match the file name exactly: a substring match would
+                        # also hit e.g. "<name>.sig" or a longer file name.
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[-1].lstrip("*") == asset_name:
+                            data.firmware_checksum = parts[0]
                             break
 
     _parse_repo = staticmethod(parse_repo)

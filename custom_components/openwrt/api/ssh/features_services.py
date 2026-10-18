@@ -14,6 +14,11 @@ from ..base import (
     SimpleAdBlockStatus,
     SqmStatus,
 )
+from ..firmware_install import (
+    FirmwareInstallError,
+    build_sysupgrade_command,
+    check_sysupgrade_output,
+)
 from .exceptions import SshError
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,27 +28,21 @@ class SshFeaturesServicesMixin:
     """Mixin for SSH services, adblock, and firmware features."""
 
     async def install_firmware(
-        self, url: str, keep_settings: bool = True, force: bool = False
+        self,
+        url: str,
+        keep_settings: bool = True,
+        force: bool = False,
+        sha256: str = "",
     ) -> None:
         """Install firmware from the given URL via SSH."""
-        # Use sysupgrade for installation
-        # Download to /tmp and then run sysupgrade
-        keep = "" if keep_settings else "-n"
-        force_flag = "-F " if force else ""
-        safe_url = shlex.quote(url)
-        cmd = (
-            f"if command -v uclient-fetch >/dev/null 2>&1; then "
-            f"  uclient-fetch --no-check-certificate -O /tmp/firmware.bin {safe_url}; "
-            f"elif command -v curl >/dev/null 2>&1; then "
-            f"  curl -k -L -o /tmp/firmware.bin {safe_url}; "
-            f"else "
-            f"  wget --no-check-certificate -O /tmp/firmware.bin {safe_url}; "
-            f"fi && sysupgrade {force_flag}{keep} /tmp/firmware.bin"
-        )
+        cmd = build_sysupgrade_command(url, keep_settings, force, sha256)
         try:
             _LOGGER.info("Initiating firmware installation via SSH from: %s", url)
             # We expect this to eventually fail or disconnect as the router reboots
-            await self._exec(cmd)
+            output = await self._exec(cmd)
+            check_sysupgrade_output(output)
+        except FirmwareInstallError:
+            raise
         except Exception as err:
             # If it's a connection error, it's likely the router rebooting
             err_msg = str(err).lower()

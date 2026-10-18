@@ -9,6 +9,11 @@ import logging
 from typing import Any
 
 from ..base import PROVISION_SCRIPT_TEMPLATE
+from ..firmware_install import (
+    FirmwareInstallError,
+    build_sysupgrade_command,
+    check_sysupgrade_output,
+)
 from .exceptions import (
     UbusError,
     UbusPermissionError,
@@ -232,23 +237,20 @@ class UbusSystemOpsMixin:
             return ""
 
     async def install_firmware(
-        self, url: str, keep_settings: bool = True, force: bool = False
+        self,
+        url: str,
+        keep_settings: bool = True,
+        force: bool = False,
+        sha256: str = "",
     ) -> None:
         """Install firmware from the given URL via ubus."""
-        keep = "" if keep_settings else "-n"
-        force_flag = "-F " if force else ""
-        cmd = (
-            f"if command -v uclient-fetch >/dev/null 2>&1; then "
-            f"  uclient-fetch --no-check-certificate -O /tmp/firmware.bin '{url}'; "
-            f"elif command -v curl >/dev/null 2>&1; then "
-            f"  curl -k -L -o /tmp/firmware.bin '{url}'; "
-            f"else "
-            f"  wget --no-check-certificate -O /tmp/firmware.bin '{url}'; "
-            f"fi && sysupgrade {force_flag}{keep} /tmp/firmware.bin"
-        )
+        cmd = build_sysupgrade_command(url, keep_settings, force, sha256)
         try:
             _LOGGER.info("Initiating firmware installation via ubus from: %s", url)
-            await self.execute_command(cmd)
+            output = await self.execute_command(cmd)
+            check_sysupgrade_output(output)
+        except FirmwareInstallError:
+            raise
         except Exception as err:
             # If it's a connection error, it's likely the router rebooting
             err_msg = str(err).lower()

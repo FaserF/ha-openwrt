@@ -534,9 +534,13 @@ class OpenWrtClient(
 
     @abc.abstractmethod
     async def install_firmware(
-        self, url: str, keep_settings: bool = True, force: bool = False
+        self,
+        url: str,
+        keep_settings: bool = True,
+        force: bool = False,
+        sha256: str = "",
     ) -> None:
-        """Install firmware from the given URL."""
+        """Install firmware from the given URL, verifying sha256 when given."""
         raise NotImplementedError
 
     @abc.abstractmethod
