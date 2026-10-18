@@ -22,6 +22,18 @@ Attended Sysupgrade allows you to generate and install custom firmware images ta
 
 - **Requirements**: The `luci-app-attendedsysupgrade` package must be installed on your router for LuCI/Ubus connections to enable the `Install` feature.
 - **Custom Repositories**: If you use a custom OpenWrt fork (e.g. GL-iNet, FriendlyWrt), you can configure a custom ASU URL and repository pattern in the integration options.
+- **Detection**: The integration reads the ASU server's `json/v1/overview.json` (branches, versions and the targets indexed so far) and the board's `json/v1/{path}/targets/{target}/{profile}.json`, the same data `owut` uses. The result is exposed as the `asu_status` attribute: `available`, `temporarily_unavailable`, `unsupported` or `error`, with the reason in `asu_status_reason`.
+- **Temporarily unavailable**: Right after a release the ASU server can list the new branch before it has indexed any targets. Installation is then disabled until ASU catches up; the integration does not fall back to the plain image.
+
+### Plain image safety
+
+The plain sysupgrade image from downloads.openwrt.org only contains the default packages, so flashing it removes every package you added (VPNs, policy routing, multi-WAN, and so on). The integration therefore:
+
+- never flashes the plain image on a device ASU supports, or will support once it has indexed the release: it installs through ASU or not at all;
+- on devices ASU does not support, flashes the plain image only after confirming that every explicitly installed package (`/etc/apk/world`, or the packages opkg marks as user-installed) is part of the stock image for the running version. If any are not, or the check cannot be made, the install is refused and the message names the packages;
+- refuses an ASU build if it cannot read the router's package list, because ASU would then build the stock package set.
+
+When an install is refused, upgrade by hand with `owut` or the LuCI Attended Sysupgrade page.
 
 ### Automated Backups
 

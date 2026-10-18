@@ -23,18 +23,33 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    ASU_STATUS_AVAILABLE,
+    ASU_STATUS_TEMPORARILY_UNAVAILABLE,
+    CONF_ASU_URL,
     CONF_AUTO_BACKUP,
     CONF_CHECK_FIRMWARE_UPDATES,
     CONF_CONNECTION_TYPE,
     CONNECTION_TYPE_LUCI_RPC,
     CONNECTION_TYPE_UBUS,
     DATA_COORDINATOR,
+    DEFAULT_ASU_URL,
     DEFAULT_CHECK_FIRMWARE_UPDATES,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# Install modes returned by OpenWrtUpdateEntity._install_plan
+INSTALL_ASU = "asu"
+INSTALL_STOCK = "stock"
+INSTALL_CUSTOM = "custom"
+INSTALL_NONE = "none"
+
+MANUAL_UPGRADE_HINT = (
+    "Upgrade by hand with owut or the LuCI Attended Sysupgrade page, which "
+    "keep your installed packages."
+)
 
 
 async def async_setup_entry(
@@ -112,21 +127,8 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
         if not data:
             return features
 
-        # Basic install capability
-        can_install = bool(data.firmware_install_url)
-
-        # ASU capability check
-        if data.asu_supported:
-            # If using LuCI/Ubus, we prefer having luci-app-attendedsysupgrade
-            # for consistency, but technically we can install if we have the
-            # build capability. User requested that it's checked.
-            conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
-            if conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS):
-                if data.packages.asu:
-                    can_install = True
-            else:
-                # SSH or other
-                can_install = True
+        mode, _ = self._install_plan(data)
+        can_install = mode != INSTALL_NONE
 
         if can_install:
             features |= UpdateEntityFeature.INSTALL
@@ -177,6 +179,10 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             "asu_supported": data.asu_supported,
             "asu_update_available": data.asu_update_available,
         }
+
+        if data.asu_status:
+            attrs["asu_status"] = data.asu_status
+            attrs["asu_status_reason"] = data.asu_status_reason
 
         if data.asu_image_status:
             attrs["asu_image_status"] = data.asu_image_status
@@ -301,29 +307,62 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
 
     def _check_installability(self, data: Any) -> tuple[bool, str]:
         """Check if firmware can be installed automatically."""
-        can_install = bool(data.firmware_install_url)
-        conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
-        install_barrier = ""
+        mode, reason = self._install_plan(data)
+        return mode != INSTALL_NONE, reason
 
-        if data.asu_supported:
-            if conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS):
-                if data.packages.asu:
-                    can_install = True
-                else:
-                    install_barrier = (
-                        "The `luci-app-attendedsysupgrade` package is not "
-                        "installed on the router."
-                    )
-            else:
-                can_install = True
+    def _install_plan(self, data: Any) -> tuple[str, str]:
+        """Decide how this update would be installed, or why it cannot be.
 
-        if not can_install and not install_barrier:
-            install_barrier = (
-                "No direct installation URL is available for this update or "
-                "your device does not support Attended Sysupgrade (ASU)."
+        The plain downloads.openwrt.org image only contains the default
+        packages, so flashing it removes everything the user added. It is
+        therefore never used when ASU can (or soon will) build an image for
+        this router; that case is ASU or nothing. When ASU does not support
+        the board, the stock image is still subject to the package check in
+        async_install.
+        """
+        if data.is_custom_build:
+            if data.firmware_install_url:
+                return INSTALL_CUSTOM, ""
+            return INSTALL_NONE, (
+                "No matching firmware image was found in the configured "
+                "custom repository."
             )
 
-        return can_install, install_barrier
+        status = data.asu_status
+        if status == ASU_STATUS_AVAILABLE:
+            if not data.asu_update_available:
+                return INSTALL_NONE, (
+                    "Attended Sysupgrade (ASU) supports this device but offers "
+                    "no newer build for it. The plain OpenWrt image is not used "
+                    "on ASU-capable devices because it would remove every "
+                    "package you installed. " + MANUAL_UPGRADE_HINT
+                )
+            conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
+            if (
+                conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS)
+                and not data.packages.asu
+            ):
+                return INSTALL_NONE, (
+                    "The `luci-app-attendedsysupgrade` package is not "
+                    "installed on the router."
+                )
+            return INSTALL_ASU, ""
+
+        if status == ASU_STATUS_TEMPORARILY_UNAVAILABLE:
+            return INSTALL_NONE, (
+                f"Attended Sysupgrade (ASU) is temporarily unavailable: "
+                f"{data.asu_status_reason}. Installation stays disabled rather "
+                f"than falling back to the plain OpenWrt image, which would "
+                f"remove every package you installed. Try again later. "
+                + MANUAL_UPGRADE_HINT
+            )
+
+        if data.firmware_install_url:
+            return INSTALL_STOCK, ""
+        return INSTALL_NONE, (
+            "No direct installation URL is available for this update or "
+            "your device does not support Attended Sysupgrade (ASU)."
+        )
 
     async def async_install(
         self,
@@ -343,9 +382,48 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 msg = "No data available to process firmware update."
                 raise HomeAssistantError(msg)
 
-            if not data.firmware_install_url and not data.asu_supported:
-                msg = "No firmware URL available for installation."
-                raise ValueError(msg)
+            mode, reason = self._install_plan(data)
+            if mode == INSTALL_NONE:
+                raise HomeAssistantError(reason)
+
+            packages: list[str] = []
+            if mode == INSTALL_ASU:
+                # An empty list with diff_packages would make ASU build the
+                # stock package set, which is exactly what ASU is here to avoid.
+                try:
+                    packages = await self.coordinator.client.get_installed_packages()
+                except Exception as err:
+                    msg = (
+                        f"Could not read the installed packages from the router: {err}"
+                    )
+                    raise HomeAssistantError(msg) from err
+                if not packages:
+                    msg = (
+                        "Could not read the installed packages from the router, "
+                        "so an ASU image would not include them. Aborting."
+                    )
+                    raise HomeAssistantError(msg)
+
+            if mode == INSTALL_STOCK:
+                extra = await self.coordinator.async_get_non_default_packages(data)
+                if extra is None:
+                    msg = (
+                        "Refusing to flash the plain OpenWrt image: could not "
+                        "confirm that the router has no packages beyond the "
+                        "stock image, and flashing it would remove them. "
+                        + MANUAL_UPGRADE_HINT
+                    )
+                    raise HomeAssistantError(msg)
+                if extra:
+                    shown = ", ".join(extra[:15])
+                    if len(extra) > 15:
+                        shown += f" and {len(extra) - 15} more"
+                    msg = (
+                        "Refusing to flash the plain OpenWrt image: it would "
+                        f"remove these installed packages: {shown}. "
+                        + MANUAL_UPGRADE_HINT
+                    )
+                    raise HomeAssistantError(msg)
 
             # Check for auto-backup option
             auto_backup = self.coordinator.config_entry.options.get(
@@ -354,83 +432,16 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
             if auto_backup:
                 await self._async_perform_backup()
 
-            # Check for required ASU package if using LuCI/Ubus
-            if data.asu_supported and not data.firmware_install_url:
-                conn_type = self.coordinator.config_entry.data.get(CONF_CONNECTION_TYPE)
-                if (
-                    conn_type in (CONNECTION_TYPE_LUCI_RPC, CONNECTION_TYPE_UBUS)
-                    and not data.packages.asu
-                ):
-                    msg = (
-                        "Attended Sysupgrade package (luci-app-attendedsysupgrade) "
-                        "is missing on the router. Cannot perform firmware upgrade."
-                    )
-                    raise HomeAssistantError(
-                        msg,
-                    )
-
-            # ASU Update Flow
-            if data.asu_supported and data.asu_update_available:
-                _LOGGER.info(
-                    "Initiating ASU custom firmware build for %s",
-                    data.firmware_latest_version,
-                )
-                try:
-                    from .const import CONF_ASU_URL
-                    from .helpers.asu import AsuClient
-
-                    asu_url = self.coordinator.config_entry.options.get(
-                        CONF_ASU_URL,
-                        "https://sysupgrade.openwrt.org",
-                    )
-                    asu_client = AsuClient(self.hass, asu_url)
-
-                    request_hash = await asu_client.request_build(
-                        version=data.firmware_latest_version,
-                        target=data.device_info.target,
-                        board_name=data.device_info.board_name,
-                        packages=data.installed_packages,
-                        client_name=(
-                            f"Home Assistant OpenWrt Integration ({self.coordinator.name})"
-                        ),
-                    )
-
-                    _LOGGER.info(
-                        "ASU build requested (hash: %s). Waiting for image...",
-                        request_hash,
-                    )
-                    download_url = await asu_client.poll_build_status(request_hash)
-
-                    _LOGGER.info(
-                        "ASU build complete. Flashing image from: %s",
-                        download_url,
-                    )
-                    self.coordinator.in_reboot_installation = True
-                    # ASU builds always keep settings by default in OpenWrt logic,
-                    # but we pass it anyway.
-                    await self.coordinator.client.install_firmware(
-                        download_url,
-                        keep_settings=True,
-                    )
-
-                except Exception as err:
-                    _LOGGER.exception("ASU firmware update failed")
-                    msg = f"ASU firmware update failed: {err}"
-                    raise HomeAssistantError(msg) from err
-
+            if mode == INSTALL_ASU:
+                await self._async_install_asu(data, packages)
                 return
 
-            # Standard Update Flow
+            # Stock (verified above) or custom repository image
             url = data.firmware_install_url
-            _LOGGER.info("Initiating standard firmware installation from: %s", url)
-            if not url:
-                msg = "No firmware URL available for installation."
-                raise ValueError(msg)
-
+            _LOGGER.info("Initiating firmware installation from: %s", url)
             try:
                 # Mark coordinator that a reboot/sysupgrade is expected
                 self.coordinator.in_reboot_installation = True
-                # We assume keep_settings=True for official updates from HA
                 await self.coordinator.client.install_firmware(
                     url, keep_settings=True, force=data.is_custom_build
                 )
@@ -439,6 +450,50 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 raise HomeAssistantError(msg) from err
         finally:
             self._in_progress = False
+
+    async def _async_install_asu(self, data: Any, packages: list[str]) -> None:
+        """Request an ASU build with the router's packages and flash it."""
+        version = data.asu_target_version or data.firmware_latest_version
+        _LOGGER.info("Initiating ASU custom firmware build for %s", version)
+        try:
+            from .helpers.asu import AsuClient
+
+            entry = self.coordinator.config_entry
+            asu_url = entry.options.get(
+                CONF_ASU_URL, entry.data.get(CONF_ASU_URL, DEFAULT_ASU_URL)
+            )
+            asu_client = AsuClient(self.hass, asu_url)
+
+            request_hash = await asu_client.request_build(
+                version=version,
+                target=self.coordinator._get_target(data.device_info.target),
+                board_name=data.asu_profile or data.device_info.board_name,
+                packages=packages,
+                client_name=(
+                    f"Home Assistant OpenWrt Integration ({self.coordinator.name})"
+                ),
+            )
+
+            _LOGGER.info(
+                "ASU build requested (hash: %s). Waiting for image...",
+                request_hash,
+            )
+            download_url = await asu_client.poll_build_status(request_hash)
+
+            _LOGGER.info(
+                "ASU build complete. Flashing image from: %s",
+                download_url,
+            )
+            self.coordinator.in_reboot_installation = True
+            await self.coordinator.client.install_firmware(
+                download_url,
+                keep_settings=True,
+            )
+
+        except Exception as err:
+            _LOGGER.exception("ASU firmware update failed")
+            msg = f"ASU firmware update failed: {err}"
+            raise HomeAssistantError(msg) from err
 
     async def _async_perform_backup(self) -> None:
         """Perform a backup and download it to HA."""
