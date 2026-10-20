@@ -287,7 +287,8 @@ class UbusSystemOpsMixin:
                 "file", "read", {"path": remote_path, "base64": True}
             )
             if res and isinstance(res, dict) and "data" in res:
-                data = base64.b64decode(res["data"])
+                # rpcd returns real base64 here; reject anything that is not.
+                data = base64.b64decode(res["data"], validate=True)
                 await asyncio.to_thread(self._write_bytes, local_path, data)
                 return True
         except Exception as err:

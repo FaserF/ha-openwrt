@@ -3,10 +3,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import logging
-from typing import Any
+import re
+import shlex
+from typing import TYPE_CHECKING, Any
 
 from ..models import IpNeighbor
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -141,6 +148,90 @@ class OpenWrtClientHelpersMixin:
         except (ValueError, IndexError) as err:
             _LOGGER.debug("Error parsing /proc/stat for CPU usage: %s", err)
             return 0.0
+
+    async def _download_file_via_command(
+        self,
+        remote_path: str,
+        local_path: str,
+        run: Callable[[str], Awaitable[str]],
+    ) -> bool:
+        """Download a (binary) file by encoding it on the router in one command.
+
+        The router prints the file's byte count and then the file encoded as
+        base64 (ucode's b64enc with its fs module, or a base64/openssl binary
+        when one exists) or as hex (busybox hexdump). Nothing is written
+        locally unless the decoded size matches the router's count.
+        """
+        path = shlex.quote(remote_path)
+        cmd = (
+            f"P={path}; "
+            'if [ ! -f "$P" ]; then echo __HA_DL_NOFILE__; '
+            "else "
+            'echo "__HA_DL_SIZE__$(wc -c < "$P")"; '
+            "echo __HA_DL_BEGIN__; "
+            '{ P="$P" ucode -l fs -e '
+            "'print(b64enc(fs.readfile(getenv(\"P\"))))' 2>/dev/null "
+            '|| base64 "$P" 2>/dev/null '
+            '|| openssl base64 -in "$P" 2>/dev/null '
+            "|| { echo __HA_DL_HEX__; "
+            'hexdump -ve \'1/1 "%.2x"\' "$P" 2>/dev/null; } '
+            "|| echo __HA_DL_NOENC__; }; "
+            "echo; echo __HA_DL_END__; "
+            "fi"
+        )
+        output = await run(cmd)
+        data = self._decode_downloaded_file(remote_path, output)
+        if data is None:
+            return False
+        await asyncio.to_thread(self._write_bytes, local_path, data)
+        return True
+
+    @staticmethod
+    def _decode_downloaded_file(remote_path: str, output: Any) -> bytes | None:
+        """Decode _download_file_via_command output; None (logged) on any doubt."""
+        if not isinstance(output, str):
+            _LOGGER.error("Download of %s returned no output", remote_path)
+            return None
+        if "__HA_DL_NOFILE__" in output:
+            _LOGGER.error(
+                "Download failed: %s does not exist on the router", remote_path
+            )
+            return None
+        size_match = re.search(r"__HA_DL_SIZE__\s*(\d+)", output)
+        body_match = re.search(r"__HA_DL_BEGIN__(.*?)__HA_DL_END__", output, re.S)
+        if not size_match or not body_match:
+            _LOGGER.error("Download of %s returned unexpected output", remote_path)
+            return None
+        body = body_match.group(1)
+        if "__HA_DL_NOENC__" in body:
+            _LOGGER.error(
+                "Download of %s failed: the router has no ucode, base64, openssl "
+                "or hexdump to encode the file",
+                remote_path,
+            )
+            return None
+        try:
+            if "__HA_DL_HEX__" in body:
+                hex_text = "".join(body.split("__HA_DL_HEX__", 1)[1].split())
+                data = bytes.fromhex(hex_text)
+            else:
+                data = base64.b64decode("".join(body.split()), validate=True)
+        except ValueError as err:
+            _LOGGER.error(
+                "Download of %s returned undecodable data: %s", remote_path, err
+            )
+            return None
+        expected = int(size_match.group(1))
+        if len(data) != expected:
+            _LOGGER.error(
+                "Download of %s is %d bytes but the file on the router is %d bytes; "
+                "not saving it",
+                remote_path,
+                len(data),
+                expected,
+            )
+            return None
+        return data
 
     async def get_gateway_mac(self) -> str | None:
         """Get the default gateway MAC address."""

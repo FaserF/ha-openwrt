@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import shlex
 from typing import Any
@@ -73,22 +72,15 @@ class SshFeaturesServicesMixin:
             raise SshError(msg) from err
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
-        """Download a file from the router via SSH using cat (fallback for SCP)."""
-        try:
-            # Using cat and reading back the result. For larger files this might be slow,
-            # but for backups (~some KB) it should be fine.
-            safe_path = shlex.quote(remote_path)
-            content = await self._exec(f"cat {safe_path}")
-            if content:
-                # We need to be careful with binary data over SSH exec
-                # If the file is a .tar.gz, it's binary.
-                # Let's try base64 to be safe if it's binary.
-                b64_content = await self._exec(f"base64 {safe_path}")
-                import base64
+        """Download a file from the router via SSH.
 
-                data = base64.b64decode(b64_content)
-                await asyncio.to_thread(self._write_bytes, local_path, data)
-                return True
+        The file is encoded on the router (busybox often has no base64
+        applet) and checked against the router's byte count.
+        """
+        try:
+            return await self._download_file_via_command(
+                remote_path, local_path, self._exec
+            )
         except Exception as err:
             _LOGGER.exception("Failed to download file via SSH: %s", err)
         return False
