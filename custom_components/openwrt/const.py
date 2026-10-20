@@ -117,9 +117,11 @@ CONF_CUSTOM_FIRMWARE_REPO: Final = "custom_firmware_repo"
 CONF_CUSTOM_FIRMWARE_PATTERN: Final = "custom_firmware_pattern"
 CONF_ASU_URL: Final = "asu_url"
 CONF_TARGET_OVERRIDE: Final = "target_override"
+CONF_CHECK_FIRMWARE_UPDATES: Final = "check_firmware_updates"
 CONF_AUTO_BACKUP: Final = "auto_backup"
 CONF_BACKUP_RETENTION_DAYS: Final = "backup_retention_days"
 
+DEFAULT_CHECK_FIRMWARE_UPDATES: Final = True
 DEFAULT_BACKUP_RETENTION_DAYS: Final = 30
 
 SENSOR_TYPE_SYSTEM: Final = "system"

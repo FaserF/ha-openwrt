@@ -185,3 +185,40 @@ async def test_sysupgrade_command_has_no_trailing_rm() -> None:
         cmd = mock_exec.call_args[0][0]
         assert "sysupgrade" in cmd
         assert not cmd.endswith("rm -f /tmp/firmware.bin")
+
+@pytest.mark.asyncio
+async def test_firmware_update_disabled(hass: HomeAssistant) -> None:
+    """Test that check_firmware_update is not called and entity is not created when disabled."""
+    from custom_components.openwrt.const import CONF_CHECK_FIRMWARE_UPDATES, DOMAIN
+    from custom_components.openwrt.update import async_setup_entry
+
+
+    entry = MagicMock()
+    entry.entry_id = "test_entry_id_fw_disabled"
+    entry.options = {CONF_CHECK_FIRMWARE_UPDATES: False, "update_interval": 30}
+    entry.data = {"host": "192.168.1.1"}
+
+    # We will test update.py entity creation
+    coordinator = MagicMock(spec=OpenWrtDataCoordinator)
+    coordinator.data = OpenWrtData()
+    coordinator.data.permissions = MagicMock()
+    coordinator.async_add_listener = MagicMock()
+    coordinator.router_id = 'test_router'
+    coordinator.data.permissions.read_system = True
+
+    hass.data[DOMAIN] = {entry.entry_id: {"coordinator": coordinator}}
+
+    async_add_entities = MagicMock()
+
+    await async_setup_entry(hass, entry, async_add_entities)
+
+    added_entities = async_add_entities.call_args[0][0] if async_add_entities.call_args else []
+    assert not any(isinstance(e, OpenWrtUpdateEntity) for e in added_entities)
+
+    # Now verify it's added if True
+    entry.options = {CONF_CHECK_FIRMWARE_UPDATES: True, "update_interval": 30}
+
+    await async_setup_entry(hass, entry, async_add_entities)
+
+    added_entities = async_add_entities.call_args[0][0] if async_add_entities.call_args else []
+    assert any(isinstance(e, OpenWrtUpdateEntity) for e in added_entities)
