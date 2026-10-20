@@ -87,13 +87,13 @@ class LuciRpcDevicesMixin:
             arp = result.get("data", "")
         except Exception:
             arp = ""
-        
+
         if not arp:
             try:
                 arp = await self.execute_command("cat /proc/net/arp 2>/dev/null")
             except Exception:
                 pass
-                
+
         try:
             if arp:
                 lines = arp.strip().split("\n")
