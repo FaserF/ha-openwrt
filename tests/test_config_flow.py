@@ -470,4 +470,3 @@ async def test_provision_failed_step(hass) -> None:
         result = await flow.async_step_provision_failed({})
         mock_disp.assert_called_once()
         assert result["step_id"] == "permissions_ubus"
-

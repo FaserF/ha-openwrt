@@ -186,12 +186,12 @@ async def test_sysupgrade_command_has_no_trailing_rm() -> None:
         assert "sysupgrade" in cmd
         assert not cmd.endswith("rm -f /tmp/firmware.bin")
 
+
 @pytest.mark.asyncio
 async def test_firmware_update_disabled(hass: HomeAssistant) -> None:
     """Test that check_firmware_update is not called and entity is not created when disabled."""
     from custom_components.openwrt.const import CONF_CHECK_FIRMWARE_UPDATES, DOMAIN
     from custom_components.openwrt.update import async_setup_entry
-
 
     entry = MagicMock()
     entry.entry_id = "test_entry_id_fw_disabled"
@@ -203,7 +203,7 @@ async def test_firmware_update_disabled(hass: HomeAssistant) -> None:
     coordinator.data = OpenWrtData()
     coordinator.data.permissions = MagicMock()
     coordinator.async_add_listener = MagicMock()
-    coordinator.router_id = 'test_router'
+    coordinator.router_id = "test_router"
     coordinator.data.permissions.read_system = True
 
     hass.data[DOMAIN] = {entry.entry_id: {"coordinator": coordinator}}
@@ -212,7 +212,9 @@ async def test_firmware_update_disabled(hass: HomeAssistant) -> None:
 
     await async_setup_entry(hass, entry, async_add_entities)
 
-    added_entities = async_add_entities.call_args[0][0] if async_add_entities.call_args else []
+    added_entities = (
+        async_add_entities.call_args[0][0] if async_add_entities.call_args else []
+    )
     assert not any(isinstance(e, OpenWrtUpdateEntity) for e in added_entities)
 
     # Now verify it's added if True
@@ -220,5 +222,7 @@ async def test_firmware_update_disabled(hass: HomeAssistant) -> None:
 
     await async_setup_entry(hass, entry, async_add_entities)
 
-    added_entities = async_add_entities.call_args[0][0] if async_add_entities.call_args else []
+    added_entities = (
+        async_add_entities.call_args[0][0] if async_add_entities.call_args else []
+    )
     assert any(isinstance(e, OpenWrtUpdateEntity) for e in added_entities)
