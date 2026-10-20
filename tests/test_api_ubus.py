@@ -910,7 +910,12 @@ async def test_ubus_call_session_expiry_jsonrpc_32002(ubus_client: UbusClient):
 
     ubus_client.session.post = MagicMock(side_effect=[expired_resp, success_resp])
 
-    with patch.object(ubus_client, "connect", new_callable=AsyncMock) as mock_connect:
+    with (
+        patch.object(ubus_client, "connect", new_callable=AsyncMock) as mock_connect,
+        patch.object(
+            ubus_client, "_is_session_valid", new_callable=AsyncMock, return_value=False
+        ),
+    ):
 
         def connect_side_effect():
             ubus_client._session_id = "new_token"
@@ -927,6 +932,9 @@ async def test_ubus_call_session_expiry_jsonrpc_32002(ubus_client: UbusClient):
 
     with (
         patch.object(ubus_client, "connect", new_callable=AsyncMock) as mock_connect,
+        patch.object(
+            ubus_client, "_is_session_valid", new_callable=AsyncMock, return_value=False
+        ),
         pytest.raises(UbusPermissionError) as exc_info,
     ):
         await ubus_client._call("system", "board")
@@ -1673,3 +1681,38 @@ async def test_ubus_wireless_empty_candidate_continues_to_next_candidate(
 
         devices = await ubus_client.get_connected_devices()
         assert any(d.mac == "11:22:33:44:55:66" and d.connected for d in devices)
+
+
+@pytest.mark.asyncio
+async def test_ubus_call_session_expiry_jsonrpc_32002_valid_session(
+    ubus_client: UbusClient,
+):
+    """Test that -32002 raises UbusPermissionError if the session is actually still valid."""
+    from custom_components.openwrt.api.ubus import UbusPermissionError
+
+    ubus_client._session_id = "valid_token"
+    ubus_client.session = MagicMock()
+
+    expired_resp = MockResponse(
+        200,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "error": {"code": -32002, "message": "Access denied"},
+        },
+    )
+
+    ubus_client.session.post = MagicMock(return_value=expired_resp)
+
+    with (
+        patch.object(ubus_client, "connect", new_callable=AsyncMock) as mock_connect,
+        patch.object(
+            ubus_client, "_is_session_valid", new_callable=AsyncMock, return_value=True
+        ),
+    ):
+        try:
+            await ubus_client._call("system", "board")
+            raise AssertionError("Should have raised UbusPermissionError")
+        except UbusPermissionError:
+            pass
+        assert mock_connect.call_count == 0

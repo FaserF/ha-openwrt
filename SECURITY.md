@@ -88,7 +88,7 @@ Using the `root` account means Home Assistant has **unrestricted administrative 
 
 ### Why is this not an official Home Assistant Core integration?
 Maintaining a core integration in the official Home Assistant repository comes with significant trade-offs:
-- **High Maintenance Overhead**: Every minor change to the Home Assistant core API requires rapid updates to the integration. 
+- **High Maintenance Overhead**: Every minor change to the Home Assistant core API requires rapid updates to the integration.
 - **Slow Release Cycle**: PR reviews in the official Home Assistant repository are thorough but can take several months. This makes it extremely difficult to roll out quick bug fixes, performance improvements, or support for newer OpenWrt releases.
 - **Agility & HACS**: Keeping it as a community integration in HACS allows the project to remain agile, issue updates immediately when OpenWrt features change, and support older/newer Home Assistant versions without being constrained by core release schedules.
 
@@ -101,6 +101,6 @@ When this integration was submitted to the default HACS repository, it underwent
 - **Open Source Community**: All PRs, commits, and releases are public, allowing auditability by the community.
 
 ### What about the third-party MQTT Presence script?
-The MQTT Presence Detection feature integrates with [OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence). 
+The MQTT Presence Detection feature integrates with [OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).
 - **Completely Optional**: This feature is entirely opt-in. If you do not use MQTT Presence, you do not need to install these scripts or grant the `file.exec` permission to the `homeassistant` user.
 - **Vetted Source**: The presence scripts are lightweight and open-source, allowing you to review them before deploying them to your router.

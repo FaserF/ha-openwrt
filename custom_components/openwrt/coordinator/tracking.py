@@ -418,10 +418,14 @@ class TrackingMixin(_Base):
                     is_wireless,
                 )
             else:
-                self._device_history[mac]["last_seen"] = current_time
-                if lease_hostname:
-                    self._device_history[mac]["hostname"] = lease_hostname
-                history_updated = True
+                hist = self._device_history[mac]
+                if hist.get("last_seen") != current_time or (
+                    lease_hostname and hist.get("hostname") != lease_hostname
+                ):
+                    hist["last_seen"] = current_time
+                    if lease_hostname:
+                        hist["hostname"] = lease_hostname
+                    history_updated = True
 
             filtered_leases.append(lease)
         data.dhcp_leases = filtered_leases
