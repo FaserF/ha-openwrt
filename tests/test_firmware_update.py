@@ -141,6 +141,23 @@ async def test_check_snapshot_update_release_branch(hass: HomeAssistant) -> None
     )
 
 
+def test_version_is_newer_ignores_revision_suffix() -> None:
+    """Test that version_is_newer correctly handles and ignores revision suffixes."""
+    from custom_components.openwrt.coordinator.firmware_helpers import version_is_newer
+
+    # 1. current has revision suffix, latest does not, but base version matches -> False
+    assert version_is_newer("25.12.6 (r33311-981c978eff)", "25.12.6") is False
+
+    # 2. current has revision suffix, latest is newer -> True
+    assert version_is_newer("25.12.5 (r33311-981c978eff)", "25.12.6") is True
+
+    # 3. current has revision suffix, latest is older -> False
+    assert version_is_newer("25.12.6 (r33311-981c978eff)", "25.12.5") is False
+
+    # 4. generic comparison without suffix where latest is older -> False
+    assert version_is_newer("25.12.6", "25.12.5") is False
+
+
 @pytest.mark.asyncio
 async def test_sysupgrade_command_has_no_trailing_rm() -> None:
     """Test that install_firmware does not append a trailing 'rm -f /tmp/firmware.bin'."""
