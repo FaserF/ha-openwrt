@@ -1,5 +1,6 @@
 """Tests for firmware update backup failure and URL resolution."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -7,8 +8,61 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
+from custom_components.openwrt.api import firmware_install
+from custom_components.openwrt.api.firmware_install import (
+    FIRMWARE_FLASHING,
+    FIRMWARE_JOB_BUSY,
+    FIRMWARE_JOB_CANCELLED,
+    FIRMWARE_JOB_EXIT,
+    FIRMWARE_JOB_MISSING,
+    FIRMWARE_JOB_RUNNING,
+    FIRMWARE_JOB_STARTED,
+    FIRMWARE_JOB_TOO_LATE,
+)
 from custom_components.openwrt.coordinator import OpenWrtData, OpenWrtDataCoordinator
 from custom_components.openwrt.update import OpenWrtUpdateEntity
+
+
+class _FakeJobRouter:
+    """Answer the detached install's commands the way the router's shell would.
+
+    polls are returned one per poll (an Exception is raised instead), the last
+    one repeating; after a cancel, the polls in after_cancel take over. A poll answer that does not end the job gets the running
+    marker appended, as the poll command prints it for a live job.
+    """
+
+    def __init__(
+        self,
+        polls: list,
+        launch: object = FIRMWARE_JOB_STARTED,
+        cancel: object = FIRMWARE_JOB_CANCELLED,
+        after_cancel: list | None = None,
+    ) -> None:
+        self.polls = list(polls)
+        self.after_cancel = after_cancel
+        self.launch = launch
+        self.cancel = cancel
+        self.launches: list[str] = []
+        self.cancels = 0
+        self.poll_count = 0
+
+    async def __call__(self, command: str) -> str:
+        if "sysupgrade" in command:
+            self.launches.append(command)
+            answer = self.launch
+        elif FIRMWARE_JOB_TOO_LATE in command:
+            self.cancels += 1
+            answer = self.cancel
+        else:
+            self.poll_count += 1
+            if self.cancels and self.after_cancel is not None:
+                self.polls, self.after_cancel = self.after_cancel, None
+            answer = self.polls.pop(0) if len(self.polls) > 1 else self.polls[0]
+            if isinstance(answer, str) and FIRMWARE_JOB_EXIT not in answer:
+                answer = f"{answer}\n{FIRMWARE_JOB_RUNNING}"
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
 
 
 @pytest.mark.asyncio
@@ -177,33 +231,18 @@ async def test_sysupgrade_command_has_no_trailing_rm() -> None:
         MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="pwd"
     )
 
-    with patch.object(
-        ubus_client, "execute_command", new_callable=AsyncMock
-    ) as mock_exec:
-        await ubus_client.install_firmware(
-            "http://example.com/firmware.bin", keep_settings=True, force=False
-        )
-        cmd = mock_exec.call_args[0][0]
+    for client in (ubus_client, luci_client, ssh_client):
+        router = _FakeJobRouter([f"{FIRMWARE_FLASHING}\n{FIRMWARE_JOB_EXIT}0"])
+        with (
+            patch.object(client, "_firmware_exec", router),
+            patch.object(firmware_install, "FIRMWARE_POLL_INTERVAL", 0),
+        ):
+            await client.install_firmware(
+                "http://example.com/firmware.bin", keep_settings=True, force=False
+            )
+        (cmd,) = router.launches
         assert "sysupgrade" in cmd
-        assert not cmd.endswith("rm -f /tmp/firmware.bin")
-
-    with patch.object(
-        luci_client, "execute_command", new_callable=AsyncMock
-    ) as mock_exec:
-        await luci_client.install_firmware(
-            "http://example.com/firmware.bin", keep_settings=True, force=False
-        )
-        cmd = mock_exec.call_args[0][0]
-        assert "sysupgrade" in cmd
-        assert not cmd.endswith("rm -f /tmp/firmware.bin")
-
-    with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
-        await ssh_client.install_firmware(
-            "http://example.com/firmware.bin", keep_settings=True, force=False
-        )
-        cmd = mock_exec.call_args[0][0]
-        assert "sysupgrade" in cmd
-        assert not cmd.endswith("rm -f /tmp/firmware.bin")
+        assert "rm -f /tmp/firmware.bin )" not in cmd
 
 
 @pytest.mark.asyncio
@@ -300,17 +339,19 @@ async def test_install_firmware_raises_on_checksum_mismatch() -> None:
     from custom_components.openwrt.api.ubus import UbusClient
 
     kwargs = {"host": "192.0.2.1", "username": "root", "password": "pwd"}
-    clients = [
-        (UbusClient(MagicMock(), MagicMock(), **kwargs), "execute_command"),
-        (LuciRpcClient(MagicMock(), MagicMock(), **kwargs), "execute_command"),
-        (SshClient(MagicMock(), MagicMock(), **kwargs), "_exec"),
-    ]
-    for client, runner in clients:
-        with patch.object(client, runner, new_callable=AsyncMock) as mock_exec:
-            mock_exec.return_value = f"{FIRMWARE_CHECKSUM_MISMATCH}\n"
-            with pytest.raises(FirmwareInstallError, match="checksum mismatch"):
-                await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
-            assert "sha256sum" in mock_exec.call_args[0][0]
+    for client in (
+        UbusClient(MagicMock(), MagicMock(), **kwargs),
+        LuciRpcClient(MagicMock(), MagicMock(), **kwargs),
+        SshClient(MagicMock(), MagicMock(), **kwargs),
+    ):
+        router = _FakeJobRouter([f"{FIRMWARE_CHECKSUM_MISMATCH}\n{FIRMWARE_JOB_EXIT}1"])
+        with (
+            patch.object(client, "_firmware_exec", router),
+            patch.object(firmware_install, "FIRMWARE_POLL_INTERVAL", 0),
+            pytest.raises(FirmwareInstallError, match="checksum mismatch"),
+        ):
+            await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+        assert "sha256sum" in router.launches[0]
 
 
 @pytest.mark.asyncio
@@ -624,6 +665,273 @@ async def test_stock_install_passes_checksum(hass: HomeAssistant) -> None:
         force=False,
         sha256=SHA,
     )
+
+
+# --- Detached install (ubus, LuCI RPC, SSH) ---
+
+
+def _rpc_clients() -> list:
+    """A ubus, a LuCI RPC and an SSH client, each with its own connection error."""
+    from custom_components.openwrt.api.luci_rpc import LuciRpcClient
+    from custom_components.openwrt.api.luci_rpc.exceptions import (
+        LuciRpcConnectionError,
+    )
+    from custom_components.openwrt.api.ssh import SshClient, SshConnectionError
+    from custom_components.openwrt.api.ubus import UbusClient
+    from custom_components.openwrt.api.ubus.exceptions import UbusConnectionError
+
+    kwargs = {"host": "192.0.2.1", "username": "root", "password": "pwd"}
+    return [
+        (UbusClient(MagicMock(), MagicMock(), **kwargs), UbusConnectionError),
+        (LuciRpcClient(MagicMock(), MagicMock(), **kwargs), LuciRpcConnectionError),
+        (SshClient(MagicMock(), MagicMock(), **kwargs), SshConnectionError),
+    ]
+
+
+@pytest.fixture
+def fast_polls():
+    """Poll without waiting."""
+    with patch.object(firmware_install, "FIRMWARE_POLL_INTERVAL", 0):
+        yield
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("index", [0, 1, 2], ids=["ubus", "luci_rpc", "ssh"])
+async def test_rpc_install_survives_long_download(index: int, fast_polls) -> None:
+    """A download that outlasts any server timeout is polled, not cut off or re-run."""
+    client, conn_error = _rpc_clients()[index]
+    router = _FakeJobRouter(
+        ["Downloading"] * 50
+        + [f"Downloading\nDownload completed\n{FIRMWARE_FLASHING}", conn_error("gone")]
+    )
+    with patch.object(client, "_firmware_exec", router):
+        await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+
+    assert len(router.launches) == 1
+    assert router.poll_count == 52
+    assert router.cancels == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("index", [0, 1, 2], ids=["ubus", "luci_rpc", "ssh"])
+async def test_rpc_install_timeout_cancels_and_raises(index: int, fast_polls) -> None:
+    """A download still running at the deadline is cancelled and reported."""
+    client, _ = _rpc_clients()[index]
+    router = _FakeJobRouter(["Downloading"])
+    with (
+        patch.object(client, "_firmware_exec", router),
+        patch.object(firmware_install, "FIRMWARE_JOB_TIMEOUT", 0.05),
+        pytest.raises(
+            firmware_install.FirmwareInstallError, match="sysupgrade will not run"
+        ),
+    ):
+        await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+
+    assert len(router.launches) == 1
+    assert router.cancels == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("index", [0, 1, 2], ids=["ubus", "luci_rpc", "ssh"])
+async def test_rpc_install_lost_contact_before_flash_is_unknown(
+    index: int, fast_polls
+) -> None:
+    """Losing the router before sysupgrade starts is an error, never a reboot."""
+    client, conn_error = _rpc_clients()[index]
+    router = _FakeJobRouter(
+        ["Downloading", conn_error("Cannot connect")],
+        cancel=conn_error("Cannot connect"),
+    )
+    with (
+        patch.object(client, "_firmware_exec", router),
+        patch.object(firmware_install, "FIRMWARE_JOB_TIMEOUT", 0.05),
+        pytest.raises(
+            firmware_install.FirmwareInstallError, match="unknown whether sysupgrade"
+        ),
+    ):
+        await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+    assert len(router.launches) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("index", [0, 1, 2], ids=["ubus", "luci_rpc", "ssh"])
+async def test_rpc_install_router_restart_before_flash_is_an_error(
+    index: int, fast_polls
+) -> None:
+    """A job that vanished before sysupgrade started is not reported as success."""
+    client, conn_error = _rpc_clients()[index]
+    router = _FakeJobRouter(["Downloading", conn_error("reset"), FIRMWARE_JOB_MISSING])
+    with (
+        patch.object(client, "_firmware_exec", router),
+        pytest.raises(firmware_install.FirmwareInstallError, match="restarted"),
+    ):
+        await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("index", [0, 1, 2], ids=["ubus", "luci_rpc", "ssh"])
+async def test_rpc_install_reports_sysupgrade_refusal(index: int, fast_polls) -> None:
+    """sysupgrade rejecting the image surfaces its message and exit code."""
+    client, _ = _rpc_clients()[index]
+    router = _FakeJobRouter(
+        [f"{FIRMWARE_FLASHING}\nImage check failed.\n{FIRMWARE_JOB_EXIT}1"]
+    )
+    with (
+        patch.object(client, "_firmware_exec", router),
+        pytest.raises(
+            firmware_install.FirmwareInstallError, match="exit code 1.*Image check"
+        ),
+    ):
+        await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("index", [0, 1, 2], ids=["ubus", "luci_rpc", "ssh"])
+async def test_rpc_install_refuses_while_another_runs(index: int, fast_polls) -> None:
+    """A second install while one is running on the router is refused."""
+    client, _ = _rpc_clients()[index]
+    router = _FakeJobRouter([], launch=FIRMWARE_JOB_BUSY)
+    with (
+        patch.object(client, "_firmware_exec", router),
+        pytest.raises(
+            firmware_install.FirmwareInstallError, match="already|still running"
+        ),
+    ):
+        await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+    assert router.poll_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("index", [0, 1, 2], ids=["ubus", "luci_rpc", "ssh"])
+async def test_rpc_install_too_late_to_cancel_follows_the_flash(
+    index: int, fast_polls
+) -> None:
+    """If sysupgrade passed the gate first, the install watches it to the reboot."""
+    client, conn_error = _rpc_clients()[index]
+    # Polls show the download until the deadline; then the router goes down.
+    router = _FakeJobRouter(
+        ["Downloading"],
+        cancel=FIRMWARE_JOB_TOO_LATE,
+        after_cancel=[f"{FIRMWARE_FLASHING}", conn_error("gone")],
+    )
+    with (
+        patch.object(client, "_firmware_exec", router),
+        patch.object(firmware_install, "FIRMWARE_JOB_TIMEOUT", 0.05),
+    ):
+        await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+    assert router.cancels == 1
+    assert len(router.launches) == 1
+
+
+@pytest.mark.asyncio
+async def test_ssh_install_releases_the_connection_lock_between_polls(
+    fast_polls,
+) -> None:
+    """Other SSH commands run while the download is in progress."""
+    from custom_components.openwrt.api.ssh import SshClient, SshConnectionError
+
+    client = SshClient(
+        MagicMock(), MagicMock(), host="192.0.2.1", username="root", password="pwd"
+    )
+    downloaded = asyncio.Event()
+    router = _FakeJobRouter(["Downloading"])
+
+    async def exec_locked(command: str, retry: bool = True) -> str:
+        assert client._connection_lock.locked()
+        if command == "uptime":
+            return "up"
+        if downloaded.is_set() and "sysupgrade" not in command:
+            if router.poll_count:
+                raise SshConnectionError("gone")
+            router.poll_count += 1
+            return f"{FIRMWARE_FLASHING}\n{FIRMWARE_JOB_RUNNING}"
+        return await router(command)
+
+    with patch.object(client, "_exec_locked", side_effect=exec_locked):
+        install = asyncio.create_task(
+            client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+        )
+        while router.poll_count < 3:
+            await asyncio.sleep(0)
+        # A regular poll gets the connection while the install is still running.
+        assert await asyncio.wait_for(client._exec("uptime"), 1) == "up"
+        assert not install.done()
+        downloaded.set()
+        router.poll_count = 0
+        await install
+
+    assert len(router.launches) == 1
+    assert router.cancels == 0
+
+
+def test_detached_command_is_idempotent_per_job() -> None:
+    """The launch creates its job directory atomically before anything runs."""
+    cmd = firmware_install.build_detached_sysupgrade_command(
+        "0123456789abcdef", "https://example.com/fw.bin", sha256=SHA
+    )
+    job = f"{firmware_install.FIRMWARE_JOB_DIR_PREFIX}0123456789abcdef"
+    assert cmd.startswith(f"if ! mkdir {job} 2>/dev/null; then")
+    # The job takes the cancel gate and announces itself before sysupgrade.
+    assert (
+        cmd.index(f"mkdir {job}/gate")
+        < cmd.index(FIRMWARE_FLASHING)
+        < cmd.index("sysupgrade /tmp/firmware.bin")
+    )
+    assert "</dev/null &" in cmd
+    with pytest.raises(firmware_install.FirmwareInstallError):
+        firmware_install.build_detached_sysupgrade_command("x; reboot", "u")
+
+
+@pytest.mark.asyncio
+async def test_ubus_rpcd_timeout_is_not_success() -> None:
+    """rpcd's exec timeout (status 7) used to read as an empty, successful run."""
+    client, _ = _rpc_clients()[0]
+    with (
+        patch.object(
+            client,
+            "_call",
+            AsyncMock(side_effect=base_ubus_error("Ubus call failed with code 7")),
+        ) as call,
+        pytest.raises(firmware_install.FirmwareInstallError, match="Could not start"),
+    ):
+        await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+    call.assert_awaited_once()
+    # execute_command still swallows it, which is why the install no longer uses it.
+    with patch.object(
+        client,
+        "_call",
+        AsyncMock(side_effect=base_ubus_error("Ubus call failed with code 7")),
+    ):
+        assert await client.execute_command("true") == ""
+
+
+def base_ubus_error(message: str) -> Exception:
+    """A UbusError as _call raises it."""
+    from custom_components.openwrt.api.ubus.exceptions import UbusError
+
+    return UbusError(message)
+
+
+@pytest.mark.asyncio
+async def test_luci_bad_gateway_is_not_success_and_not_rerun() -> None:
+    """uhttpd's 502 after script_timeout used to fall through to success."""
+    from custom_components.openwrt.api.luci_rpc.exceptions import LuciRpcError
+
+    client, _ = _rpc_clients()[1]
+    rpc = AsyncMock(
+        side_effect=LuciRpcError("Communication error: 502, message='Bad Gateway'")
+    )
+    with (
+        patch.object(client, "_rpc_call", rpc),
+        pytest.raises(firmware_install.FirmwareInstallError, match="Could not start"),
+    ):
+        await client.install_firmware("https://example.com/fw.bin", sha256=SHA)
+    # One sys.exec, no file.exec fallback that would run the command again.
+    rpc.assert_awaited_once()
+    endpoint, method, (wrapped,) = rpc.call_args[0]
+    assert (endpoint, method) == ("sys", "exec")
+    assert wrapped.startswith("/bin/sh -c 'if ! mkdir ")
+    assert wrapped.endswith("' 2>&1")
 
 
 # --- Attended Sysupgrade (ASU) detection and the stock-image fallback ---

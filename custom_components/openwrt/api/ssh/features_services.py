@@ -15,17 +15,23 @@ from ..base import (
     SqmStatus,
 )
 from ..firmware_install import (
-    FirmwareInstallError,
-    build_sysupgrade_command,
-    check_sysupgrade_output,
+    run_detached_firmware_install,
 )
-from .exceptions import SshError
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class SshFeaturesServicesMixin:
     """Mixin for SSH services, adblock, and firmware features."""
+
+    async def _firmware_exec(self, command: str) -> str:
+        """Run a firmware job command, raising on any failure.
+
+        _exec may reconnect and run the command again after a connection
+        error; the launch command is safe to deliver twice (see
+        build_detached_sysupgrade_command) and the others only read.
+        """
+        return await self._exec(command)
 
     async def install_firmware(
         self,
@@ -34,42 +40,20 @@ class SshFeaturesServicesMixin:
         force: bool = False,
         sha256: str = "",
     ) -> None:
-        """Install firmware from the given URL via SSH."""
-        cmd = build_sysupgrade_command(url, keep_settings, force, sha256)
-        try:
-            _LOGGER.info("Initiating firmware installation via SSH from: %s", url)
-            # We expect this to eventually fail or disconnect as the router reboots
-            output = await self._exec(cmd)
-            check_sysupgrade_output(output)
-        except FirmwareInstallError:
-            raise
-        except Exception as err:
-            # If it's a connection error, it's likely the router rebooting
-            err_msg = str(err).lower()
-            if any(
-                msg in err_msg
-                for msg in [
-                    "connection reset",
-                    "broken pipe",
-                    "closed",
-                    "eof",
-                    "timeout",
-                    "cannot connect",
-                    "could not connect",
-                    "connection lost",
-                    "connection failed",
-                    "connection error",
-                    "unreachable",
-                    "host",
-                ]
-            ):
-                _LOGGER.info(
-                    "SSH connection lost during sysupgrade - device is likely rebooting",
-                )
-                return
-            _LOGGER.exception("Failed to execute sysupgrade via SSH: %s", err)
-            msg = f"sysupgrade execution failed: {err}"
-            raise SshError(msg) from err
+        """Install firmware from the given URL via SSH.
+
+        The download and checksum steps print nothing, so one blocking command
+        would outlast _exec's 15 s channel timeout (which _exec answers by
+        reconnecting and running the flash command again) and would hold the
+        connection lock, and with it every other SSH command, for the whole
+        download. So the install runs detached on the router and is polled
+        with short commands; a timeout or lost contact before sysupgrade
+        starts is an error, never a reboot.
+        """
+        _LOGGER.info("Initiating firmware installation via SSH from: %s", url)
+        await run_detached_firmware_install(
+            self._firmware_exec, url, keep_settings, force, sha256
+        )
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
         """Download a file from the router via SSH using cat (fallback for SCP)."""

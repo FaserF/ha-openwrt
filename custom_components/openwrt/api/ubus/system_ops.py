@@ -10,9 +10,7 @@ from typing import Any
 
 from ..base import PROVISION_SCRIPT_TEMPLATE
 from ..firmware_install import (
-    FirmwareInstallError,
-    build_sysupgrade_command,
-    check_sysupgrade_output,
+    run_detached_firmware_install,
 )
 from .exceptions import (
     UbusError,
@@ -236,6 +234,23 @@ class UbusSystemOpsMixin:
             _LOGGER.debug("file.write/exec provisioning fallback failed: %s", err)
             return ""
 
+    async def _firmware_exec(self, command: str) -> str:
+        """Run a firmware job command via file.exec, raising on any failure.
+
+        Unlike execute_command, errors and timeouts are not turned into "".
+        _call may re-send the request after a connection error; the launch
+        command is safe to deliver twice (see build_detached_sysupgrade_command).
+        """
+        res = await self._call(
+            "file",
+            "exec",
+            {"command": "/bin/sh", "params": ["-c", command]},
+        )
+        if not isinstance(res, dict):
+            msg = f"Unexpected file.exec response: {res!r}"
+            raise UbusError(msg)
+        return str(res.get("stdout") or "") + str(res.get("stderr") or "")
+
     async def install_firmware(
         self,
         url: str,
@@ -243,41 +258,18 @@ class UbusSystemOpsMixin:
         force: bool = False,
         sha256: str = "",
     ) -> None:
-        """Install firmware from the given URL via ubus."""
-        cmd = build_sysupgrade_command(url, keep_settings, force, sha256)
-        try:
-            _LOGGER.info("Initiating firmware installation via ubus from: %s", url)
-            output = await self.execute_command(cmd)
-            check_sysupgrade_output(output)
-        except FirmwareInstallError:
-            raise
-        except Exception as err:
-            # If it's a connection error, it's likely the router rebooting
-            err_msg = str(err).lower()
-            if any(
-                msg in err_msg
-                for msg in [
-                    "connection reset",
-                    "broken pipe",
-                    "closed",
-                    "eof",
-                    "timeout",
-                    "cannot connect",
-                    "could not connect",
-                    "connection lost",
-                    "connection failed",
-                    "connection error",
-                    "unreachable",
-                    "host",
-                ]
-            ):
-                _LOGGER.info(
-                    "Ubus connection lost during sysupgrade - device is rebooting",
-                )
-                return
-            _LOGGER.exception("Failed to execute sysupgrade via ubus: %s", err)
-            msg = f"sysupgrade execution failed: {err}"
-            raise UbusError(msg) from err
+        """Install firmware from the given URL via ubus.
+
+        rpcd kills a file.exec command after its exec timeout (30 s by
+        default) and replies with UBUS_STATUS_TIMEOUT, which execute_command
+        turns into "". So the install runs detached on the router and is
+        polled; a timeout or lost contact before sysupgrade starts is an
+        error, never a reboot.
+        """
+        _LOGGER.info("Initiating firmware installation via ubus from: %s", url)
+        await run_detached_firmware_install(
+            self._firmware_exec, url, keep_settings, force, sha256
+        )
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
         """Download a file from the router via ubus file.read."""

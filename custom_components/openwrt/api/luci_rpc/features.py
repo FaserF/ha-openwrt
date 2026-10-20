@@ -12,9 +12,7 @@ from ..base import (
     WpsStatus,
 )
 from ..firmware_install import (
-    FirmwareInstallError,
-    build_sysupgrade_command,
-    check_sysupgrade_output,
+    run_detached_firmware_install,
 )
 from .exceptions import (
     LuciRpcAuthError,
@@ -65,6 +63,21 @@ class LuciRpcFeaturesMixin(LuciRpcFeaturesServicesMixin):
                     )
         return leds
 
+    async def _firmware_exec(self, command: str) -> str:
+        """Run a firmware job command via sys.exec, raising on any failure.
+
+        Unlike execute_command, there is no file.exec fallback (which would
+        run the command a second time) and failures are not turned into "".
+        _rpc_call may re-send the request after a connection error; the launch
+        command is safe to deliver twice (see build_detached_sysupgrade_command).
+        """
+        escaped_cmd = command.replace("'", "'\\''")
+        out = await self._rpc_call("sys", "exec", [f"/bin/sh -c '{escaped_cmd}' 2>&1"])
+        if not isinstance(out, str):
+            msg = f"LuCI RPC sys.exec returned no output: {out!r}"
+            raise LuciRpcError(msg)
+        return out
+
     async def install_firmware(
         self,
         url: str,
@@ -72,41 +85,18 @@ class LuciRpcFeaturesMixin(LuciRpcFeaturesServicesMixin):
         force: bool = False,
         sha256: str = "",
     ) -> None:
-        """Install firmware from the given URL via LuCI RPC."""
-        cmd = build_sysupgrade_command(url, keep_settings, force, sha256)
-        try:
-            _LOGGER.info("Initiating firmware installation via LuCI RPC from: %s", url)
-            output = await self.execute_command(cmd)
-            check_sysupgrade_output(output)
-        except FirmwareInstallError:
-            raise
-        except Exception as err:
-            # If it's a connection error, it's likely the router rebooting
-            err_msg = str(err).lower()
-            if any(
-                msg in err_msg
-                for msg in [
-                    "connection reset",
-                    "broken pipe",
-                    "closed",
-                    "eof",
-                    "timeout",
-                    "cannot connect",
-                    "could not connect",
-                    "connection lost",
-                    "connection failed",
-                    "connection error",
-                    "unreachable",
-                    "host",
-                ]
-            ):
-                _LOGGER.info(
-                    "LuCI RPC connection lost during sysupgrade - device is rebooting",
-                )
-            else:
-                _LOGGER.exception("Failed to execute sysupgrade via LuCI RPC: %s", err)
-                msg = f"sysupgrade execution failed: {err}"
-                raise LuciRpcError(msg) from err
+        """Install firmware from the given URL via LuCI RPC.
+
+        sys.exec has no timeout of its own, but uhttpd kills the LuCI request
+        after its script_timeout (60 s by default) and answers 502, which
+        _rpc_call retries and execute_command then hands to its fallback. So
+        the install runs detached on the router and is polled; a timeout or
+        lost contact before sysupgrade starts is an error, never a reboot.
+        """
+        _LOGGER.info("Initiating firmware installation via LuCI RPC from: %s", url)
+        await run_detached_firmware_install(
+            self._firmware_exec, url, keep_settings, force, sha256
+        )
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
         """Download a file from the router via LuCI RPC."""
