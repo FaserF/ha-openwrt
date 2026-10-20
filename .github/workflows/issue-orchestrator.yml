@@ -20,7 +20,7 @@ jobs:
             const title = issue.title.toLowerCase();
             const body = (issue.body || "").toLowerCase();
             const labels = [];
-            
+
             if (title.includes("bug") || body.includes("bug") || body.includes("fehler")) {
               labels.push("bug");
             }
@@ -39,7 +39,7 @@ jobs:
             if (title.includes("ssh") || body.includes("ssh")) {
               labels.push("ssh");
             }
-            
+
             if (labels.length > 0) {
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,

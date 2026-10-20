@@ -140,9 +140,7 @@ class UbusClient(
                     if (
                         isinstance(data.get("error"), dict)
                         and data["error"].get("code") == -32002
-                    ):
-                        reauth_needed = True
-                    elif (
+                    ) or (
                         data.get("result")
                         and isinstance(data["result"], list)
                         and len(data["result"]) > 0

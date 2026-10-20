@@ -83,7 +83,18 @@ class LuciRpcDevicesMixin:
 
         # 2. ARP Neighbors
         try:
-            arp = await self.execute_command("cat /proc/net/arp 2>/dev/null")
+            result = await self._call("file", "read", {"path": "/proc/net/arp"})
+            arp = result.get("data", "")
+        except Exception:
+            arp = ""
+
+        if not arp:
+            try:
+                arp = await self.execute_command("cat /proc/net/arp 2>/dev/null")
+            except Exception:
+                pass
+
+        try:
             if arp:
                 lines = arp.strip().split("\n")
                 if len(lines) > 1:

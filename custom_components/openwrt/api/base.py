@@ -1305,7 +1305,17 @@ class OpenWrtClient(abc.ABC):
     async def _get_neighbors_proc_arp(self, neighbors: list[IpNeighbor]) -> None:
         """Fetch neighbors from /proc/net/arp."""
         try:
-            content = await self.execute_command("cat /proc/net/arp 2>/dev/null")
+            content = ""
+            # Prefer reading the file directly so that restricted ACLs can allow reading
+            # ARP cache without requiring full root file.exec. (Only if _call is available, e.g. UbusClient)
+            if hasattr(self, "_call"):
+                try:
+                    result = await self._call("file", "read", {"path": "/proc/net/arp"})
+                    content = result.get("data", "")
+                except Exception:
+                    pass
+            if not content:
+                content = await self.execute_command("cat /proc/net/arp 2>/dev/null")
             if content:
                 lines = content.strip().split("\n")
                 if len(lines) > 1:
