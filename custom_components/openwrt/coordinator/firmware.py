@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import logging
 import re
 from datetime import timedelta
@@ -37,6 +38,8 @@ _LOGGER = logging.getLogger(__name__)
 FIRMWARE_CHECK_INTERVAL = timedelta(hours=6)
 # Delay before the first check after setup (see OpenWrtDataCoordinator.__init__)
 FIRMWARE_FIRST_CHECK_DELAY = timedelta(minutes=2)
+# Delay before re-checking firmware after the router's firmware changed
+FIRMWARE_RECHECK_DELAY = timedelta(minutes=2)
 
 
 class FirmwareMixin(_Base):
@@ -45,6 +48,41 @@ class FirmwareMixin(_Base):
     def _firmware_check_due(self, now: float) -> bool:
         """Return True when the periodic firmware check should run."""
         return now - self._last_firmware_check > FIRMWARE_CHECK_INTERVAL.total_seconds()
+
+    async def _async_refresh_device_info_after_reboot(self, data: OpenWrtData) -> None:
+        """Re-read device info when the router rebooted or was just flashed.
+
+        Device info is otherwise only refreshed on slow polls (every 15 min),
+        so the installed firmware version would stay stale after an upgrade.
+        """
+        uptime = data.system_resources.uptime
+        last = getattr(self, "_last_uptime", None)
+        rebooted = last is not None and 0 < uptime < last - 10
+        pending = getattr(self, "_device_info_refresh_pending", False)
+        if not (rebooted or pending):
+            return
+        self._device_info_refresh_pending = False
+        try:
+            info = await self.client.async_refresh_device_info()
+        except Exception as err:
+            _LOGGER.debug("Could not refresh device info after reboot: %s", err)
+            return
+        if info:
+            data.device_info = info
+
+    @staticmethod
+    def _reset_firmware_state(data: OpenWrtData) -> None:
+        """Clear every firmware/ASU update field (all but the current version)."""
+        fresh = OpenWrtData()
+        for field in dataclasses.fields(OpenWrtData):
+            name = field.name
+            if name == "firmware_current_version":
+                continue
+            if name.startswith(("firmware_", "asu_")) or name in (
+                "installed_packages",
+                "is_custom_build",
+            ):
+                setattr(data, name, getattr(fresh, name))
 
     def _async_sync_firmware_state(self, data: OpenWrtData) -> None:
         """Sync firmware metadata."""
@@ -55,6 +93,27 @@ class FirmwareMixin(_Base):
         data.firmware_current_version = (
             data.device_info.firmware_version or data.device_info.release_version
         )
+
+        # The running firmware changed (an upgrade, or a downgrade by hand):
+        # what the last check found no longer applies, so drop it instead of
+        # offering the update that was just installed, and check again soon.
+        revision = data.device_info.release_revision or ""
+        previous = getattr(self, "_firmware_revision", None)
+        self._firmware_revision = revision
+        if previous and revision and previous != revision:
+            _LOGGER.info(
+                "Firmware revision changed from %s to %s; re-checking for updates",
+                previous,
+                revision,
+            )
+            self._reset_firmware_state(data)
+            now = self.hass.loop.time()
+            self._last_firmware_check = (
+                now
+                - FIRMWARE_CHECK_INTERVAL.total_seconds()
+                + FIRMWARE_RECHECK_DELAY.total_seconds()
+            )
+            return
 
         if (
             self.data

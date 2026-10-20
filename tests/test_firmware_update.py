@@ -243,3 +243,128 @@ async def test_firmware_update_disabled(hass: HomeAssistant) -> None:
         async_add_entities.call_args[0][0] if async_add_entities.call_args else []
     )
     assert any(isinstance(e, OpenWrtUpdateEntity) for e in added_entities)
+
+
+# --- Firmware state after an upgrade ---
+
+
+def _upgrade_coordinator(hass_time: float = 1000.0):
+    from custom_components.openwrt.api.base import DeviceInfo
+
+    hass = MagicMock()
+    hass.loop.time.return_value = hass_time
+    entry = MagicMock()
+    entry.entry_id = "test_entry_id"
+    entry.options = {"update_interval": 30}
+    entry.data = {"host": "192.0.2.1"}
+    coordinator = OpenWrtDataCoordinator(hass, entry, AsyncMock())
+
+    data = OpenWrtData()
+    data.device_info = DeviceInfo(
+        release_version="25.12.5",
+        release_revision="r33051-f5dae5ece4",
+        firmware_version="25.12.5 (r33051-f5dae5ece4)",
+        target="qualcommax/ipq807x",
+        board_name="vendor,board",
+    )
+    data.system_resources.uptime = 50000
+    coordinator.data = data
+    return coordinator, entry, data
+
+
+@pytest.mark.asyncio
+async def test_revision_change_after_upgrade_clears_stale_offer() -> None:
+    """After a flash, installed_version follows and the old offer disappears."""
+    from custom_components.openwrt.api.base import DeviceInfo
+    from custom_components.openwrt.coordinator import FIRMWARE_CHECK_INTERVAL
+
+    coordinator, entry, data = _upgrade_coordinator()
+    entity = OpenWrtUpdateEntity(coordinator, entry)
+
+    # Before the upgrade: the last check found 25.12.6
+    coordinator._async_sync_firmware_state(data)
+    data.firmware_latest_version = "25.12.6"
+    data.firmware_upgradable = True
+    data.firmware_install_url = "https://downloads.example.com/fw-sysupgrade.bin"
+    coordinator._last_uptime = data.system_resources.uptime
+    assert entity.installed_version == "25.12.5 (r33051-f5dae5ece4)"
+    assert entity.latest_version == "25.12.6"
+
+    # The router comes back on the new firmware (uptime went backwards).
+    # get_all_data reuses the same data object with its cached device info.
+    data.system_resources.uptime = 60
+    new_info = DeviceInfo(
+        release_version="25.12.6",
+        release_revision="r33311-981c978eff",
+        firmware_version="25.12.6 (r33311-981c978eff)",
+        target="qualcommax/ipq807x",
+        board_name="vendor,board",
+    )
+    coordinator.client.async_refresh_device_info = AsyncMock(return_value=new_info)
+
+    await coordinator._async_refresh_device_info_after_reboot(data)
+    coordinator._async_sync_firmware_state(data)
+
+    coordinator.client.async_refresh_device_info.assert_awaited_once()
+    assert entity.installed_version == "25.12.6 (r33311-981c978eff)"
+    # No stale offer: latest equals installed until the re-check runs
+    assert entity.latest_version == entity.installed_version
+    assert data.firmware_upgradable is False
+    assert data.firmware_install_url == ""
+    assert data.firmware_latest_version == ""
+
+    # The re-check is due about two minutes later, not after six hours
+    interval = FIRMWARE_CHECK_INTERVAL.total_seconds()
+    assert 1000.0 + 60 - coordinator._last_firmware_check <= interval
+    assert 1000.0 + 121 - coordinator._last_firmware_check > interval
+
+
+@pytest.mark.asyncio
+async def test_device_info_not_refreshed_without_reboot() -> None:
+    """Ordinary polls keep the cached device info (no extra router calls)."""
+    coordinator, _entry, data = _upgrade_coordinator()
+    coordinator._last_uptime = 50000
+    data.system_resources.uptime = 50030
+    coordinator.client.async_refresh_device_info = AsyncMock()
+
+    await coordinator._async_refresh_device_info_after_reboot(data)
+    coordinator.client.async_refresh_device_info.assert_not_called()
+
+    # Same revision on the next sync: the found update is kept
+    coordinator._async_sync_firmware_state(data)
+    data.firmware_latest_version = "25.12.6"
+    data.firmware_upgradable = True
+    coordinator._async_sync_firmware_state(data)
+    assert data.firmware_upgradable is True
+    assert data.firmware_latest_version == "25.12.6"
+
+
+@pytest.mark.asyncio
+async def test_device_info_refreshed_after_install_reconnect() -> None:
+    """The first successful poll after an install refreshes device info once."""
+    coordinator, _entry, data = _upgrade_coordinator()
+    coordinator._device_info_refresh_pending = True
+    coordinator.client.async_refresh_device_info = AsyncMock(
+        return_value=data.device_info
+    )
+
+    await coordinator._async_refresh_device_info_after_reboot(data)
+    await coordinator._async_refresh_device_info_after_reboot(data)
+    coordinator.client.async_refresh_device_info.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_client_refresh_device_info_updates_cache_and_forces_slow_poll() -> None:
+    """The client re-reads device info and makes the next poll a slow poll."""
+    from custom_components.openwrt.api.base import DeviceInfo
+    from custom_components.openwrt.api.ssh import SshClient
+
+    client = SshClient(
+        MagicMock(), MagicMock(), host="192.0.2.1", username="root", password="pwd"
+    )
+    client._last_slow_poll_time = 12345.0
+    info = DeviceInfo(release_revision="r2")
+    with patch.object(client, "get_device_info", AsyncMock(return_value=info)):
+        assert await client.async_refresh_device_info() is info
+    assert client._cached_device_info is info
+    assert client._last_slow_poll_time == 0.0

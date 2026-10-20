@@ -21,6 +21,8 @@ class CoordinatorBase(DataUpdateCoordinator[OpenWrtData]):
     hass: HomeAssistant
     in_reboot_installation: bool
     _firmware_checked: bool
+    _firmware_revision: str | None
+    _device_info_refresh_pending: bool
     _last_firmware_check: float
     _last_gps_check: float
     _last_update_time: float
