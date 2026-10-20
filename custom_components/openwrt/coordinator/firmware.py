@@ -35,10 +35,16 @@ else:
 _LOGGER = logging.getLogger(__name__)
 
 FIRMWARE_CHECK_INTERVAL = timedelta(hours=6)
+# Delay before the first check after setup (see OpenWrtDataCoordinator.__init__)
+FIRMWARE_FIRST_CHECK_DELAY = timedelta(minutes=2)
 
 
 class FirmwareMixin(_Base):
     """Mixin for OpenWrt firmware update checking (official, snapshot, stable, ASU, custom)."""
+
+    def _firmware_check_due(self, now: float) -> bool:
+        """Return True when the periodic firmware check should run."""
+        return now - self._last_firmware_check > FIRMWARE_CHECK_INTERVAL.total_seconds()
 
     def _async_sync_firmware_state(self, data: OpenWrtData) -> None:
         """Sync firmware metadata."""
