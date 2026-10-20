@@ -759,6 +759,61 @@ async def test_asu_build_falls_back_to_full_list_without_world(
     assert asu_instance.request_build.call_args.kwargs["packages"] == APK_NAMES
 
 
+# --- ASU client identification ---
+
+
+def test_asu_client_name_is_name_slash_version() -> None:
+    """ASU expects '<name>/<version>' (it answers 500 otherwise)."""
+    import json
+    import re
+    from pathlib import Path
+
+    from custom_components.openwrt.helpers.asu import ASU_CLIENT_NAME
+
+    manifest = Path(__file__).parent.parent / "custom_components/openwrt/manifest.json"
+    version = json.loads(manifest.read_text())["version"]
+    assert re.fullmatch(r"ha-openwrt/\d+(\.\d+)*", ASU_CLIENT_NAME)
+    assert version.startswith(ASU_CLIENT_NAME.split("/", 1)[1])
+
+
+@pytest.mark.asyncio
+async def test_asu_build_payload_has_no_router_or_entry_name(
+    hass: HomeAssistant,
+) -> None:
+    """The public ASU server gets the client id only, never names from the lab."""
+    import json
+
+    from custom_components.openwrt.helpers.asu import ASU_CLIENT_NAME, AsuClient
+
+    data = _release_router_data()
+    data.asu_status = "available"
+    data.asu_supported = True
+    data.asu_update_available = True
+    data.asu_target_version = "25.12.6"
+    entity, coordinator = _entity(hass, data)
+    coordinator.name = "living-room-router"
+    coordinator.config_entry.title = "living-room-router"
+    coordinator._get_target = MagicMock(side_effect=lambda t: t)
+    coordinator.client.get_user_installed_packages = AsyncMock(
+        return_value=["base-files"]
+    )
+
+    payloads: list[dict] = []
+
+    async def fake_request(method, path, payload=None, timeout=60.0):
+        payloads.append(payload)
+        raise RuntimeError("stop after the build request")
+
+    with (
+        patch.object(AsuClient, "_request", side_effect=fake_request),
+        pytest.raises(HomeAssistantError),
+    ):
+        await entity.async_install(version=None, backup=False)
+
+    assert payloads[0]["client"] == ASU_CLIENT_NAME
+    assert "living-room-router" not in json.dumps(payloads[0])
+
+
 # --- apk world entries that are not package names ---
 
 WORLD_WITH_CONSTRAINTS = (

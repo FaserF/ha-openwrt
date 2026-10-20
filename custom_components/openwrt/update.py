@@ -498,9 +498,6 @@ class OpenWrtUpdateEntity(CoordinatorEntity[OpenWrtDataCoordinator], UpdateEntit
                 target=self.coordinator._get_target(data.device_info.target),
                 board_name=data.asu_profile or data.device_info.board_name,
                 packages=packages,
-                client_name=(
-                    f"Home Assistant OpenWrt Integration ({self.coordinator.name})"
-                ),
             )
 
             _LOGGER.info(
