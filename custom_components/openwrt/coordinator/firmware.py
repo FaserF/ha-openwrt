@@ -478,10 +478,6 @@ class FirmwareMixin(_Base):
         self, data: OpenWrtData, latest_version: str
     ) -> None:
         """Update coordinator data with findings from ASU."""
-        # Ensure we have package list for future upgrade requests
-        with contextlib.suppress(Exception):
-            data.installed_packages = await self.client.get_installed_packages()
-
         if self._version_is_newer(
             data.firmware_latest_version or "0.0.0", latest_version
         ):
@@ -542,6 +538,8 @@ class FirmwareMixin(_Base):
                 stock.discard(pkg[1:])
             else:
                 stock.add(pkg)
+        # apk world pins the kernel ("kernel=<version>"); every image has one.
+        stock.add("kernel")
         if not is_snapshot:
             # Release images ship LuCI although profiles.json does not list it.
             stock.add("luci")

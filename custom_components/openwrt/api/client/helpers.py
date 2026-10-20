@@ -171,6 +171,10 @@ class OpenWrtClientHelpersMixin:
             return None
         packages: list[str] = []
         for raw in body.split():
+            # "!pkg" in apk world is a "never install" constraint (left by
+            # e.g. `apk add wpad-mbedtls '!wpad-basic-mbedtls'`), not a package.
+            if raw.startswith("!"):
+                continue
             # apk world entries may carry constraints: pkg>=1.0, pkg=1.0, pkg@tag
             name = re.split(r"[<>=~@]", raw, maxsplit=1)[0].strip()
             if name and name not in packages:
