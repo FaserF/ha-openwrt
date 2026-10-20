@@ -14,7 +14,7 @@ The integration provides a powerful firmware update entity that supports officia
 | **Install from Custom Repo** | ✅ | ✅ | ✅ | ✅ (direct download) |
 | **Attended Sysupgrade (ASU)** | ✅ | ✅ | ✅ | ❌ (not needed) |
 | **Automated Backups** | ✅ | ✅ | ✅ | ✅ |
-| **SHA256 Verification Before Flashing** | Custom repo images only | Custom repo images only | Custom repo images only | ✅ (if the release has a `sha256sums` asset) |
+| **SHA256 Verification Before Flashing** | ✅ | ✅ | ✅ | ✅ (if the release has a `sha256sums` asset) |
 
 ## Attended Sysupgrade (ASU)
 
