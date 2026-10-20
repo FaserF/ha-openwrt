@@ -24,10 +24,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_AUTO_BACKUP,
+    CONF_CHECK_FIRMWARE_UPDATES,
     CONF_CONNECTION_TYPE,
     CONNECTION_TYPE_LUCI_RPC,
     CONNECTION_TYPE_UBUS,
     DATA_COORDINATOR,
+    DEFAULT_CHECK_FIRMWARE_UPDATES,
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
@@ -55,7 +57,10 @@ async def async_setup_entry(
 
         # 1. Add firmware update entity
         fw_key = f"{entry.entry_id}_firmware_update"
-        if fw_key not in tracked_keys:
+        check_enabled = entry.options.get(
+            CONF_CHECK_FIRMWARE_UPDATES, DEFAULT_CHECK_FIRMWARE_UPDATES
+        )
+        if check_enabled and fw_key not in tracked_keys:
             perms = coordinator.data.permissions
             if perms.read_system:
                 tracked_keys.add(fw_key)

@@ -42,6 +42,7 @@ from ..api.ubus import (
     UbusTimeoutError,
 )
 from ..const import (
+    CONF_CHECK_FIRMWARE_UPDATES,
     CONF_CONNECTION_TYPE,
     CONF_CONSIDER_HOME,
     CONF_ENABLE_NLBWMON_SENSORS,
@@ -64,6 +65,7 @@ from ..const import (
     CONF_USERNAME,
     CONF_VERIFY_SSL,
     DATA_COORDINATOR,
+    DEFAULT_CHECK_FIRMWARE_UPDATES,
     DEFAULT_CONSIDER_HOME,
     DEFAULT_GPS_MODEM_PORT,
     DEFAULT_GPS_POLL_INTERVAL,
@@ -353,7 +355,14 @@ class OpenWrtDataCoordinator(
 
         # Periodic firmware checks (wrapped in try-except to prevent crashing the whole coordinator)
         now = self.hass.loop.time()
-        if now - self._last_firmware_check > FIRMWARE_CHECK_INTERVAL.total_seconds():
+        check_enabled = self.config_entry.options.get(
+            CONF_CHECK_FIRMWARE_UPDATES, DEFAULT_CHECK_FIRMWARE_UPDATES
+        )
+        if (
+            check_enabled
+            and now - self._last_firmware_check
+            > FIRMWARE_CHECK_INTERVAL.total_seconds()
+        ):
             self._last_firmware_check = now
             try:
                 await self._check_firmware_update(data)

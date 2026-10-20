@@ -228,6 +228,7 @@
           "track_wired": "Kabelgebundene Geräte in Tracking einbeziehen",
           "consider_home": "Verzögerung für 'Anwesend' Status (Sekunden)",
           "dhcp_software": "DHCP Software",
+          "check_firmware_updates": "Nach Firmware-Updates suchen",
           "auto_backup": "Automatisches Backup vor Firmware-Update",
           "backup_retention_days": "Backup-Vorhaltezeit (Tage)",
           "custom_firmware_repo": "Custom Firmware GitHub Repo (owner/repo)",

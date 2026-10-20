@@ -66,6 +66,7 @@ from .const import (
     CONF_ASU_URL,
     CONF_AUTO_BACKUP,
     CONF_BACKUP_RETENTION_DAYS,
+    CONF_CHECK_FIRMWARE_UPDATES,
     CONF_CONNECTION_TYPE,
     CONF_CONSIDER_HOME,
     CONF_CUSTOM_FIRMWARE_REPO,
@@ -109,6 +110,7 @@ from .const import (
     CONNECTION_TYPE_UBUS,
     DATA_COORDINATOR,
     DEFAULT_BACKUP_RETENTION_DAYS,
+    DEFAULT_CHECK_FIRMWARE_UPDATES,
     DEFAULT_CONSIDER_HOME,
     DEFAULT_GPS_MODEM_ENABLED,
     DEFAULT_GPS_MODEM_PORT,
@@ -2321,6 +2323,12 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 CONF_CONSIDER_HOME,
                 default=current.get(CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME),
             ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
+            vol.Optional(
+                CONF_CHECK_FIRMWARE_UPDATES,
+                default=current.get(
+                    CONF_CHECK_FIRMWARE_UPDATES, DEFAULT_CHECK_FIRMWARE_UPDATES
+                ),
+            ): bool,
             vol.Optional(
                 CONF_AUTO_BACKUP,
                 default=current.get(CONF_AUTO_BACKUP, True),

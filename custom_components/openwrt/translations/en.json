@@ -228,6 +228,7 @@
           "track_wired": "Include Wired Devices in Tracking",
           "consider_home": "Device 'Consider Home' Delay (seconds)",
           "dhcp_software": "DHCP Software",
+          "check_firmware_updates": "Check for firmware updates",
           "auto_backup": "Automatic Backup before Firmware Update",
           "backup_retention_days": "Backup retention period (days)",
           "custom_firmware_repo": "Custom Firmware GitHub Repo (owner/repo)",
