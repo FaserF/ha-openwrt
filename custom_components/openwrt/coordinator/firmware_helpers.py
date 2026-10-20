@@ -125,12 +125,20 @@ def version_is_newer(current: str, latest: str) -> bool:
         )
         return result
 
+    # Strip out the revision suffix (e.g., " (r33311-981c978eff)") from both strings
+    # We do this after snapshot check so we don't accidentally return early on matching snapshots
+    current_clean = re.sub(r"\s*\(.*?\)", "", current).strip() if current else current
+    latest_clean = re.sub(r"\s*\(.*?\)", "", latest).strip() if latest else latest
+
+    if current_clean and latest_clean and current_clean == latest_clean:
+        return False
+
     try:
-        current_parts = [int(p) for p in current.split(".")]
-        latest_parts = [int(p) for p in latest.split(".")]
+        current_parts = [int(p) for p in current_clean.split(".")]
+        latest_parts = [int(p) for p in latest_clean.split(".")]
         return latest_parts > current_parts
     except (
         ValueError,
         AttributeError,
     ):
-        return current != latest
+        return current_clean != latest_clean
