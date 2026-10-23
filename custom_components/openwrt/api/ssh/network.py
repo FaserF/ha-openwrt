@@ -566,7 +566,7 @@ class SshNetworkMixin:
                 [f"uci set {safe_val}", "uci commit wireless", "wifi reload"]
             ):
                 return False
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set wireless %s: %s", interface, err)
@@ -595,7 +595,7 @@ class SshNetworkMixin:
             commands.extend(("uci commit wireless", "wifi reload"))
             if not await self._exec_wireless_mutation(commands):
                 return False
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception as err:
             _LOGGER.exception("Failed to coordinate wireless network: %s", err)

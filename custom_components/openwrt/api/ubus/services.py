@@ -514,7 +514,7 @@ class UbusServicesMixin:
         try:
             # 1. Try standard ubus rc.init (best practice)
             await self._call("rc", "init", {"name": name, "action": action})
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except (
             UbusPermissionError,
@@ -527,13 +527,13 @@ class UbusServicesMixin:
                     "exec",
                     {"command": f"/etc/init.d/{name}", "params": [action]},
                 )
-                self._last_slow_poll_time = 0.0
+                self._invalidate_slow_poll()
                 return True
             except Exception:
                 # 3. Final fallback to shell execute_command
                 try:
                     await self.execute_command(f"/etc/init.d/{name} {action}")
-                    self._last_slow_poll_time = 0.0
+                    self._invalidate_slow_poll()
                     return True
                 except Exception as err:
                     _LOGGER.debug(
@@ -799,7 +799,7 @@ class UbusServicesMixin:
                 "write",
                 {"path": f"/sys/class/leds/{name}/brightness", "data": val},
             )
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception:
             try:
@@ -807,7 +807,7 @@ class UbusServicesMixin:
                 await self.execute_command(
                     f"echo {val} > /sys/class/leds/{name}/brightness"
                 )
-                self._last_slow_poll_time = 0.0
+                self._invalidate_slow_poll()
                 return True
             except Exception as err:
                 _LOGGER.debug("Failed to set LED %s via ubus: %s", name, err)

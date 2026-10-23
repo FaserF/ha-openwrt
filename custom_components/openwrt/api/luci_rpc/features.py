@@ -212,7 +212,7 @@ class LuciRpcFeaturesMixin:
             val = "1" if enabled else "0"
             cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
             await self.execute_command(cmd)
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set firewall rule via LuCI RPC: %s", err)
@@ -334,7 +334,7 @@ class LuciRpcFeaturesMixin:
             val = "1" if enabled else "0"
             cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
             await self.execute_command(cmd)
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set firewall redirect via LuCI RPC: %s", err)
@@ -431,7 +431,7 @@ class LuciRpcFeaturesMixin:
         """Manage a system service (start/stop/restart/enable/disable) via LuCI RPC."""
         try:
             await self._rpc_call("sys", "exec", [f"/etc/init.d/{name} {action}"])
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception as err:
             _LOGGER.exception(
@@ -455,7 +455,7 @@ class LuciRpcFeaturesMixin:
             )
             action = "start" if enabled else "stop"
             await self._rpc_call("sys", "exec", [f"/etc/init.d/adblock {action}"])
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception:
             return False
@@ -501,7 +501,7 @@ class LuciRpcFeaturesMixin:
                 "exec",
                 [f"/etc/init.d/simple-adblock {action}"],
             )
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception:
             return False
@@ -573,7 +573,7 @@ class LuciRpcFeaturesMixin:
                 await self._rpc_call("uci", "set", ["sqm", section_id, key, val_str])
             await self._rpc_call("uci", "commit", ["sqm"])
             await self._rpc_call("sys", "exec", ["/etc/init.d/sqm reload"])
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception as err:
             _LOGGER.exception("Failed to set SQM config via LuCI RPC: %s", err)
@@ -670,7 +670,7 @@ class LuciRpcFeaturesMixin:
             await self.execute_command(
                 f"echo {int(brightness)} > /sys/class/leds/{name}/brightness"
             )
-            self._last_slow_poll_time = 0.0
+            self._invalidate_slow_poll()
             return True
         except Exception as err:
             _LOGGER.debug("Failed to set LED %s via luci_rpc: %s", name, err)
