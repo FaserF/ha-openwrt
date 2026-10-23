@@ -69,6 +69,30 @@ async def test_luci_rpc_manage_service():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("client_cls", "transport"),
+    [(UbusClient, "_call"), (SshClient, "_exec"), (LuciRpcClient, "_rpc_call")],
+)
+async def test_manage_service_forces_slow_poll(client_cls, transport):
+    """A service action makes the next poll a slow one, so services are re-read."""
+    client = client_cls(
+        MagicMock(),
+        MagicMock(),
+        host="192.0.2.1",
+        username="root",
+        password="password",
+    )
+    client._session_id = "test_token"
+    client._connected = True
+    client._last_slow_poll_time = 1e12
+
+    with patch.object(client, transport, new_callable=AsyncMock):
+        assert await client.manage_service("adblock-fast", "stop") is True
+
+    assert client._last_slow_poll_time == 0.0
+
+
+@pytest.mark.asyncio
 async def test_ubus_manage_service_fallback():
     """Test ubus manage_service fallback through all tiers."""
     client = UbusClient(
