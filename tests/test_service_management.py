@@ -188,6 +188,9 @@ async def test_action_during_slow_poll_forces_another():
     assert client._last_slow_poll_time == 0.0
 
     client.get_services = AsyncMock(return_value=[])
+    client.get_ip_neighbors = AsyncMock(return_value=[])
     await client.get_all_data()
     client.get_services.assert_awaited_once()
+    # A slow poll also runs the medium tier, well inside its 180 s interval.
+    client.get_ip_neighbors.assert_awaited_once()
     assert client._last_slow_poll_time > 0.0
