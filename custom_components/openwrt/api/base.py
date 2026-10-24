@@ -960,8 +960,16 @@ class OpenWrtClient(abc.ABC):
         self.coordinator: Any = None
         self._last_connect_error: Exception | None = None
         self._last_slow_poll_time = 0.0
+        # Bumped by every invalidation, so one that lands while a slow poll
+        # is in flight survives that poll's timestamp update.
+        self._slow_poll_generation = 0
         self._last_medium_poll_time = 0.0
         self._cached_medium_data: dict[str, Any] = {}
+
+    def _invalidate_slow_poll(self) -> None:
+        """Make the next poll re-read the slow tier, e.g. after a router action."""
+        self._last_slow_poll_time = 0.0
+        self._slow_poll_generation += 1
 
     def _get_assoc_rate(self, client: dict[str, Any], direction: str) -> int:
         """Helper to safely extract wireless rate from assoclist/hostapd data."""
@@ -2193,6 +2201,7 @@ class OpenWrtClient(abc.ABC):
         import time
 
         now = time.time()
+        slow_generation = self._slow_poll_generation
 
         # Multi-Interval-Polling:
         # - Fast-poll: CPU/RAM/Uptime/Load, Active Interfaces, Network traffic rates, Connected clients/wireless, DHCP Leases. (Every cycle)
@@ -2384,7 +2393,9 @@ class OpenWrtClient(abc.ABC):
                     "upgradeable_packages",
                 ]
             }
-            self._last_slow_poll_time = now
+            # An action during this poll may have changed what was just read.
+            if self._slow_poll_generation == slow_generation:
+                self._last_slow_poll_time = now
         else:
             # Reuse cached data on fast/medium polls
             if self._cached_device_info:

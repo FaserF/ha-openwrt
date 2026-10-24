@@ -179,7 +179,7 @@ async def test_ssh_wireless_mutation_rejects_nonzero_remote_exit(
     kwargs: dict[str, object],
 ) -> None:
     """Do not report a rejected remote wireless mutation as successful."""
-    ssh_client._last_full_poll = 123
+    ssh_client._last_slow_poll_time = 123.0
     with patch.object(
         ssh_client,
         "_exec",
@@ -189,7 +189,7 @@ async def test_ssh_wireless_mutation_rejects_nonzero_remote_exit(
         result = await getattr(ssh_client, method_name)(*args, **kwargs)
 
     assert result is False
-    assert ssh_client._last_full_poll == 123
+    assert ssh_client._last_slow_poll_time == 123.0
 
 
 @pytest.mark.asyncio

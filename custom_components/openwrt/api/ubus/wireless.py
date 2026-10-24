@@ -240,7 +240,7 @@ class UbusWirelessMixin:
             await self._call("uci", "commit", {"config": "wireless"})
             committed = True
             await self._reload_wireless()
-            self._last_full_poll = 0
+            self._invalidate_slow_poll()
             return True
         except UbusError:
             if not committed:
@@ -317,7 +317,7 @@ class UbusWirelessMixin:
             await self._call("uci", "commit", {"config": "wireless"})
             committed = True
             await self._reload_wireless()
-            self._last_full_poll = 0
+            self._invalidate_slow_poll()
             return True
         except UbusError:
             if not committed:

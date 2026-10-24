@@ -59,7 +59,7 @@ class UbusFeaturesMixin:
             )
             raise UbusError(f"firewall reload failed after updating rule {section_id}")
 
-        self._last_full_poll = 0
+        self._invalidate_slow_poll()
         return True
 
     async def get_firewall_rules(self) -> list[FirewallRule]:
@@ -149,7 +149,7 @@ class UbusFeaturesMixin:
             )
             await self._call("uci", "commit", {"config": "firewall"})
             await self._call("service", "reloading", {"service": "firewall"})
-            self._last_full_poll = 0
+            self._invalidate_slow_poll()
             return True
         except UbusError:
             return False
@@ -262,7 +262,7 @@ class UbusFeaturesMixin:
                 )
                 return False
 
-            self._last_full_poll = 0
+            self._invalidate_slow_poll()
 
             if blocked:
                 return await self._flush_conntrack_for_mac(mac_upper)
@@ -359,7 +359,7 @@ class UbusFeaturesMixin:
             )
             action = "start" if enabled else "stop"
             await self.execute_command(f"/etc/init.d/adblock {action}")
-            self._last_full_poll = 0
+            self._invalidate_slow_poll()
             return True
         except Exception:
             return False
@@ -392,7 +392,7 @@ class UbusFeaturesMixin:
             )
             action = "start" if enabled else "stop"
             await self.execute_command(f"/etc/init.d/simple-adblock {action}")
-            self._last_full_poll = 0
+            self._invalidate_slow_poll()
             return True
         except Exception:
             return False
@@ -453,7 +453,7 @@ class UbusFeaturesMixin:
                 "exec",
                 {"command": "/etc/init.d/sqm", "params": ["reload"]},
             )
-            self._last_full_poll = 0
+            self._invalidate_slow_poll()
             return True
         except UbusPermissionError as err:
             _LOGGER.debug("SQM config via ubus denied (permissions): %s", err)

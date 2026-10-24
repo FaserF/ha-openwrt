@@ -764,7 +764,7 @@ class LuciRpcNetworkMixin:
                 "wifi reload"
             )
             await self.execute_command(cmd)
-            self._last_full_poll = 0
+            self._invalidate_slow_poll()
             return True
         except Exception:
             return False
@@ -792,7 +792,7 @@ class LuciRpcNetworkMixin:
             commands = [f"uci set {shlex.quote(value)}" for value in assignments]
             commands.extend(("uci commit wireless", "wifi reload"))
             await self.execute_command(" && ".join(commands))
-            self._last_full_poll = 0
+            self._invalidate_slow_poll()
             return True
         except Exception:
             return False
