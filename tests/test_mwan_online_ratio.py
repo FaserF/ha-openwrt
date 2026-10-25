@@ -411,7 +411,9 @@ def _mock_fetchers(client: UbusClient) -> None:
         setattr(client, name, AsyncMock(return_value=[]))
     object.__setattr__(client, "get_local_macs", AsyncMock(return_value=set()))
     object.__setattr__(client, "get_local_ips", AsyncMock(return_value=set()))
-    object.__setattr__(client, "check_packages", AsyncMock(return_value=OpenWrtPackages(mwan3=True)))
+    object.__setattr__(
+        client, "check_packages", AsyncMock(return_value=OpenWrtPackages(mwan3=True))
+    )
     object.__setattr__(client, "check_permissions", AsyncMock())
     object.__setattr__(client, "is_reboot_required", AsyncMock(return_value=False))
     object.__setattr__(client, "_call", AsyncMock(return_value={}))
@@ -442,7 +444,9 @@ async def test_fresh_mwan_status_is_not_replaced_by_the_medium_cache() -> None:
         [MwanStatus(interface_name="wan", status="offline", uptime=160, offline=5)],
         [],
     )
-    object.__setattr__(client, "get_mwan_status", AsyncMock(side_effect=[first, second]))
+    object.__setattr__(
+        client, "get_mwan_status", AsyncMock(side_effect=[first, second])
+    )
     client.coordinator = MagicMock()
     client.coordinator.data = OpenWrtData()
 
