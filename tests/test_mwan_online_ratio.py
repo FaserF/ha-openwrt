@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.openwrt.api.base import (
+    MwanPolicy,
     MwanStatus,
     OpenWrtData,
     OpenWrtPackages,
@@ -314,11 +315,11 @@ async def test_ubus_mwan_status_passes_the_state_counters_through() -> None:
     client._session_id = "test_token"
 
     with patch.object(client, "_call", new_callable=AsyncMock, return_value=MWAN_REPLY):
-        statuses, _ = await client.get_mwan_status()
-        statuses = {m.interface_name: m for m in statuses}
+        statuses_list, _ = await client.get_mwan_status()
+        statuses_dict = {m.interface_name: m for m in statuses_list}
 
-    assert (statuses["wan"].online, statuses["wan"].offline) == (55090, 0)
-    assert (statuses["backup"].online, statuses["backup"].offline) == (0, 42)
+    assert (statuses_dict["wan"].online, statuses_dict["wan"].offline) == (55090, 0)
+    assert (statuses_dict["backup"].online, statuses_dict["backup"].offline) == (0, 42)
 
 
 @pytest.mark.parametrize(
@@ -340,11 +341,11 @@ async def test_shell_backends_pass_the_state_counters_through(
     with patch.object(
         client, runner, new_callable=AsyncMock, return_value=json.dumps(MWAN_REPLY)
     ):
-        statuses, _ = await client.get_mwan_status()
-        statuses = {m.interface_name: m for m in statuses}
+        statuses_list, _ = await client.get_mwan_status()
+        statuses_dict = {m.interface_name: m for m in statuses_list}
 
-    assert (statuses["wan"].online, statuses["wan"].offline) == (55090, 0)
-    assert (statuses["backup"].online, statuses["backup"].offline) == (0, 42)
+    assert (statuses_dict["wan"].online, statuses_dict["wan"].offline) == (55090, 0)
+    assert (statuses_dict["backup"].online, statuses_dict["backup"].offline) == (0, 42)
 
 
 def test_ratio_sensor_reports_the_boot_ratio_and_its_window() -> None:
@@ -408,14 +409,14 @@ def _mock_fetchers(client: UbusClient) -> None:
         "get_upnp_mappings",
     ):
         setattr(client, name, AsyncMock(return_value=[]))
-    client.get_local_macs = AsyncMock(return_value=set())
-    client.get_local_ips = AsyncMock(return_value=set())
-    client.check_packages = AsyncMock(return_value=OpenWrtPackages(mwan3=True))
-    client.check_permissions = AsyncMock()
-    client.is_reboot_required = AsyncMock(return_value=False)
-    client._call = AsyncMock(return_value={})
-    client.execute_command = AsyncMock(return_value="")
-    client.read_file = AsyncMock(return_value=None)
+    object.__setattr__(client, "get_local_macs", AsyncMock(return_value=set()))
+    object.__setattr__(client, "get_local_ips", AsyncMock(return_value=set()))
+    object.__setattr__(client, "check_packages", AsyncMock(return_value=OpenWrtPackages(mwan3=True)))
+    object.__setattr__(client, "check_permissions", AsyncMock())
+    object.__setattr__(client, "is_reboot_required", AsyncMock(return_value=False))
+    object.__setattr__(client, "_call", AsyncMock(return_value={}))
+    object.__setattr__(client, "execute_command", AsyncMock(return_value=""))
+    object.__setattr__(client, "read_file", AsyncMock(return_value=None))
 
 
 async def test_fresh_mwan_status_is_not_replaced_by_the_medium_cache() -> None:
@@ -433,15 +434,15 @@ async def test_fresh_mwan_status_is_not_replaced_by_the_medium_cache() -> None:
         password="password",
     )
     _mock_fetchers(client)
-    first = (
+    first: tuple[list[MwanStatus], list[MwanPolicy]] = (
         [MwanStatus(interface_name="wan", status="online", uptime=100, online=100)],
         [],
     )
-    second = (
+    second: tuple[list[MwanStatus], list[MwanPolicy]] = (
         [MwanStatus(interface_name="wan", status="offline", uptime=160, offline=5)],
         [],
     )
-    client.get_mwan_status = AsyncMock(side_effect=[first, second])
+    object.__setattr__(client, "get_mwan_status", AsyncMock(side_effect=[first, second]))
     client.coordinator = MagicMock()
     client.coordinator.data = OpenWrtData()
 
@@ -479,7 +480,7 @@ async def test_failed_mwan_query_keeps_the_previous_status() -> None:
             raise reply
         return reply
 
-    client._call = AsyncMock(side_effect=_call)
+    object.__setattr__(client, "_call", AsyncMock(side_effect=_call))
     client.coordinator = MagicMock()
     client.coordinator.data = OpenWrtData()
 
