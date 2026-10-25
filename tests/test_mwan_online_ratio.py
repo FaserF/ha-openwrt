@@ -314,7 +314,8 @@ async def test_ubus_mwan_status_passes_the_state_counters_through() -> None:
     client._session_id = "test_token"
 
     with patch.object(client, "_call", new_callable=AsyncMock, return_value=MWAN_REPLY):
-        statuses = {m.interface_name: m for m in await client.get_mwan_status()}
+        statuses, _ = await client.get_mwan_status()
+        statuses = {m.interface_name: m for m in statuses}
 
     assert (statuses["wan"].online, statuses["wan"].offline) == (55090, 0)
     assert (statuses["backup"].online, statuses["backup"].offline) == (0, 42)
@@ -339,7 +340,8 @@ async def test_shell_backends_pass_the_state_counters_through(
     with patch.object(
         client, runner, new_callable=AsyncMock, return_value=json.dumps(MWAN_REPLY)
     ):
-        statuses = {m.interface_name: m for m in await client.get_mwan_status()}
+        statuses, _ = await client.get_mwan_status()
+        statuses = {m.interface_name: m for m in statuses}
 
     assert (statuses["wan"].online, statuses["wan"].offline) == (55090, 0)
     assert (statuses["backup"].online, statuses["backup"].offline) == (0, 42)
@@ -431,8 +433,14 @@ async def test_fresh_mwan_status_is_not_replaced_by_the_medium_cache() -> None:
         password="password",
     )
     _mock_fetchers(client)
-    first = [MwanStatus(interface_name="wan", status="online", uptime=100, online=100)]
-    second = [MwanStatus(interface_name="wan", status="offline", uptime=160, offline=5)]
+    first = (
+        [MwanStatus(interface_name="wan", status="online", uptime=100, online=100)],
+        [],
+    )
+    second = (
+        [MwanStatus(interface_name="wan", status="offline", uptime=160, offline=5)],
+        [],
+    )
     client.get_mwan_status = AsyncMock(side_effect=[first, second])
     client.coordinator = MagicMock()
     client.coordinator.data = OpenWrtData()
@@ -440,7 +448,7 @@ async def test_fresh_mwan_status_is_not_replaced_by_the_medium_cache() -> None:
     await client.get_all_data()  # first update: every tier runs, medium data cached
     data = await client.get_all_data()  # next update: fast tier only
 
-    assert data.mwan_status is second
+    assert data.mwan_status is second[0]
     assert data.mwan_status[0].status == "offline"
 
 
