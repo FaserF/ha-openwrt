@@ -10,6 +10,8 @@ import shlex
 
 from ..base import (
     LldpNeighbor,
+    MwanPolicy,
+    MwanPolicyInterface,
     MwanStatus,
     NetworkInterface,
     UpnpMapping,
@@ -810,8 +812,8 @@ class LuciRpcNetworkMixin:
         except Exception:
             return False
 
-    async def get_mwan_status(self) -> list[MwanStatus]:
-        """Get multi-wan status via LuCI RPC."""
+    async def get_mwan_status(self) -> tuple[list[MwanStatus], list[MwanPolicy]]:
+        """Get multi-wan status and policies via LuCI RPC."""
         try:
             # Try ubus first
             stdout = await self.execute_command("ubus call mwan3 status 2>/dev/null")
@@ -832,11 +834,33 @@ class LuciRpcNetworkMixin:
                             packet_loss=data.get("packet_loss"),
                         )
                     )
-                return status_list
-            return []
+
+                policies_list = []
+                policies_data = result.get("policies", {})
+                for family in ["ipv4", "ipv6"]:
+                    family_policies = policies_data.get(family, {})
+                    for policy_name, policy_interfaces in family_policies.items():
+                        active_interfaces = []
+                        if isinstance(policy_interfaces, list):
+                            for iface in policy_interfaces:
+                                active_interfaces.append(
+                                    MwanPolicyInterface(
+                                        interface=iface.get("interface", ""),
+                                        percent=iface.get("percent", 0),
+                                    )
+                                )
+                        policies_list.append(
+                            MwanPolicy(
+                                policy_name=policy_name,
+                                family=family,
+                                active_interfaces=active_interfaces,
+                            )
+                        )
+                return status_list, policies_list
+            return [], []
         except Exception as err:
             _LOGGER.debug("Failed to get mwan3 status via luci_rpc: %s", err)
-            return []
+            return [], []
 
     async def trigger_wps_push(self, interface: str) -> bool:
         """Trigger WPS push button via LuCI RPC."""
