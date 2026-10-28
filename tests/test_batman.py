@@ -159,7 +159,7 @@ async def test_get_all_data_batman_permissions_check(client_class) -> None:
 
     # Mock dynamic tasks methods
     client.get_ip_neighbors = AsyncMock(return_value=[])
-    client.get_mwan_status = AsyncMock(return_value=[])
+    client.get_mwan_status = AsyncMock(return_value=([], []))
     client.get_qmodem_info = AsyncMock()
     client.get_vpn_status = AsyncMock(return_value=[])
     client.get_latency = AsyncMock()

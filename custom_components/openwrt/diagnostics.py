@@ -246,7 +246,7 @@ async def async_get_config_entry_diagnostics(
                     "sw_version": str(_dev.sw_version or ""),
                     "via_device_id": str(_dev.via_device_id or ""),
                     "config_entries": (
-                        [_dev.config_entry_id]
+                        [getattr(_dev, "config_entry_id", None)]
                         if getattr(_dev, "config_entry_id", None)
                         else [entry.entry_id]
                     ),
