@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
-from typing import Any, TypeAlias
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
@@ -47,7 +47,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _LOGGER = logging.getLogger(__name__)
 
-OpenWrtConfigEntry: TypeAlias = ConfigEntry
+type OpenWrtConfigEntry = ConfigEntry
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
