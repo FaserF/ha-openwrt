@@ -404,7 +404,7 @@ def _generate_diagnostic_report(
     return "\n".join(report)
 
 
-class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):
+class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Handle a config flow for OpenWrt."""
 
     VERSION = 2

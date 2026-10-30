@@ -32,6 +32,78 @@ _LOGGER = logging.getLogger(__name__)
 MWAN_STATES = ["online", "offline", "connecting", "disconnecting", "disabled"]
 
 
+def _mwan_policy_status(data: OpenWrtData, policy_name: str, family: str) -> str | None:
+    """Return the state (active interface) of an MWAN3 policy."""
+    policy = next(
+        (
+            p
+            for p in data.mwan_policies
+            if p.policy_name == policy_name and p.family == family
+        ),
+        None,
+    )
+    if not policy or not policy.active_interfaces:
+        return "none"
+
+    # Normally mwan3 reports one primary active interface. If there are multiple,
+    # we return the first one with weight > 0, or just the first one.
+    active = [i.interface for i in policy.active_interfaces if i.percent > 0]
+    if active:
+        return active[0]
+    return policy.active_interfaces[0].interface
+
+
+def _mwan_policy_attrs(
+    data: OpenWrtData, policy_name: str, family: str
+) -> dict[str, Any]:
+    """Return attributes (interface percentages) for an MWAN3 policy."""
+    policy = next(
+        (
+            p
+            for p in data.mwan_policies
+            if p.policy_name == policy_name and p.family == family
+        ),
+        None,
+    )
+    attrs: dict[str, Any] = {"active_interfaces": 0}
+    if not policy:
+        return attrs
+
+    attrs["active_interfaces"] = len(policy.active_interfaces)
+    for iface in policy.active_interfaces:
+        attrs[f"{iface.interface}"] = f"{iface.percent}%"
+    return attrs
+
+
+def _create_mwan_policy_sensors(
+    coordinator: OpenWrtDataCoordinator,
+    entry: ConfigEntry,
+    policy_name: str,
+    family: str,
+) -> list[OpenWrtSensorEntity]:
+    """Create sensors for an MWAN3 policy."""
+    return [
+        OpenWrtSensorEntity(
+            coordinator,
+            entry,
+            OpenWrtSensorDescription(
+                key=f"mwan_policy_{family}_{policy_name}_status",
+                translation_key="mwan_policy_status",
+                translation_placeholders={"policy": policy_name, "family": family},
+                name=f"MWAN Policy {family} {policy_name}",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                icon="mdi:router-network",
+                value_fn=lambda data, p=policy_name, f=family: _mwan_policy_status(
+                    data, p, f
+                ),
+                attrs_fn=lambda data, p=policy_name, f=family: _mwan_policy_attrs(
+                    data, p, f
+                ),
+            ),
+        ),
+    ]
+
+
 def _mwan_status(data: OpenWrtData, iface_name: str) -> str | None:
     """Return the tracking state of an MWAN3 interface.
 

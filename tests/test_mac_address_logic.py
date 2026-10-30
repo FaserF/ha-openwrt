@@ -15,6 +15,7 @@ from custom_components.openwrt.api.base import (
     IpNeighbor,
     LatencyResult,
     LedInfo,
+    MwanPolicy,
     MwanStatus,
     NetworkInterface,
     OpenWrtClient,
@@ -151,14 +152,16 @@ class MockClient(OpenWrtClient):
     async def set_led(self, name: str, brightness: int) -> bool:
         return True
 
-    async def install_firmware(self, url: str, keep_settings: bool = True) -> None:
+    async def install_firmware(
+        self, url: str, keep_settings: bool = True, force: bool = False
+    ) -> None:
         pass
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
         return True
 
-    async def get_mwan_status(self) -> list[MwanStatus]:
-        return []
+    async def get_mwan_status(self) -> tuple[list[MwanStatus], list[MwanPolicy]]:
+        return [], []
 
     async def perform_diagnostics(self) -> list:
         return []
@@ -197,7 +200,7 @@ async def test_get_all_data_populates_mac_address() -> None:
     client.get_wireless_interfaces = AsyncMock(return_value=[])
     client.get_dhcp_leases = AsyncMock(return_value=[])
     client.get_ip_neighbors = AsyncMock(return_value=[])
-    client.get_mwan_status = AsyncMock(return_value=[])
+    client.get_mwan_status = AsyncMock(return_value=([], []))
     client.get_wps_status = AsyncMock()
     client.get_qmodem_info = AsyncMock()
     client.get_vpn_status = AsyncMock(return_value=[])
