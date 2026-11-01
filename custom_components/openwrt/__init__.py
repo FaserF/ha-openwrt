@@ -47,7 +47,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _LOGGER = logging.getLogger(__name__)
 
-OpenWrtConfigEntry = ConfigEntry
+type OpenWrtConfigEntry = ConfigEntry
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:

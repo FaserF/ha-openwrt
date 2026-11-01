@@ -7,6 +7,8 @@ import logging
 from typing import Any
 
 from ..base import (
+    MwanPolicy,
+    MwanPolicyInterface,
     MwanStatus,
     NetworkInterface,
     UpnpMapping,
@@ -713,9 +715,10 @@ class UbusNetworkMixin:
 
         return interfaces
 
-    async def get_mwan_status(self) -> list[MwanStatus]:
-        """Get MWAN3 multi-wan status."""
+    async def get_mwan_status(self) -> tuple[list[MwanStatus], list[MwanPolicy]]:
+        """Get MWAN3 multi-wan status and policies."""
         statuses: list[MwanStatus] = []
+        policies: list[MwanPolicy] = []
 
         try:
             data = await self._call("mwan3", "status")
@@ -744,13 +747,35 @@ class UbusNetworkMixin:
                         packet_loss=iface_data.get("packet_loss"),
                     ),
                 )
+
+            policies_data = data.get("policies", {})
+            for family in ["ipv4", "ipv6"]:
+                family_policies = policies_data.get(family, {})
+                for policy_name, policy_interfaces in family_policies.items():
+                    active_interfaces = []
+                    if isinstance(policy_interfaces, list):
+                        for iface in policy_interfaces:
+                            active_interfaces.append(
+                                MwanPolicyInterface(
+                                    interface=iface.get("interface", ""),
+                                    percent=iface.get("percent", 0),
+                                )
+                            )
+                    policies.append(
+                        MwanPolicy(
+                            policy_name=policy_name,
+                            family=family,
+                            active_interfaces=active_interfaces,
+                        )
+                    )
+
         except UbusError:
             _LOGGER.debug("MWAN3 not available (not installed or no permissions)")
             # Let the caller keep the previous status: an empty list would
             # read as "no MWAN interfaces" and turn the sensors off.
             raise
 
-        return statuses
+        return statuses, policies
 
     async def manage_interface(self, name: str, action: str) -> bool:
         """Manage a network interface (up/down/reconnect) via ubus."""

@@ -520,6 +520,9 @@
       "mwan_ratio": {
         "name": "{interface} Online-Verhältnis"
       },
+      "mwan_policy_status": {
+        "name": "MWAN Policy {family} {policy}"
+      },
       "mwan_status": {
         "name": "MWAN {interface} Status",
         "state": {

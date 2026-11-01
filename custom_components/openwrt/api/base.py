@@ -365,6 +365,23 @@ class UsbDevice:
 
 
 @dataclass
+class MwanPolicyInterface:
+    """MWAN3 multi-wan policy interface allocation."""
+
+    interface: str
+    percent: int
+
+
+@dataclass
+class MwanPolicy:
+    """MWAN3 multi-wan policy."""
+
+    policy_name: str
+    family: str  # "ipv4" or "ipv6"
+    active_interfaces: list[MwanPolicyInterface] = field(default_factory=list)
+
+
+@dataclass
 class MwanStatus:
     """MWAN3 multi-wan status."""
 
@@ -859,6 +876,7 @@ class OpenWrtData:
     dmesg_logs: list[str] = field(default_factory=list)
     ip_neighbors: list[IpNeighbor] = field(default_factory=list)
     mwan_status: list[MwanStatus] = field(default_factory=list)
+    mwan_policies: list[MwanPolicy] = field(default_factory=list)
     wps_status: WpsStatus = field(default_factory=WpsStatus)
     adblock: AdBlockStatus = field(default_factory=AdBlockStatus)
     adblock_fast: SimpleAdBlockStatus = field(default_factory=SimpleAdBlockStatus)
@@ -1398,9 +1416,9 @@ class OpenWrtClient(abc.ABC):
 
         return False
 
-    async def get_mwan_status(self) -> list[MwanStatus]:
-        """Get MWAN3 status (optional, may not be installed)."""
-        return []
+    async def get_mwan_status(self) -> tuple[list[MwanStatus], list[MwanPolicy]]:
+        """Get MWAN3 status and policies (optional, may not be installed)."""
+        return [], []
 
     async def get_wps_status(self) -> WpsStatus:
         """Get WPS status."""
@@ -2311,9 +2329,15 @@ class OpenWrtClient(abc.ABC):
                 core_dyn_results["dhcp"], data.dhcp_leases, "DHCP"
             )
         if "mwan" in core_dyn_results:
-            data.mwan_status = get_val(
-                core_dyn_results["mwan"], data.mwan_status, "MWAN"
-            )
+            mwan_result = core_dyn_results["mwan"]
+            if isinstance(mwan_result, tuple) and len(mwan_result) == 2:
+                data.mwan_status, data.mwan_policies = mwan_result
+            elif isinstance(mwan_result, Exception):
+                _LOGGER.debug("Failed to get mwan status: %s", mwan_result)
+            else:
+                _LOGGER.debug(
+                    "Unexpected return type from get_mwan_status: %s", type(mwan_result)
+                )
 
         # 2. Slow-changing optional data (Slow Poll) - Reduces router load
         if is_slow_poll:

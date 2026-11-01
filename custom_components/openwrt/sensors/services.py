@@ -18,7 +18,7 @@ from ..const import CONF_ENABLE_SQM, DOMAIN
 from ..coordinator import OpenWrtDataCoordinator
 from .base import OpenWrtSensorDescription, OpenWrtSensorEntity
 from .mesh import _create_batman_neighbor_sensors, _get_batman_global_sensors
-from .mwan import _create_mwan_sensors
+from .mwan import _create_mwan_policy_sensors, _create_mwan_sensors
 from .network import _create_vpn_sensors
 from .qmodem import OpenWrtQModemSensorEntity, _get_qmodem_sensors
 
@@ -320,6 +320,16 @@ def _async_setup_specialized_sensors(
                 tracked_keys.add(key)
                 entities.extend(
                     _create_mwan_sensors(coordinator, entry, mwan.interface_name)
+                )
+
+        for policy in coordinator.data.mwan_policies:
+            key = f"mwan_policy_{policy.family}_{policy.policy_name}"
+            if key not in tracked_keys:
+                tracked_keys.add(key)
+                entities.extend(
+                    _create_mwan_policy_sensors(
+                        coordinator, entry, policy.policy_name, policy.family
+                    )
                 )
 
     if coordinator.data.qmodem_info.enabled:
