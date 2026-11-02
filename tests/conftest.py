@@ -201,6 +201,9 @@ class MockConfigFlow:
     def _abort_if_unique_id_configured(self, *args, **kwargs):
         pass
 
+    def _async_abort_entries_match(self, match_dict=None):
+        pass
+
     def async_show_form(self, *args, **kwargs):
         return {
             "type": "FORM",

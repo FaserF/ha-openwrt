@@ -470,3 +470,43 @@ async def test_provision_failed_step(hass) -> None:
         result = await flow.async_step_provision_failed({})
         mock_disp.assert_called_once()
         assert result["step_id"] == "permissions_ubus"
+
+
+async def test_ssdp_discovery(hass) -> None:
+    """Test successful SSDP discovery and duplicate host abort."""
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+
+    discovery_info = MagicMock()
+    discovery_info.ssdp_location = "http://192.168.1.1:5000/rootDesc.xml"
+    discovery_info.upnp = {
+        "serialNumber": "02:00:00:12:34:56",
+        "friendlyName": "OpenWrt router",
+    }
+
+    with (
+        patch(
+            "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_probe_router",
+        ) as mock_probe,
+        patch(
+            "custom_components.openwrt.config_flow.OpenWrtConfigFlow.async_set_unique_id",
+        ) as mock_set_uid,
+        patch(
+            "custom_components.openwrt.config_flow.OpenWrtConfigFlow._async_abort_entries_match",
+        ) as mock_abort_match,
+    ):
+        mock_probe.return_value = {
+            "host": "192.168.1.1",
+            "hostname": "OpenWrt",
+            "capabilities": ["ubus", "ssh"],
+            "method": "ubus",
+        }
+        result = await flow.async_step_ssdp(discovery_info)
+
+    assert result["type"].lower() == "form"
+    assert result["step_id"] == "confirm_discovery"
+    mock_abort_match.assert_called_with({"host": "192.168.1.1"})
+    mock_set_uid.assert_called_with("02:00:00:12:34:56")

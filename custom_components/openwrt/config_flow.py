@@ -774,6 +774,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         )
         if not host:
             return self.async_abort(reason="no_host")
+        self._async_abort_entries_match({CONF_HOST: host})
 
         # SSDP often includes a serial number which is often the MAC
         serial = discovery_info.upnp.get("serialNumber")
@@ -815,6 +816,7 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         """Handle DHCP auto-discovery."""
         host = discovery_info.ip
         mac = discovery_info.macaddress
+        self._async_abort_entries_match({CONF_HOST: host})
         await self.async_set_unique_id(dr.format_mac(mac))
         self._abort_if_unique_id_configured(updates={CONF_HOST: host})
 
