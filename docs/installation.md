@@ -1,10 +1,10 @@
-# Installation
+﻿# Installation
 
 ## Home Assistant Marketplace (formerly HACS) (Recommended)
 
 This integration is fully compatible with the official **Home Assistant Marketplace** (as well as legacy HACS).
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Marketplace / Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=FaserF/ha-openwrt&category=integration)
+[![Open your Home Assistant instance and open the repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?repository=FaserF/ha-openwrt&category=integration)
 
 > [!NOTE]
 > This integration is available as a custom repository. The pull request for default inclusion is pending / approved.

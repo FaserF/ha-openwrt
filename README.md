@@ -1,9 +1,9 @@
-# OpenWrt (for Homeassistant)
+﻿# OpenWrt (for Homeassistant)
 
 [![GitHub Release](https://img.shields.io/github/release/FaserF/ha-openwrt.svg?style=flat-square)](https://github.com/FaserF/ha-openwrt/releases)
 [![Downloads (Current release)](https://img.shields.io/github/downloads/FaserF/ha-openwrt/latest/openwrt.zip?label=Downloads%20(Current%20release)&style=flat-square)](https://github.com/FaserF/ha-openwrt/releases)
 [![License](https://img.shields.io/github/license/FaserF/ha-openwrt.svg?style=flat-square)](LICENSE)
-[![Home Assistant Marketplace](https://img.shields.io/badge/HA-Marketplace-blue.svg?style=flat-square)](https://my.home-assistant.io/redirect/hacs_repository/?repository=FaserF/ha-openwrt&category=integration)
+[![Home Assistant Marketplace](https://img.shields.io/badge/HA-Marketplace-blue.svg?style=flat-square)](https://my.home-assistant.io/redirect/marketplace_repository/?repository=FaserF/ha-openwrt&category=integration)
 [![Documentation](https://img.shields.io/badge/docs-Material--MkDocs-blue.svg?style=flat-square)](https://faserf.github.io/ha-openwrt/)
 [![Add to Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=openwrt)
 [![CI Orchestrator](https://github.com/FaserF/ha-openwrt/actions/workflows/ci-orchestrator.yml/badge.svg)](https://github.com/FaserF/ha-openwrt/actions/workflows/ci-orchestrator.yml)
@@ -111,8 +111,8 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
 
 | Device / Service | Integration Use Case | Link |
 | :--- | :--- | :--- |
-| **OpenWrt-kompatible Wi-Fi 6/7 Router & Gateways** | Native Ubus/RPC, WireGuard, SQM & Präsenz-Erkennung in Home Assistant | [Offizielle Geräte-Seite →](https://fabiseitz.de/go/ha-router) |
-| **Home Assistant Green / Yellow Zentrale** | Dedizierter, stromsparender 24/7 Smart-Home-Host | [Offizielle Geräte-Seite →](https://fabiseitz.de/go/ha-hardware) |
+| **OpenWrt-compatible Wi-Fi 6/7 Routers & Gateways** | Native Ubus/RPC, WireGuard, SQM & presence detection in Home Assistant | [Official Device Page →](https://fabiseitz.de/go/ha-router) |
+| **Home Assistant Green / Yellow Hub** | Dedicated, power-efficient 24/7 smart home appliance | [Official Device Page →](https://fabiseitz.de/go/ha-hardware) |
 
 
 
@@ -122,7 +122,7 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
 
 This integration is fully compatible with the official **Home Assistant Marketplace** (and classic HACS setups).
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Marketplace / Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=FaserF/ha-openwrt&category=integration)
+[![Open your Home Assistant instance and open the repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?repository=FaserF/ha-openwrt&category=integration)
 
 > [!NOTE]
 > This integration is available as a custom repository. The pull request for default inclusion is [pending / approved](https://github.com/hacs/default/pull/6270).
