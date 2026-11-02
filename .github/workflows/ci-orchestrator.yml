@@ -1,4 +1,4 @@
-name: CI Orchestrator
+﻿name: CI Orchestrator
 
 on:
   push:
@@ -73,8 +73,8 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v7.2.1
         with:
           commit_message: "style: auto-fix and format with Ruff [skip ci]"
-          commit_user_name: "github-actions[bot]"
-          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_user_name: "faserf-hermes-agent[bot]"
+          commit_user_email: "342667397+faserf-hermes-agent[bot]@users.noreply.github.com"
           push_options: "--force"
 
       - name: Run Mypy
