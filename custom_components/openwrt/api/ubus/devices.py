@@ -849,9 +849,9 @@ class UbusDevicesMixin:
 
     async def _get_neighbors_proc_arp(self, neighbors: list[IpNeighbor]) -> None:
         """Fetch neighbors from /proc/net/arp via file.read."""
-        with contextlib.suppress(Exception):
+        try:
             result = await self._call("file", "read", {"path": "/proc/net/arp"})
-            content = result.get("data", "")
+            content = result.get("data", "") if isinstance(result, dict) else ""
             if content:
                 for line in content.strip().split("\n")[1:]:  # Skip header
                     parts = line.split()
@@ -864,6 +864,11 @@ class UbusDevicesMixin:
                                 state="REACHABLE",
                             ),
                         )
+        except Exception as err:
+            _LOGGER.debug(
+                "file.read /proc/net/arp failed or denied (ACL may require '/proc/*/net/arp'): %s",
+                err,
+            )
 
     async def get_dnsmasq_lease_configs(self) -> list[tuple[str, str | None]]:
         """Get dnsmasq lease files and domains from UCI config."""

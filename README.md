@@ -880,6 +880,16 @@ By default, OpenWrt does not preserve the custom ACL file `/usr/share/rpcd/acl.d
     echo "/usr/share/rpcd/acl.d/homeassistant.json" >> /etc/sysupgrade.conf
     ```
 
+### Restricted ubus user & wired ARP tracking
+If you configure a custom restricted OpenWrt rpcd user without `file.exec` privileges:
+- **Wired tracking fallback**: When `ip neigh show` is unavailable without `file.exec`, the integration falls back to reading `/proc/net/arp` via rpcd `file.read`. Because `/proc/net/arp` resolves via symlink to `/proc/<pid>/net/arp` in modern OpenWrt releases, ensure your custom rpcd ACL includes both paths:
+  ```json
+  "file": {
+    "/proc/net/arp": ["read"],
+    "/proc/*/net/arp": ["read"]
+  }
+  ```
+
 ### Sensors show "Unavailable"
 - Check **Settings > System > Repairs** in Home Assistant. The integration will create a repair issue if there's a specific API or package error.
 - Ensure the required packages (like `iwinfo` or `uhttpd-mod-ubus`) are installed.
