@@ -90,13 +90,13 @@ Using the `root` account means Home Assistant has **unrestricted administrative 
 Maintaining a core integration in the official Home Assistant repository comes with significant trade-offs:
 - **High Maintenance Overhead**: Every minor change to the Home Assistant core API requires rapid updates to the integration.
 - **Slow Release Cycle**: PR reviews in the official Home Assistant repository are thorough but can take several months. This makes it extremely difficult to roll out quick bug fixes, performance improvements, or support for newer OpenWrt releases.
-- **Agility & HACS**: Keeping it as a community integration in HACS allows the project to remain agile, issue updates immediately when OpenWrt features change, and support older/newer Home Assistant versions without being constrained by core release schedules.
+- **Agility & Marketplace**: Keeping it as a community integration in the Home Assistant Marketplace (formerly HACS) allows the project to remain agile, issue updates immediately when OpenWrt features change, and support older/newer Home Assistant versions without being constrained by core release schedules.
 
 ### What security reviews has this integration undergone?
 When this integration was submitted to the default HACS repository, it underwent code review by Frenck, a lead developer of the Home Assistant Core team. The security feedback provided during this process (e.g., ensuring secure session handling, avoiding shell execution where possible, and strict credential containment) was fully resolved and verified before the integration was officially accepted into HACS (see [HACS PR #6270](https://github.com/hacs/default/pull/6270#pullrequestreview-4284547826)).
 
 ### How is the risk of supply chain attacks mitigated?
-- **Pinned Versions**: Using HACS, you are not forced to auto-update. You can pin the integration to a specific release version and update only after reading the changelog or when you feel comfortable.
+- **Pinned Versions**: Using the Marketplace / HACS, you are not forced to auto-update. You can pin the integration to a specific release version and update only after reading the changelog or when you feel comfortable.
 - **Minimal Dependencies**: The integration relies heavily on native Python/Home Assistant libraries rather than external third-party packages, reducing the risk of a compromised dependency.
 - **Open Source Community**: All PRs, commits, and releases are public, allowing auditability by the community.
 

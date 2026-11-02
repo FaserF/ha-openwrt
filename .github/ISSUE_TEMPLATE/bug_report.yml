@@ -17,7 +17,7 @@ body:
     id: integration_version
     attributes:
       label: Integration Version
-      description: Which version of ha-openwrt are you running? (HACS or integration page)
+      description: Which version of ha-openwrt are you running? (Marketplace/HACS or integration page)
       placeholder: e.g. v2.5.3
     validations:
       required: true

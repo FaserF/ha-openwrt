@@ -1,19 +1,19 @@
 # Installation
 
-## HACS (Recommended)
+## Home Assistant Marketplace (formerly HACS) (Recommended)
 
-This integration is fully compatible with [HACS](https://hacs.xyz/).
+This integration is fully compatible with the official **Home Assistant Marketplace** (as well as legacy HACS).
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=FaserF/ha-openwrt&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Marketplace / Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=FaserF/ha-openwrt&category=integration)
 
 > [!NOTE]
-> This integration is currently a custom repository. A Pull Request to include it in the HACS default repositories is pending.
+> This integration is available as a custom repository. The pull request for default inclusion is pending / approved.
 
-1. Open **HACS** in Home Assistant.
+1. Open **Marketplace** (or **HACS** on earlier versions) in Home Assistant.
 2. Click on the three dots in the top right corner and select **Custom repositories**.
 3. Add `FaserF/ha-openwrt` with category **Integration**.
 4. Search for "OpenWrt".
-5. Install and restart Home Assistant.
+5. Click **Download** / **Install** and restart Home Assistant.
 
 ## Manual Installation
 
