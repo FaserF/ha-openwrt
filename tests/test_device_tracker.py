@@ -524,6 +524,7 @@ async def test_device_tracker_cleanup_unwhitelisted_entities() -> None:
 
 from datetime import datetime
 
+
 def test_device_tracker_reboot_availability_and_retention(
     mock_coordinator: MagicMock, mock_config_entry: MagicMock
 ) -> None:
@@ -570,6 +571,7 @@ def test_device_tracker_reboot_retention_from_persistent_history(
 ) -> None:
     """Test that entity recovers last_seen from history if not seen in current session."""
     import time
+
     mac = "aa:bb:cc:dd:ee:99"
     now_epoch = int(time.time())
     mock_config_entry.options = {CONF_CONSIDER_HOME: 120}

@@ -153,12 +153,19 @@ class TrackingMixin(_Base):
                 current_macs = {d.mac.lower() for d in data.connected_devices if d.mac}
                 for mac_lower, prev_dev in prev_connected.items():
                     if mac_lower not in self._device_last_seen:
-                        hist_seen = self._device_history.get(mac_lower, {}).get("last_seen")
+                        hist_seen = self._device_history.get(mac_lower, {}).get(
+                            "last_seen"
+                        )
                         self._device_last_seen[mac_lower] = (
                             float(hist_seen) if hist_seen else current_time
                         )
-                    if mac_lower not in self._wireless_last_seen and prev_dev.is_wireless:
-                        self._wireless_last_seen[mac_lower] = self._device_last_seen[mac_lower]
+                    if (
+                        mac_lower not in self._wireless_last_seen
+                        and prev_dev.is_wireless
+                    ):
+                        self._wireless_last_seen[mac_lower] = self._device_last_seen[
+                            mac_lower
+                        ]
 
                     last_seen = self._device_last_seen[mac_lower]
                     if current_time - last_seen < consider_home:
@@ -172,7 +179,9 @@ class TrackingMixin(_Base):
                                 device.connected = True
                                 if prev_dev.is_wireless and not device.is_wireless:
                                     device.is_wireless = True
-                                device.interface = device.interface or prev_dev.interface
+                                device.interface = (
+                                    device.interface or prev_dev.interface
+                                )
                                 device.connection_type = (
                                     device.connection_type or prev_dev.connection_type
                                 )
