@@ -175,6 +175,8 @@ class OpenWrtDataCoordinator(
         self._last_update_time: float = 0.0
         self._device_history: dict[str, dict[str, Any]] = {}
         self._wireless_last_seen: dict[str, float] = {}
+        self._device_last_seen: dict[str, float] = {}
+        self.last_successful_update: datetime | None = None
         self._prev_network_stats: dict[str, dict[str, int]] = {}
         self._mqtt_discovered: set[str] = set()
         self._mqtt_discovery_started = False
@@ -215,13 +217,7 @@ class OpenWrtDataCoordinator(
             1,
             f"{DOMAIN}_{config_entry.entry_id}_history",
         )
-        # Shared by every entry, not per-entry: an access point has no hostnames
-        # of its own and must be able to read names the DHCP router resolved
-        # *before* its entities are created, otherwise it registers its devices
-        # under bare MAC addresses and the names never get rewritten.
-        # One Store instance for the whole domain, not one per entry: separate
-        # Store objects on the same key can interleave their writes and land an
-        # older snapshot last.
+        # Shared hostname store across entries so APs can access resolved names without DHCP
         self._hostname_store: storage.Store = hass.data.setdefault(
             DOMAIN, {}
         ).setdefault("hostname_store", storage.Store(hass, 1, f"{DOMAIN}_hostnames"))
@@ -314,6 +310,7 @@ class OpenWrtDataCoordinator(
         try:
             data = await self._async_fetch_all_data()
             await self._async_resolve_reverse_dns(data)
+            self.last_successful_update = datetime.now()
             if self.in_reboot_installation:
                 _LOGGER.info(
                     "Device rebooted successfully after firmware update, connection restored."
@@ -375,15 +372,7 @@ class OpenWrtDataCoordinator(
             utc_now = dt_util.utcnow()
             # Calculate what the boot time would be based on current uptime
             boot_time_raw = utc_now - timedelta(seconds=uptime)
-            # Round to the nearest minute. Rounding to the full hour once
-            # uptime exceeded 3600 s discarded the minute component, so a
-            # router booted at 05:02 was reported as 05:00, and one booted
-            # at 05:47 also as 05:00 - an error of up to 59 minutes.
-            # Adding 30 s before truncating rounds to the nearest minute
-            # rather than always flooring, which would report a boot time
-            # up to 59 s early. Poll jitter is already absorbed by the
-            # >60 s stabilization check below, which is what keeps the
-            # sensor from flickering.
+            # Round to nearest minute (+30s offset) to prevent boot time sensor flickering
             new_boot_time = (boot_time_raw + timedelta(seconds=30)).replace(
                 second=0, microsecond=0
             )

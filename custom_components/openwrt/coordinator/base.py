@@ -26,6 +26,8 @@ class CoordinatorBase(DataUpdateCoordinator[OpenWrtData]):
     _last_update_time: float
     _device_history: dict[str, dict[str, Any]]
     _wireless_last_seen: dict[str, float]
+    _device_last_seen: dict[str, float]
+    last_successful_update: datetime | None
     _prev_network_stats: dict[str, dict[str, int]]
     _mqtt_discovered: set[str]
     _mqtt_discovery_started: bool

@@ -124,14 +124,14 @@ class TrackingMixin(_Base):
                         hostname_registry[cleaned[0]] = cleaned[1]
                         registry_dirty = True
 
-        # Stabilize wireless connection states (prevent flapping to 0 due to transient packet drops or RPC glitches)
+        # Stabilize connected states (prevent flapping to 0/away due to router reboots, packet drops, or RPC glitches)
         if self.data and self.data.all_connected_devices:
-            prev_wireless = {
+            prev_connected = {
                 d.mac.lower(): d
                 for d in self.data.all_connected_devices
-                if d.mac and d.is_wireless and d.connected
+                if d.mac and d.connected
             }
-            if prev_wireless:
+            if prev_connected:
                 current_time = time.time()
                 consider_home = self.config_entry.options.get(
                     CONF_CONSIDER_HOME,
@@ -140,21 +140,27 @@ class TrackingMixin(_Base):
                     ),
                 )
 
-                # Update last seen time for currently connected wireless devices
+                # Update last seen time for currently connected devices
                 for device in data.connected_devices:
-                    if device.mac:
+                    if device.mac and device.connected:
                         mac_lower = device.mac.lower()
-                        if device.connected and device.is_wireless:
+                        self._device_last_seen[mac_lower] = current_time
+                        if device.is_wireless:
                             self._wireless_last_seen[mac_lower] = current_time
 
-                # For any device that was previously connected wireless:
+                # For any device that was previously connected:
                 # If it's now missing or marked disconnected, keep it connected if within the consider_home window
                 current_macs = {d.mac.lower() for d in data.connected_devices if d.mac}
-                for mac_lower, prev_dev in prev_wireless.items():
-                    if mac_lower not in self._wireless_last_seen:
-                        self._wireless_last_seen[mac_lower] = current_time
+                for mac_lower, prev_dev in prev_connected.items():
+                    if mac_lower not in self._device_last_seen:
+                        hist_seen = self._device_history.get(mac_lower, {}).get("last_seen")
+                        self._device_last_seen[mac_lower] = (
+                            float(hist_seen) if hist_seen else current_time
+                        )
+                    if mac_lower not in self._wireless_last_seen and prev_dev.is_wireless:
+                        self._wireless_last_seen[mac_lower] = self._device_last_seen[mac_lower]
 
-                    last_seen = self._wireless_last_seen[mac_lower]
+                    last_seen = self._device_last_seen[mac_lower]
                     if current_time - last_seen < consider_home:
                         if mac_lower in current_macs:
                             device = next(
@@ -162,12 +168,11 @@ class TrackingMixin(_Base):
                                 for d in data.connected_devices
                                 if d.mac and d.mac.lower() == mac_lower
                             )
-                            if not device.connected or not device.is_wireless:
+                            if not device.connected:
                                 device.connected = True
-                                device.is_wireless = True
-                                device.interface = (
-                                    device.interface or prev_dev.interface
-                                )
+                                if prev_dev.is_wireless and not device.is_wireless:
+                                    device.is_wireless = True
+                                device.interface = device.interface or prev_dev.interface
                                 device.connection_type = (
                                     device.connection_type or prev_dev.connection_type
                                 )
@@ -175,6 +180,10 @@ class TrackingMixin(_Base):
                                 device.noise = device.noise or prev_dev.noise
                                 device.rx_rate = device.rx_rate or prev_dev.rx_rate
                                 device.tx_rate = device.tx_rate or prev_dev.tx_rate
+                                device.port = device.port or prev_dev.port
+                                device.neighbor_state = (
+                                    device.neighbor_state or prev_dev.neighbor_state
+                                )
                         else:
                             # Restore missing device as connected
                             restored_device = ConnectedDevice(
@@ -182,13 +191,16 @@ class TrackingMixin(_Base):
                                 ip=prev_dev.ip,
                                 hostname=prev_dev.hostname,
                                 connected=True,
-                                is_wireless=True,
+                                is_wireless=prev_dev.is_wireless,
                                 interface=prev_dev.interface,
                                 connection_type=prev_dev.connection_type,
                                 signal=prev_dev.signal,
                                 noise=prev_dev.noise,
                                 rx_rate=prev_dev.rx_rate,
                                 tx_rate=prev_dev.tx_rate,
+                                port=prev_dev.port,
+                                neighbor_state=prev_dev.neighbor_state,
+                                uptime=prev_dev.uptime,
                             )
                             data.connected_devices.append(restored_device)
 
@@ -488,9 +500,19 @@ class TrackingMixin(_Base):
                 == self.config_entry.entry_id
             ):
                 # If we were the owner but no longer see it wireless/connected, mark as away
-                if wireless_states[mac].get("connected"):
-                    wireless_states[mac]["connected"] = False
-                    affected_macs.add(mac)
+                # only after consider_home window has passed to prevent false positives during reboots
+                consider_home_sec = self.config_entry.options.get(
+                    CONF_CONSIDER_HOME,
+                    self.config_entry.data.get(
+                        CONF_CONSIDER_HOME, DEFAULT_CONSIDER_HOME
+                    ),
+                )
+                state = wireless_states[mac]
+                last_seen_dt = state.get("last_seen", datetime.min)
+                if (datetime.now() - last_seen_dt).total_seconds() >= consider_home_sec:
+                    if state.get("connected"):
+                        state["connected"] = False
+                        affected_macs.add(mac)
 
         # 4. Global cleanup for stale entries (safety timeout)
         # If an AP goes offline or is removed, its owned devices might stay 'home' forever.

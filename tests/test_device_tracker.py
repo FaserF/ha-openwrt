@@ -520,3 +520,67 @@ async def test_device_tracker_cleanup_unwhitelisted_entities() -> None:
 
     # phone2 is not in whitelist, so its entity should be removed
     mock_ent_reg.async_remove.assert_called_once_with("device_tracker.phone2")
+
+
+from datetime import datetime
+
+def test_device_tracker_reboot_availability_and_retention(
+    mock_coordinator: MagicMock, mock_config_entry: MagicMock
+) -> None:
+    """Test that entity stays available and retains connection state during router reboot."""
+    mac = "aa:bb:cc:dd:ee:88"
+    mock_config_entry.options = {CONF_CONSIDER_HOME: 60}
+    tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
+
+    # 1. Device is connected initially
+    mock_coordinator.last_update_success = True
+    shared_data = mock_coordinator.hass.data.setdefault("openwrt", {})
+    wireless_states = shared_data.setdefault("tracker_wireless_state", {})
+    wireless_states[mac.lower()] = {
+        "connected": True,
+        "owner_entry_id": mock_config_entry.entry_id,
+        "last_seen": datetime.now(),
+    }
+    tracker._handle_coordinator_update()
+
+    assert tracker.available is True
+    assert tracker.is_connected is True
+    initial_seen = tracker._last_seen
+    assert initial_seen is not None
+
+    # 2. Router reboots / connection fails: coordinator update fails
+    mock_coordinator.last_update_success = False
+    mock_coordinator.last_successful_update = initial_seen
+
+    # Within consider_home (30s elapsed < 60s):
+    with patch("custom_components.openwrt.device_tracker.datetime") as mock_dt:
+        mock_dt.now.return_value = initial_seen + timedelta(seconds=30)
+        # MUST remain available and connected (no false positive unavailable/not_home)
+        assert tracker.available is True
+        assert tracker.is_connected is True
+
+        # 3. Router outage exceeds consider_home (90s elapsed > 60s):
+        mock_dt.now.return_value = initial_seen + timedelta(seconds=90)
+        assert tracker.available is False
+        assert tracker.is_connected is False
+
+
+def test_device_tracker_reboot_retention_from_persistent_history(
+    mock_coordinator: MagicMock, mock_config_entry: MagicMock
+) -> None:
+    """Test that entity recovers last_seen from history if not seen in current session."""
+    import time
+    mac = "aa:bb:cc:dd:ee:99"
+    now_epoch = int(time.time())
+    mock_config_entry.options = {CONF_CONSIDER_HOME: 120}
+    mock_coordinator.last_update_success = False
+    mock_coordinator._device_history = {
+        mac: {"hostname": "my-phone", "last_seen": now_epoch - 30}
+    }
+
+    tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
+
+    # Even though coordinator update failed and device is not in current data,
+    # history shows it was seen 30s ago (< 120s consider_home).
+    assert tracker.available is True
+    assert tracker.is_connected is True

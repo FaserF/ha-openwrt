@@ -195,6 +195,7 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             ),
         )
         self._last_seen: datetime | None = None
+        self._last_seen = self._get_effective_last_seen()
 
         # Track all created entity instances globally to enable cross-entry peer notification
         domain_data = coordinator.hass.data.setdefault(DOMAIN, {})
@@ -247,6 +248,11 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
     @property
     def is_connected(self) -> bool:
         """Return connection status."""
+        # When coordinator update failed (router reboot / brief drop),
+        # retain previous state based on consider_home without bumping last_seen
+        if not self.coordinator.last_update_success:
+            return self._check_consider_home(False)
+
         domain_data = self.coordinator.hass.data.get(DOMAIN, {})
         wireless_states = domain_data.get("tracker_wireless_state", {})
         state_info = wireless_states.get(self._mac)
@@ -326,6 +332,48 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
 
     _get_device_data = _raw_get_device_data
 
+    def _get_effective_last_seen(self) -> datetime | None:
+        """Return the most recent last_seen datetime for this device."""
+        candidates: list[datetime] = []
+        if getattr(self, "_last_seen", None):
+            candidates.append(self._last_seen)
+
+        domain_data = self.coordinator.hass.data.get(DOMAIN, {})
+        wireless_states = domain_data.get("tracker_wireless_state", {})
+        state_info = wireless_states.get(self._mac)
+        if state_info and isinstance(state_info.get("last_seen"), datetime):
+            candidates.append(state_info["last_seen"])
+
+        hist = getattr(self.coordinator, "_device_history", {}).get(self._mac)
+        if isinstance(hist, dict) and hist.get("last_seen"):
+            try:
+                candidates.append(datetime.fromtimestamp(hist["last_seen"]))
+            except (ValueError, OSError, OverflowError):
+                pass
+
+        return max(candidates) if candidates else None
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available.
+
+        Retain availability during short router disconnections or reboots
+        as long as the consider_home window has not expired.
+        """
+        if self.coordinator.last_update_success:
+            return True
+
+        now = _get_now()
+        effective_seen = self._get_effective_last_seen()
+        if effective_seen and (now - effective_seen < self._consider_home):
+            return True
+
+        last_success = getattr(self.coordinator, "last_successful_update", None)
+        if last_success and (now - last_success < self._consider_home):
+            return True
+
+        return False
+
     def _check_consider_home(self, connected: bool) -> bool:
         """Apply consider_home logic."""
         now = _get_now()
@@ -333,7 +381,12 @@ class OpenWrtDeviceTracker(CoordinatorEntity[OpenWrtDataCoordinator], ScannerEnt
             self._last_seen = now
             return True
 
-        return bool(self._last_seen and now - self._last_seen < self._consider_home)
+        effective_last_seen = self._get_effective_last_seen()
+        if effective_last_seen:
+            self._last_seen = effective_last_seen
+            return bool(now - effective_last_seen < self._consider_home)
+
+        return False
 
     @property
     def mac_address(self) -> str:
