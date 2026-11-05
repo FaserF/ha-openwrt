@@ -177,10 +177,15 @@ def _create_mwan_sensors(
 
 
 class OpenWrtMwanMetricSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEntity):
-    """MWAN3 metric sensor (latency, packet loss)."""
+    """MWAN3 metric sensor (latency, packet loss).
+
+    mwan3 only measures these with check_quality enabled on the interface, so
+    without it the sensor has no value and is unavailable.
+    """
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
@@ -196,7 +201,9 @@ class OpenWrtMwanMetricSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorE
         self._metric = metric
         self._attr_unique_id = f"{entry.entry_id}_mwan_{iface}_{metric}"
         self._attr_name = f"MWAN {iface} {metric.replace('_', ' ').title()}"
-        self._attr_entity_registry_enabled_default = bool(pkgs and pkgs.mwan3 is True)
+        self._attr_entity_registry_enabled_default = (
+            bool(pkgs and pkgs.mwan3 is True) and self.native_value is not None
+        )
         if metric == "latency":
             self._attr_native_unit_of_measurement = "ms"
             self._attr_icon = "mdi:timer-outline"
@@ -207,6 +214,11 @@ class OpenWrtMwanMetricSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorE
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.unique_id or entry.data[CONF_HOST])},
         )
+
+    @property
+    def available(self) -> bool:
+        """Return availability; without a measurement there is nothing to show."""
+        return self.coordinator.last_update_success and self.native_value is not None
 
     @property
     def native_value(self) -> float | None:

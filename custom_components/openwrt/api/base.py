@@ -401,6 +401,49 @@ class MwanStatus:
     packet_loss: float | None = None
 
 
+# Latency mwan3track records for a tracking target that did not answer.
+MWAN_NO_REPLY_LATENCY = 999999
+
+
+def parse_mwan_track_metrics(
+    iface_data: dict[str, Any],
+) -> tuple[float | None, float | None]:
+    """Return the latency (ms) and packet loss (%) mwan3 measured for an interface.
+
+    mwan3 reports both per tracking target in "track_ip", and only measures them
+    with check_quality enabled. Without it every target reads 0, even on a dead
+    line, so those zeros must not be taken for a perfect line. Not every mwan3
+    version reports check_quality; there a non-zero value shows it is measuring.
+
+    Targets marked "skipped" were not probed in the last round and keep older
+    values, so only "up" and "down" targets count.
+    """
+    targets = [
+        target
+        for target in iface_data.get("track_ip") or []
+        if isinstance(target, dict) and target.get("status") in ("up", "down")
+    ]
+    measuring = iface_data.get("check_quality")
+    if measuring is None:
+        measuring = any(t.get("latency") or t.get("packetloss") for t in targets)
+    if not measuring:
+        return None, None
+
+    latencies = [
+        value
+        for t in targets
+        if isinstance(value := t.get("latency"), int | float)
+        and value < MWAN_NO_REPLY_LATENCY
+    ]
+    losses = [
+        value for t in targets if isinstance(value := t.get("packetloss"), int | float)
+    ]
+    return (
+        round(sum(latencies) / len(latencies), 1) if latencies else None,
+        round(sum(losses) / len(losses), 1) if losses else None,
+    )
+
+
 @dataclass
 class LldpNeighbor:
     """LLDP neighbor information."""
