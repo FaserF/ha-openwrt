@@ -42,15 +42,13 @@ def _mwan_policy_status(data: OpenWrtData, policy_name: str, family: str) -> str
         ),
         None,
     )
-    if not policy or not policy.active_interfaces:
+    if not policy:
         return "none"
 
-    # Normally mwan3 reports one primary active interface. If there are multiple,
-    # we return the first one with weight > 0, or just the first one.
+    # mwan3 lists members it does not route over at 0 %. If several carry traffic
+    # we return the first one; if none does, the policy has no active interface.
     active = [i.interface for i in policy.active_interfaces if i.percent > 0]
-    if active:
-        return active[0]
-    return policy.active_interfaces[0].interface
+    return active[0] if active else "none"
 
 
 def _mwan_policy_attrs(
@@ -69,7 +67,9 @@ def _mwan_policy_attrs(
     if not policy:
         return attrs
 
-    attrs["active_interfaces"] = len(policy.active_interfaces)
+    attrs["active_interfaces"] = sum(
+        1 for iface in policy.active_interfaces if iface.percent > 0
+    )
     for iface in policy.active_interfaces:
         attrs[f"{iface.interface}"] = f"{iface.percent}%"
     return attrs
