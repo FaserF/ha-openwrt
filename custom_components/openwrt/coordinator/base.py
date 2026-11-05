@@ -37,7 +37,6 @@ class CoordinatorBase(DataUpdateCoordinator[OpenWrtData]):
     active_device_identifiers: set[tuple[str, str]]
     router_id: str
     _last_version: str | None
-    _stale_permissions_reason: str | None
     _boot_time: datetime | None
     _last_uptime: int | None
     _mwan_first_online: dict[str, float]

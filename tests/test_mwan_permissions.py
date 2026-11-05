@@ -17,17 +17,10 @@ from custom_components.openwrt.api.base import (
     OpenWrtPackages,
     OpenWrtPermissions,
 )
-from custom_components.openwrt.api.luci_rpc import (
-    LuciRpcAuthError,
-    LuciRpcClient,
-    LuciRpcConnectionError,
-    LuciRpcError,
-)
 from custom_components.openwrt.api.ubus import UbusClient, UbusPermissionError
 from custom_components.openwrt.coordinator.features import FeaturesMixin
 
 FEATURES = "custom_components.openwrt.coordinator.features"
-LUCI_MWAN_STATUS_COMMAND = "ubus call mwan3 status 2>/dev/null || echo unavailable"
 
 
 def _client(username: str = "ha-user") -> UbusClient:
@@ -118,101 +111,6 @@ async def test_probes_try_the_mwan3_status_call(
     assert perms.read_mwan is expected
 
 
-def _luci_client() -> LuciRpcClient:
-    """Return a LuCI RPC client."""
-    return LuciRpcClient(
-        MagicMock(),
-        MagicMock(),
-        host="192.168.1.1",
-        username="ha-user",
-        password="password",
-    )
-
-
-def _luci_denying(*denied: str) -> Any:
-    """Return a LuCI RPC stand-in that denies the given modules and mwan3 UCI."""
-
-    def answer(module: str, method: str, params: list[Any] | None = None) -> dict:
-        if module in denied or (module == "uci" and params == ["mwan3"]):
-            msg = "Access denied"
-            raise LuciRpcError(msg)
-        return {}
-
-    return answer
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("output", "expected"),
-    [
-        pytest.param('{"interfaces": {}}', True, id="status readable"),
-        pytest.param("unavailable", True, id="mwan3 not installed"),
-        pytest.param("", False, id="command could not run"),
-    ],
-)
-async def test_luci_read_mwan_follows_the_status_command(
-    output: str, expected: bool
-) -> None:
-    """LuCI RPC runs this command for the status, so UCI access does not count."""
-    client = _luci_client()
-
-    with (
-        patch.object(
-            client, "_rpc_call", new_callable=AsyncMock, side_effect=_luci_denying()
-        ),
-        patch.object(
-            client, "execute_command", new_callable=AsyncMock, return_value=output
-        ) as execute,
-    ):
-        perms = await client.check_permissions()
-
-    assert perms.read_mwan is expected
-    execute.assert_awaited_once_with(LUCI_MWAN_STATUS_COMMAND)
-
-
-@pytest.mark.asyncio
-async def test_luci_account_that_cannot_run_commands_cannot_read_mwan3() -> None:
-    """With both ways of running a command denied, there is no status to read."""
-    client = _luci_client()
-
-    with patch.object(
-        client,
-        "_rpc_call",
-        new_callable=AsyncMock,
-        side_effect=_luci_denying("sys", "ubus"),
-    ):
-        perms = await client.check_permissions()
-
-    assert perms.read_mwan is False
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("error", "expected"),
-    [
-        pytest.param(LuciRpcConnectionError("Connection lost"), True, id="connection"),
-        pytest.param(LuciRpcAuthError("Access denied"), False, id="denied"),
-    ],
-)
-async def test_luci_only_a_denial_counts_as_missing_permission(
-    error: LuciRpcError, expected: bool
-) -> None:
-    """A lost connection says nothing about the permission and must not raise a repair."""
-    client = _luci_client()
-
-    with (
-        patch.object(
-            client, "_rpc_call", new_callable=AsyncMock, side_effect=_luci_denying()
-        ),
-        patch.object(
-            client, "execute_command", new_callable=AsyncMock, side_effect=error
-        ),
-    ):
-        perms = await client.check_permissions()
-
-    assert perms.read_mwan is expected
-
-
 @pytest.fixture
 def repairs() -> Iterator[tuple[MagicMock, MagicMock]]:
     """Patch the functions that create and delete the repair issue."""
@@ -228,7 +126,6 @@ def _coordinator(username: str = "homeassistant") -> MagicMock:
     coordinator = MagicMock()
     coordinator.config_entry.data = {"username": username}
     coordinator._last_version = None
-    coordinator._stale_permissions_reason = None
     return coordinator
 
 
@@ -255,6 +152,18 @@ def test_denied_mwan3_status_raises_a_repair(
 
     create.assert_called_once()
     delete.assert_not_called()
+
+
+def test_denied_mwan3_status_does_not_flood_the_log(
+    repairs: tuple[MagicMock, MagicMock], caplog: pytest.LogCaptureFixture
+) -> None:
+    """The check runs on every update, and the repair already tells the user."""
+    with caplog.at_level(logging.WARNING, logger=FEATURES):
+        FeaturesMixin._async_check_stale_permissions(
+            _coordinator(), _data(read_mwan=False)
+        )
+
+    assert caplog.text == ""
 
 
 @pytest.mark.parametrize(
@@ -287,10 +196,10 @@ def test_root_never_gets_the_repair(repairs: tuple[MagicMock, MagicMock]) -> Non
     delete.assert_called_once()
 
 
-def test_missing_system_permission_is_still_reported(
+def test_missing_system_permission_keeps_its_warning(
     repairs: tuple[MagicMock, MagicMock], caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The existing check keeps working, and names the sensors it affects."""
+    """The existing check is unchanged."""
     create, _ = repairs
 
     with caplog.at_level(logging.WARNING, logger=FEATURES):
@@ -299,27 +208,4 @@ def test_missing_system_permission_is_still_reported(
         )
 
     create.assert_called_once()
-    assert "system sensors" in caplog.text
-
-
-def test_missing_permission_is_logged_once_per_occurrence(
-    repairs: tuple[MagicMock, MagicMock], caplog: pytest.LogCaptureFixture
-) -> None:
-    """The check runs on every update, so a lasting problem must not flood the log."""
-    create, _ = repairs
-    coordinator = _coordinator()
-
-    def warnings_after_update(read_mwan: bool) -> int:
-        FeaturesMixin._async_check_stale_permissions(
-            coordinator, _data(read_mwan=read_mwan)
-        )
-        return sum("mwan3 status" in r.getMessage() for r in caplog.records)
-
-    with caplog.at_level(logging.WARNING, logger=FEATURES):
-        assert warnings_after_update(read_mwan=False) == 1
-        assert warnings_after_update(read_mwan=False) == 1
-        # The repair stays in place while the problem lasts.
-        assert create.call_count == 2
-        assert warnings_after_update(read_mwan=True) == 1
-        # Fixed and lost again, for example by a firmware upgrade.
-        assert warnings_after_update(read_mwan=False) == 2
+    assert "missing core system read permissions" in caplog.text

@@ -195,7 +195,6 @@ class OpenWrtDataCoordinator(
             self.router_id = unique_id or self.config_entry.data[CONF_HOST]
 
         self._last_version: str | None = None
-        self._stale_permissions_reason: str | None = None
         self._boot_time: datetime | None = None
         self._last_uptime: int | None = None
         # MWAN3 availability since the router last booted, kept on the

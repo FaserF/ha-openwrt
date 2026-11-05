@@ -380,16 +380,7 @@ class FeaturesMixin(_Base):
         reason = ""
         if not perms.read_system:
             stale = True
-            reason = (
-                "missing core system read permissions, so system sensors (such as "
-                "CPU, memory, load, uptime, or temperature) will stop reporting"
-            )
-        elif data.packages.mwan3 is True and not perms.read_mwan:
-            stale = True
-            reason = (
-                "no permission to read the mwan3 status, so no MWAN3 sensors are "
-                "created"
-            )
+            reason = "missing core system read permissions"
 
         # Detect if an upgrade happened
         current_version = data.device_info.release_version
@@ -411,21 +402,24 @@ class FeaturesMixin(_Base):
             self._last_version = current_version
 
         if stale:
-            # This runs on every update, so only log when the reason changes.
-            if reason != self._stale_permissions_reason:
-                _LOGGER.warning(
-                    "Detected missing/stale RPC permissions for OpenWrt user '%s': %s (is_upgrade=%s). "
-                    "Please redeploy the Home Assistant user or restore the custom ACL rules on your router.",
-                    username,
-                    reason,
-                    is_upgrade,
-                )
-            self._stale_permissions_reason = reason
+            _LOGGER.warning(
+                "Detected missing/stale RPC permissions for OpenWrt user '%s': %s (is_upgrade=%s). "
+                "Some system sensors (such as CPU, memory, load, uptime, or temperature) will stop reporting. "
+                "Please redeploy the Home Assistant user or restore the custom ACL rules on your router.",
+                username,
+                reason,
+                is_upgrade,
+            )
+            async_create_stale_permissions_repair(
+                self.hass, self.config_entry, is_upgrade=is_upgrade
+            )
+        elif data.packages.mwan3 is True and not perms.read_mwan:
+            # The status call is denied, for example by an ACL from before it was
+            # added. The repair says so; a warning here would repeat on every update.
             async_create_stale_permissions_repair(
                 self.hass, self.config_entry, is_upgrade=is_upgrade
             )
         else:
-            self._stale_permissions_reason = None
             async_delete_stale_permissions_repair(self.hass, self.config_entry)
 
     async def _async_resolve_reverse_dns(self, data: OpenWrtData) -> None:
