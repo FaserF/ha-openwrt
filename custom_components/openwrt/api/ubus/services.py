@@ -125,7 +125,7 @@ class UbusServicesMixin:
             perms.write_sqm = has_uci("sqm", "write")
             perms.read_vpn = perms.read_network
             perms.write_vpn = perms.write_network
-            perms.read_mwan = has_uci("mwan3", "read")
+            perms.read_mwan = has_perm("mwan3", "status")
             perms.read_led = has_perm("led", "list") or has_uci("system", "read")
             perms.write_led = has_perm("led", "set") or has_uci("system", "write")
             perms.read_devices = has_perm("network", "status") or has_uci(
@@ -200,7 +200,7 @@ class UbusServicesMixin:
         ) or is_root
 
         perms.read_vpn = perms.read_network
-        perms.read_mwan = await can_call("uci", "get", {"config": "mwan3"}) or is_root
+        perms.read_mwan = await can_call("mwan3", "status") or is_root
         perms.read_devices = await can_call("dhcp", "ipv4leases") or perms.read_network
         perms.write_devices = (
             await can_call("file", "exec", {"command": "/usr/bin/id"})
