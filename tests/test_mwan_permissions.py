@@ -17,10 +17,17 @@ from custom_components.openwrt.api.base import (
     OpenWrtPackages,
     OpenWrtPermissions,
 )
+from custom_components.openwrt.api.luci_rpc import (
+    LuciRpcAuthError,
+    LuciRpcClient,
+    LuciRpcConnectionError,
+    LuciRpcError,
+)
 from custom_components.openwrt.api.ubus import UbusClient, UbusPermissionError
 from custom_components.openwrt.coordinator.features import FeaturesMixin
 
 FEATURES = "custom_components.openwrt.coordinator.features"
+LUCI_MWAN_STATUS_COMMAND = "ubus call mwan3 status 2>/dev/null || echo unavailable"
 
 
 def _client(username: str = "ha-user") -> UbusClient:
@@ -105,6 +112,101 @@ async def test_probes_try_the_mwan3_status_call(
         "_call",
         new_callable=AsyncMock,
         side_effect=_ubus_without_session_list(mwan3_allowed=mwan3_allowed),
+    ):
+        perms = await client.check_permissions()
+
+    assert perms.read_mwan is expected
+
+
+def _luci_client() -> LuciRpcClient:
+    """Return a LuCI RPC client."""
+    return LuciRpcClient(
+        MagicMock(),
+        MagicMock(),
+        host="192.168.1.1",
+        username="ha-user",
+        password="password",
+    )
+
+
+def _luci_denying(*denied: str) -> Any:
+    """Return a LuCI RPC stand-in that denies the given modules and mwan3 UCI."""
+
+    def answer(module: str, method: str, params: list[Any] | None = None) -> dict:
+        if module in denied or (module == "uci" and params == ["mwan3"]):
+            msg = "Access denied"
+            raise LuciRpcError(msg)
+        return {}
+
+    return answer
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        pytest.param('{"interfaces": {}}', True, id="status readable"),
+        pytest.param("unavailable", True, id="mwan3 not installed"),
+        pytest.param("", False, id="command could not run"),
+    ],
+)
+async def test_luci_read_mwan_follows_the_status_command(
+    output: str, expected: bool
+) -> None:
+    """LuCI RPC runs this command for the status, so UCI access does not count."""
+    client = _luci_client()
+
+    with (
+        patch.object(
+            client, "_rpc_call", new_callable=AsyncMock, side_effect=_luci_denying()
+        ),
+        patch.object(
+            client, "execute_command", new_callable=AsyncMock, return_value=output
+        ) as execute,
+    ):
+        perms = await client.check_permissions()
+
+    assert perms.read_mwan is expected
+    execute.assert_awaited_once_with(LUCI_MWAN_STATUS_COMMAND)
+
+
+@pytest.mark.asyncio
+async def test_luci_account_that_cannot_run_commands_cannot_read_mwan3() -> None:
+    """With both ways of running a command denied, there is no status to read."""
+    client = _luci_client()
+
+    with patch.object(
+        client,
+        "_rpc_call",
+        new_callable=AsyncMock,
+        side_effect=_luci_denying("sys", "ubus"),
+    ):
+        perms = await client.check_permissions()
+
+    assert perms.read_mwan is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        pytest.param(LuciRpcConnectionError("Connection lost"), True, id="connection"),
+        pytest.param(LuciRpcAuthError("Access denied"), False, id="denied"),
+    ],
+)
+async def test_luci_only_a_denial_counts_as_missing_permission(
+    error: LuciRpcError, expected: bool
+) -> None:
+    """A lost connection says nothing about the permission and must not raise a repair."""
+    client = _luci_client()
+
+    with (
+        patch.object(
+            client, "_rpc_call", new_callable=AsyncMock, side_effect=_luci_denying()
+        ),
+        patch.object(
+            client, "execute_command", new_callable=AsyncMock, side_effect=error
+        ),
     ):
         perms = await client.check_permissions()
 

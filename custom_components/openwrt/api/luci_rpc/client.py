@@ -477,6 +477,18 @@ class LuciRpcClient(
             except LuciRpcError as err:
                 return "Access denied" not in str(err)
 
+        async def can_run_mwan_status() -> bool:
+            # The MWAN3 status comes from this command, not from the UCI config.
+            # No output means it could not run; without mwan3 the fallback prints.
+            try:
+                return bool(
+                    await self.execute_command(
+                        "ubus call mwan3 status 2>/dev/null || echo unavailable"
+                    )
+                )
+            except LuciRpcError as err:
+                return "Access denied" not in str(err)
+
         perms.read_system = await can_read_uci("system")
         perms.write_system = await can_write_uci("system")
         perms.read_network = await can_read_uci("network")
@@ -489,7 +501,7 @@ class LuciRpcClient(
         perms.write_sqm = await can_write_uci("sqm")
         perms.read_vpn = perms.read_network
         perms.write_vpn = perms.write_network
-        perms.read_mwan = await can_read_uci("mwan3")
+        perms.read_mwan = await can_run_mwan_status()
         perms.read_led = perms.read_system
         perms.write_led = perms.write_system
         perms.read_devices = await can_read_uci("dhcp") or perms.read_network
