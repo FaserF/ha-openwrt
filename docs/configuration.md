@@ -55,7 +55,7 @@ If you are using a non-root user (e.g. for security reasons), you need to grant 
 | **SQM** | Read SQM instance status | Toggling SQM, Changing bandwidth limits |
 | **Services** | Read active system services (OpenVPN, AdGuard, etc.) | Toggling & restarting services |
 | **LEDs** | Read current state of router LEDs | Toggling LEDs, changing brightness |
-| **MWAN3** | Read Multi-WAN load balancing status | - |
+| **MWAN3** | Read Multi-WAN load balancing status (with ubus: the `mwan3.status` call) | - |
 | **MQTT Presence** | Automatic deployment of presence scripts | Deploying/Updating scripts (requires `file.exec`) |
 | **NLBWMon** | Top Bandwidth Hosts sensor — reads per-host traffic via `nlbw` CLI (requires `file.exec` for `/usr/sbin/nlbw`) | - |
 

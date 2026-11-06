@@ -413,6 +413,12 @@ class FeaturesMixin(_Base):
             async_create_stale_permissions_repair(
                 self.hass, self.config_entry, is_upgrade=is_upgrade
             )
+        elif data.packages.mwan3 is True and not perms.read_mwan:
+            # The status call is denied, for example by an ACL from before it was
+            # added. The repair says so; a warning here would repeat on every update.
+            async_create_stale_permissions_repair(
+                self.hass, self.config_entry, is_upgrade=is_upgrade
+            )
         else:
             async_delete_stale_permissions_repair(self.hass, self.config_entry)
 
