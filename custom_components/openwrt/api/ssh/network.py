@@ -20,6 +20,7 @@ from ..base import (
     WireGuardPeer,
     WirelessInterface,
     WpsStatus,
+    parse_mwan_track_metrics,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -814,6 +815,7 @@ class SshNetworkMixin:
             result = json.loads(stdout)
             status_list = []
             for name, data in result.get("interfaces", {}).items():
+                latency, packet_loss = parse_mwan_track_metrics(data)
                 status_list.append(
                     MwanStatus(
                         interface_name=name,
@@ -823,8 +825,8 @@ class SshNetworkMixin:
                         online_ratio=float(data.get("online_ratio", 0.0)),
                         uptime=int(data.get("uptime", 0)),
                         enabled=bool(data.get("enabled", False)),
-                        latency=data.get("latency"),
-                        packet_loss=data.get("packet_loss"),
+                        latency=latency,
+                        packet_loss=packet_loss,
                     )
                 )
 

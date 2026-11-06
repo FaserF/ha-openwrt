@@ -15,6 +15,7 @@ from ..base import (
     WireGuardInterface,
     WireGuardPeer,
     WirelessInterface,
+    parse_mwan_track_metrics,
 )
 from .exceptions import UbusError
 
@@ -730,6 +731,7 @@ class UbusNetworkMixin:
                 # the sensor display values in the millions of percent.
                 online_secs = _as_seconds(iface_data.get("online"))
                 uptime_secs = _as_seconds(iface_data.get("uptime"))
+                latency, packet_loss = parse_mwan_track_metrics(iface_data)
                 statuses.append(
                     MwanStatus(
                         interface_name=iface_name,
@@ -743,8 +745,8 @@ class UbusNetworkMixin:
                         ),
                         uptime=iface_data.get("uptime", 0),
                         enabled=iface_data.get("enabled", False),
-                        latency=iface_data.get("latency"),
-                        packet_loss=iface_data.get("packet_loss"),
+                        latency=latency,
+                        packet_loss=packet_loss,
                     ),
                 )
 
