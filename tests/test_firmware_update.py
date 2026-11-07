@@ -649,19 +649,29 @@ async def test_get_user_installed_packages_parsing() -> None:
         MagicMock(), MagicMock(), host="192.0.2.1", username="root", password="pwd"
     )
     marker = "__OPENWRT_HA_PKG_LIST__"
+    ok = "__OPENWRT_HA_PKG_READ_OK__"
 
     with patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec:
-        mock_exec.return_value = f"{marker}\nbase-files\ntailscale>=1.80\npbr@custom\n"
+        mock_exec.return_value = (
+            f"{marker}\nbase-files\ntailscale>=1.80\npbr@custom\n{ok}\n"
+        )
         assert await client.get_user_installed_packages() == [
             "base-files",
             "tailscale",
             "pbr",
         ]
 
-        mock_exec.return_value = f"{marker}\n"
+        # A successful read of an empty list (opkg with no user packages).
+        mock_exec.return_value = f"{marker}\n{ok}\n"
         assert await client.get_user_installed_packages() == []
 
-        mock_exec.return_value = f"{marker}\n__NO_PACKAGE_DB__\n"
+        # The read failed after the start marker: no success marker.
+        mock_exec.return_value = f"{marker}\n"
+        assert await client.get_user_installed_packages() is None
+        mock_exec.return_value = f"{marker}\ncat: /etc/apk/world: I/O error\n"
+        assert await client.get_user_installed_packages() is None
+
+        mock_exec.return_value = f"{marker}\n__NO_PACKAGE_DB__\n{ok}\n"
         assert await client.get_user_installed_packages() is None
 
         mock_exec.return_value = ""
@@ -825,6 +835,7 @@ WORLD_WITH_CONSTRAINTS = (
     "tailscale>=1.80\n"
     "pbr@custom\n"
     "libnghttp2-14\n"
+    "__OPENWRT_HA_PKG_READ_OK__\n"
 )
 CLEAN_WORLD = [
     "base-files",
