@@ -103,13 +103,16 @@ async def async_get_config_entry_diagnostics(
             diag["wireless_clients_count"] = (
                 wl_cnt
                 if (
-                    wl_cnt := sum(
-                        1
-                        for d in data.all_connected_devices
-                        if d.is_wireless and d.connected
+                    (
+                        wl_cnt := sum(
+                            1
+                            for d in data.all_connected_devices
+                            if d.is_wireless and d.connected
+                        )
                     )
+                    > 0
+                    or any(d.is_wireless for d in data.all_connected_devices)
                 )
-                > 0
                 else sum(
                     w.clients_count
                     for w in data.wireless_interfaces

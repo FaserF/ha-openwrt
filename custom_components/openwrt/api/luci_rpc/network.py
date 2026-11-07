@@ -440,8 +440,7 @@ class LuciRpcNetworkMixin:
                     existing.mac_address = wifi.mac_address
                 if not existing.ssid and wifi.ssid:
                     existing.ssid = wifi.ssid
-                if wifi.clients_count > existing.clients_count:
-                    existing.clients_count = wifi.clients_count
+                existing.clients_count = wifi.clients_count
                 if wifi.ifname and not existing.ifname:
                     existing.ifname = wifi.ifname
 

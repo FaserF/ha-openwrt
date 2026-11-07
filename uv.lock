@@ -818,7 +818,7 @@ wheels = [
 
 [[package]]
 name = "ha-openwrt"
-version = "2.5.4.dev0"
+version = "2.5.5.dev0"
 source = { virtual = "." }
 
 [package.optional-dependencies]

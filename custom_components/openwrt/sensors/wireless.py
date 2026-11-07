@@ -133,11 +133,45 @@ def _create_wifi_base_sensors(
                 value_fn=lambda data, n=iface_name, s=section_id, i=ifname: (
                     cnt
                     if (
-                        cnt := sum(
-                            1
-                            for d in data.all_connected_devices
-                            if d.is_wireless
-                            and d.connected
+                        (
+                            cnt := sum(
+                                1
+                                for d in data.all_connected_devices
+                                if d.is_wireless
+                                and d.connected
+                                and (
+                                    d.interface == n
+                                    or (s and d.interface == s)
+                                    or (i and d.interface == i)
+                                    or (
+                                        coordinator.interface_to_stable_id.get(
+                                            d.interface
+                                        )
+                                        and coordinator.interface_to_stable_id.get(
+                                            d.interface
+                                        )
+                                        == (
+                                            coordinator.interface_to_stable_id.get(n)
+                                            or (
+                                                s
+                                                and coordinator.interface_to_stable_id.get(
+                                                    s
+                                                )
+                                            )
+                                            or (
+                                                i
+                                                and coordinator.interface_to_stable_id.get(
+                                                    i
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                        > 0
+                        or any(
+                            d.is_wireless
                             and (
                                 d.interface == n
                                 or (s and d.interface == s)
@@ -164,9 +198,9 @@ def _create_wifi_base_sensors(
                                     )
                                 )
                             )
+                            for d in data.all_connected_devices
                         )
                     )
-                    > 0
                     else next(
                         (
                             w.clients_count

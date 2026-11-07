@@ -159,6 +159,9 @@ class UbusDevicesMixin:
                 if found_hostapd:
                     scanned_wireless_candidates.update(c for c in candidate_names if c)
 
+            # Discover and poll any supplemental hostapd objects directly before coordinator fallback
+            await self._process_hostapd_fallback(devices, scanned_wireless_candidates)
+
             # Wireless coordinator fallback:
             # If neither iwinfo nor hostapd succeeded for an interface (e.g. transient RPC failure),
             # restore cached devices for that interface to avoid flapping.
@@ -174,9 +177,52 @@ class UbusDevicesMixin:
                     if wifi_iface.section and wifi_iface.section not in candidate_names:
                         candidate_names.append(wifi_iface.section)
 
-                    if any(
-                        c in scanned_wireless_candidates for c in candidate_names if c
+                    stable_id = None
+                    if self.coordinator and hasattr(
+                        self.coordinator, "interface_to_stable_id"
                     ):
+                        stable_id = (
+                            self.coordinator.interface_to_stable_id.get(wifi_iface.name)
+                            or (
+                                wifi_iface.section
+                                and self.coordinator.interface_to_stable_id.get(
+                                    wifi_iface.section
+                                )
+                            )
+                            or (
+                                wifi_iface.ifname
+                                and self.coordinator.interface_to_stable_id.get(
+                                    wifi_iface.ifname
+                                )
+                            )
+                        )
+
+                    def _is_cand_scanned(
+                        c: str,
+                        s_id: str | None = stable_id,
+                        r_name: str | None = wifi_iface.radio,
+                    ) -> bool:
+                        if c in scanned_wireless_candidates:
+                            return True
+                        if (
+                            s_id
+                            and self.coordinator
+                            and hasattr(self.coordinator, "interface_to_stable_id")
+                        ):
+                            if any(
+                                self.coordinator.interface_to_stable_id.get(s) == s_id
+                                for s in scanned_wireless_candidates
+                            ):
+                                return True
+                        for s in scanned_wireless_candidates:
+                            if r_name and (
+                                s.startswith(r_name)
+                                or r_name.replace("radio", "phy") in s
+                            ):
+                                return True
+                        return False
+
+                    if any(_is_cand_scanned(c) for c in candidate_names if c):
                         continue
 
                     for prev_dev in self.coordinator.data.all_connected_devices:
@@ -184,6 +230,7 @@ class UbusDevicesMixin:
                             prev_dev.is_wireless
                             and prev_dev.connected
                             and prev_dev.interface in candidate_names
+                            and not _is_cand_scanned(prev_dev.interface)
                         ):
                             dev = devices.setdefault(
                                 prev_dev.mac,
@@ -218,10 +265,6 @@ class UbusDevicesMixin:
         # This helps identifying which physical port a wired device is on
         if self.trust_bridge_fdb:
             await self._process_bridge_fdb(devices)
-
-        # Always run fallback to ensure we catch any manually added or mesh interfaces
-        if self.packages.wireless is not False:
-            await self._process_hostapd_fallback(devices, scanned_wireless_candidates)
 
         # Final cleanup/standardization
         for dev in devices.values():
@@ -630,6 +673,8 @@ class UbusDevicesMixin:
                             clients = hostapd_data.get("clients")
                             if isinstance(clients, dict):
                                 self._merge_hostapd_clients(devices, clients, ifname)
+                            if scanned_candidates is not None:
+                                scanned_candidates.add(ifname)
                     except (
                         UbusTimeoutError,
                         UbusConnectionError,

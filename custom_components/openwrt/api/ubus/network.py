@@ -494,8 +494,7 @@ class UbusNetworkMixin:
                             existing.ssid = wifi.ssid
                         if not existing.mac_address:
                             existing.mac_address = wifi.mac_address
-                        if wifi.clients_count > 0:
-                            existing.clients_count = wifi.clients_count
+                        existing.clients_count = wifi.clients_count
                         break
 
         return unique_ifaces
