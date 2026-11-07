@@ -128,11 +128,33 @@ class LuciRpcFeaturesMixin:
                 raise LuciRpcError(msg) from err
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
-        """Download a file from the router via LuCI RPC file.read."""
+        """Download a file from the router via LuCI RPC."""
         try:
             import base64
+            import shlex
 
-            # Try LuCI file.read first
+            # 1. Try ubus file.read via LuCI RPC
+            try:
+                res = await self._rpc_call(
+                    "ubus",
+                    "call",
+                    ["file", "read", {"path": remote_path, "base64": True}],
+                )
+                if res and isinstance(res, dict) and "data" in res:
+                    data = base64.b64decode(res["data"])
+                    await asyncio.to_thread(self._write_bytes, local_path, data)
+                    return True
+            except (
+                LuciRpcTimeoutError,
+                LuciRpcConnectionError,
+                LuciRpcSslError,
+                LuciRpcAuthError,
+            ):
+                raise
+            except Exception as err:
+                _LOGGER.debug("LuCI RPC ubus file.read failed: %s", err)
+
+            # 2. Try legacy LuCI file.read (custom/older LuCI modules)
             try:
                 res = await self._rpc_call("file", "read", [remote_path])
                 if res and isinstance(res, str):
@@ -147,13 +169,26 @@ class LuciRpcFeaturesMixin:
                 LuciRpcAuthError,
             ):
                 raise
-            except LuciRpcError:
-                # Fallback to sys.exec if file read is not available
-                # Fabian's AX3600 has openssl but no standalone base64 command
-                cmd = f"openssl base64 -in {remote_path} || base64 {remote_path} || cat {remote_path} | base64"
-                output = await self.execute_command(cmd)
-                if output:
-                    data = base64.b64decode(output.replace("\n", "").replace("\r", ""))
+            except Exception as err:
+                _LOGGER.debug("LuCI RPC file.read failed: %s", err)
+
+            # 3. Fallback to sys.exec command with stderr redirection (#212)
+            safe_path = shlex.quote(remote_path)
+            cmd = (
+                f"openssl base64 -in {safe_path} 2>/dev/null || "
+                f"base64 {safe_path} 2>/dev/null || "
+                f"cat {safe_path} 2>/dev/null | base64 2>/dev/null"
+            )
+            output = await self.execute_command(cmd)
+            if output:
+                lines = [
+                    line.strip()
+                    for line in output.splitlines()
+                    if line.strip() and not line.strip().startswith("sh: ")
+                ]
+                clean_b64 = "".join(lines)
+                if clean_b64:
+                    data = base64.b64decode(clean_b64)
                     await asyncio.to_thread(self._write_bytes, local_path, data)
                     return True
         except (

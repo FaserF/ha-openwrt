@@ -179,3 +179,104 @@ async def test_ubus_download_file_base64() -> None:
             "file", "read", {"path": "/tmp/backup.tar.gz", "base64": True}
         )
         mock_file_handle.write.assert_called_once_with(raw_content)
+
+
+@pytest.mark.asyncio
+async def test_luci_rpc_download_file_ubus_success() -> None:
+    """Test that LuciRpcClient.download_file succeeds via ubus file.read."""
+    import base64
+
+    from custom_components.openwrt.api.luci_rpc import LuciRpcClient
+
+    client = LuciRpcClient(
+        MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="pwd"
+    )
+    raw_content = b"fake binary tarball content \x8b\x00"
+    b64_content = base64.b64encode(raw_content).decode("ascii")
+
+    with (
+        patch.object(client, "_rpc_call", new_callable=AsyncMock) as mock_rpc,
+        patch("builtins.open", MagicMock()) as mock_file,
+    ):
+        mock_rpc.return_value = {"data": b64_content}
+        mock_file_handle = MagicMock()
+        mock_file.return_value.__enter__.return_value = mock_file_handle
+
+        success = await client.download_file(
+            "/tmp/backup.tar.gz", "/tmp/local_backup.tar.gz"
+        )
+        assert success is True
+        mock_rpc.assert_called_once_with(
+            "ubus",
+            "call",
+            ["file", "read", {"path": "/tmp/backup.tar.gz", "base64": True}],
+        )
+        mock_file_handle.write.assert_called_once_with(raw_content)
+
+
+@pytest.mark.asyncio
+async def test_luci_rpc_download_file_fallback_stderr_handling() -> None:
+    """Test that LuciRpcClient.download_file handles stderr and falls back cleanly (#212)."""
+    import base64
+
+    from custom_components.openwrt.api.luci_rpc import LuciRpcClient
+    from custom_components.openwrt.api.luci_rpc.exceptions import LuciRpcError
+
+    client = LuciRpcClient(
+        MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="pwd"
+    )
+    raw_content = b"fake binary tarball content \x8b\x00"
+    b64_content = base64.b64encode(raw_content).decode("ascii")
+
+    with (
+        patch.object(client, "_rpc_call", new_callable=AsyncMock) as mock_rpc,
+        patch.object(client, "execute_command", new_callable=AsyncMock) as mock_exec,
+        patch("builtins.open", MagicMock()) as mock_file,
+    ):
+        mock_rpc.side_effect = LuciRpcError("404 Not Found")
+        mock_exec.return_value = f"sh: openssl: not found\n{b64_content}"
+        mock_file_handle = MagicMock()
+        mock_file.return_value.__enter__.return_value = mock_file_handle
+
+        success = await client.download_file(
+            "/tmp/backup.tar.gz", "/tmp/local_backup.tar.gz"
+        )
+        assert success is True
+        assert "2>/dev/null" in mock_exec.call_args[0][0]
+        mock_file_handle.write.assert_called_once_with(raw_content)
+
+
+@pytest.mark.asyncio
+async def test_luci_rpc_download_file_legacy_success() -> None:
+    """Test that LuciRpcClient.download_file succeeds via legacy file.read."""
+    import base64
+
+    from custom_components.openwrt.api.luci_rpc import LuciRpcClient
+    from custom_components.openwrt.api.luci_rpc.exceptions import LuciRpcError
+
+    client = LuciRpcClient(
+        MagicMock(), MagicMock(), host="192.168.1.1", username="root", password="pwd"
+    )
+    raw_content = b"fake binary tarball content \x8b\x00"
+    b64_content = base64.b64encode(raw_content).decode("ascii")
+
+    async def rpc_side_effect(module, method, params=None, *args, **kwargs):
+        if module == "ubus":
+            raise LuciRpcError("Method not found")
+        if module == "file" and method == "read":
+            return b64_content
+        return None
+
+    with (
+        patch.object(client, "_rpc_call", new_callable=AsyncMock) as mock_rpc,
+        patch("builtins.open", MagicMock()) as mock_file,
+    ):
+        mock_rpc.side_effect = rpc_side_effect
+        mock_file_handle = MagicMock()
+        mock_file.return_value.__enter__.return_value = mock_file_handle
+
+        success = await client.download_file(
+            "/tmp/backup.tar.gz", "/tmp/local_backup.tar.gz"
+        )
+        assert success is True
+        mock_file_handle.write.assert_called_once_with(raw_content)
