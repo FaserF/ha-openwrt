@@ -149,15 +149,19 @@ class OpenWrtClientHelpersMixin:
         On APK firmware this is /etc/apk/world; on opkg firmware it is every
         package flagged "user" in /usr/lib/opkg/status. Returns None when the
         list cannot be read, so callers can tell "nothing extra" from "unknown".
+        The read must end with a success marker: a cat or awk that fails after
+        the start marker is printed (not every transport reports the exit
+        status) would otherwise look like an empty list.
         """
         marker = "__OPENWRT_HA_PKG_LIST__"
+        read_ok = "__OPENWRT_HA_PKG_READ_OK__"
         cmd = (
             f"echo {marker}; "
             "if [ -f /etc/apk/world ]; then cat /etc/apk/world; "
             "elif [ -f /usr/lib/opkg/status ]; then "
             "awk '/^Package:/{p=$2} /^Status:/ && / user /{print p}' "
             "/usr/lib/opkg/status; "
-            "else echo __NO_PACKAGE_DB__; fi"
+            f"else echo __NO_PACKAGE_DB__; fi && echo {read_ok}"
         )
         try:
             output = await self.execute_command(cmd)
@@ -166,9 +170,10 @@ class OpenWrtClientHelpersMixin:
             return None
         if not output or marker not in output:
             return None
-        body = output.split(marker, 1)[1]
-        if "__NO_PACKAGE_DB__" in body:
+        body = output.split(marker, 1)[1].rstrip()
+        if "__NO_PACKAGE_DB__" in body or not body.endswith(read_ok):
             return None
+        body = body[: -len(read_ok)]
         packages: list[str] = []
         for raw in body.split():
             # "!pkg" in apk world is a "never install" constraint (left by
