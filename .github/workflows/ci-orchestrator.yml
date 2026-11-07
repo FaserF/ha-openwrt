@@ -81,6 +81,13 @@ jobs:
         run: |
           DOMAIN=$(python -c "import json, glob; print(json.load(open(glob.glob('custom_components/*/manifest.json')[0]))['domain'])")
           mypy "custom_components/$DOMAIN"
+      - name: Check Quality Scale
+        run: |
+          if [ -f script/check_quality_scale.py ]; then
+            pip install probatio packaging
+            python script/check_quality_scale.py
+          fi
+
 
       - name: Run Tests
         run: |

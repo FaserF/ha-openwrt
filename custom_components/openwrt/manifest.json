@@ -120,5 +120,6 @@
       "modelName": "OpenWrt*"
     }
   ],
-  "version": "2.5.5-dev0"
+  "version": "2.5.5-dev0",
+  "quality_scale": "platinum"
 }
