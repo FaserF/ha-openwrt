@@ -429,7 +429,12 @@ class FirmwareMixin(AsuFirmwareMixin):
                     break
 
         if best_asset:
-            data.firmware_install_url = best_asset.get("browser_download_url")
+            new_url = best_asset.get("browser_download_url")
+            if new_url != data.firmware_install_url:
+                # The checksum carried over from the last poll belongs to the
+                # previous image; keep it only while the URL is unchanged.
+                data.firmware_checksum = ""
+            data.firmware_install_url = new_url
             if sha_url:
                 await self._fetch_custom_checksum(
                     data, sha_url, best_asset.get("name", ""), session

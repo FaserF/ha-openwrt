@@ -414,6 +414,53 @@ async def test_custom_checksum_matches_exact_file_name(hass: HomeAssistant) -> N
     assert data.firmware_checksum == "33" * 32
 
 
+@pytest.mark.asyncio
+async def test_custom_checksum_cleared_when_the_image_url_changes(
+    hass: HomeAssistant,
+) -> None:
+    """A new release without a matching checksum line drops the old checksum."""
+    entry = MagicMock()
+    entry.entry_id = "test_entry_id"
+    entry.options = {"update_interval": 30}
+    entry.data = {"host": "192.0.2.1"}
+    coordinator = OpenWrtDataCoordinator(hass, entry, AsyncMock())
+    coordinator._build_sysupgrade_pattern = MagicMock(return_value=r"fw-.*\.bin")
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.text = AsyncMock(return_value=f"{'44' * 32}  some-other-file.bin\n")
+    mock_session = MagicMock(spec=aiohttp.ClientSession)
+    mock_session.get.return_value.__aenter__.return_value = mock_resp
+
+    def release(name: str) -> dict:
+        return {
+            "assets": [
+                {"name": name, "browser_download_url": f"https://example.com/{name}"},
+                {
+                    "name": "sha256sums",
+                    "browser_download_url": "https://example.com/sha256sums",
+                },
+            ]
+        }
+
+    data = OpenWrtData()
+    data.firmware_install_url = "https://example.com/fw-1.bin"
+    data.firmware_checksum = "33" * 32
+
+    # Same image: the checksum fetched for it earlier stays.
+    await coordinator._process_custom_release_assets(
+        data, release("fw-1.bin"), mock_session
+    )
+    assert data.firmware_checksum == "33" * 32
+
+    # New image, no line for it in sha256sums: no stale checksum.
+    await coordinator._process_custom_release_assets(
+        data, release("fw-2.bin"), mock_session
+    )
+    assert data.firmware_install_url == "https://example.com/fw-2.bin"
+    assert data.firmware_checksum == ""
+
+
 # --- ASU image selection and checksum ---
 
 
