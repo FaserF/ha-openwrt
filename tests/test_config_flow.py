@@ -510,3 +510,51 @@ async def test_ssdp_discovery(hass) -> None:
     assert result["step_id"] == "confirm_discovery"
     mock_abort_match.assert_called_with({"host": "192.168.1.1"})
     mock_set_uid.assert_called_with("02:00:00:12:34:56")
+
+
+async def test_selective_tracking_populates_saved_macs(hass) -> None:
+    """Test that selective_tracking step pre-populates previously saved MAC addresses (#206)."""
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+    from custom_components.openwrt.const import (
+        CONF_MANUAL_TRACKED_DEVICES,
+        CONF_TRACKED_DEVICES,
+    )
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    saved_manual = "11:22:33:44:55:66\naa:bb:cc:dd:ee:ff"
+    saved_tracked = ["11:22:33:44:55:66"]
+
+    flow._data = {
+        "host": "192.168.1.1",
+        "connection_type": "ubus",
+        CONF_MANUAL_TRACKED_DEVICES: saved_manual,
+        CONF_TRACKED_DEVICES: saved_tracked,
+    }
+
+    mock_client = AsyncMock()
+    mock_client.connect.return_value = True
+    mock_client.disconnect.return_value = None
+    mock_client.get_connected_devices.return_value = []
+    mock_client.get_dhcp_leases.return_value = []
+
+    with patch(
+        "custom_components.openwrt.config_flow.create_client",
+        return_value=mock_client,
+    ):
+        result = await flow.async_step_selective_tracking()
+        assert result["type"].lower() == "form"
+        assert result["step_id"] == "selective_tracking"
+
+        schema = result["data_schema"].schema
+        manual_key = next(
+            k
+            for k in schema
+            if getattr(k, "schema", None) == CONF_MANUAL_TRACKED_DEVICES
+        )
+        tracked_key = next(
+            k for k in schema if getattr(k, "schema", None) == CONF_TRACKED_DEVICES
+        )
+
+        assert manual_key.default() == saved_manual
+        assert tracked_key.default() == saved_tracked

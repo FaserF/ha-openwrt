@@ -2038,6 +2038,18 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             _LOGGER.warning("Could not fetch devices for selective tracking: %s", err)
             errors["base"] = "cannot_connect"
 
+        current_tracked = self._data.get(CONF_TRACKED_DEVICES, [])
+        if isinstance(current_tracked, str):
+            current_tracked = [
+                d.strip() for d in current_tracked.splitlines() if d.strip()
+            ]
+        current_manual = self._data.get(CONF_MANUAL_TRACKED_DEVICES, "")
+        if isinstance(current_manual, list):
+            current_manual = "\n".join(current_manual)
+
+        for mac in current_tracked:
+            device_options.setdefault(mac, mac)
+
         options: list[selector.SelectOptionDict] = [
             {"value": k, "label": v} for k, v in device_options.items()
         ]
@@ -2046,14 +2058,20 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             step_id="selective_tracking",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_TRACKED_DEVICES): selector.SelectSelector(
+                    vol.Optional(
+                        CONF_TRACKED_DEVICES,
+                        default=current_tracked,
+                    ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=options,
                             multiple=True,
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     ),
-                    vol.Optional(CONF_MANUAL_TRACKED_DEVICES): selector.TextSelector(
+                    vol.Optional(
+                        CONF_MANUAL_TRACKED_DEVICES,
+                        default=current_manual,
+                    ): selector.TextSelector(
                         selector.TextSelectorConfig(
                             multiline=True,
                             type=selector.TextSelectorType.TEXT,
