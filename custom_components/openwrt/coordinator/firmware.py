@@ -65,7 +65,10 @@ class FirmwareMixin(_Base):
         try:
             info = await self.client.async_refresh_device_info()
         except Exception as err:
+            # Keep it pending, so the next poll retries instead of showing the
+            # cached (pre-upgrade) device info until the next slow poll.
             _LOGGER.debug("Could not refresh device info after reboot: %s", err)
+            self._device_info_refresh_pending = True
             return
         if info:
             data.device_info = info

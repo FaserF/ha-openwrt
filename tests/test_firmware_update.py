@@ -354,6 +354,23 @@ async def test_device_info_refreshed_after_install_reconnect() -> None:
 
 
 @pytest.mark.asyncio
+async def test_failed_device_info_refresh_is_retried() -> None:
+    """A refresh that fails while the router comes back is retried next poll."""
+    coordinator, _entry, data = _upgrade_coordinator()
+    coordinator._device_info_refresh_pending = True
+    coordinator.client.async_refresh_device_info = AsyncMock(
+        side_effect=[TimeoutError("ubus not ready"), data.device_info]
+    )
+
+    await coordinator._async_refresh_device_info_after_reboot(data)
+    assert coordinator._device_info_refresh_pending is True
+    await coordinator._async_refresh_device_info_after_reboot(data)
+    assert coordinator._device_info_refresh_pending is False
+    await coordinator._async_refresh_device_info_after_reboot(data)
+    assert coordinator.client.async_refresh_device_info.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_client_refresh_device_info_updates_cache_and_forces_slow_poll() -> None:
     """The client re-reads device info and makes the next poll a slow poll."""
     from custom_components.openwrt.api.base import DeviceInfo
