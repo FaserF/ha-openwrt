@@ -12,7 +12,9 @@ HEADERS = {
 
 def call_tool(tool_name: str, args: dict):
     url = f"{MCPHUB_URL}/{tool_name}"
-    req = urllib.request.Request(url, data=json.dumps(args).encode("utf-8"), headers=HEADERS)
+    req = urllib.request.Request(
+        url, data=json.dumps(args).encode("utf-8"), headers=HEADERS
+    )
     with urllib.request.urlopen(req, timeout=30) as resp:
         res = json.loads(resp.read().decode("utf-8"))
         content = res.get("content", [])
@@ -32,14 +34,22 @@ if isinstance(integrations, dict):
     for e in entries:
         domain = e.get("domain", "")
         title = e.get("title", "")
-        if "openwrt" in domain.lower() or "xiaomi" in title.lower() or "openwrt" in title.lower():
-            print(f"  -> Found OpenWrt Entry: {title} (domain: {domain}, entry_id: {e.get('entry_id')}, state: {e.get('state')})")
+        if (
+            "openwrt" in domain.lower()
+            or "xiaomi" in title.lower()
+            or "openwrt" in title.lower()
+        ):
+            print(
+                f"  -> Found OpenWrt Entry: {title} (domain: {domain}, entry_id: {e.get('entry_id')}, state: {e.get('state')})"
+            )
 
 print("\n=== 2. Fetching all OpenWrt Entities via search ===")
 all_entities = []
 offset = 0
 while True:
-    res = call_tool("home-assistant-ha_search", {"query": "openwrt", "offset": offset, "limit": 50})
+    res = call_tool(
+        "home-assistant-ha_search", {"query": "openwrt", "offset": offset, "limit": 50}
+    )
     if not isinstance(res, dict) or "entities" not in res:
         break
     ents = res.get("entities", [])
@@ -68,11 +78,17 @@ print("\nState summary across all entities:")
 for s, count in sorted(states_summary.items()):
     print(f"  {s}: {count}")
 
-print(f"\nEntities with unavailable/unknown state (excluding buttons): {len(bad_states)}")
+print(
+    f"\nEntities with unavailable/unknown state (excluding buttons): {len(bad_states)}"
+)
 for ent in bad_states:
-    print(f"  - {ent.get('entity_id')} [{ent.get('state')}]: {ent.get('friendly_name')}")
+    print(
+        f"  - {ent.get('entity_id')} [{ent.get('state')}]: {ent.get('friendly_name')}"
+    )
 
 print("\n=== 4. Detailed check of all unavailable / unknown entities ===")
 for ent in all_entities:
     if ent.get("state") in ("unavailable", "unknown"):
-        print(f"  {ent.get('entity_id')} [{ent.get('state')}]: {ent.get('friendly_name')}")
+        print(
+            f"  {ent.get('entity_id')} [{ent.get('state')}]: {ent.get('friendly_name')}"
+        )
