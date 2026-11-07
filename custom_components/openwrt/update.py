@@ -38,7 +38,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
-from .helpers.asu import AsuClient
+from .helpers.asu import AsuClient, sysupgrade_image_types
 from .update_release_notes import FirmwareReleaseNotesMixin
 
 _LOGGER = logging.getLogger(__name__)
@@ -393,9 +393,11 @@ class OpenWrtUpdateEntity(
             )
             asu_client = AsuClient(self.hass, asu_url)
 
+            target = self.coordinator._get_target(data.device_info.target)
+            efi, rootfs_type = await self._async_router_boot_info()
             request_hash = await asu_client.request_build(
                 version=version,
-                target=self.coordinator._get_target(data.device_info.target),
+                target=target,
                 board_name=data.asu_profile or data.device_info.board_name,
                 packages=packages,
             )
@@ -404,7 +406,11 @@ class OpenWrtUpdateEntity(
                 "ASU build requested (hash: %s). Waiting for image...",
                 request_hash,
             )
-            image = await asu_client.poll_build_status(request_hash)
+            image = await asu_client.poll_build_status(
+                request_hash,
+                image_types=sysupgrade_image_types(target, efi),
+                rootfs_type=rootfs_type,
+            )
 
             _LOGGER.info(
                 "ASU build complete. Flashing image from: %s",
@@ -424,6 +430,27 @@ class OpenWrtUpdateEntity(
             _LOGGER.exception("ASU firmware update failed")
             msg = f"ASU firmware update failed: {err}"
             raise HomeAssistantError(msg) from err
+
+    async def _async_router_boot_info(self) -> tuple[bool, str]:
+        """Return whether the router booted via EFI, and its root filesystem.
+
+        Both decide which ASU image to flash: x86-style targets need the
+        combined image that matches the boot mode, and the image should keep
+        the router's filesystem (rootfs_type, as owut reads it). Unknown
+        values fall back to a legacy boot and the default filesystem.
+        """
+        try:
+            output = await self.coordinator.client.execute_command(
+                "[ -d /sys/firmware/efi ] && echo __OPENWRT_HA_EFI__; "
+                'echo "__OPENWRT_HA_ROOTFS__$(ubus call system board 2>/dev/null '
+                "| jsonfilter -e '@.rootfs_type' 2>/dev/null)\""
+            )
+        except Exception as err:
+            _LOGGER.debug("Could not read the boot mode and root filesystem: %s", err)
+            return False, ""
+        output = output if isinstance(output, str) else ""
+        match = re.search(r"__OPENWRT_HA_ROOTFS__([a-z0-9]*)", output)
+        return "__OPENWRT_HA_EFI__" in output, match.group(1) if match else ""
 
     async def _async_perform_backup(self) -> None:
         """Perform a backup and download it to HA."""

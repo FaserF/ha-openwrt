@@ -49,19 +49,47 @@ class AsuImage(NamedTuple):
     sha256: str
 
 
-def select_sysupgrade_image(images: list[dict[str, Any]]) -> dict[str, Any]:
-    """Pick the sysupgrade image from an ASU build's image list.
+# Targets whose sysupgrade takes the combined disk image instead of a
+# "sysupgrade" image (owut chooses the same way).
+COMBINED_IMAGE_TARGETS = ("x86", "armsr", "loongarch", "loongarch64")
+
+
+def sysupgrade_image_types(target: str, efi: bool) -> tuple[str, ...]:
+    """Return the image types sysupgrade accepts on this target, preferred first.
+
+    x86, armsr and loongarch64 publish "combined" and/or "combined-efi"
+    images and no "sysupgrade" one: an EFI boot takes "combined-efi", a
+    legacy boot "combined".
+    """
+    if target.split("/", 1)[0] in COMBINED_IMAGE_TARGETS:
+        return ("sysupgrade", "combined-efi" if efi else "combined")
+    return ("sysupgrade",)
+
+
+def select_sysupgrade_image(
+    images: list[dict[str, Any]],
+    image_types: tuple[str, ...] = ("sysupgrade",),
+    rootfs_type: str = "",
+) -> dict[str, Any]:
+    """Pick the image to hand sysupgrade from an ASU build's image list.
 
     Entries look like profiles.json's: name, type, filesystem, sha256,
-    sha256_unsigned. Only an image whose type is "sysupgrade" is accepted,
-    since sysupgrade must never be handed a factory or kernel image. When
-    several filesystems are built, squashfs (the OpenWrt default) wins.
+    sha256_unsigned. Only an image of one of image_types is accepted (the
+    first type that has one wins), since sysupgrade must never be handed a
+    factory or kernel image. Among those, the router's own root filesystem
+    wins, then squashfs (the OpenWrt default).
     """
-    candidates = [
-        img
-        for img in images
-        if isinstance(img, dict) and img.get("type") == "sysupgrade" and img.get("name")
-    ]
+    candidates: list[dict[str, Any]] = []
+    for image_type in image_types:
+        candidates = [
+            img
+            for img in images
+            if isinstance(img, dict)
+            and img.get("type") == image_type
+            and img.get("name")
+        ]
+        if candidates:
+            break
     if not candidates:
         found = [
             (img.get("type"), img.get("name"))
@@ -70,8 +98,17 @@ def select_sysupgrade_image(images: list[dict[str, Any]]) -> dict[str, Any]:
         ]
         msg = f"ASU build contains no sysupgrade image (found: {found})"
         raise AsuClientError(msg)
-    squashfs = [img for img in candidates if img.get("filesystem") == "squashfs"]
-    image = (squashfs or candidates)[0]
+    for filesystem in (rootfs_type, "squashfs"):
+        same_fs = [
+            img
+            for img in candidates
+            if filesystem and img.get("filesystem") == filesystem
+        ]
+        if same_fs:
+            image = same_fs[0]
+            break
+    else:
+        image = candidates[0]
     if not re.fullmatch(r"[0-9a-fA-F]{64}", str(image.get("sha256", ""))):
         msg = f"ASU image {image['name']} has no valid sha256; refusing to flash it"
         raise AsuClientError(msg)
@@ -162,6 +199,8 @@ class AsuClient:
         request_hash: str,
         timeout: float = 600.0,
         step: float = 5.0,
+        image_types: tuple[str, ...] = ("sysupgrade",),
+        rootfs_type: str = "",
     ) -> AsuImage:
         """Poll the ASU server until the build is ready.
 
@@ -169,6 +208,8 @@ class AsuClient:
             request_hash: The hash from request_build.
             timeout: Maximum time to wait in seconds (builds can take 2-5 min).
             step: Seconds between polling attempts.
+            image_types: Image types sysupgrade accepts on this target.
+            rootfs_type: The router's root filesystem, preferred when built.
 
         Returns:
             The sysupgrade image's download URL and published sha256.
@@ -185,7 +226,9 @@ class AsuClient:
             # The ASU API usually returns something like "Building", "In Queue", "Done"
             if "done" in status or resp.get("status") == 200:
                 bin_dir = resp.get("bin_dir")
-                image = select_sysupgrade_image(resp.get("images", []))
+                image = select_sysupgrade_image(
+                    resp.get("images", []), image_types, rootfs_type
+                )
                 if not bin_dir:
                     msg = f"Build marked as Done, but missing bin_dir: {resp}"
                     raise AsuClientError(msg)

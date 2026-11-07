@@ -525,7 +525,7 @@ async def test_asu_poll_prefers_squashfs_sysupgrade(hass: HomeAssistant) -> None
     [
         # Only a factory image (previously flashed as the fallback).
         [{"name": "fw-squashfs-factory.bin", "type": "factory", "sha256": SHA}],
-        # Combined (x86) images are not sysupgrade images.
+        # Combined (x86) images are only taken on targets that use them.
         [{"name": "fw-combined-efi.img.gz", "type": "combined-efi", "sha256": SHA}],
         # A sysupgrade image without a usable checksum.
         [{"name": "fw-sysupgrade.bin", "type": "sysupgrade"}],
@@ -1285,6 +1285,159 @@ async def test_asu_install_refused_without_package_list(hass: HomeAssistant) -> 
         await entity.async_install(version=None, backup=False)
     mock_asu.assert_not_called()
     coordinator.client.install_firmware.assert_not_called()
+
+
+X86_IMAGES = [
+    {"name": "fw-kernel.bin", "type": "kernel", "sha256": SHA},
+    {
+        "name": "fw-ext4-rootfs.img.gz",
+        "type": "rootfs",
+        "filesystem": "ext4",
+        "sha256": SHA,
+    },
+    {
+        "name": "fw-ext4-combined.img.gz",
+        "type": "combined",
+        "filesystem": "ext4",
+        "sha256": SHA,
+    },
+    {
+        "name": "fw-squashfs-combined.img.gz",
+        "type": "combined",
+        "filesystem": "squashfs",
+        "sha256": SHA,
+    },
+    {
+        "name": "fw-ext4-combined-efi.img.gz",
+        "type": "combined-efi",
+        "filesystem": "ext4",
+        "sha256": SHA,
+    },
+    {
+        "name": "fw-squashfs-combined-efi.img.gz",
+        "type": "combined-efi",
+        "filesystem": "squashfs",
+        "sha256": SHA,
+    },
+]
+
+
+@pytest.mark.parametrize(
+    ("target", "efi", "rootfs", "expected"),
+    [
+        ("x86/64", True, "ext4", "fw-ext4-combined-efi.img.gz"),
+        ("x86/64", True, "", "fw-squashfs-combined-efi.img.gz"),
+        ("x86/64", False, "squashfs", "fw-squashfs-combined.img.gz"),
+        ("x86/64", False, "ext4", "fw-ext4-combined.img.gz"),
+        ("armsr/armv8", True, "squashfs", "fw-squashfs-combined-efi.img.gz"),
+    ],
+)
+def test_combined_image_follows_boot_mode_and_rootfs(
+    target: str, efi: bool, rootfs: str, expected: str
+) -> None:
+    """x86-style targets flash the combined image for their boot mode and filesystem."""
+    from custom_components.openwrt.helpers.asu import (
+        select_sysupgrade_image,
+        sysupgrade_image_types,
+    )
+
+    image = select_sysupgrade_image(
+        X86_IMAGES, sysupgrade_image_types(target, efi), rootfs
+    )
+    assert image["name"] == expected
+
+
+def test_other_targets_take_only_sysupgrade_images() -> None:
+    """Elsewhere a combined image is never chosen, and a sysupgrade one keeps the router's filesystem."""
+    from custom_components.openwrt.helpers.asu import (
+        AsuClientError,
+        select_sysupgrade_image,
+        sysupgrade_image_types,
+    )
+
+    assert sysupgrade_image_types("qualcommax/ipq807x", efi=True) == ("sysupgrade",)
+    with pytest.raises(AsuClientError):
+        select_sysupgrade_image(
+            X86_IMAGES, sysupgrade_image_types("ath79/generic", False)
+        )
+    images = [
+        {
+            "name": "fw-squashfs-sysupgrade.bin",
+            "type": "sysupgrade",
+            "filesystem": "squashfs",
+            "sha256": SHA,
+        },
+        {
+            "name": "fw-ext4-sysupgrade.bin",
+            "type": "sysupgrade",
+            "filesystem": "ext4",
+            "sha256": SHA,
+        },
+    ]
+    assert select_sysupgrade_image(images)["name"] == "fw-squashfs-sysupgrade.bin"
+    assert (
+        select_sysupgrade_image(images, rootfs_type="ext4")["name"]
+        == "fw-ext4-sysupgrade.bin"
+    )
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        ("__OPENWRT_HA_EFI__\n__OPENWRT_HA_ROOTFS__ext4\n", (True, "ext4")),
+        ("__OPENWRT_HA_ROOTFS__squashfs\n", (False, "squashfs")),
+        ("__OPENWRT_HA_ROOTFS__\n", (False, "")),
+        ("", (False, "")),
+        (RuntimeError("no route"), (False, "")),
+    ],
+)
+@pytest.mark.asyncio
+async def test_router_boot_info_parsing(
+    hass: HomeAssistant, output: str | Exception, expected: tuple[bool, str]
+) -> None:
+    """Boot mode and root filesystem come from one command; unknown means legacy/default."""
+    entity, coordinator = _entity(hass, _release_router_data())
+    if isinstance(output, Exception):
+        coordinator.client.execute_command = AsyncMock(side_effect=output)
+    else:
+        coordinator.client.execute_command = AsyncMock(return_value=output)
+    assert await entity._async_router_boot_info() == expected
+
+
+@pytest.mark.asyncio
+async def test_asu_install_on_x86_asks_for_the_matching_combined_image(
+    hass: HomeAssistant,
+) -> None:
+    """The ASU install passes the boot mode's image type and the router's filesystem."""
+    from custom_components.openwrt.helpers.asu import AsuImage
+
+    data = _release_router_data()
+    data.device_info.target = "x86/64"
+    data.asu_status = "available"
+    data.asu_supported = True
+    data.asu_update_available = True
+    data.asu_target_version = "24.10.8"
+    data.asu_profile = "generic"
+    entity, coordinator = _entity(hass, data)
+    coordinator._get_target = MagicMock(side_effect=lambda t: t)
+    coordinator.client.get_user_installed_packages = AsyncMock(
+        return_value=["base-files"]
+    )
+    coordinator.client.execute_command = AsyncMock(
+        return_value="__OPENWRT_HA_EFI__\n__OPENWRT_HA_ROOTFS__ext4\n"
+    )
+
+    asu_instance = MagicMock()
+    asu_instance.request_build = AsyncMock(return_value="hash")
+    asu_instance.poll_build_status = AsyncMock(
+        return_value=AsuImage(url=f"{ASU}/store/x/img.gz", sha256=SHA)
+    )
+    with patch("custom_components.openwrt.update.AsuClient", return_value=asu_instance):
+        await entity.async_install(version=None, backup=False)
+
+    kwargs = asu_instance.poll_build_status.call_args.kwargs
+    assert kwargs["image_types"] == ("sysupgrade", "combined-efi")
+    assert kwargs["rootfs_type"] == "ext4"
 
 
 @pytest.mark.asyncio

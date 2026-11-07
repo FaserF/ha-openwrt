@@ -32,6 +32,7 @@ The plain sysupgrade image from downloads.openwrt.org only contains the default 
 - never flashes the plain image on a device ASU supports, or will support once it has indexed the release: it installs through ASU or not at all;
 - on devices ASU does not support, flashes the plain image only after confirming that every explicitly installed package (`/etc/apk/world`, or the packages opkg marks as user-installed) is part of the stock image for the running version. If any are not, or the check cannot be made, the install is refused and the message names the packages;
 - refuses an ASU build if it cannot read the router's package list, because ASU would then build the stock package set.
+- flashes the ASU image that sysupgrade takes on the router's target: the `sysupgrade` image, or on x86, armsr and loongarch64 the `combined-efi` image after an EFI boot and the `combined` image otherwise, built with the router's own root filesystem (`rootfs_type`) when ASU offers it.
 
 When an install is refused, upgrade by hand with `owut` or the LuCI Attended Sysupgrade page.
 
