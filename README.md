@@ -28,16 +28,23 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
 - **VPN Monitoring**:
   - Tracks status (Up/Down) for WireGuard and OpenVPN tunnels.
   - Monitors throughput (RX/TX) and detailed WireGuard peer statistics (handshake, transfer, allowed IPs).
+  - **Tailscale Integration**: Daemon backend state (`running`, `stopped`, `needs_login`, `starting`), login identity, active exit node, and peer count with native Reconnect and Re-authenticate buttons.
+- **Security & Threat Detection**:
+  - **AdBlock / Simple-AdBlock**: Track status, blocked domain counts, and toggle filtering.
+  - **Ban-IP**: Monitor banned IP counts and service state.
+  - **Snort IDS**: Monitors Snort Intrusion Detection System alert logs with real-time alert counts and threat metadata.
+  - **Firewall Connection Tracking (Conntrack)**: Real-time tracking of active network connections, maximum limit, and connection table utilization percentage.
 - **Network & Connectivity**:
   - **Latency/Ping**: Monitor network latency to a target (e.g. 8.8.8.8) with packet loss tracking.
   - **DHCP Monitoring**: Track the number of active DHCP leases.
   - **Public IP**: Track your external WAN IP address with change detection.
   - **Advanced Interface Diagnostics**: Individual sensors/attributes for IPv6 addresses, link speed (Mbps), duplex mode, and interface uptime.
   - **Multi-WAN (mwan3)**: Per interface an online binary sensor, the online ratio since the router booted, and a status sensor with mwan3's tracking state: `online`, `connecting` (answers again, recovery checks still running), `offline`, `disabled` (interface down) or `disconnecting`. Latency and packet loss sensors only have values if `check_quality` is enabled for the interface in mwan3 (which also lets mwan3 fail over on high latency or loss); without it mwan3 measures neither and the sensors are unavailable.
-- **4G/5G QModem Support (ModemManager integration)**:
+- **4G/5G QModem & GPS Support (ModemManager & NMEA)**:
   - Comprehensive signal diagnostics: RSRP, RSRQ, RSSI, SINR for LTE and 5G.
   - Device health: Modem temperature, voltage, and ISP detection.
   - SIM status: Tracking SIM slots and connectivity state.
+  - **GPS Location Tracking**: Real-time `device_tracker` GPS entity providing latitude, longitude, altitude, and speed from modem NMEA output (via `stty` + `timeout`).
 - **Configurable Control**:
   - **WiFi TX Power**: Native slider to control transmission power of WiFi radios.
   - **SQM (Smart Queue Management)**:
@@ -61,9 +68,11 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
   - **Wireless Management**: WPS control switches and buttons to disconnect specific wireless clients.
 - **Smart Tracking & Events**:
   - **Multi-source Device Tracking**: Combines DHCP leases with ARP/NDP tables (`ip neigh`) for instant and reliable presence detection.
+  - **Selective Device Tracking**: Multi-select dropdown in setup and options flow to track only chosen devices. Device labels are enriched with friendly hostnames from DHCP leases, Home Assistant Device Registry, cross-AP shared registries, and hardware MAC vendor lookups (Apple, Samsung, Raspberry Pi, Espressif, etc.), with multiline text input for manual/stealth MACs.
   - **Persistent History**: Tracks `initially_seen` and `last_seen` timestamps for every device, persisting across Home Assistant restarts.
   - **Connection Type Detection**: Automatically identifies if a device is connected via `wired` or a specific WiFi band (`2.4GHz`, `5GHz`, `6GHz`).
   - **Topology Mapping**: Wireless clients are automatically linked to their respective Access Point via the `via_device` attribute.
+  - **Reverse DNS (PTR)**: Optional reverse DNS resolution to resolve hostnames for devices lacking DHCP names.
   - **Infrastructure Filtering**: Automatically identifies and filters out the router's own network interfaces to prevent circular self-tracking.
   - **New Device Event**: Fires `openwrt_new_device` when previously unknown MAC addresses are discovered.
 - **MQTT Presence Detection (Optional)**:
@@ -214,9 +223,18 @@ Some features require additional OpenWrt packages to be installed on your router
 | **etherwake** | Wake on LAN functionality |
 | **wireguard-tools** | WireGuard VPN Sensors |
 | **openvpn** | OpenVPN Sensors |
+| **tailscale** | Tailscale VPN Sensors and Control Buttons |
+| **luci-mod-rpc** | LuCI RPC Web API (Required for LuCI RPC connection mode) |
+| **luci-app-attendedsysupgrade** | Attended Sysupgrade (ASU) firmware updates |
+| **adblock** / **simple-adblock** | AdBlock domain filtering sensors and toggles |
+| **banip** | banIP service control and banned IP sensors |
+| **snort** | Snort IDS alerts and security monitoring |
 | **kmod-batman-adv** | Batman-adv Mesh Support (Kernel module) |
 | **batctl-default** or **batctl-full** | Batman-adv Control (Required for mesh data; `batctl-tiny` cannot list originators/neighbors/gateways, so only the mesh state is shown) |
 | **nlbwmon** | NLBWMon Top Bandwidth Hosts sensor (opt-in, requires `file.exec` rpcd ACL) |
+| **coreutils-stty** / **coreutils-timeout** | GPS Modem Tracking via serial NMEA interface |
+| **openssl-util** | CLI backup generation on modern OpenWrt releases |
+| **coreutils-base64** | CLI backup extraction and transmission fallback |
 
 ### 🛠️ Options Flow
 
@@ -238,6 +256,7 @@ You can control how the integration handles network clients (PCs, phones, IoT de
 > **Summary Sensors stay active!** Even if you disable "Track network clients", the **Connected Clients** and **Wireless Clients** sensors will always show the correct total count of active devices on your network.
 
 #### Other Options
+- **Selective Device Tracking**: Pick specifically which discovered devices to track from an alphabetically sorted dropdown with friendly names, or enter custom MAC addresses manually.
 - **Update Interval**: How frequently to poll data (default 30s). Adjust based on your router's performance.
 - **Consider Home**: Set the grace period (in seconds) for device presence detection (prevents devices from switching to "Away" during brief sleep cycles). Default is 180s.
 - **DHCP Software**:
@@ -245,6 +264,10 @@ You can control how the integration handles network clients (PCs, phones, IoT de
   - `dnsmasq`: Uses `/tmp/dhcp.leases`.
   - `odhcpd`: Uses `ubus call dhcp ipv4leases`.
   - `none`: Disables dynamic IP/hostname resolution to save resources.
+- **Automated Backups & Retention**: Enable automatic daily router configuration backups with configurable retention (default: 7 days).
+- **GPS Modem Tracking**: Enable/disable NMEA GPS location polling and customize GPS poll interval (10s to 86400s).
+- **Reverse DNS (PTR)**: Enable reverse DNS resolution for unnamed IP/ARP entries.
+- **Trust Stale ARP / Bridge FDB**: Control ARP and bridge forwarding table reachability heuristics.
 - **Custom Firmware Repo**: Provide a GitHub repo (e.g., `owner/repo`) if you use custom OpenWrt community builds to check for updates.
 - **Attended Sysupgrade Server**: Configure the URL for the ASU server (default: `https://sysupgrade.openwrt.org`).
 - **Enable NLBWMon Top Hosts Sensor** (default: off): When enabled, creates a sensor that ranks the top 5 bandwidth-consuming hosts using the `nlbw` CLI. Requires `nlbwmon` to be installed on the router and `file.exec` rpcd permission for `/usr/sbin/nlbw`. The integration automatically checks for availability at startup and skips entity creation if the binary is not found.

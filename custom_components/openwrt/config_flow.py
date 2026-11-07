@@ -208,6 +208,59 @@ def _build_mqtt_deploy_args(
     return mqtt_config, tracked_devices, consider_home
 
 
+def _resolve_tracked_device_label(
+    mac: str,
+    original_mac: str,
+    hostname: str | None = None,
+    shared_hostnames: dict[str, str] | None = None,
+    hass: Any = None,
+    suffix: str = "",
+) -> str:
+    """Resolve human-readable label for a tracked device across multiple registries."""
+    from .helpers.mac_vendor import get_mac_vendor_info
+
+    local = ""
+    if isinstance(hostname, str) and type(hostname).__name__ != "MagicMock":
+        trimmed = hostname.strip()
+        if trimmed and trimmed != "*":
+            local = trimmed
+
+    shared = ""
+    if isinstance(shared_hostnames, dict):
+        cand_shared = shared_hostnames.get(mac, "")
+        if isinstance(cand_shared, str) and type(cand_shared).__name__ != "MagicMock":
+            shared = cand_shared.strip()
+
+    ha_name = ""
+    if hass is not None:
+        with contextlib.suppress(Exception):
+            dev_reg = dr.async_get(hass)
+            if hasattr(dev_reg, "async_get_device"):
+                ha_dev = dev_reg.async_get_device(
+                    connections={(dr.CONNECTION_NETWORK_MAC, mac)}
+                )
+                if ha_dev:
+                    cand = getattr(ha_dev, "name_by_user", None) or getattr(
+                        ha_dev, "name", None
+                    )
+                    if (
+                        isinstance(cand, str)
+                        and type(cand).__name__ != "MagicMock"
+                        and cand.strip()
+                        and cand.lower() != mac.lower()
+                    ):
+                        ha_name = cand.strip()
+
+    vendor_name = ""
+    if not (local or shared or ha_name):
+        if vendor_info := get_mac_vendor_info(mac):
+            mfg, model = vendor_info
+            vendor_name = f"{mfg} {model}".strip() if model else mfg
+
+    name = local or shared or ha_name or vendor_name or original_mac
+    return f"{name} ({original_mac}){suffix}"
+
+
 def _generate_permission_table(
     perms: Any, translations: dict[str, str] | None = None
 ) -> str:
@@ -2017,8 +2070,10 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
 
                 # Hostnames already learned by other config entries, so an AP
                 # with no DHCP server of its own still shows real names.
-                shared_hostnames: dict[str, str] = self.hass.data.get(DOMAIN, {}).get(
-                    "hostname_registry", {}
+                shared_hostnames: dict[str, str] = (
+                    self.hass.data.get(DOMAIN, {}).get("hostname_registry", {})
+                    if isinstance(getattr(self.hass, "data", None), dict)
+                    else {}
                 )
 
                 # Combine them. "*" is dnsmasq's placeholder for a client that
@@ -2026,16 +2081,25 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
                 for d in devices:
                     if d.mac:
                         mac = d.mac.lower()
-                        local = "" if d.hostname == "*" else d.hostname
-                        name = local or shared_hostnames.get(mac) or d.mac
-                        device_options[mac] = f"{name} ({d.mac})"
+                        device_options[mac] = _resolve_tracked_device_label(
+                            mac=mac,
+                            original_mac=d.mac,
+                            hostname=d.hostname,
+                            shared_hostnames=shared_hostnames,
+                            hass=self.hass,
+                        )
                 for lease in leases:
                     if lease.mac:
                         mac = lease.mac.lower()
                         if mac not in device_options:
-                            local = "" if lease.hostname == "*" else lease.hostname
-                            name = local or shared_hostnames.get(mac) or lease.mac
-                            device_options[mac] = f"{name} ({lease.mac}) [Lease]"
+                            device_options[mac] = _resolve_tracked_device_label(
+                                mac=mac,
+                                original_mac=lease.mac,
+                                hostname=lease.hostname,
+                                shared_hostnames=shared_hostnames,
+                                hass=self.hass,
+                                suffix=" [Lease]",
+                            )
         except Exception as err:
             _LOGGER.warning("Could not fetch devices for selective tracking: %s", err)
             errors["base"] = "cannot_connect"
@@ -2049,12 +2113,20 @@ class OpenWrtConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         if isinstance(current_manual, list):
             current_manual = "\n".join(current_manual)
 
+        shared_hostnames = self.hass.data.get(DOMAIN, {}).get("hostname_registry", {})
         for mac in current_tracked:
-            device_options.setdefault(mac, mac)
+            if mac not in device_options:
+                device_options[mac] = _resolve_tracked_device_label(
+                    mac=mac.lower(),
+                    original_mac=mac,
+                    shared_hostnames=shared_hostnames,
+                    hass=self.hass,
+                )
 
-        options: list[selector.SelectOptionDict] = [
-            {"value": k, "label": v} for k, v in device_options.items()
-        ]
+        options: list[selector.SelectOptionDict] = sorted(
+            [{"value": k, "label": v} for k, v in device_options.items()],
+            key=lambda opt: opt["label"].lower(),
+        )
 
         return self.async_show_form(
             step_id="selective_tracking",
@@ -2486,8 +2558,10 @@ class OpenWrtOptionsFlow(OptionsFlow):
         # Hostnames learned by any config entry. An access point runs no DHCP
         # server, so its own view of a client is MAC-only; without this its
         # picker would list bare MAC addresses.
-        shared_hostnames: dict[str, str] = self.hass.data.get(DOMAIN, {}).get(
-            "hostname_registry", {}
+        shared_hostnames: dict[str, str] = (
+            self.hass.data.get(DOMAIN, {}).get("hostname_registry", {})
+            if isinstance(getattr(self.hass, "data", None), dict)
+            else {}
         )
 
         device_options: dict[str, str] = {}
@@ -2496,33 +2570,58 @@ class OpenWrtOptionsFlow(OptionsFlow):
                 if not device.mac:
                     continue
                 mac = device.mac.lower()
-                # "*" is dnsmasq's placeholder for a client that sent no hostname
-                hostname = "" if device.hostname == "*" else device.hostname
-                name = hostname or shared_hostnames.get(mac) or device.mac
-                device_options[mac] = f"{name} ({device.mac})"
+                device_options[mac] = _resolve_tracked_device_label(
+                    mac=mac,
+                    original_mac=device.mac,
+                    hostname=device.hostname,
+                    shared_hostnames=shared_hostnames,
+                    hass=self.hass,
+                )
+
+            for lease in getattr(coordinator.data, "dhcp_leases", []):
+                if not lease.mac:
+                    continue
+                mac = lease.mac.lower()
+                if mac not in device_options:
+                    device_options[mac] = _resolve_tracked_device_label(
+                        mac=mac,
+                        original_mac=lease.mac,
+                        hostname=lease.hostname,
+                        shared_hostnames=shared_hostnames,
+                        hass=self.hass,
+                        suffix=" [Lease]",
+                    )
 
         # History keeps devices that were seen before but are offline right now
         # selectable.
         for mac, info in coordinator._device_history.items():
             if not isinstance(info, dict) or mac in device_options:
                 continue
-            name = (
-                info.get("hostname")
-                or info.get("name")
-                or shared_hostnames.get(mac)
-                or mac
+            hist_name = info.get("hostname") or info.get("name")
+            device_options[mac] = _resolve_tracked_device_label(
+                mac=mac.lower(),
+                original_mac=mac,
+                hostname=hist_name,
+                shared_hostnames=shared_hostnames,
+                hass=self.hass,
             )
-            device_options[mac] = f"{name} ({mac})"
 
         # An already tracked device that the coordinator has not seen yet must
         # stay in the list, otherwise the stored selection is not a valid option.
         for mac in current:
-            device_options.setdefault(mac, mac)
+            if mac not in device_options:
+                device_options[mac] = _resolve_tracked_device_label(
+                    mac=mac.lower(),
+                    original_mac=mac,
+                    shared_hostnames=shared_hostnames,
+                    hass=self.hass,
+                )
 
         # Prepare device options for selector
-        options: list[selector.SelectOptionDict] = [
-            {"value": k, "label": v} for k, v in device_options.items()
-        ]
+        options: list[selector.SelectOptionDict] = sorted(
+            [{"value": k, "label": v} for k, v in device_options.items()],
+            key=lambda opt: opt["label"].lower(),
+        )
 
         return self.async_show_form(
             step_id="options_select_devices",

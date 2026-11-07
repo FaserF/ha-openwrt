@@ -1114,3 +1114,80 @@ async def test_coordinator_whitelist_case_normalization() -> None:
     data = await coordinator._async_update_data()
     assert len(data.connected_devices) == 1
     assert data.connected_devices[0].mac == "00:bb:cc:dd:ee:01"
+
+
+@pytest.mark.asyncio
+async def test_options_flow_resolves_vendor_and_dhcp_leases() -> None:
+    """Test that options flow resolves vendor info and includes dhcp leases with sorted options."""
+    flow = _make_options_flow(
+        all_connected_devices=[
+            # Apple MAC prefix 0C:15:39 with no hostname
+            ConnectedDevice(mac="0C:15:39:11:22:33", hostname="*"),
+        ],
+        device_history={},
+        tracked=[],
+    )
+    # Add a DHCP lease not present in all_connected_devices
+    coordinator = flow.hass.data[DOMAIN]["test_entry"][DATA_COORDINATOR]
+    coordinator.data.dhcp_leases = [
+        DhcpLease(mac="00:11:22:33:44:55", hostname="printer", ip="192.168.1.50"),
+    ]
+
+    with patch("custom_components.openwrt.config_flow.selector") as mock_selector:
+        await flow.async_step_options_select_devices()
+
+    options = _tracked_device_options(mock_selector.SelectSelectorConfig)
+    # Vendor lookup used for Apple device without hostname
+    assert options["0c:15:39:11:22:33"] == "Apple Apple Device (0C:15:39:11:22:33)"
+    # DHCP lease included
+    assert options["00:11:22:33:44:55"] == "printer (00:11:22:33:44:55) [Lease]"
+
+
+@pytest.mark.asyncio
+async def test_config_flow_resolves_vendor_and_ha_names() -> None:
+    """Test that config flow selective tracking resolves vendor info and HA device registry names."""
+
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = MagicMock()
+    flow._data = {"host": "192.168.1.1", "connection_type": "ubus"}
+
+    # Mock HA device registry device
+    mock_dev_reg = MagicMock()
+    mock_ha_dev = MagicMock()
+    mock_ha_dev.name_by_user = "My Living Room TV"
+    mock_ha_dev.name = "Living Room TV"
+    mock_dev_reg.async_get_device.side_effect = lambda connections: (
+        mock_ha_dev
+        if any(mac == "aa:bb:cc:11:22:33" for _, mac in connections)
+        else None
+    )
+
+    mock_client = AsyncMock()
+    mock_client.connect.return_value = True
+    mock_client.disconnect.return_value = None
+    mock_client.get_connected_devices.return_value = [
+        # Device in HA registry
+        ConnectedDevice(mac="AA:BB:CC:11:22:33", hostname="*"),
+        # Apple device
+        ConnectedDevice(mac="0C:15:39:44:55:66", hostname=""),
+    ]
+    mock_client.get_dhcp_leases.return_value = []
+
+    with (
+        patch(
+            "custom_components.openwrt.config_flow.create_client",
+            return_value=mock_client,
+        ),
+        patch(
+            "homeassistant.helpers.device_registry.async_get", return_value=mock_dev_reg
+        ),
+        patch("custom_components.openwrt.config_flow.selector") as mock_selector,
+    ):
+        result = await flow.async_step_selective_tracking()
+        assert result["type"].lower() == "form"
+
+    options = _tracked_device_options(mock_selector.SelectSelectorConfig)
+    assert options["aa:bb:cc:11:22:33"] == "My Living Room TV (AA:BB:CC:11:22:33)"
+    assert options["0c:15:39:44:55:66"] == "Apple Apple Device (0C:15:39:44:55:66)"
