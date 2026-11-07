@@ -509,7 +509,8 @@ class SshClient(
         packages = OpenWrtPackages()
         try:
             # Step 1: Check existence of binaries or init scripts
-            await self._check_packages_from_files(packages)
+            with contextlib.suppress(Exception):
+                await self._check_packages_from_files(packages)
 
             # Step 2: Fallback to full list check
             await self._check_packages_from_opkg(packages)
@@ -530,7 +531,8 @@ class SshClient(
             "/usr/lib/lua/luci/controller/attendedsysupgrade.lua "
             "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json "
             "/etc/init.d/adblock /etc/init.d/simple-adblock /etc/init.d/ban-ip /etc/init.d/miniupnpd /etc/init.d/nlbwmon /etc/init.d/pbr /etc/init.d/adguardhome /etc/init.d/unbound /usr/lib/rpcd/led.so /etc/config/sqm /etc/init.d/odhcpd /etc/init.d/lldpd /usr/sbin/batctl /sys/module/batman_adv /usr/bin/stty /bin/stty /usr/bin/timeout /bin/timeout /etc/init.d/snort "
-            "/usr/sbin/tailscale /usr/bin/tailscale; do "
+            "/usr/sbin/tailscale /usr/bin/tailscale "
+            "/usr/bin/openssl /bin/openssl /usr/bin/base64 /bin/base64; do "
             "if [ -f $f ] || [ -x $f ] || [ -d $f ]; then echo 1; else echo 0; fi; done"
         )
         out = await self._exec(cmd)
@@ -569,6 +571,8 @@ class SshClient(
         packages.timeout = detect(26) or detect(27)
         packages.snort = detect(28)
         packages.tailscale = detect(29) or detect(30)
+        packages.openssl_util = detect(31) or detect(32)
+        packages.coreutils_base64 = detect(33) or detect(34)
 
         # Detect wireless via presence of iwinfo or ubus network.wireless
         if packages.iwinfo:
@@ -604,6 +608,8 @@ class SshClient(
             "batctl": "batctl",
             "snort": "snort",
             "tailscale": "tailscale",
+            "openssl_util": "openssl-util",
+            "coreutils_base64": "coreutils-base64",
         }
         for attr, pkg_name in mapping.items():
             if getattr(packages, attr) is not True:
@@ -614,6 +620,18 @@ class SshClient(
                         packages,
                         attr,
                         any(p in installed for p in ("luci-rpc", "luci-mod-rpc")),
+                    )
+                elif attr == "openssl_util":
+                    setattr(
+                        packages,
+                        attr,
+                        any(p in installed for p in ("openssl-util", "openssl")),
+                    )
+                elif attr == "coreutils_base64":
+                    setattr(
+                        packages,
+                        attr,
+                        any(p in installed for p in ("coreutils-base64", "base64")),
                     )
                 else:
                     setattr(packages, attr, pkg_name in installed)

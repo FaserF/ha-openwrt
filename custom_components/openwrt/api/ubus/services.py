@@ -304,7 +304,8 @@ class UbusServicesMixin:
                     "/sys/module/batman_adv "
                     "/etc/config/sqm "
                     "/usr/bin/stty /bin/stty /usr/bin/timeout /bin/timeout "
-                    "/usr/sbin/tailscale /usr/bin/tailscale; do "
+                    "/usr/sbin/tailscale /usr/bin/tailscale "
+                    "/usr/bin/openssl /bin/openssl /usr/bin/base64 /bin/base64; do "
                     "if [ -f $f ] || [ -x $f ]; then echo 1; else echo 0; fi; done"
                 )
                 result = await self._call(
@@ -358,6 +359,8 @@ class UbusServicesMixin:
                 packages.timeout = detect_status(23) or detect_status(24)
                 if packages.tailscale is not True:
                     packages.tailscale = detect_status(25) or detect_status(26)
+                packages.openssl_util = detect_status(27) or detect_status(28)
+                packages.coreutils_base64 = detect_status(29) or detect_status(30)
 
             except Exception as err:
                 _LOGGER.debug("Package detection via RPC failed, falling back: %s", err)
@@ -443,6 +446,10 @@ class UbusServicesMixin:
             ("/etc/init.d/snort", "snort"),
             ("/usr/sbin/tailscale", "tailscale"),
             ("/usr/bin/tailscale", "tailscale"),
+            ("/usr/bin/openssl", "openssl_util"),
+            ("/bin/openssl", "openssl_util"),
+            ("/usr/bin/base64", "coreutils_base64"),
+            ("/bin/base64", "coreutils_base64"),
         ]
         for path, attr in check_list:
             if getattr(packages, attr) is not True:
@@ -471,11 +478,25 @@ class UbusServicesMixin:
             "ban_ip": "banip",
             "snort": "snort",
             "tailscale": "tailscale",
+            "openssl_util": "openssl-util",
+            "coreutils_base64": "coreutils-base64",
         }
         for attr, pkg_name in mapping.items():
             if getattr(packages, attr) is not True:
                 if pkg_name in ["wireguard", "openvpn"]:
                     setattr(packages, attr, any(pkg_name in p for p in installed))
+                elif attr == "openssl_util":
+                    setattr(
+                        packages,
+                        attr,
+                        any(p in installed for p in ("openssl-util", "openssl")),
+                    )
+                elif attr == "coreutils_base64":
+                    setattr(
+                        packages,
+                        attr,
+                        any(p in installed for p in ("coreutils-base64", "base64")),
+                    )
                 else:
                     setattr(packages, attr, pkg_name in installed)
 

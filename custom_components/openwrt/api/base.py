@@ -902,6 +902,8 @@ class OpenWrtPackages:
     stty: bool | None = None
     timeout: bool | None = None
     tailscale: bool | None = None
+    openssl_util: bool | None = None
+    coreutils_base64: bool | None = None
 
 
 @dataclass

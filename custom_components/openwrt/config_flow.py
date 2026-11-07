@@ -358,7 +358,9 @@ def _generate_package_table(
         f"| **coreutils-stty** | {to_icon(packages.stty)} | {get_missing(packages.stty, 'GPS Modem Tracking (stty)', 'stty')} |\n"
         f"| **coreutils-timeout** | {to_icon(packages.timeout)} | {get_missing(packages.timeout, 'GPS Modem Tracking (timeout)', 'timeout')} |\n"
         f"| **banip** | {to_icon(packages.ban_ip)} | {get_missing(packages.ban_ip, 'banIP Service Control & Sensors', 'ban_ip')} |\n"
-        f"| **snort** | {to_icon(packages.snort)} | {get_missing(packages.snort, 'Snort IDS Alerts Sensor', 'snort')} |"
+        f"| **snort** | {to_icon(packages.snort)} | {get_missing(packages.snort, 'Snort IDS Alerts Sensor', 'snort')} |\n"
+        f"| **openssl-util** | {to_icon(getattr(packages, 'openssl_util', None))} | {get_missing(getattr(packages, 'openssl_util', None), 'Backup Generation (OpenSSL)', 'openssl_util')} |\n"
+        f"| **coreutils-base64** | {to_icon(getattr(packages, 'coreutils_base64', None))} | {get_missing(getattr(packages, 'coreutils_base64', None), 'Backup Extraction (Base64)', 'coreutils_base64')} |"
     )
 
 

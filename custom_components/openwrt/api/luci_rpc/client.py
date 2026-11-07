@@ -606,10 +606,14 @@ class LuciRpcClient(
             "/usr/sbin/batctl "
             "/sys/module/batman_adv "
             "/usr/bin/stty /bin/stty /usr/bin/timeout /bin/timeout /etc/init.d/snort "
-            "/usr/sbin/tailscale /usr/bin/tailscale; do "
+            "/usr/sbin/tailscale /usr/bin/tailscale "
+            "/usr/bin/openssl /bin/openssl /usr/bin/base64 /bin/base64; do "
             "if [ -e $f ]; then echo 1; else echo 0; fi; done"
         )
-        out = await self._rpc_call("sys", "exec", [cmd])
+        try:
+            out = await self._rpc_call("sys", "exec", [cmd])
+        except Exception:
+            out = ""
         if out:
             results = out.strip().splitlines()
 
@@ -663,6 +667,8 @@ class LuciRpcClient(
             packages.snort = detect_status(26)
             if packages.tailscale is not True:
                 packages.tailscale = detect_status(27) or detect_status(28)
+            packages.openssl_util = detect_status(29) or detect_status(30)
+            packages.coreutils_base64 = detect_status(31) or detect_status(32)
 
         # Step 3: Check UCI configs for remaining packages (very robust fallback)
         if packages.sqm_scripts is not True:
@@ -721,6 +727,8 @@ class LuciRpcClient(
                 "simple_adblock": "simple-adblock",
                 "ban_ip": "ban-ip",
                 "tailscale": "tailscale",
+                "openssl_util": "openssl-util",
+                "coreutils_base64": "coreutils-base64",
             }
             for attr, pkg in mapping.items():
                 if getattr(packages, attr) is not True:
@@ -741,6 +749,18 @@ class LuciRpcClient(
                                     "attendedsysupgrade-common",
                                 ]
                             ),
+                        )
+                    elif attr == "openssl_util":
+                        setattr(
+                            packages,
+                            attr,
+                            any(p in installed for p in ("openssl-util", "openssl")),
+                        )
+                    elif attr == "coreutils_base64":
+                        setattr(
+                            packages,
+                            attr,
+                            any(p in installed for p in ("coreutils-base64", "base64")),
                         )
                     else:
                         setattr(packages, attr, pkg in installed)

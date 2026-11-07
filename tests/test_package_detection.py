@@ -150,3 +150,105 @@ async def test_packages_wireless_inference_from_full_list() -> None:
     packages = await client.check_packages()
     assert packages.iwinfo is True
     assert packages.wireless is True
+
+
+@pytest.mark.asyncio
+async def test_packages_openssl_and_base64_detection_ubus() -> None:
+    """Test that openssl_util and coreutils_base64 are detected via Ubus file probe and full list."""
+    client = UbusClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "pass")
+    client._session_id = "token"
+    client._connected = True
+
+    # 1. Probed via file exec
+    # Indices: 27=openssl, 29=base64
+    stdout = "\n".join(["0"] * 27 + ["1", "0", "1", "0"]) + "\n"
+    client._call = AsyncMock(
+        side_effect=lambda obj, method, params=None: (
+            {"stdout": stdout} if obj == "file" and method == "exec" else {}
+        )
+    )
+    client._list_objects = AsyncMock(return_value=[])
+    client.get_installed_packages = AsyncMock(return_value=[])
+
+    packages = await client.check_packages()
+    assert packages.openssl_util is True
+    assert packages.coreutils_base64 is True
+
+    # 2. Detected via installed packages list fallback
+    client._call = AsyncMock(side_effect=Exception("RPC failure"))
+    client.get_installed_packages = AsyncMock(
+        return_value=["openssl-util", "coreutils-base64"]
+    )
+    packages = await client.check_packages()
+    assert packages.openssl_util is True
+    assert packages.coreutils_base64 is True
+
+
+@pytest.mark.asyncio
+async def test_packages_openssl_and_base64_detection_ssh() -> None:
+    """Test that openssl_util and coreutils_base64 are detected via SSH file probe and opkg."""
+    client = SshClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "pass")
+    client._connected = True
+
+    # 1. Probed via SSH exec
+    # Indices: 31=openssl, 33=base64
+    stdout = "\n".join(["0"] * 31 + ["1", "0", "1", "0"])
+    client._exec = AsyncMock(return_value=stdout)
+    client.get_installed_packages = AsyncMock(return_value=[])
+
+    packages = await client.check_packages()
+    assert packages.openssl_util is True
+    assert packages.coreutils_base64 is True
+
+    # 2. Detected via opkg list fallback
+    client._check_packages_from_files = AsyncMock(side_effect=Exception("SSH error"))
+    client.get_installed_packages = AsyncMock(return_value=["openssl", "base64"])
+    packages = await client.check_packages()
+    assert packages.openssl_util is True
+    assert packages.coreutils_base64 is True
+
+
+@pytest.mark.asyncio
+async def test_packages_openssl_and_base64_detection_luci_rpc() -> None:
+    """Test that openssl_util and coreutils_base64 are detected via LuCI RPC sys.exec and package list."""
+    client = LuciRpcClient(MagicMock(), MagicMock(), "192.168.1.1", "root", "pass")
+    client._session_id = "token"
+    client._connected = True
+
+    # 1. Probed via sys.exec
+    # Indices: 29=openssl, 31=base64
+    stdout = "\n".join(["0"] * 29 + ["1", "0", "1", "0"])
+    client._rpc_call = AsyncMock(
+        side_effect=lambda mod, method, params=None: (
+            stdout if mod == "sys" and method == "exec" else {}
+        )
+    )
+    client.execute_command = AsyncMock(return_value="")
+    client.get_installed_packages = AsyncMock(return_value=[])
+
+    packages = await client.check_packages()
+    assert packages.openssl_util is True
+    assert packages.coreutils_base64 is True
+
+    # 2. Detected via installed packages list fallback
+    client._rpc_call = AsyncMock(side_effect=Exception("RPC error"))
+    client.get_installed_packages = AsyncMock(
+        return_value=["openssl-util", "coreutils-base64"]
+    )
+    packages = await client.check_packages()
+    assert packages.openssl_util is True
+    assert packages.coreutils_base64 is True
+
+
+def test_package_table_includes_openssl_and_base64() -> None:
+    """Test that _generate_package_table includes rows for openssl-util and coreutils-base64."""
+    from custom_components.openwrt.api.base import OpenWrtPackages
+    from custom_components.openwrt.config_flow import _generate_package_table
+
+    packages = OpenWrtPackages()
+    packages.openssl_util = False
+    packages.coreutils_base64 = True
+
+    table = _generate_package_table(packages)
+    assert "| **openssl-util** | ❌ | Backup Generation (OpenSSL) |" in table
+    assert "| **coreutils-base64** | ✅ | - |" in table

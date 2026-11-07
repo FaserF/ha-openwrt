@@ -724,7 +724,9 @@
           "batctl": "Batman-adv Steuerung (batctl)",
           "nlbwmon": "Top-Bandbreiten-Hosts-Sensor",
           "snort": "Snort IDS-Sensor",
-          "tailscale": "Tailscale Sensoren"
+          "tailscale": "Tailscale Sensoren",
+          "openssl_util": "Backup-Erstellung (OpenSSL)",
+          "coreutils_base64": "Backup-Extrahierung (Base64)"
         }
       },
       "tsvpn_backend_state": {
