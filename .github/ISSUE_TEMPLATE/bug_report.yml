@@ -18,7 +18,7 @@ body:
     attributes:
       label: Integration Version
       description: Which version of ha-openwrt are you running? (Marketplace/HACS or integration page)
-      placeholder: e.g. v2.5.4
+      placeholder: e.g. v2.5.5
     validations:
       required: true
 
@@ -28,7 +28,7 @@ body:
       label: Home Assistant Version
       description: |
         [![Open your Home Assistant instance and show your Home Assistant version information.](https://my.home-assistant.io/badges/info.svg)](https://my.home-assistant.io/redirect/info/)
-      placeholder: e.g. 2026.10.4
+      placeholder: e.g. 2026.11.0
     validations:
       required: true
 
