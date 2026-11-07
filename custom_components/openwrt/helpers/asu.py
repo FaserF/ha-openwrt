@@ -32,7 +32,8 @@ def _integration_version() -> str:
 # Sent as the ASU "client" field. The server expects "<name>/<version>"
 # (owut sends e.g. "owut/2026.04.09") and answers 500 to other formats.
 # It goes to a public server, so it never carries router or entry names.
-# Read once at import, which Home Assistant does outside the event loop.
+# Read once at import: update.py imports this module at the top, and Home
+# Assistant imports platform modules outside the event loop.
 ASU_CLIENT_NAME = f"ha-openwrt/{_integration_version()}"
 
 

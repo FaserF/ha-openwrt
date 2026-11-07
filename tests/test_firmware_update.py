@@ -545,7 +545,7 @@ async def test_asu_install_refused_without_package_list(hass: HomeAssistant) -> 
     coordinator.client.get_installed_packages = AsyncMock(return_value=[])
 
     with (
-        patch("custom_components.openwrt.helpers.asu.AsuClient") as mock_asu,
+        patch("custom_components.openwrt.update.AsuClient") as mock_asu,
         pytest.raises(HomeAssistantError, match="installed packages"),
     ):
         await entity.async_install(version=None, backup=False)
@@ -571,9 +571,7 @@ async def test_asu_install_builds_with_router_packages(hass: HomeAssistant) -> N
     asu_instance = MagicMock()
     asu_instance.request_build = AsyncMock(return_value="hash")
     asu_instance.poll_build_status = AsyncMock(return_value=f"{ASU}/store/x/img.bin")
-    with patch(
-        "custom_components.openwrt.helpers.asu.AsuClient", return_value=asu_instance
-    ):
+    with patch("custom_components.openwrt.update.AsuClient", return_value=asu_instance):
         await entity.async_install(version=None, backup=False)
 
     kwargs = asu_instance.request_build.call_args.kwargs
@@ -730,7 +728,7 @@ async def test_asu_build_sends_apk_world_names_unchanged(hass: HomeAssistant) ->
     asu_instance.request_build = AsyncMock(side_effect=RuntimeError("stop here"))
     with (
         patch(
-            "custom_components.openwrt.helpers.asu.AsuClient",
+            "custom_components.openwrt.update.AsuClient",
             return_value=asu_instance,
         ),
         pytest.raises(HomeAssistantError),
@@ -759,7 +757,7 @@ async def test_asu_build_falls_back_to_full_list_without_world(
     asu_instance.request_build = AsyncMock(side_effect=RuntimeError("stop here"))
     with (
         patch(
-            "custom_components.openwrt.helpers.asu.AsuClient",
+            "custom_components.openwrt.update.AsuClient",
             return_value=asu_instance,
         ),
         pytest.raises(HomeAssistantError),

@@ -38,6 +38,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OpenWrtDataCoordinator
+from .helpers.asu import AsuClient
 from .update_release_notes import FirmwareReleaseNotesMixin
 
 _LOGGER = logging.getLogger(__name__)
@@ -375,8 +376,6 @@ class OpenWrtUpdateEntity(
         version = data.asu_target_version or data.firmware_latest_version
         _LOGGER.info("Initiating ASU custom firmware build for %s", version)
         try:
-            from .helpers.asu import AsuClient
-
             entry = self.coordinator.config_entry
             asu_url = entry.options.get(
                 CONF_ASU_URL, entry.data.get(CONF_ASU_URL, DEFAULT_ASU_URL)
