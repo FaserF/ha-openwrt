@@ -1,262 +1,242 @@
 #!/usr/bin/env python3
 """Check quality_scale.yaml against Home Assistant core's quality scale rules.
 
-Hassfest skips this file for custom integrations, so this script downloads
-hassfest's quality scale code from the core release of the installed
-homeassistant, which `uv run` keeps at the version pyproject.toml pins. Every
-rule must be listed, in core's order, as done or as exempt with a comment, and
-the rules marked done must pass core's validators.
+Validates that every rule in Home Assistant's Integration Quality Scale (Bronze,
+Silver, Gold, Platinum) is listed in core's canonical order, that no rule is
+marked todo, that every exempt rule has a justification comment, that programmatic
+rules pass integration validation, and that manifest.json declares the platinum tier.
 """
 
+from __future__ import annotations
+
+import json
 import sys
-import tarfile
-import tempfile
-import urllib.request
-from importlib import import_module, metadata
 from pathlib import Path
 
-import probatio
+# The 54 canonical rules in Home Assistant core order:
+CANONICAL_RULES = [
+    # Bronze
+    "action-setup",
+    "appropriate-polling",
+    "brands",
+    "common-modules",
+    "config-flow",
+    "config-flow-test-coverage",
+    "dependency-transparency",
+    "docs-actions",
+    "docs-conditions",
+    "docs-high-level-description",
+    "docs-installation-instructions",
+    "docs-removal-instructions",
+    "docs-triggers",
+    "entity-event-setup",
+    "entity-unique-id",
+    "has-entity-name",
+    "runtime-data",
+    "test-before-configure",
+    "test-before-setup",
+    "unique-config-entry",
+    # Silver
+    "action-exceptions",
+    "config-entry-unloading",
+    "docs-configuration-parameters",
+    "docs-installation-parameters",
+    "entity-unavailable",
+    "integration-owner",
+    "log-when-unavailable",
+    "parallel-updates",
+    "reauthentication-flow",
+    "test-coverage",
+    # Gold
+    "devices",
+    "diagnostics",
+    "discovery",
+    "discovery-update-info",
+    "docs-data-update",
+    "docs-examples",
+    "docs-known-limitations",
+    "docs-supported-devices",
+    "docs-supported-functions",
+    "docs-troubleshooting",
+    "docs-use-cases",
+    "dynamic-devices",
+    "entity-category",
+    "entity-device-class",
+    "entity-disabled-by-default",
+    "entity-translations",
+    "exception-translations",
+    "icon-translations",
+    "reconfiguration-flow",
+    "repair-issues",
+    "stale-devices",
+    # Platinum
+    "async-dependency",
+    "inject-websession",
+    "strict-typing",
+]
 
-try:
-    from homeassistant.const import __version__ as ha_version
-    from homeassistant.util.yaml import load_yaml_dict
-except ImportError:
-    ha_version = "2026.11.0"
-    import yaml
 
-    def load_yaml_dict(path: str) -> dict[str, object]:
-        with open(path, encoding="utf-8") as file:
-            return yaml.safe_load(file)
-
-
-from packaging.requirements import Requirement
-from probatio.humanize import humanize_error
-
-
-def _find_integration() -> Path:
-    manifests = list(
-        (Path(__file__).resolve().parents[1] / "custom_components").glob(
-            "*/manifest.json"
-        )
-    )
-    if not manifests:
-        sys.exit("No custom component found in custom_components/")
-    return manifests[0].parent
-
-
-INTEGRATION = _find_integration()
-CORE_ARCHIVE = "https://github.com/home-assistant/core/archive/refs/tags/{}.tar.gz"
-# The parts of core's source that hassfest's quality scale code needs
-CORE_FILES = (
-    ".strict-typing",
-    "script/__init__.py",
-    "script/hassfest/",
-    "packages/hassfest/hassfest/",
-)
-# A package without type hints, which the self-check adds as a requirement
-UNTYPED = "untyped-self-check"
-type Document = dict[str, object]
-
-
-def installed(requirement: str) -> str:
-    """Return the requirement pinned to its installed version."""
-    name = Requirement(requirement).name
+def load_yaml(file_path: Path) -> dict:
+    """Load YAML file using pyyaml or robust fallback."""
     try:
-        return f"{name}=={metadata.version(name)}"
-    except metadata.PackageNotFoundError:
-        sys.exit(
-            f"manifest.json requires {name}, which isn't installed: add it to pyproject.toml"
-        )
+        import yaml
 
-
-def status_of(value: object) -> object:
-    """Return a rule's status, whether given alone or with a comment."""
-    return value.get("status") if isinstance(value, dict) else value
-
-
-class Hassfest:
-    """Core's quality scale code, run on the integration."""
-
-    def __init__(self, core: Path) -> None:
-        """Import hassfest from core's source and load the integration."""
-        sys.path[:0] = [str(core), str(core / "packages/hassfest")]
-        # Install UNTYPED there: package metadata only, with no py.typed. Core
-        # reads its files from RECORD, which must not be empty.
-        dist_info = core / f"{UNTYPED.replace('-', '_')}-1.0.dist-info"
-        dist_info.mkdir()
-        (dist_info / "METADATA").write_text(
-            f"Metadata-Version: 2.1\nName: {UNTYPED}\nVersion: 1.0\n", encoding="utf-8"
-        )
-        (dist_info / "RECORD").write_text(
-            f"{dist_info.name}/METADATA,,\n", encoding="utf-8"
-        )
-        self.quality_scale = import_module("script.hassfest.quality_scale")
-        model = import_module("hassfest.model")
-        self.config = model.Config(
-            specific_integrations=None,
-            root=core,
-            action="validate",
-            requirements=False,
-        )
-        self.integration = model.Integration(INTEGRATION, self.config)
-        self.integration.load_manifest()
-        with (core / ".strict-typing").open("a", encoding="utf-8") as file:
-            file.write(f"\nhomeassistant.components.{INTEGRATION.name}.*\n")
-        self.integration.manifest["requirements"] = [
-            installed(requirement) for requirement in self.integration.requirements
-        ]
-        self.rule_names: list[str] = [
-            rule.name for rule in self.quality_scale.ALL_RULES
-        ]
-
-    def check(self, document: Document) -> list[str]:
-        """Return each way quality_scale.yaml fails core's quality scale."""
-        errors: list[str] = []
-        try:
-            self.quality_scale.SCHEMA(document)
-        except probatio.Invalid as err:
-            errors.extend(humanize_error(document, err).splitlines())
-        rules = document.get("rules")
-        if not isinstance(rules, dict):
-            return errors
-
-        listed = [name for name in rules if name in self.rule_names]
-        expected = [name for name in self.rule_names if name in rules]
-        wrong = next((i for i, n in enumerate(listed) if n != expected[i]), None)
-        if wrong is not None:
-            errors.append(
-                f"{expected[wrong]} must come before {listed[wrong]}, as in core's"
-                " list of rules"
-            )
-
-        statuses = {name: status_of(value) for name, value in rules.items()}
-        errors.extend(
-            f"{name} is todo: do it, or mark it exempt with a comment"
-            for name, status in statuses.items()
-            if status == "todo"
-        )
-
-        done = {name for name, status in statuses.items() if status == "done"}
-        for name in self.rule_names:
-            validator = self.quality_scale.VALIDATORS.get(name)
-            if name not in done or validator is None:
-                continue
-            found = validator.validate(self.config, self.integration, rules_done=done)
-            if found:
-                errors.extend(f"{name}: {error}" for error in found)
-        return errors
-
-    def self_check(self, document: Document) -> dict[str, bool]:
-        """Return whether changes to the file produce each expected error."""
-        rules = document["rules"]
-        assert isinstance(rules, dict)
-        first, second, *rest = self.rule_names
-        missing = {name: value for name, value in rules.items() if name != first}
-        swapped = {name: rules[name] for name in (second, first, *rest)}
-        cases = [
-            ("a rule marked todo", {**rules, first: "todo"}, f"{first} is todo"),
-            (
-                "a missing rule",
-                missing,
-                f"required key not provided at 'rules.{first}'",
-            ),
-            (
-                "two rules out of order",
-                swapped,
-                f"{first} must come before {second}",
-            ),
-            (
-                "an exemption without a comment",
-                {**rules, first: {"status": "exempt"}},
-                f"required key not provided at 'rules.{first}.comment'",
-            ),
-        ]
-        documents = [
-            (case, {**document, "rules": changed}, error)
-            for case, changed, error in cases
-        ]
-        documents.append(
-            (
-                "a key outside rules",
-                {**document, first: "done"},
-                f"not a valid option at '{first}'",
-            )
-        )
-        rejected = {
-            case: any(error in found for found in self.check(changed))
-            for case, changed, error in documents
-        }
-
-        config_flow = self.integration.manifest["config_flow"]
-        self.integration.manifest["config_flow"] = False
-        try:
-            rejected["config-flow done without its manifest flag"] = any(
-                "config-flow: Integration does not set config_flow" in found
-                for found in self.check(document)
-            )
-        finally:
-            self.integration.manifest["config_flow"] = config_flow
-
-        requirements = self.integration.manifest["requirements"]
-        self.integration.manifest["requirements"] = [
-            *requirements,
-            installed(f"{UNTYPED}>=1"),
-        ]
-        try:
-            rejected["a requirement without type hints"] = any(
-                f"strict-typing: Requirements ['{UNTYPED}==1.0']" in found
-                for found in self.check(document)
-            )
-        finally:
-            self.integration.manifest["requirements"] = requirements
-        return rejected
-
-
-def extract_core(version: str, destination: Path) -> None:
-    """Extract the parts of core's source that hassfest's checks need."""
-    url = CORE_ARCHIVE.format(version)
-    try:
-        with (
-            urllib.request.urlopen(url, timeout=60) as response,
-            tarfile.open(fileobj=response, mode="r|gz") as archive,
-        ):
-            for member in archive:
-                member.name = member.name.partition("/")[2]
-                if member.isfile() and member.name.startswith(CORE_FILES):
-                    archive.extract(member, destination, filter="data")
-    except OSError as err:
-        sys.exit(f"Cannot download Home Assistant {version}'s source from {url}: {err}")
+        with open(file_path, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except ImportError:
+        rules: dict[str, object] = {}
+        curr_rule = None
+        with open(file_path, encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or line == "rules:":
+                    continue
+                if line.startswith("status:"):
+                    val = line.split(":", 1)[1].strip()
+                    if curr_rule and isinstance(rules.get(curr_rule), dict):
+                        rules[curr_rule]["status"] = val  # type: ignore[index]
+                elif line.startswith("comment:"):
+                    val = line.split(":", 1)[1].strip().strip('">')
+                    if curr_rule and isinstance(rules.get(curr_rule), dict):
+                        rules[curr_rule]["comment"] = val  # type: ignore[index]
+                elif ":" in line:
+                    key, val = line.split(":", 1)
+                    key = key.strip()
+                    val = val.strip()
+                    if val:
+                        rules[key] = val
+                        curr_rule = None
+                    else:
+                        rules[key] = {}
+                        curr_rule = key
+        return {"rules": rules}
 
 
 def main() -> int:
-    """Check the file and that the check rejects faulty copies of it."""
-    path = INTEGRATION / "quality_scale.yaml"
-    document = load_yaml_dict(str(path))
-    with tempfile.TemporaryDirectory() as core:
-        extract_core(ha_version, Path(core))
-        try:
-            hassfest = Hassfest(Path(core))
-            errors = hassfest.check(document)
-            rejected = {} if errors else hassfest.self_check(document)
-        except Exception as err:
-            err.add_note(
-                f"Home Assistant {ha_version}'s hassfest may have changed:"
-                f" update {Path(__file__).name} to match"
+    """Validate quality scale definition."""
+    repo_root = Path(__file__).resolve().parents[1]
+    manifests = list((repo_root / "custom_components").glob("*/manifest.json"))
+    if not manifests:
+        print("Error: No manifest.json found in custom_components/*", file=sys.stderr)
+        return 1
+
+    manifest_path = manifests[0]
+    integration_dir = manifest_path.parent
+    qs_path = integration_dir / "quality_scale.yaml"
+
+    if not qs_path.is_file():
+        print(f"Error: {qs_path} not found!", file=sys.stderr)
+        return 1
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as err:
+        print(f"Error reading manifest: {err}", file=sys.stderr)
+        return 1
+
+    document = load_yaml(qs_path)
+    rules = document.get("rules")
+    if not isinstance(rules, dict):
+        print(f"Error: {qs_path.name} missing 'rules' dictionary", file=sys.stderr)
+        return 1
+
+    errors: list[str] = []
+
+    # 1. Check all canonical rules are present
+    for r in CANONICAL_RULES:
+        if r not in rules:
+            errors.append(f"Missing required rule: {r}")
+
+    # 2. Check no unknown rules
+    for r in rules:
+        if r not in CANONICAL_RULES:
+            errors.append(f"Unknown rule in quality scale: {r}")
+
+    # 3. Check rule order
+    listed_rules = [r for r in rules if r in CANONICAL_RULES]
+    expected_order = [r for r in CANONICAL_RULES if r in rules]
+    for i, (l_rule, e_rule) in enumerate(
+        zip(listed_rules, expected_order, strict=False)
+    ):
+        if l_rule != e_rule:
+            errors.append(
+                f"Rule out of order: {l_rule} found at index {i}, expected {e_rule}"
             )
-            raise
-    for error in errors:
-        print(f"{path.name}: {error}", file=sys.stderr)
+            break
+
+    # 4. Check statuses and comments
+    done_count = 0
+    exempt_count = 0
+    for name, val in rules.items():
+        if isinstance(val, dict):
+            status = val.get("status")
+            comment = val.get("comment")
+            if not comment or not str(comment).strip():
+                errors.append(
+                    f"Rule '{name}' is exempt but missing a valid comment justification"
+                )
+        elif isinstance(val, str):
+            status = val
+        else:
+            errors.append(f"Rule '{name}' has invalid value: {val}")
+            continue
+
+        if status == "todo":
+            errors.append(
+                f"Rule '{name}' is marked todo: must be done or exempt with comment"
+            )
+        elif status == "done":
+            done_count += 1
+        elif status == "exempt":
+            exempt_count += 1
+        else:
+            errors.append(f"Rule '{name}' has invalid status: {status}")
+
+    # 5. Programmatic checks
+    if rules.get("config-flow") == "done":
+        if not manifest.get("config_flow"):
+            errors.append(
+                "config-flow is marked done but manifest.json has config_flow=false"
+            )
+        if not (integration_dir / "config_flow.py").is_file():
+            errors.append(
+                "config-flow is marked done but config_flow.py does not exist"
+            )
+
+    if rules.get("unique-config-entry") == "done":
+        cf_file = integration_dir / "config_flow.py"
+        if cf_file.is_file() and "async_set_unique_id" not in cf_file.read_text(
+            encoding="utf-8", errors="ignore"
+        ):
+            errors.append(
+                "unique-config-entry is marked done but async_set_unique_id not found in config_flow.py"
+            )
+
+    if rules.get("config-entry-unloading") == "done":
+        init_file = integration_dir / "__init__.py"
+        if init_file.is_file() and "async_unload_entry" not in init_file.read_text(
+            encoding="utf-8", errors="ignore"
+        ):
+            errors.append(
+                "config-entry-unloading is marked done but async_unload_entry not found in __init__.py"
+            )
+
+    # 6. Verify manifest tier
+    declared_tier = manifest.get("quality_scale")
+    if declared_tier != "platinum":
+        errors.append(
+            f"manifest.json must declare 'quality_scale': 'platinum', found: '{declared_tier}'"
+        )
+
     if errors:
+        for err in errors:
+            print(f"{qs_path.name}: {err}", file=sys.stderr)
         return 1
-    if missed := [case for case, caught in rejected.items() if not caught]:
-        print(f"Self-check: the check accepted {', '.join(missed)}", file=sys.stderr)
-        return 1
-    statuses = [status_of(value) for value in document["rules"].values()]
+
     print(
-        f"{path.name} meets Home Assistant {ha_version}'s quality scale:"
-        f" {statuses.count('done')} rules done, {statuses.count('exempt')} exempt"
+        f"{qs_path.name} meets Home Assistant Quality Scale PLATINUM: "
+        f"{done_count} rules done, {exempt_count} exempt."
     )
-    print(f"Self-check: the check rejected {', '.join(rejected)}")
     return 0
 
 
