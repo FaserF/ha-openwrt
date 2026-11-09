@@ -160,7 +160,7 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
    - Select your connection method: **Ubus (HTTP/HTTPS)** is highly recommended.
    - Enter your router's IP/Hostname, Username (usually `root`), and Password.
    - For Ubus, ensure the `uhttpd-mod-ubus` package is installed on your router.
-   - **Secure Provisioning**: If connecting as `root`, the integration will offer to automatically create a dedicated, least-privilege `homeassistant` user and configure all required ACL permissions for you.
+   - **Account Provisioning**: If connecting as `root`, the integration can create a dedicated `homeassistant` user with separate credentials and configure its ACLs. The provisioned account can execute shell commands as root; it is not a restricted or read-only account.
    - **Connection Diagnostics**: If setup fails, a detailed diagnostic report will be displayed to help you identify the cause (e.g. firewall blocking, missing packages, or incorrect ACLs).
 
 ### Supported Connection Methods
@@ -169,7 +169,7 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
 |:--- |:---:|:---:|:---:|
 | **Performance** | 🚀 Very Fast | 🚄 Fast | 🐌 Slow |
 | **Ease of Setup** | ✅ Easy | ✅ Easy | ⚠️ Complex |
-| **Permissions** | 🛡️ Strict (ACLs) | 🔓 Permissive | 👑 Full (Root) |
+| **Permissions** | ACLs; shell grants allow root-level execution | 🔓 Permissive | 👑 Full (Root) |
 | **Reliability** | ✅ High | ✅ High | ⚠️ Moderate |
 | **Device Tracking** | ✅ Instant | ✅ Instant | ✅ Fast |
 | **Backups/Update** | ✅ Full | ✅ Full | ❌ Limited |
@@ -187,11 +187,13 @@ When using the **Ubus** connection method, some sensors may be unavailable (show
 - **System Temperature**: Access to thermal data (e.g., `/sys/class/thermal/...`) is frequently restricted via Ubus. If the temperature sensor is missing, it's due to these security restrictions.
 - **Disk/Storage Usage**: Similar to CPU/Temp, detailed filesystem info might be restricted.
 
-**Solution**: If these sensors are vital for you, switch the connection method to **LuCI RPC** or **SSH**, or manually grant `file` read access to `/proc/stat` and `/sys` in your router's `/etc/config/rpcd` or `/usr/share/rpcd/acl.d/`.
+**Check the ACLs first**: Both the ubus method and the requested file path must be authorized. See the [permissions guide](docs/permissions.md) for `/proc/stat`, thermal paths and symlink targets before changing connection methods.
 
 ### Required Permissions
 
-If you are using a non-root user (e.g. for security reasons), you need to grant specific OpenWrt permissions (via `rpcd` ACLs or LuCI) to utilize all features of this integration:
+For ubus accounts, see the [permissions guide](docs/permissions.md) and [example ACL](docs/examples/ubus-acl.json) for method, UCI configuration and file-path grants. The full-feature example includes root-equivalent shell execution; choose permissions for the features you intend to use.
+
+The integration uses the following subsystems:
 
 | Subsystem | Description | Write Permission Required for |
 |-----------|-------------|-------------------------------|
@@ -889,6 +891,10 @@ OpenWrt's `rpcd` has very strict ACLs. Even `root` is sometimes restricted via t
 - **Solution 2**: Check `/etc/config/rpcd` on your router and ensure your user has the required scopes.
 - **Solution 3**: If you recently upgraded OpenWrt, your ACL files might have been lost. See the entry below.
 
+### Router visible, but no client devices
+
+If only the router, radios and SSIDs appear, first check **Enable Device Tracking** and the client filters. A denied client-discovery request can leave the client list empty while Wi-Fi counts still update. See [client-discovery troubleshooting](docs/troubleshooting.md#router-visible-but-no-client-devices) and the [ubus permissions guide](docs/permissions.md).
+
 ### Why did my sensors stop working after an OpenWrt upgrade?
 If you recently upgraded OpenWrt and noticed that system sensors like CPU, memory, load, or temperature are suddenly showing `0`, `unknown`, or `unavailable`, it is almost certainly because your **RPC ACL rules were reset** during the upgrade.
 
@@ -909,7 +915,7 @@ If you configure a custom restricted OpenWrt rpcd user without `file.exec` privi
   ```json
   "file": {
     "/proc/net/arp": ["read"],
-    "/proc/*/net/arp": ["read"]
+    "/proc/[0-9]*/net/arp": ["read"]
   }
   ```
 

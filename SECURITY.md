@@ -3,7 +3,7 @@
 When integrating your OpenWrt router with Home Assistant, it is highly recommended to follow security best practices to protect your network infrastructure. Giving Home Assistant root access to your router can be a significant security risk.
 
 ## 1. Do I need a dedicated account?
-**Yes**, it is highly recommended to create a dedicated user account (e.g., `homeassistant`) on your OpenWrt router specifically for this integration, rather than using the default `root` account. This ensures that Home Assistant only has access to the resources it needs and follows the **Principle of Least Privilege**.
+A dedicated account (for example, `homeassistant`) lets you rotate or revoke integration credentials separately from the router administrator account. It does not by itself restrict what Home Assistant can do. The automatic provisioning profile authorizes shell execution through rpcd, which normally runs as root: the provisioned account has root-equivalent command authority and is not a least-privilege or read-only account.
 
 ## 2. What type of connection should I use?
 - **Ubus (via HTTPS)**: This is the **strongly recommended** connection method. Ubus is the built-in RPC interface for OpenWrt. It is fast, modern, and supports fine-grained access control (ACLs). You should ensure your router's uhttpd server is configured for HTTPS so that credentials and RPC traffic are encrypted between Home Assistant and OpenWrt.
@@ -16,7 +16,7 @@ When integrating your OpenWrt router with Home Assistant, it is highly recommend
 When using the recommended Ubus connection, OpenWrt allows you to define strict **Access Control Lists (ACLs)** using the `rpcd` daemon.
 Instead of adding your `homeassistant` user to the `root` group, you should define a custom read/write ACL group that only allows access to the specific Ubus namespaces the integration needs.
 
-### Automated Secure Provisioning (Recommended)
+### Automated Account Provisioning
 The Home Assistant OpenWrt integration includes an **automated provisioning feature**. When you first connect as `root`, the integration will offer to automatically:
 1. Create a dedicated `homeassistant` system user.
 2. Generate a secure, unique password.
@@ -24,9 +24,9 @@ The Home Assistant OpenWrt integration includes an **automated provisioning feat
 4. Configure UCI and RPC permissions.
 5. Restart the required services (`rpcd` and `uhttpd`) to apply the changes.
 
-This is the easiest and recommended way to secure your integration without manually editing configuration files via SSH.
+This separates integration credentials from your root password, but grants broad permissions for the supported monitoring and control features. Read the [permissions guide](docs/permissions.md) before granting this level of access. HTTPS protects credentials in transit; it does not reduce the authority granted by the ACL.
 
-### Manual Alternative: Creating a Restricted Ubus User
+### Manual Alternative: Creating a Dedicated Ubus User
 If you prefer to set up the permissions manually, follow these steps:
 
 1. **Create the user** on your OpenWrt router (you may need to install `shadow-useradd` first, or manually edit `/etc/passwd` and `/etc/shadow`):
@@ -36,38 +36,14 @@ If you prefer to set up the permissions manually, follow these steps:
    passwd homeassistant
    ```
 
-2. **Create the ACL definition file** at `/usr/share/rpcd/acl.d/homeassistant.json`:
-   ```json
-   {
-       "homeassistant": {
-           "description": "Home Assistant Integration Access",
-           "read": {
-               "ubus": {
-                   "system": [ "info", "board" ],
-                   "network.device": [ "status" ],
-                   "network.interface": [ "dump", "status" ],
-                   "iwinfo": [ "info", "devices", "assoclist" ],
-                   "hostapd.*": [ "get_clients" ],
-                   "file": [ "read" ],
-                   "dhcp": [ "ipv4leases", "ipv6leases" ]
-               },
-               "uci": [ "wireless", "network", "dhcp", "system" ]
-           },
-           "write": {
-               "ubus": {
-                   "system": [ "reboot" ],
-                   "network.interface": [ "up", "down" ],
-                   "hostapd.*": [ "bss_transition", "wnm_disassoc" ],
-                   "file": [ "exec" ]
-               },
-               "uci": [ "wireless", "network" ]
-           }
-       }
-   }
-   ```
-   *Note: This is an example. Depending on the exact features you use (e.g., toggling WiFi, rebooting, running commands), you might need to adjust the exposed methods.*
+2. **Choose the ACL permissions** using the [permissions guide](docs/permissions.md)
+   and [example ACL](docs/examples/ubus-acl.json). Method grants, UCI configuration
+   grants, and file-path grants are separate checks. The full-feature example
+   authorizes `/bin/sh` and is root-equivalent; a narrower profile supports only
+   the operations it permits. Preserve unrelated groups when updating an existing
+   ACL file.
 
-3. **Assign the ACL to the user** by editing `/etc/config/rpcd`:
+3. **Assign the ACL to the user** in `/etc/config/rpcd`. The following creates a new login; for an existing login, update its group assignments instead of appending a duplicate:
    ```bash
    uci add rpcd login
    uci set rpcd.@login[-1].username='homeassistant'
@@ -82,7 +58,7 @@ If you prefer to set up the permissions manually, follow these steps:
 Using the `root` account means Home Assistant has **unrestricted administrative access** to your network's main gateway.
 - **Complete Network Compromise**: If your Home Assistant instance is somehow compromised (e.g., via an exposed dashboard, a vulnerable third-party add-on, or a leaked token), the attacker instantly gains full control over your router. They could reroute DNS, intercept traffic, open firewall ports, or install malicious firmware.
 - **Accidental Damage**: A software bug in the integration, or an accidental misconfiguration in an automation on the Home Assistant side, could unintentionally change critical router settings or brick the device.
-- **Auditability**: When you use a dedicated account, system logs on OpenWrt will clearly show which actions were performed by Home Assistant versus actions performed by you as the administrator. Using `root` makes it impossible to distinguish between the two.
+- **Credential separation**: A dedicated account lets you rotate or revoke integration credentials independently. It does not change the identity of commands executed by rpcd: with shell execution allowed, those commands still run with the daemon's privileges, normally root.
 
 ## 5. Security & Trust FAQ
 
@@ -102,5 +78,5 @@ When this integration was submitted to the default HACS repository, it underwent
 
 ### What about the third-party MQTT Presence script?
 The MQTT Presence Detection feature integrates with [OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).
-- **Completely Optional**: This feature is entirely opt-in. If you do not use MQTT Presence, you do not need to install these scripts or grant the `file.exec` permission to the `homeassistant` user.
+- **Completely Optional**: MQTT Presence is opt-in. Its deployment needs `file.exec` plus an executable-path grant for `/bin/sh`. Other features, such as backups and command-based monitoring, also execute commands, so disabling MQTT Presence does not remove their command-permission requirements.
 - **Vetted Source**: The presence scripts are lightweight and open-source, allowing you to review them before deploying them to your router.

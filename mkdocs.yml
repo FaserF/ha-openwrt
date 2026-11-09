@@ -87,6 +87,7 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Configuration: configuration.md
+  - Permissions: permissions.md
   - Device Tracking: device-tracking.md
   - Services: services.md
   - Automations: automations.md
