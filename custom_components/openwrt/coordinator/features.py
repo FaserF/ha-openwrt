@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.helpers import device_registry as dr
 
 from ..api.base import OpenWrtData
+from ..api.models.network import NlbwmonTraffic
 from ..const import (
     CONF_REVERSE_DNS,
     CONF_USERNAME,
@@ -166,6 +167,16 @@ class FeaturesMixin(_Base):
             current_ip = aggregated[key]["ip"]
             if ":" in current_ip and ":" not in ip and ip:
                 aggregated[key]["ip"] = ip
+
+        data.nlbwmon_traffic = {
+            key: NlbwmonTraffic(
+                mac=key,
+                rx_bytes=host["rx_bytes"],
+                tx_bytes=host["tx_bytes"],
+            )
+            for key, host in aggregated.items()
+            if host["mac"] != "00:00:00:00:00:00"
+        }
 
         hostname_map: dict[str, str] = {}
         try:
