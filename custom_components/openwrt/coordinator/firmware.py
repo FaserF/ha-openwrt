@@ -13,16 +13,16 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from ..api.base import OpenWrtData
 from ..const import (
-    CONF_ASU_URL,
     CONF_CUSTOM_FIRMWARE_REPO,
     CONF_TARGET_OVERRIDE,
     OPENWRT_RELEASE_API,
 )
+from .firmware_asu import AsuFirmwareMixin
 from .firmware_helpers import (
     SNAPSHOT_TARGET_MAP,
     build_sysupgrade_pattern,
+    find_board_profile,
     parse_repo,
-    version_is_newer,
 )
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ _LOGGER = logging.getLogger(__name__)
 FIRMWARE_CHECK_INTERVAL = timedelta(hours=6)
 
 
-class FirmwareMixin(_Base):
+class FirmwareMixin(AsuFirmwareMixin):
     """Mixin for OpenWrt firmware update checking (official, snapshot, stable, ASU, custom)."""
 
     def _async_sync_firmware_state(self, data: OpenWrtData) -> None:
@@ -67,6 +67,10 @@ class FirmwareMixin(_Base):
             data.is_custom_build = self.data.is_custom_build
             data.asu_supported = self.data.asu_supported
             data.asu_update_available = self.data.asu_update_available
+            data.asu_status = self.data.asu_status
+            data.asu_status_reason = self.data.asu_status_reason
+            data.asu_target_version = self.data.asu_target_version
+            data.asu_profile = self.data.asu_profile
             data.asu_image_status = self.data.asu_image_status
             data.asu_image_url = self.data.asu_image_url
             data.installed_packages = self.data.installed_packages
@@ -237,34 +241,9 @@ class FirmwareMixin(_Base):
             ) as resp:
                 if resp.status == 200:
                     profile_data = await resp.json()
-                    profiles = profile_data.get("profiles", {})
-                    board_name = info.board_name or ""
-
-                    def normalize(name: str) -> str:
-                        return (
-                            name.lower()
-                            .replace("-", "")
-                            .replace("_", "")
-                            .replace(",", "")
-                        )
-
-                    norm_board = normalize(board_name)
-                    board_profile = None
-
-                    for k in [
-                        board_name,
-                        board_name.replace("-", "_").replace(",", "_"),
-                        board_name.replace("_", "-").replace(",", "-"),
-                    ]:
-                        if k in profiles:
-                            board_profile = profiles[k]
-                            break
-
-                    if not board_profile:
-                        for k, prof in profiles.items():
-                            if normalize(k) == norm_board:
-                                board_profile = prof
-                                break
+                    board_profile = find_board_profile(
+                        profile_data.get("profiles", {}), info.board_name or ""
+                    )
 
                     if board_profile:
                         for img in board_profile.get("images", []):
@@ -280,92 +259,6 @@ class FirmwareMixin(_Base):
                 f"https://downloads.openwrt.org/releases/{latest_stable}/targets/{target}/"
                 f"{dist}-{latest_stable}-{target.replace('/', '-')}-{board}-squashfs-sysupgrade.bin"
             )
-
-    async def _check_asu_update(self, data: OpenWrtData) -> None:
-        """Check for updates via the ASU (Attended Sysupgrade) API."""
-        distribution = (data.device_info.release_distribution or "").strip()
-        if distribution and distribution.lower() not in ("openwrt", ""):
-            return
-
-        target = self._get_target(data.device_info.target)
-        if not target or not data.device_info.board_name:
-            return
-
-        asu_url = self.config_entry.options.get(
-            CONF_ASU_URL,
-            self.config_entry.data.get(CONF_ASU_URL, "https://sysupgrade.openwrt.org"),
-        )
-        session = async_get_clientsession(self.hass)
-
-        # 1. Fetch info from ASU
-        asu_info = await self._fetch_asu_info(data, asu_url, session)
-        if not asu_info:
-            return
-
-        # 2. Process findings
-        data.asu_supported = True
-        version = asu_info.get("version", "")
-        revision = asu_info.get("revision", "")
-
-        latest_version = version or revision
-        if revision and ("SNAPSHOT" in version.upper() or not version):
-            latest_version = f"{version or 'SNAPSHOT'} ({revision})"
-
-        if not latest_version:
-            return
-
-        if self._version_is_newer(data.firmware_current_version or "", latest_version):
-            data.asu_update_available = True
-            await self._update_firmware_metadata_from_asu(data, latest_version)
-
-    async def _fetch_asu_info(
-        self, data: OpenWrtData, asu_url: str, session: aiohttp.ClientSession
-    ) -> dict[str, Any] | None:
-        """Fetch metadata from ASU API with model name variation fallback."""
-        target = self._get_target(data.device_info.target)
-        model = data.device_info.board_name
-        is_snapshot = "SNAPSHOT" in data.device_info.release_version.upper()
-
-        async def _do_fetch(m: str) -> dict[str, Any] | None:
-            url = f"{asu_url.rstrip('/')}/api/v1/info?target={target}&model={m}"
-            if is_snapshot:
-                url += "&version=SNAPSHOT"
-            with contextlib.suppress(Exception):
-                async with session.get(
-                    url, timeout=aiohttp.ClientTimeout(total=10)
-                ) as resp:
-                    if resp.status == 200:
-                        return await resp.json()
-                    if resp.status == 404:
-                        return {"status": 404}
-            return None
-
-        # Try primary model name
-        res = await _do_fetch(model)
-        if res and res.get("status") != 404:
-            return res
-
-        # Try fallback variation (comma to underscore) if first failed with 404
-        if res and res.get("status") == 404 and "," in model:
-            return await _do_fetch(model.replace(",", "_"))
-
-        return None
-
-    async def _update_firmware_metadata_from_asu(
-        self, data: OpenWrtData, latest_version: str
-    ) -> None:
-        """Update coordinator data with findings from ASU."""
-        # Ensure we have package list for future upgrade requests
-        with contextlib.suppress(Exception):
-            data.installed_packages = await self.client.get_installed_packages()
-
-        if self._version_is_newer(
-            data.firmware_latest_version or "0.0.0", latest_version
-        ):
-            data.firmware_latest_version = latest_version
-            data.firmware_upgradable = True
-            data.firmware_release_url = f"https://openwrt.org/releases/{latest_version}"
-            data.firmware_install_url = ""  # Built on demand
 
     async def _check_custom_firmware_update(
         self,
@@ -557,4 +450,3 @@ class FirmwareMixin(_Base):
 
     _parse_repo = staticmethod(parse_repo)
     _build_sysupgrade_pattern = staticmethod(build_sysupgrade_pattern)
-    _version_is_newer = staticmethod(version_is_newer)

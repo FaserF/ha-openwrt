@@ -116,6 +116,16 @@ OPENWRT_RELEASE_API: Final = "https://downloads.openwrt.org/.versions.json"
 CONF_CUSTOM_FIRMWARE_REPO: Final = "custom_firmware_repo"
 CONF_CUSTOM_FIRMWARE_PATTERN: Final = "custom_firmware_pattern"
 CONF_ASU_URL: Final = "asu_url"
+DEFAULT_ASU_URL: Final = "https://sysupgrade.openwrt.org"
+
+# Result of the Attended Sysupgrade (ASU) availability check
+ASU_STATUS_AVAILABLE: Final = "available"
+# The server knows the branch but has not indexed it yet (e.g. right after a
+# release, when the branch is listed with zero targets). Retry later.
+ASU_STATUS_TEMPORARILY_UNAVAILABLE: Final = "temporarily_unavailable"
+ASU_STATUS_UNSUPPORTED: Final = "unsupported"
+ASU_STATUS_ERROR: Final = "error"
+
 CONF_TARGET_OVERRIDE: Final = "target_override"
 CONF_CHECK_FIRMWARE_UPDATES: Final = "check_firmware_updates"
 CONF_AUTO_BACKUP: Final = "auto_backup"

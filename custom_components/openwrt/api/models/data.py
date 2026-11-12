@@ -148,6 +148,10 @@ class OpenWrtData:
     upgradeable_packages: dict[str, str] = field(default_factory=dict)
     asu_supported: bool = False
     asu_update_available: bool = False
+    asu_status: str = ""  # one of const.ASU_STATUS_*; "" = not checked
+    asu_status_reason: str = ""
+    asu_target_version: str = ""  # version string to request from ASU
+    asu_profile: str = ""  # ASU profile name that matched this board
     asu_image_status: str = ""  # e.g. "available", "building", "failed"
     asu_image_url: str | None = None
     lldp_neighbors: list[LldpNeighbor] = field(default_factory=list)

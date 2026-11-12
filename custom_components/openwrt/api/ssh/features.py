@@ -42,27 +42,16 @@ class SshFeaturesMixin(SshFeaturesServicesMixin):
             output = await self._exec(cmd)
             if not output:
                 return []
+            # Names are used as-is: 'apk info' without -v prints bare names,
+            # and opkg's first field is the name. Many real names contain a
+            # dash followed by a digit (libnghttp2-14, libustream-mbedtls20201210),
+            # so stripping a "version" from them would corrupt the name.
             packages: list[str] = []
             for line in output.splitlines():
                 name = line.strip()
-                if not name:
-                    continue
-
-                # Strip version for apk (package-version-release)
-                # On OpenWrt/APK, 'apk info -q' sometimes includes the version suffix.
-                # Standard pkg names don't have digits immediately after a dash
-                # unless it's the version part.
-                if "-" in name and any(c.isdigit() for c in name):
-                    parts = name.split("-")
-                    # Package names like "sqm-scripts" are ok, but "sqm-scripts-1.0" should be "sqm-scripts"
-                    # We look for the first part that starts with a digit or the last two parts
-                    for i in range(1, len(parts)):
-                        if parts[i] and parts[i][0].isdigit():
-                            name = "-".join(parts[:i])
-                            break
-
-                packages.append(name)
-            return list(set(packages))
+                if name and name not in packages:
+                    packages.append(name)
+            return packages
         except Exception:
             return []
 

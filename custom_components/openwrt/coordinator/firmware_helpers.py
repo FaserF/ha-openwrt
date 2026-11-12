@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..api.base import OpenWrtData
@@ -28,6 +28,33 @@ SNAPSHOT_TARGET_MAP = {
     "ipq50xx": "qualcommax/ipq50xx",
     "qualcommax/generic": "qualcommax/ipq807x",
 }
+
+
+def find_board_profile(profiles: dict[str, Any], board_name: str) -> dict | None:
+    """Find a board's entry in a profiles.json 'profiles' map.
+
+    Profile keys use '_' or '-' where board names use ',', so try the common
+    spellings first and then a separator-insensitive match.
+    """
+    if not board_name or not isinstance(profiles, dict):
+        return None
+    for key in (
+        board_name,
+        board_name.replace("-", "_").replace(",", "_"),
+        board_name.replace("_", "-").replace(",", "-"),
+        board_name.replace(",", "_"),
+    ):
+        if isinstance(profiles.get(key), dict):
+            return profiles[key]
+
+    def normalize(name: str) -> str:
+        return name.lower().replace("-", "").replace("_", "").replace(",", "")
+
+    norm_board = normalize(board_name)
+    for key, profile in profiles.items():
+        if normalize(key) == norm_board and isinstance(profile, dict):
+            return profile
+    return None
 
 
 def parse_repo(repo_input: str) -> tuple[str, str]:

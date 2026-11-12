@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from ..models import IpNeighbor
@@ -141,6 +142,49 @@ class OpenWrtClientHelpersMixin:
         except (ValueError, IndexError) as err:
             _LOGGER.debug("Error parsing /proc/stat for CPU usage: %s", err)
             return 0.0
+
+    async def get_user_installed_packages(self) -> list[str] | None:
+        """Get the packages that were explicitly requested (not pulled in as deps).
+
+        On APK firmware this is /etc/apk/world; on opkg firmware it is every
+        package flagged "user" in /usr/lib/opkg/status. Returns None when the
+        list cannot be read, so callers can tell "nothing extra" from "unknown".
+        The read must end with a success marker: a cat or awk that fails after
+        the start marker is printed (not every transport reports the exit
+        status) would otherwise look like an empty list.
+        """
+        marker = "__OPENWRT_HA_PKG_LIST__"
+        read_ok = "__OPENWRT_HA_PKG_READ_OK__"
+        cmd = (
+            f"echo {marker}; "
+            "if [ -f /etc/apk/world ]; then cat /etc/apk/world; "
+            "elif [ -f /usr/lib/opkg/status ]; then "
+            "awk '/^Package:/{p=$2} /^Status:/ && / user /{print p}' "
+            "/usr/lib/opkg/status; "
+            f"else echo __NO_PACKAGE_DB__; fi && echo {read_ok}"
+        )
+        try:
+            output = await self.execute_command(cmd)
+        except Exception as err:
+            _LOGGER.debug("Failed to read user-installed packages: %s", err)
+            return None
+        if not output or marker not in output:
+            return None
+        body = output.split(marker, 1)[1].rstrip()
+        if "__NO_PACKAGE_DB__" in body or not body.endswith(read_ok):
+            return None
+        body = body[: -len(read_ok)]
+        packages: list[str] = []
+        for raw in body.split():
+            # "!pkg" in apk world is a "never install" constraint (left by
+            # e.g. `apk add wpad-mbedtls '!wpad-basic-mbedtls'`), not a package.
+            if raw.startswith("!"):
+                continue
+            # apk world entries may carry constraints: pkg>=1.0, pkg=1.0, pkg@tag
+            name = re.split(r"[<>=~@]", raw, maxsplit=1)[0].strip()
+            if name and name not in packages:
+                packages.append(name)
+        return packages
 
     async def get_gateway_mac(self) -> str | None:
         """Get the default gateway MAC address."""

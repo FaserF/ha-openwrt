@@ -366,22 +366,16 @@ class LuciRpcSystemMixin:
             output = await self.execute_command(cmd)
             if not output:
                 return []
+            # Names are used as-is: 'apk info' without -v prints bare names,
+            # and opkg's first field is the name. Many real names contain a
+            # dash followed by a digit (libnghttp2-14, libustream-mbedtls20201210),
+            # so stripping a "version" from them would corrupt the name.
             packages: list[str] = []
             for line in output.splitlines():
                 name = line.strip()
-                if not name:
-                    continue
-
-                # Strip version for apk (package-version-release)
-                if "-" in name and any(c.isdigit() for c in name):
-                    parts = name.split("-")
-                    for i in range(1, len(parts)):
-                        if parts[i] and parts[i][0].isdigit():
-                            name = "-".join(parts[:i])
-                            break
-
-                packages.append(name)
-            return list(set(packages))
+                if name and name not in packages:
+                    packages.append(name)
+            return packages
         except LuciRpcError:
             _LOGGER.debug("Failed to list installed packages via LuCI RPC")
             return []

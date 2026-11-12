@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
+from pathlib import Path
 
 import aiohttp
 from homeassistant.core import HomeAssistant
@@ -12,6 +15,26 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_ASU_URL = "https://sysupgrade.openwrt.org"
+
+
+def _integration_version() -> str:
+    """Return the numeric part of this integration's manifest version."""
+    try:
+        manifest = Path(__file__).resolve().parent.parent / "manifest.json"
+        version = str(json.loads(manifest.read_text(encoding="utf-8"))["version"])
+    except (OSError, ValueError, KeyError) as err:
+        _LOGGER.debug("Could not read the integration version: %s", err)
+        return "0"
+    match = re.match(r"\d+(?:\.\d+)*", version)
+    return match.group(0) if match else "0"
+
+
+# Sent as the ASU "client" field. The server expects "<name>/<version>"
+# (owut sends e.g. "owut/2026.04.09") and answers 500 to other formats.
+# It goes to a public server, so it never carries router or entry names.
+# Read once at import: update.py imports this module at the top, and Home
+# Assistant imports platform modules outside the event loop.
+ASU_CLIENT_NAME = f"ha-openwrt/{_integration_version()}"
 
 
 class AsuClientError(Exception):
@@ -64,7 +87,7 @@ class AsuClient:
         target: str,
         board_name: str,
         packages: list[str],
-        client_name: str = "Home Assistant OpenWrt Integration",
+        client_name: str = ASU_CLIENT_NAME,
         distribution: str = "openwrt",
     ) -> str:
         """Request a custom firmware build.
