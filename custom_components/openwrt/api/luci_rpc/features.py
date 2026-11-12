@@ -1,7 +1,6 @@
 # mypy: disable-error-code="attr-defined"
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from ..base import (
@@ -99,69 +98,16 @@ class LuciRpcFeaturesMixin(LuciRpcFeaturesServicesMixin):
         )
 
     async def download_file(self, remote_path: str, local_path: str) -> bool:
-        """Download a file from the router via LuCI RPC."""
+        """Download a file from the router via LuCI RPC.
+
+        luci-mod-rpc has no ubus or file namespace (only auth, uci, fs, sys,
+        ipkg and ip), so the file is encoded on the router in a single
+        sys.exec and checked against the router's byte count.
+        """
         try:
-            import base64
-            import shlex
-
-            # 1. Try ubus file.read via LuCI RPC
-            try:
-                res = await self._rpc_call(
-                    "ubus",
-                    "call",
-                    ["file", "read", {"path": remote_path, "base64": True}],
-                )
-                if res and isinstance(res, dict) and "data" in res:
-                    data = base64.b64decode(res["data"])
-                    await asyncio.to_thread(self._write_bytes, local_path, data)
-                    return True
-            except (
-                LuciRpcTimeoutError,
-                LuciRpcConnectionError,
-                LuciRpcSslError,
-                LuciRpcAuthError,
-            ):
-                raise
-            except Exception as err:
-                _LOGGER.debug("LuCI RPC ubus file.read failed: %s", err)
-
-            # 2. Try legacy LuCI file.read (custom/older LuCI modules)
-            try:
-                res = await self._rpc_call("file", "read", [remote_path])
-                if res and isinstance(res, str):
-                    await asyncio.to_thread(
-                        self._write_bytes, local_path, base64.b64decode(res)
-                    )
-                    return True
-            except (
-                LuciRpcTimeoutError,
-                LuciRpcConnectionError,
-                LuciRpcSslError,
-                LuciRpcAuthError,
-            ):
-                raise
-            except Exception as err:
-                _LOGGER.debug("LuCI RPC file.read failed: %s", err)
-
-            # 3. Fallback to sys.exec command with stderr redirection (#212)
-            safe_path = shlex.quote(remote_path)
-            cmd = (
-                f"openssl base64 -in {safe_path} 2>/dev/null || "
-                f"base64 {safe_path} 2>/dev/null || "
-                f"cat {safe_path} 2>/dev/null | base64 2>/dev/null"
+            return await self._download_file_via_command(
+                remote_path, local_path, self.execute_command
             )
-            output = await self.execute_command(cmd)
-            if output:
-                lines = [
-                    line.strip()
-                    for line in output.splitlines()
-                    if line.strip() and not line.strip().startswith("sh: ")
-                ]
-                clean_b64 = "".join(lines)
-                if clean_b64:
-                    data = base64.b64decode(clean_b64)
-                    await asyncio.to_thread(self._write_bytes, local_path, data)
-                    return True
         except (
             LuciRpcTimeoutError,
             LuciRpcConnectionError,
