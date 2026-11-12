@@ -108,8 +108,8 @@
         }
       },
       "provision_user": {
-        "title": "Secure User Provisioning",
-        "description": "You are currently connecting as **root**. For better security, it is highly recommended to create a dedicated, least-privilege user for Home Assistant.\n\n{user_exists_info}\n\n[Security Best Practices]({security_link})",
+        "title": "Dedicated User Provisioning",
+        "description": "You are currently connecting as **root**. A dedicated account lets you manage Home Assistant credentials separately. The provisioned user can execute commands as root; it is not a restricted or read-only account.\n\n{user_exists_info}\n\n[Security Best Practices]({security_link})",
         "data": {
           "mode": "How would you like to proceed?"
         }

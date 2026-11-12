@@ -5,8 +5,39 @@
 OpenWrt's `rpcd` has very strict ACLs. Even `root` is sometimes restricted via the Ubus API.
 
 - **Solution 1**: Switch the connection method to **LuCI RPC** in the integration settings. It uses the same session as the web UI and often has more permissive defaults.
-- **Solution 2**: Check `/etc/config/rpcd` on your router and ensure your user has the required scopes.
+- **Solution 2**: Check the [permissions guide](permissions.md): the login must reference its ACL group, and method grants alone do not authorize file paths or UCI configurations.
 - **Solution 3**: If you recently upgraded OpenWrt, your ACL files might have been lost. See the entry below.
+
+## Router visible, but no client devices
+
+This affects installations where only the router, radios and SSIDs appear. A
+nonzero Wi-Fi client count does not prove that individual client discovery is
+working: interface totals and the client list are fetched separately.
+
+1. In the integration options, check **Enable Device Tracking** in **Packages
+   Summary**. Review the tracked-device selection, **Include Wired Devices in
+   Tracking**, and **Ignore devices with randomized MAC addresses**. MQTT presence
+   intentionally replaces the native trackers when enabled.
+2. Check [both layers of ubus authorization](permissions.md#two-authorization-layers).
+   Allow `uci.get` as a ubus method as well as the `dhcp`, `wireless` and `network`
+   UCI configurations. For `file.read`, authorize the actual lease file and both
+   `/proc/net/arp` and its `/proc/[0-9]*/net/arp` target. Additional wireless and
+   bridge methods are listed in the guide; an ACL does not add methods missing
+   from the router's installed packages.
+3. If settings and permissions look correct, enable debug logging from the
+   integration's menu, capture one polling cycle, then disable debug logging.
+   Look for `Fetch of connected_devices failed` or an access-denied error.
+   Redact credentials and RPC session tokens before sharing logs. A denied
+   optional source can abort client collection; the overall coordinator can
+   still report a successful update while retaining an empty client list.
+4. Apply the relevant grants using the [manual ACL instructions](permissions.md),
+   then reload the integration to refresh its session and cached permission
+   information. Expect individual client devices to appear once discovery
+   succeeds and the configured filters allow them.
+
+The [example ACL](examples/ubus-acl.json) also covers optional controls and shell
+commands. Read its authority warning before installing the full profile; native
+Wi-Fi discovery does not by itself require unrestricted shell execution.
 
 ## Why did my sensors stop working after an OpenWrt upgrade?
 
@@ -71,4 +102,4 @@ To set up and use the MQTT presence detection feature, the OpenWrt user configur
 * **RPC Object `file` / Method `exec`**: Required to deploy the shell scripts, create directories, and manage services.
 * **RPC Object `hostapd.*` / Method `get_clients`**: Required by the script on the router to poll connected clients.
 
-If you are using the `homeassistant` user created by this integration's provisioning script, all necessary permissions (including `file.exec` and access to `/etc/presence`) are automatically granted. If you use a custom user, ensure it has these ACLs configured in `/usr/share/rpcd/acl.d/`.
+The provisioned `homeassistant` account includes broad command permissions. A custom account needs both the `file.exec` method and an executable-path grant for `/bin/sh`; see the [permissions guide](permissions.md). This permits root-equivalent shell execution on stock OpenWrt, including commands used to deploy presence scripts.

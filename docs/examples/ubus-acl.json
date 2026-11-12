@@ -1,0 +1,98 @@
+{
+  "homeassistant": {
+    "description": "Home Assistant OpenWrt full-feature access; includes root-equivalent shell execution",
+    "read": {
+      "ubus": {
+        "system": ["info", "board"],
+        "network.device": ["status", "fdb"],
+        "network.interface": ["dump"],
+        "network.wireless": ["status"],
+        "iwinfo": ["info", "devices", "assoclist"],
+        "hostapd.*": ["get_clients", "get_status", "wps_status"],
+        "dhcp": ["ipv4leases", "ipv6leases"],
+        "uci": ["get"],
+        "session": ["access", "list"],
+        "rc": ["list"],
+        "service": ["list"],
+        "mwan3": ["status"],
+        "lldp": ["show"],
+        "upnp": ["get_mappings"],
+        "adblock": ["status"],
+        "nlbwmon": ["get_data"],
+        "luci": ["getMountPoints"],
+        "file": ["read", "list", "stat"]
+      },
+      "uci": [
+        "wireless", "network", "dhcp", "system", "firewall", "sqm",
+        "mwan3", "openvpn", "attendedsysupgrade", "tailscale"
+      ],
+      "file": {
+        "/etc/config": ["list"],
+        "/etc/config/attendedsysupgrade": ["list"],
+        "/etc/model": ["read"],
+        "/etc/passwd": ["read"],
+        "/proc/stat": ["read"],
+        "/proc/net/arp": ["read"],
+        "/proc/[0-9]*/net/arp": ["read"],
+        "/proc/sys/net/netfilter/nf_conntrack_count": ["read"],
+        "/proc/sys/net/netfilter/nf_conntrack_max": ["read"],
+        "/tmp/dhcp.leases": ["read"],
+        "/tmp/sysinfo/model": ["read"],
+        "/tmp/sysinfo/board_name": ["read"],
+        "/tmp/.reboot-needed": ["list"],
+        "/var/run/reboot-required": ["list"],
+        "/tmp/run/reboot-required": ["list"],
+        "/var/run/adblock/adblock.runtime.json": ["read"],
+        "/tmp/run/adblock/adblock.runtime.json": ["read"],
+        "/tmp/adb_runtime.json": ["read"],
+        "/tmp/backup-ha-*.tar.gz": ["read"],
+        "/sys/class/thermal/thermal_zone*/temp": ["read"],
+        "/sys/class/hwmon/hwmon*/temp*_input": ["read"],
+        "/sys/devices/*/temp": ["read"],
+        "/sys/devices/*/temp*_input": ["read"],
+        "/usr/bin/etherwake": ["list"],
+        "/usr/bin/wg": ["list"],
+        "/usr/share/luci/menu.d/luci-app-attendedsysupgrade.json": ["list"],
+        "/usr/lib/lua/luci/controller/attendedsysupgrade.lua": ["list"],
+        "/etc/init.d/adblock": ["list"],
+        "/etc/init.d/simple-adblock": ["list"],
+        "/etc/init.d/banip": ["list"],
+        "/etc/init.d/snort": ["list"],
+        "/usr/sbin/tailscale": ["list"],
+        "/usr/bin/tailscale": ["list"],
+        "/usr/bin/openssl": ["list"],
+        "/bin/openssl": ["list"],
+        "/usr/bin/base64": ["list"],
+        "/bin/base64": ["list"],
+        "/bin/busybox": ["list"]
+      }
+    },
+    "write": {
+      "ubus": {
+        "system": ["reboot"],
+        "network.interface": ["up", "down"],
+        "network.wireless": ["notify"],
+        "hostapd.*": ["del_client", "wps_start", "wps_cancel", "wps_push"],
+        "uci": ["add", "set", "commit", "revert"],
+        "rc": ["init"],
+        "service": ["reloading"],
+        "file": ["write", "exec"],
+        "sys": ["exec"]
+      },
+      "uci": ["wireless", "firewall", "sqm", "system"],
+      "file": {
+        "/bin/sh": ["exec"],
+        "/usr/bin/lsusb": ["exec"],
+        "/usr/bin/id": ["exec"],
+        "/usr/sbin/batctl": ["exec"],
+        "/usr/sbin/nlbw": ["exec"],
+        "/usr/bin/wc": ["exec"],
+        "/usr/bin/tail": ["exec"],
+        "/etc/init.d/*": ["exec"],
+        "/sys/class/leds/*/brightness": ["write"],
+        "/sys/devices/*/leds/*/brightness": ["write"],
+        "/tmp/ha_provision.sh": ["write"]
+      }
+    }
+  }
+}

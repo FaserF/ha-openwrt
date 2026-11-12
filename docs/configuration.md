@@ -10,7 +10,7 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
     - Select your connection method: **Ubus (HTTP/HTTPS)** is highly recommended.
     - Enter your router's IP/Hostname, Username (usually `root`), and Password.
     - For Ubus, ensure the `uhttpd-mod-ubus` package is installed on your router.
-    - **Secure Provisioning**: If connecting as `root`, the integration will offer to automatically create a dedicated, least-privilege `homeassistant` user and configure all required ACL permissions for you.
+    - **Account Provisioning**: If connecting as `root`, the integration can create a dedicated `homeassistant` user with separate credentials and configure its ACLs. The provisioned account can execute shell commands as root; it is not a restricted or read-only account.
     - **Connection Diagnostics**: If setup fails, a detailed diagnostic report will be displayed to help you identify the cause (e.g. firewall blocking, missing packages, or incorrect ACLs).
 
 ## Supported Connection Methods
@@ -19,7 +19,7 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
 |:--- |:---:|:---:|:---:|
 | **Performance** | 🚀 Very Fast | 🚄 Fast | 🐌 Slow |
 | **Ease of Setup** | ✅ Easy | ✅ Easy | ⚠️ Complex |
-| **Permissions** | 🛡️ Strict (ACLs) | 🔓 Permissive | 👑 Full (Root) |
+| **Permissions** | ACLs; shell grants allow root-level execution | 🔓 Permissive | 👑 Full (Root) |
 | **Reliability** | ✅ High | ✅ High | ⚠️ Moderate |
 | **Device Tracking** | ✅ Instant | ✅ Instant | ✅ Fast |
 | **Backups/Update** | ✅ Full | ✅ Full | ❌ Limited |
@@ -37,11 +37,13 @@ When using the **Ubus** connection method, some sensors may be unavailable (show
 - **System Temperature**: Access to thermal data (e.g., `/sys/class/thermal/...`) is frequently restricted via Ubus. If the temperature sensor is missing, it's due to these security restrictions.
 - **Disk/Storage Usage**: Similar to CPU/Temp, detailed filesystem info might be restricted.
 
-**Solution**: If these sensors are vital for you, switch the connection method to **LuCI RPC** or **SSH**, or manually grant `file` read access to `/proc/stat` and `/sys` in your router's `/etc/config/rpcd` or `/usr/share/rpcd/acl.d/`.
+**Check the ACLs first**: Both the ubus method and the requested file path must be authorized. See the [permissions guide](permissions.md) for `/proc/stat`, thermal paths and symlink targets before changing connection methods.
 
 ## Required Permissions
 
-If you are using a non-root user (e.g. for security reasons), you need to grant specific OpenWrt permissions (via `rpcd` ACLs or LuCI) to utilize all features of this integration:
+For ubus accounts, see the [permissions guide](permissions.md) and [example ACL](examples/ubus-acl.json) for method, UCI configuration and file-path grants. The full-feature example includes root-equivalent shell execution; choose permissions for the features you intend to use.
+
+The integration uses the following subsystems:
 
 | Subsystem | Description | Write Permission Required for |
 |-----------|-------------|-------------------------------|
