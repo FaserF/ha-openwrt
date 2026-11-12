@@ -366,3 +366,34 @@ async def test_check_official_firmware_update_skipped_for_non_openwrt() -> None:
     mock_asu.assert_not_called()
     assert data.firmware_upgradable is False
     assert data.asu_update_available is False
+
+
+def test_first_firmware_check_runs_two_minutes_after_setup() -> None:
+    """The first firmware check is due ~120 s after setup, then every interval."""
+    from custom_components.openwrt.coordinator import (
+        FIRMWARE_CHECK_INTERVAL,
+        FIRMWARE_FIRST_CHECK_DELAY,
+    )
+
+    hass = MagicMock()
+    hass.loop.time.return_value = 1000.0
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    entry.data = {"host": "192.0.2.1"}
+    entry.options = {}
+
+    coordinator = OpenWrtDataCoordinator(hass, entry, AsyncMock())
+    delay = FIRMWARE_FIRST_CHECK_DELAY.total_seconds()
+    interval = FIRMWARE_CHECK_INTERVAL.total_seconds()
+    assert delay == 120
+
+    # Not on the startup path: nothing is due at setup or before the delay
+    assert not coordinator._firmware_check_due(1000.0)
+    assert not coordinator._firmware_check_due(1000.0 + delay - 1)
+    # Due shortly after the delay, not after a full interval
+    assert coordinator._firmware_check_due(1000.0 + delay + 1)
+
+    # Once it has run, the next check waits a full interval again
+    coordinator._last_firmware_check = 1000.0 + delay + 1
+    assert not coordinator._firmware_check_due(1000.0 + delay + 1 + interval - 1)
+    assert coordinator._firmware_check_due(1000.0 + delay + 2 + interval)

@@ -86,7 +86,12 @@ from .client import create_client
 from .device_registry import DeviceRegistryMixin
 from .discovery import DiscoveryMixin
 from .features import FeaturesMixin
-from .firmware import FIRMWARE_CHECK_INTERVAL, SNAPSHOT_TARGET_MAP, FirmwareMixin
+from .firmware import (
+    FIRMWARE_CHECK_INTERVAL,
+    FIRMWARE_FIRST_CHECK_DELAY,
+    SNAPSHOT_TARGET_MAP,
+    FirmwareMixin,
+)
 from .network import NetworkMixin
 from .tracking import TrackingMixin, _clean_hostname_entry
 
@@ -124,6 +129,7 @@ __all__ = [
     "DeviceRegistryMixin",
     "DiscoveryMixin",
     "FIRMWARE_CHECK_INTERVAL",
+    "FIRMWARE_FIRST_CHECK_DELAY",
     "FeaturesMixin",
     "FirmwareMixin",
     "NetworkMixin",
@@ -167,9 +173,17 @@ class OpenWrtDataCoordinator(
         self.config_entry = config_entry
         self.in_reboot_installation = False
         self._firmware_checked = False
-        # Initialize firmware check timer to avoid blocking initial startup with external GitHub/ASU API calls
+        self._firmware_revision: str | None = None
+        self._device_info_refresh_pending = False
+        # Run the first firmware check FIRMWARE_FIRST_CHECK_DELAY after setup:
+        # late enough to keep external GitHub/ASU calls off the startup path,
+        # soon enough that a restart or reload does not hide updates for a
+        # whole FIRMWARE_CHECK_INTERVAL. Then check every interval as usual.
+        now = self.hass.loop.time() if self.hass and self.hass.loop else 0.0
         self._last_firmware_check: float = (
-            self.hass.loop.time() if self.hass and self.hass.loop else 0.0
+            now
+            - FIRMWARE_CHECK_INTERVAL.total_seconds()
+            + FIRMWARE_FIRST_CHECK_DELAY.total_seconds()
         )
         self._last_gps_check: float = -86400.0  # Force check on startup
         self._last_update_time: float = 0.0
@@ -316,6 +330,7 @@ class OpenWrtDataCoordinator(
                     "Device rebooted successfully after firmware update, connection restored."
                 )
                 self.in_reboot_installation = False
+                self._device_info_refresh_pending = True
             # Reset backoff on success
             if self._current_backoff_interval != self._configured_update_interval:
                 self._current_backoff_interval = self._configured_update_interval
@@ -348,6 +363,7 @@ class OpenWrtDataCoordinator(
 
         async_delete_connection_lost_repair(self.hass, self.config_entry)
 
+        await self._async_refresh_device_info_after_reboot(data)
         self._async_sync_firmware_state(data)
 
         # Periodic firmware checks (wrapped in try-except to prevent crashing the whole coordinator)
@@ -355,11 +371,7 @@ class OpenWrtDataCoordinator(
         check_enabled = self.config_entry.options.get(
             CONF_CHECK_FIRMWARE_UPDATES, DEFAULT_CHECK_FIRMWARE_UPDATES
         )
-        if (
-            check_enabled
-            and now - self._last_firmware_check
-            > FIRMWARE_CHECK_INTERVAL.total_seconds()
-        ):
+        if check_enabled and self._firmware_check_due(now):
             self._last_firmware_check = now
             try:
                 await self._check_firmware_update(data)

@@ -8,13 +8,25 @@ import logging
 import time
 from typing import Any
 
-from ..models import OpenWrtData
+from ..models import DeviceInfo, OpenWrtData
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class OpenWrtAggregatorMixin:
     """Mixin for aggregating data across all OpenWrt subsystems."""
+
+    async def async_refresh_device_info(self) -> DeviceInfo | None:
+        """Re-read device info now (e.g. after a reboot or upgrade).
+
+        Updates the cached copy used between slow polls, and makes the next
+        poll a full slow poll so packages and other slow data refresh too.
+        """
+        info = await self.get_device_info()
+        if info:
+            self._cached_device_info = info
+        self._last_slow_poll_time = 0.0
+        return info
 
     async def get_all_data(self, is_full_poll: bool = False) -> OpenWrtData:
         """Fetch all data from OpenWrt in parallel blocks with robust fallbacks."""
