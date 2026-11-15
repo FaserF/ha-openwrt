@@ -12,9 +12,20 @@ jobs:
     name: Label Issue
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App token for Hermes
+        id: app-token
+        if: env.HAS_BOT_CREDS == 'true'
+        uses: actions/create-github-app-token@v1
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.BOT_APP_ID  }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY  }}
+        env:
+          HAS_BOT_CREDS: ${{ secrets.BOT_APP_ID != '' && secrets.BOT_PRIVATE_KEY != ''  }}
       - name: Label Issues
         uses: actions/github-script@v9.0.0
         with:
+          github-token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           script: |
             const issue = context.payload.issue;
             const title = issue.title.toLowerCase();
@@ -54,9 +65,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: auto-label
     steps:
+      - name: Generate GitHub App token for Hermes
+        id: app-token
+        if: env.HAS_BOT_CREDS == 'true'
+        uses: actions/create-github-app-token@v1
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.BOT_APP_ID  }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY  }}
+        env:
+          HAS_BOT_CREDS: ${{ secrets.BOT_APP_ID != '' && secrets.BOT_PRIVATE_KEY != ''  }}
       - name: Comment on new issue
         uses: actions/github-script@v9.0.0
         with:
+          github-token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           script: |
             const issue = context.payload.issue;
             const labels = issue.labels.map(l => l.name);
