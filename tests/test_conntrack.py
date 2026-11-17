@@ -84,8 +84,8 @@ async def test_flush_conntrack_for_mac_success(ubus_client: UbusClient):
 
 
 @pytest.mark.asyncio
-async def test_flush_conntrack_for_mac_failure_rc(ubus_client: UbusClient):
-    """Test _flush_conntrack_for_mac returns False when RC marker is non-zero."""
+async def test_flush_conntrack_for_mac_zero_entries_is_success(ubus_client: UbusClient):
+    """Test _flush_conntrack_for_mac returns True when conntrack returns 0 flow entries deleted (RC=1)."""
     from custom_components.openwrt.api.base import IpNeighbor
 
     neighbors = [
@@ -108,6 +108,39 @@ async def test_flush_conntrack_for_mac_failure_rc(ubus_client: UbusClient):
             "execute_command",
             new_callable=AsyncMock,
             return_value="conntrack v1.4.6: 0 flow entries have been deleted.\nRC=1",
+        ) as mock_exec,
+    ):
+        result = await ubus_client._flush_conntrack_for_mac("aa:bb:cc:dd:ee:ff")
+
+    assert result is True
+    mock_exec.assert_called_once_with("conntrack -D -s 192.168.1.50; echo RC=$?")
+
+
+@pytest.mark.asyncio
+async def test_flush_conntrack_for_mac_failure_rc(ubus_client: UbusClient):
+    """Test _flush_conntrack_for_mac returns False when RC marker is non-zero and not zero-entries."""
+    from custom_components.openwrt.api.base import IpNeighbor
+
+    neighbors = [
+        IpNeighbor(
+            ip="192.168.1.50",
+            mac="AA:BB:CC:DD:EE:FF",
+            interface="br-lan",
+            state="REACHABLE",
+        )
+    ]
+    with (
+        patch.object(
+            ubus_client,
+            "get_ip_neighbors",
+            new_callable=AsyncMock,
+            return_value=neighbors,
+        ),
+        patch.object(
+            ubus_client,
+            "execute_command",
+            new_callable=AsyncMock,
+            return_value="sh: conntrack: not found\nRC=127",
         ) as mock_exec,
     ):
         result = await ubus_client._flush_conntrack_for_mac("aa:bb:cc:dd:ee:ff")

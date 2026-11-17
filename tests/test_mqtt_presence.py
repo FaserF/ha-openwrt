@@ -617,6 +617,9 @@ async def test_deploy_helper_with_whitelist_and_consider_home(
     )
     assert 'payload="{\\"in_zones\\":[\\"$' in event_sh_cmd
     assert '\\"connected_ap\\":\\"${ROUTER_ID}\\"' in event_sh_cmd
+    assert '\\"band\\":\\"${band}\\"' in event_sh_cmd
+    assert '\\"ssid\\":\\"${ssid}\\"' in event_sh_cmd
+    assert '\\"interface\\":\\"${IFACE:-}\\"' in event_sh_cmd
     assert "is_owned_by_other_ap" in event_sh_cmd
     assert '-t "${TOPIC}/attributes"' in event_sh_cmd
 

@@ -11,13 +11,14 @@ start_service() {
   [ -x "$ACTION" ] || return 0
 
   # Detect active interfaces purely from the live hostapd control sockets that
-  # respond to a ping. Never fall back to a hardcoded or snapshot list: a
-  # guessed interface would make procd watch a hostapd_cli target that may not
-  # exist, failing loudly and respawning forever.
+<<<<<<< HEAD
+  # respond to a ping. If hostapd is still initializing (e.g. during boot or DFS CAC),
+  # retry briefly in a background loop before giving up.
   ACTIVE_SOCKS=""
 
   # Search standard and vendor-specific hostapd control socket paths.
   for sock in /var/run/hostapd/* /var/run/hostapd-*/*; do
+>>>>>>> upstream/main
     [ -e "$sock" ] || continue
     IFACE=$(basename "$sock")
     CTRL_DIR=$(dirname "$sock")
@@ -27,8 +28,30 @@ start_service() {
     fi
   done
 
-  # No healthy interface: host nothing. The wireless reload trigger re-runs
-  # start_service when hostapd comes up later.
+<<<<<<< HEAD
+=======
+  # If no healthy interface answered yet, launch background retry to restart service
+  # once hostapd finishes starting up (e.g. on 5GHz DFS wait or slow boot).
+  if [ -z "$ACTIVE_SOCKS" ]; then
+    (
+      for _i in $(seq 1 12); do
+        sleep 5
+        for sock in /var/run/hostapd/* /var/run/hostapd-*/*; do
+          [ -e "$sock" ] || continue
+          _cand=$(basename "$sock")
+          [ "$_cand" = "global" ] && continue
+          CTRL_DIR=$(dirname "$sock")
+
+          if hostapd_cli -i "$_cand" -p "$CTRL_DIR" ping 2>/dev/null | grep -q PONG; then
+            /etc/init.d/presence_hostapd restart
+            exit 0
+          fi
+        done
+      done
+    ) >/dev/null 2>&1 &
+    return 0
+  fi
+>>>>>>> upstream/main
 
   [ -n "$ACTIVE_SOCKS" ] || return 0
 

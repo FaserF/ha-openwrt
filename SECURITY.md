@@ -80,3 +80,5 @@ When this integration was submitted to the default HACS repository, it underwent
 The MQTT Presence Detection feature integrates with [OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence).
 - **Completely Optional**: MQTT Presence is opt-in. Its deployment needs `file.exec` plus an executable-path grant for `/bin/sh`. Other features, such as backups and command-based monitoring, also execute commands, so disabling MQTT Presence does not remove their command-permission requirements.
 - **Vetted Source**: The presence scripts are lightweight and open-source, allowing you to review them before deploying them to your router.
+
+

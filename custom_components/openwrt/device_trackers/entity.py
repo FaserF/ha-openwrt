@@ -111,14 +111,12 @@ def compute_device_tracker_attrs(
     # Add historical seen data
     if mac in coordinator._device_history:
         history = coordinator._device_history[mac]
-        attrs.update(
-            {
-                "initially_seen": datetime.fromtimestamp(
-                    history["initially_seen"]
-                ).isoformat(),
-                "last_seen": datetime.fromtimestamp(history["last_seen"]).isoformat(),
-            }
-        )
+        initially_seen = history.get("initially_seen")
+        last_seen = history.get("last_seen")
+        if initially_seen:
+            attrs["initially_seen"] = datetime.fromtimestamp(initially_seen).isoformat()
+        if last_seen:
+            attrs["last_seen"] = datetime.fromtimestamp(last_seen).isoformat()
 
     # Add optional metrics
     optional_metrics: dict[str, Any] = {}

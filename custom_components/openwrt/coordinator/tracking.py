@@ -157,7 +157,7 @@ class TrackingMixin(_Base):
                             "last_seen"
                         )
                         self._device_last_seen[mac_lower] = (
-                            float(hist_seen) if hist_seen else current_time
+                            float(hist_seen) if hist_seen else 0.0
                         )
                     if (
                         mac_lower not in self._wireless_last_seen
@@ -168,7 +168,7 @@ class TrackingMixin(_Base):
                         ]
 
                     last_seen = self._device_last_seen[mac_lower]
-                    if current_time - last_seen < consider_home:
+                    if last_seen > 0 and current_time - last_seen < consider_home:
                         if mac_lower in current_macs:
                             device = next(
                                 d
@@ -348,7 +348,7 @@ class TrackingMixin(_Base):
             if mac not in self._device_history:
                 self._device_history[mac] = {
                     "initially_seen": current_time,
-                    "last_seen": current_time,
+                    "last_seen": current_time if device.connected else 0,
                     "is_wireless": device.is_wireless,
                     "hostname": hostname,
                 }
@@ -356,7 +356,8 @@ class TrackingMixin(_Base):
                 _LOGGER.debug("New device added to history: %s", mac)
             else:
                 hist = self._device_history[mac]
-                hist["last_seen"] = current_time
+                if device.connected:
+                    hist["last_seen"] = current_time
                 # Persistence: if it was EVER wireless, it stays wireless in history
                 # to avoid fake-wired entries from DHCP leases when offline.
                 if device.is_wireless and not hist.get("is_wireless"):
@@ -428,7 +429,7 @@ class TrackingMixin(_Base):
                 is_wireless = is_random_mac(mac)
                 self._device_history[mac] = {
                     "initially_seen": current_time,
-                    "last_seen": current_time,
+                    "last_seen": 0,
                     "is_wireless": is_wireless,
                     "hostname": lease_hostname,
                 }
@@ -440,12 +441,8 @@ class TrackingMixin(_Base):
                 )
             else:
                 hist = self._device_history[mac]
-                if hist.get("last_seen") != current_time or (
-                    lease_hostname and hist.get("hostname") != lease_hostname
-                ):
-                    hist["last_seen"] = current_time
-                    if lease_hostname:
-                        hist["hostname"] = lease_hostname
+                if lease_hostname and hist.get("hostname") != lease_hostname:
+                    hist["hostname"] = lease_hostname
                     history_updated = True
 
             filtered_leases.append(lease)
