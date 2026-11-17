@@ -30,7 +30,7 @@ start_service() {
   # No healthy interface: host nothing. The wireless reload trigger re-runs
   # start_service when hostapd comes up later.
 
-  [ -n "$ACTIVE_SOCKS" ] | return 0
+  [ -n "$ACTIVE_SOCKS" ] || return 0
 
   for sock in $ACTIVE_SOCKS; do
     IFACE=$(basename "$sock") 
