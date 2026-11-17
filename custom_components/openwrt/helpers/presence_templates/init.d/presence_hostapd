@@ -11,14 +11,12 @@ start_service() {
   [ -x "$ACTION" ] || return 0
 
   # Detect active interfaces purely from the live hostapd control sockets that
-<<<<<<< HEAD
   # respond to a ping. If hostapd is still initializing (e.g. during boot or DFS CAC),
   # retry briefly in a background loop before giving up.
   ACTIVE_SOCKS=""
 
   # Search standard and vendor-specific hostapd control socket paths.
   for sock in /var/run/hostapd/* /var/run/hostapd-*/*; do
->>>>>>> upstream/main
     [ -e "$sock" ] || continue
     IFACE=$(basename "$sock")
     CTRL_DIR=$(dirname "$sock")
@@ -28,8 +26,6 @@ start_service() {
     fi
   done
 
-<<<<<<< HEAD
-=======
   # If no healthy interface answered yet, launch background retry to restart service
   # once hostapd finishes starting up (e.g. on 5GHz DFS wait or slow boot).
   if [ -z "$ACTIVE_SOCKS" ]; then
@@ -51,7 +47,6 @@ start_service() {
     ) >/dev/null 2>&1 &
     return 0
   fi
->>>>>>> upstream/main
 
   [ -n "$ACTIVE_SOCKS" ] || return 0
 
