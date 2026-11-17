@@ -57,17 +57,20 @@ start_service() {
         # in the "mld addr" line, otherwise use the MAC from the first match.
         iwinfo "$IFACE" assoclist 2>/dev/null \
           | awk '
-            /[0-9a-fA-F]0-9a-fA-F]:/ {
+            /^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}/ {
+              if (device_mac != "")
+                print device_mac
+
               device_mac=tolower($1)
-            } 
+              next
+            }
             /mld addr:/ {
               print tolower($3)
               device_mac=""
             }
             END {
-              if (device_mac != "") {
+              if (device_mac != "")
                 print device_mac
-              }
             }'
       ) \
       | sort -u \
