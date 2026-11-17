@@ -6,15 +6,15 @@ has_cmd() {
 }
 
 # Install dependencies if missing (OpenWrt 25 uses apk, older uses opkg)
-if has_cmd hostapd_cli && has_cmd iw && has_cmd mosquitto_pub; then
+if has_cmd hostapd_cli && has_cmd iw && has_cmd iwinfo && has_cmd mosquitto_pub; then
     echo "OK: dependencies already installed"
 else
     if has_cmd apk; then
         apk update
-        apk add hostapd-utils mosquitto-client-ssl iw
+        apk add hostapd-utils mosquitto-client-ssl iw iwinfo
     else
         opkg update
-        opkg install hostapd-utils mosquitto-client-ssl iw
+        opkg install hostapd-utils mosquitto-client-ssl iw iwinfo
     fi
 fi
 

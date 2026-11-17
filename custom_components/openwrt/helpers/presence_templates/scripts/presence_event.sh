@@ -107,13 +107,23 @@ is_seen_anywhere() {
   # Roaming check across local radios on the same AP. Interface names come from
   # the live hostapd control sockets (one socket per AP interface) so the check
   # never depends on a stale interface snapshot.
-  for sock in /var/run/hostapd/*; do
+  # This now includes other hostapd- directories when searching for interfaces.
+  for sock in /var/run/hostapd/* /var/run/hostapd-*/*; do
     [ -e "$sock" ] || continue
     iface=$(basename "$sock")
     [ "$iface" = "global" ] && continue
     if iw dev "$iface" station dump 2>/dev/null \
       | awk '/^Station/ {print tolower($2)}' \
       | grep -Fxq "$MAC"; then
+      return 0
+    fi
+
+    # With Wi-Fi 7 Multi-Link Operation (MLO) devices (MLD) may attach to
+    # multiple frequencies at the same time and the MAC address used is
+    # different than the device address, this gets the device address so
+    # may match it here if the original first method fails.
+
+    if iwinfo "$iface" assoclist 2>/dev/null | grep -Fqi "$MAC"; then
       return 0
     fi
   done
@@ -185,8 +195,17 @@ shift 2 || true
 REST="$*"
 
 # Extract MAC with colons from the remaining args (hostapd_cli may append key=value tokens)
-MAC="$(printf '%s\n' "$REST" | grep -Eoi '([0-9a-f]{2}:){5}[0-9a-f]{2}' | head -n 1 \
-  | tr 'A-Z' 'a-z' || true)"
+# Prefer MLD address (mld_addr=) if present
+MAC="$(printf '%s\n' "$REST" |
+    sed -n 's/.*mld_addr=\([0-9A-Fa-f:]\{17\}\).*/\1/p' |
+    head -n1)"
+
+# Fall back to the original behaviour of first matching MAC
+if [ -z "$MAC" ]; then
+    MAC="$(printf '%s\n' "$REST" |
+        grep -Eoi '([0-9a-f]{2}:){5}[0-9a-f]{2}' |
+        head -n1 || true)"
+fi
 
 log "iface=$IFACE event=$EVENT rest='$REST' mac='$MAC'"
 
