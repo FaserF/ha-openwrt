@@ -15,11 +15,13 @@ from homeassistant.helpers import (
 
 from custom_components.openwrt.api.base import (
     ConnectedDevice,
+    DhcpLease,
     OpenWrtData,
     WirelessInterface,
 )
 from custom_components.openwrt.const import (
     CONF_CONSIDER_HOME,
+    CONF_TRACK_WIRED,
     CONF_TRUST_STALE_ARP,
 )
 from custom_components.openwrt.device_tracker import OpenWrtDeviceTracker
@@ -586,3 +588,57 @@ def test_device_tracker_reboot_retention_from_persistent_history(
     # history shows it was seen 30s ago (< 120s consider_home).
     assert tracker.available is True
     assert tracker.is_connected is True
+
+
+def test_disconnected_wifi_client_transitions_to_not_home_with_dhcp_lease(
+    mock_coordinator: MagicMock, mock_config_entry: MagicMock
+) -> None:
+    """Test that a disconnected Wi-Fi client transitions to not_home despite DHCP lease (#219)."""
+    mac = "bc:93:07:11:22:33"
+    mock_config_entry.options = {
+        CONF_CONSIDER_HOME: 20,
+        CONF_TRACK_WIRED: False,
+        CONF_TRUST_STALE_ARP: False,
+    }
+
+    # Coordinator initial state: Wi-Fi connected
+    tracker = OpenWrtDeviceTracker(mock_coordinator, mock_config_entry, mac)
+    shared_data = mock_coordinator.hass.data.setdefault("openwrt", {})
+    wireless_states = shared_data.setdefault("tracker_wireless_state", {})
+    now = datetime.now()
+
+    wireless_states[mac] = {
+        "connected": True,
+        "owner_entry_id": mock_config_entry.entry_id,
+        "last_seen": now,
+        "connection_type": "5GHz",
+    }
+    tracker._handle_coordinator_update()
+    assert tracker.is_connected is True
+    assert tracker._last_seen is not None
+    initial_last_seen = tracker._last_seen
+
+    # Device disconnects from Wi-Fi. It is removed from active wireless station list.
+    # OpenWrt still has a DHCP lease and STALE neighbor entry for it.
+    mock_coordinator.data.dhcp_leases = [
+        DhcpLease(mac=mac, ip="192.168.1.50", hostname="phone", expires=3600)
+    ]
+    # DHCP lease in device history does not bump last_seen
+    mock_coordinator._device_history[mac] = {
+        "hostname": "phone",
+        "last_seen": int(initial_last_seen.timestamp()),
+        "is_wireless": True,
+    }
+    # Wi-Fi state updated by coordinator tracking mixin to connected=False
+    wireless_states[mac]["connected"] = False
+
+    # Within consider_home window (<20s): remains home
+    with patch(
+        "custom_components.openwrt.device_trackers.entity._get_now"
+    ) as mock_get_now:
+        mock_get_now.return_value = initial_last_seen + timedelta(seconds=10)
+        assert tracker.is_connected is True
+
+        # Beyond consider_home window (>20s): must transition to not_home!
+        mock_get_now.return_value = initial_last_seen + timedelta(seconds=25)
+        assert tracker.is_connected is False
