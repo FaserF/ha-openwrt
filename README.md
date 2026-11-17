@@ -1,4 +1,4 @@
-﻿# OpenWrt (for Homeassistant)
+# OpenWrt (for Homeassistant)
 
 [![GitHub Release](https://img.shields.io/github/release/FaserF/ha-openwrt.svg?style=flat-square)](https://github.com/FaserF/ha-openwrt/releases)
 [![Downloads (Current release)](https://img.shields.io/github/downloads/FaserF/ha-openwrt/latest/openwrt.zip?label=Downloads%20(Current%20release)&style=flat-square)](https://github.com/FaserF/ha-openwrt/releases)
@@ -10,20 +10,20 @@
 
 A secure, production-ready Home Assistant integration for OpenWrt devices. Monitor system resources, track connected devices, manage WiFi radios, execute commands, and natively update firmware directly from Home Assistant.
 
-## 🧭 Quick Links
+## ?? Quick Links
 
 | | | | |
 | :--- | :--- | :--- | :--- |
-| [📖 Documentation Site](https://faserf.github.io/ha-openwrt/) | [✨ Features](#-features) | [📦 Installation](#-installation) | [⚙️ Configuration](#️-configuration) |
-| [🛡️ Security](SECURITY.md) | [🛠️ Options](#️-options-flow) | [🧱 Services](#-services) | [📖 Automations](#-automation-examples) |
-| [❓ FAQ](#-troubleshooting--faq) | [🧑‍💻 Development](#-development) | [💖 Credits](#-credits--acknowledgements) | [📄 License](#-license) |
+| [?? Documentation Site](https://faserf.github.io/ha-openwrt/) | [? Features](#-features) | [?? Installation](#-installation) | [?? Configuration](#?-configuration) |
+| [??? Security](SECURITY.md) | [??? Options](#?-options-flow) | [?? Services](#-services) | [?? Automations](#-automation-examples) |
+| [? FAQ](#-troubleshooting--faq) | [????? Development](#-development) | [?? Credits](#-credits--acknowledgements) | [?? License](#-license) |
 
 ### Why use this integration?
 While you can monitor routers via SNMP or ping trackers, this integration uses native OpenWrt APIs (Ubus/RPC) to provide deep, reliable integration without the overhead of polling generic network protocols. This means instant device tracking via modern ARP/NDP tables, full control over firewall rules and radios, and even the ability to compile firmware directly from your dashboard.
 
 Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fallback). This integration natively supports both `apk` and `opkg` package managers, ensuring future compatibility with the latest OpenWrt releases.
 
-## ✨ Features
+## ? Features
 
 - **VPN Monitoring**:
   - Tracks status (Up/Down) for WireGuard and OpenVPN tunnels.
@@ -76,12 +76,12 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
   - **Infrastructure Filtering**: Automatically identifies and filters out the router's own network interfaces to prevent circular self-tracking.
   - **New Device Event**: Fires `openwrt_new_device` when previously unknown MAC addresses are discovered.
 - **MQTT Presence Detection (Optional)**:
-  - Integration with the third-party [OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence) scripts.
+  - Integration with native presence detection scripts provided by this project.
   - High-performance, low-latency tracking via MQTT events instead of polling.
   - Automatic script deployment and configuration directly from the Home Assistant UI.
 
   > [!IMPORTANT]
-  > **Randomized MACs**: The "Ignore devices with randomized MAC addresses" option currently **only applies to native device tracking**. MQTT presence detection (via the third-party script) will still track and create entities for randomized MAC addresses if they connect to your WiFi.
+  > **Randomized MACs**: The "Ignore devices with randomized MAC addresses" option currently **only applies to native device tracking**. MQTT presence detection (via native scripts) will still track and create entities for randomized MAC addresses if they connect to your WiFi.
 - **Advanced Diagnostics**:
   - **UPnP Mappings**: Track active UPnP and NAT-PMP port forwardings.
   - **Refined Naming**: Routers are primarily identified by their product model (e.g. "Xiaomi AX3600") for a premium dashboard look.
@@ -99,13 +99,13 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
   - **HA Repairs**: Integrated check for auth failures, missing packages, and permission issues.
 
 
-## ❤️ Support This Project
+## ?? Support This Project
 
-> I maintain this integration in my **free time alongside my regular job** — bug hunting, new features, testing on real devices. Test hardware costs money, and every donation helps me stay independent and dedicate more time to open-source work.
+> I maintain this integration in my **free time alongside my regular job** � bug hunting, new features, testing on real devices. Test hardware costs money, and every donation helps me stay independent and dedicate more time to open-source work.
 >
 > **This project is and will always remain 100% free.** There are no "Premium Upgrades", paid features, or subscriptions. Every feature is available to everyone.
 >
-> Donations are completely voluntary — but the more support I receive, the less I depend on other income sources and the more time I can realistically invest into these projects. 💪
+> Donations are completely voluntary � but the more support I receive, the less I depend on other income sources and the more time I can realistically invest into these projects. ??
 
 <div align="center">
 
@@ -116,16 +116,16 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
 
 ---
 
-## 🔌 Recommended Hardware & Ecosystem Links
+## ?? Recommended Hardware & Ecosystem Links
 
 | Device / Service | Integration Use Case | Link |
 | :--- | :--- | :--- |
-| **OpenWrt-compatible Wi-Fi 6/7 Routers & Gateways** | Native Ubus/RPC, WireGuard, SQM & presence detection in Home Assistant | [Official Device Page →](https://fabiseitz.de/go/ha-router) |
-| **Home Assistant Green / Yellow Hub** | Dedicated, power-efficient 24/7 smart home appliance | [Official Device Page →](https://fabiseitz.de/go/ha-hardware) |
+| **OpenWrt-compatible Wi-Fi 6/7 Routers & Gateways** | Native Ubus/RPC, WireGuard, SQM & presence detection in Home Assistant | [Official Device Page ?](https://fabiseitz.de/go/ha-router) |
+| **Home Assistant Green / Yellow Hub** | Dedicated, power-efficient 24/7 smart home appliance | [Official Device Page ?](https://fabiseitz.de/go/ha-hardware) |
 
 
 
-## 📦 Installation
+## ?? Installation
 
 ### Home Assistant Marketplace (formerly HACS) (Recommended)
 
@@ -148,9 +148,9 @@ This integration is fully compatible with the official **Home Assistant Marketpl
 2. Extract the `custom_components/openwrt` folder into your Home Assistant's `custom_components` directory.
 3. Restart Home Assistant.
 
-## ⚙️ Configuration
+## ?? Configuration
 
-> 🛡️ **Security Note**: Before configuring the integration, please read our [Security Best Practices](SECURITY.md) regarding dedicated accounts, restricting permissions, and connection methods. Using `root` is supported but not recommended.
+> ??? **Security Note**: Before configuring the integration, please read our [Security Best Practices](SECURITY.md) regarding dedicated accounts, restricting permissions, and connection methods. Using `root` is supported but not recommended.
 
 Adding your OpenWrt router is entirely done via the UI. **No YAML configuration is required.**
 
@@ -167,19 +167,19 @@ Adding your OpenWrt router is entirely done via the UI. **No YAML configuration 
 
 | Feature | **Ubus (Recommended)** | **LuCI RPC** | **SSH** |
 |:--- |:---:|:---:|:---:|
-| **Performance** | 🚀 Very Fast | 🚄 Fast | 🐌 Slow |
-| **Ease of Setup** | ✅ Easy | ✅ Easy | ⚠️ Complex |
-| **Permissions** | ACLs; shell grants allow root-level execution | 🔓 Permissive | 👑 Full (Root) |
-| **Reliability** | ✅ High | ✅ High | ⚠️ Moderate |
-| **Device Tracking** | ✅ Instant | ✅ Instant | ✅ Fast |
-| **Backups/Update** | ✅ Full | ✅ Full | ❌ Limited |
+| **Performance** | ?? Very Fast | ?? Fast | ?? Slow |
+| **Ease of Setup** | ? Easy | ? Easy | ?? Complex |
+| **Permissions** | ACLs; shell grants allow root-level execution | ?? Permissive | ?? Full (Root) |
+| **Reliability** | ? High | ? High | ?? Moderate |
+| **Device Tracking** | ? Instant | ? Instant | ? Fast |
+| **Backups/Update** | ? Full | ? Full | ? Limited |
 
-#### 🔑 Which method should I choose?
+#### ?? Which method should I choose?
 1.  **Ubus (HTTP/HTTPS)**: The gold standard. If your router supports it and permissions are set up correctly, use this. It's the most stable and efficient.
 2.  **LuCI RPC**: The perfect fallback. If Ubus is giving you "Access Denied" errors (common on newer OpenWrt SNAPSHOTs or restricted firmware), **switch to LuCI RPC**. It often has more permissive default access to system sensors like temperature and client lists.
 3.  **SSH**: Use only if HTTP/HTTPS is not possible or if you need to bypass all RPC restrictions entirely. Note that SSH causes higher CPU load on the router during polling.
 
-### ⚠️ Known Ubus Limitations
+### ?? Known Ubus Limitations
 
 When using the **Ubus** connection method, some sensors may be unavailable (showing as 0 or missing) depending on your OpenWrt version and RPC ACL configuration:
 
@@ -209,7 +209,7 @@ The integration uses the following subsystems:
 | **LEDs** | Read current state of router LEDs | Toggling LEDs, changing brightness |
 | **MWAN3** | Read Multi-WAN load balancing status (with ubus: the `mwan3.status` call) | - |
 | **MQTT Presence** | Automatic deployment of presence scripts | Deploying/Updating scripts (requires `file.exec`) |
-| **NLBWMon** | Top Bandwidth Hosts sensor — reads per-host traffic via `nlbw` CLI (requires `file.exec` for `/usr/sbin/nlbw`) | - |
+| **NLBWMon** | Top Bandwidth Hosts sensor � reads per-host traffic via `nlbw` CLI (requires `file.exec` for `/usr/sbin/nlbw`) | - |
 
 During setup, the integration will check your user's permissions and display a summary of available features.
 
@@ -238,11 +238,11 @@ Some features require additional OpenWrt packages to be installed on your router
 | **openssl-util** | CLI backup generation on modern OpenWrt releases |
 | **coreutils-base64** | CLI backup extraction and transmission fallback |
 
-### 🛠️ Options Flow
+### ??? Options Flow
 
 After configuration, click **Configure** on the integration page to adjust performance and tracking behavior.
 
-#### 📡 Device Tracking Settings Explained
+#### ?? Device Tracking Settings Explained
 You can control how the integration handles network clients (PCs, phones, IoT devices). These settings help you balance detail vs. dashboard clutter.
 
 | Option | Effect when **ON** | Effect when **OFF** |
@@ -252,7 +252,7 @@ You can control how the integration handles network clients (PCs, phones, IoT de
 | **Force Wireless MACs** | Manually flags specific MAC addresses as **wireless**. | Use this if your devices are behind a **third-party Access Point (e.g. UniFi)**. These devices often appear as "wired" to the main router, which causes them to stay "home" indefinitely due to stale ARP entries. Flagging them as wireless ensures they are correctly marked "away" when they roam off the network. |
 
 > [!CAUTION]
-> **Random MAC Limitation**: The "Ignore devices with randomized MAC addresses" option only works for the native device tracking platform. If you enable **MQTT Presence Detection**, the third-party scripts on the router will continue to report all clients, including those with randomized MACs.
+> **Random MAC Limitation**: The "Ignore devices with randomized MAC addresses" option only works for the native device tracking platform. If you enable **MQTT Presence Detection**, the native scripts on the router will continue to report all clients, including those with randomized MACs.
 
 > [!TIP]
 > **Summary Sensors stay active!** Even if you disable "Track network clients", the **Connected Clients** and **Wireless Clients** sensors will always show the correct total count of active devices on your network.
@@ -274,7 +274,7 @@ You can control how the integration handles network clients (PCs, phones, IoT de
 - **Attended Sysupgrade Server**: Configure the URL for the ASU server (default: `https://sysupgrade.openwrt.org`).
 - **Enable NLBWMon Top Hosts Sensor** (default: off): When enabled, creates a sensor that ranks the top 5 bandwidth-consuming hosts using the `nlbw` CLI. Requires `nlbwmon` to be installed on the router and `file.exec` rpcd permission for `/usr/sbin/nlbw`. The integration automatically checks for availability at startup and skips entity creation if the binary is not found.
 
-## 🧱 Services
+## ?? Services
 
 The integration provides several powerful services for advanced control.
 
@@ -307,10 +307,10 @@ Send a Magic Packet through the router to wake up a device.
 ### `openwrt.create_backup`
 Triggers a configuration backup and returns the path to the backup file.
 
-## 📖 Automation Examples
+## ?? Automation Examples
 
 <details>
-<summary><strong>🔄 Reboot Router Weekly</strong></summary>
+<summary><strong>?? Reboot Router Weekly</strong></summary>
 
 ```yaml
 alias: "Router: Weekly Reboot"
@@ -330,7 +330,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🚨 Notification on WAN Disconnect</strong></summary>
+<summary><strong>?? Notification on WAN Disconnect</strong></summary>
 
 ```yaml
 alias: "Router: WAN Disconnect Notification"
@@ -343,13 +343,13 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "🚨 Internet Connection Lost"
+      title: "?? Internet Connection Lost"
       message: "The main WAN interface on the OpenWrt router went down."
 ```
 </details>
 
 <details>
-<summary><strong>🔄 Firmware Update Notification</strong></summary>
+<summary><strong>?? Firmware Update Notification</strong></summary>
 
 ```yaml
 alias: "Router: Firmware Update Available"
@@ -360,7 +360,7 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "🔄 OpenWrt Update Available"
+      title: "?? OpenWrt Update Available"
       message: >-
         A new firmware update ({{ state_attr('update.openwrt_firmware', 'latest_version') }})
         is available for your router!
@@ -368,7 +368,7 @@ action:
 </details>
 
 <details>
-<summary><strong>📡 Toggle Guest WiFi via Dashboard</strong></summary>
+<summary><strong>?? Toggle Guest WiFi via Dashboard</strong></summary>
 
 ```yaml
 alias: "Router: Toggle Guest WiFi"
@@ -383,7 +383,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🖥️ Execute Custom Command on Router</strong></summary>
+<summary><strong>??? Execute Custom Command on Router</strong></summary>
 
 ```yaml
 alias: "Router: Clear DNS Cache"
@@ -400,7 +400,7 @@ action:
 </details>
 
 <details>
-<summary><strong>💡 LED Night Mode - Turn off LEDs at Night</strong></summary>
+<summary><strong>?? LED Night Mode - Turn off LEDs at Night</strong></summary>
 
 Turn off all router LEDs after midnight and turn them back on in the morning.
 
@@ -434,7 +434,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🌐 Port Forwarding Security: Disable at Night</strong></summary>
+<summary><strong>?? Port Forwarding Security: Disable at Night</strong></summary>
 
 Automatically disable sensitive port forwarding rules during night hours to reduce your attack surface.
 
@@ -453,7 +453,7 @@ action:
 </details>
 
 <details>
-<summary><strong>👶 Parental Control: Internet Schedule</strong></summary>
+<summary><strong>?? Parental Control: Internet Schedule</strong></summary>
 
 Automatically disable internet access for specific devices during homework or bed time. Uses the Fritz-style "Internet Access" switches.
 
@@ -472,7 +472,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🏎️ Dynamic Bandwidth Alert (Mbps)</strong></summary>
+<summary><strong>??? Dynamic Bandwidth Alert (Mbps)</strong></summary>
 
 Get notified if a specific interface exceeds a throughput threshold (e.g. 100 Mbps) for longer than 10 minutes.
 
@@ -487,15 +487,15 @@ trigger:
 action:
   - service: notify.mobile_app_faserf
     data:
-      title: "🏎️ Sustained High Download Rate"
+      title: "??? Sustained High Download Rate"
       message: "WAN interface has been saturating over 100Mbps for 10 minutes."
 ```
 </details>
 
 <details>
-<summary><strong>📊 Alert When a Single Host Dominates Bandwidth</strong></summary>
+<summary><strong>?? Alert When a Single Host Dominates Bandwidth</strong></summary>
 
-Trigger a notification when the top bandwidth consumer has transferred more than 10 GB in the current accounting period — useful for catching runaway downloads or misconfigured devices. Requires `nlbwmon` and the **Enable NLBWMon Top Hosts Sensor** option to be turned on.
+Trigger a notification when the top bandwidth consumer has transferred more than 10 GB in the current accounting period � useful for catching runaway downloads or misconfigured devices. Requires `nlbwmon` and the **Enable NLBWMon Top Hosts Sensor** option to be turned on.
 
 ```yaml
 alias: "Network: Top Bandwidth Host Over 10 GB"
@@ -507,17 +507,17 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "📊 Heavy Bandwidth Consumer"
+      title: "?? Heavy Bandwidth Consumer"
       message: >-
         {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].hostname }}
         has used {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].total }}
-        (↓ {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].download }}
-        ↑ {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].upload }}).
+        (? {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].download }}
+        ? {{ state_attr('sensor.openwrt_top_bandwidth_hosts', 'top_hosts')[0].upload }}).
 ```
 </details>
 
 <details>
-<summary><strong>🔁 Auto-Reconnect on High Packet Errors</strong></summary>
+<summary><strong>?? Auto-Reconnect on High Packet Errors</strong></summary>
 
 If the WAN interface accumulates more than 500 errors (monitored via the consolidated attributes), trigger an interface reconnect.
 
@@ -534,7 +534,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🚨 Notification on Public IP Change</strong></summary>
+<summary><strong>?? Notification on Public IP Change</strong></summary>
 
 Useful for home lab users without DDNS. Get notified as soon as your router gets a new external IP address.
 
@@ -546,13 +546,13 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "🌐 Router IP Updated"
+      title: "?? Router IP Updated"
       message: "The new public IP address is {{ trigger.to_state.state }}"
 ```
 </details>
 
 <details>
-<summary><strong>🚨 Notification on Network Errors (WAN)</strong></summary>
+<summary><strong>?? Notification on Network Errors (WAN)</strong></summary>
 
 ```yaml
 alias: "Router: Network Error Alert"
@@ -562,7 +562,7 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "⚠️ Network Errors Detected"
+      title: "?? Network Errors Detected"
       message: >-
         More than 100 RX errors detected on WAN.
         This may indicate cable or hardware issues.
@@ -570,7 +570,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🖥️ Wake on LAN: Wake PC via OpenWrt</strong></summary>
+<summary><strong>??? Wake on LAN: Wake PC via OpenWrt</strong></summary>
 
 Wakes up your PC when you arrive home or via an input button.
 
@@ -589,7 +589,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🧠 High Resource Usage Alert (CPU/Memory)</strong></summary>
+<summary><strong>?? High Resource Usage Alert (CPU/Memory)</strong></summary>
 
 Get notified early if your router is struggling with high load, potentially preventing network outages or indicating a runaway background process.
 
@@ -609,7 +609,7 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "⚠️ Router Overload Warning"
+      title: "?? Router Overload Warning"
       message: >-
         The OpenWrt router is experiencing sustained high resource usage!
         Trigger: {{ trigger.entity_id }} is currently at {{ trigger.to_state.state }}.
@@ -617,7 +617,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🙋‍♂️ Guest WiFi Automation Based on Presence</strong></summary>
+<summary><strong>????? Guest WiFi Automation Based on Presence</strong></summary>
 
 Automatically enable the Guest WiFi when a specific "Guest Mode" input boolean is turned on, or disable it when everyone leaves the house to improve security and reduce airtime congestion.
 
@@ -637,7 +637,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🔁 Daily Router Reboot (Scheduled Maintenance)</strong></summary>
+<summary><strong>?? Daily Router Reboot (Scheduled Maintenance)</strong></summary>
 
 Some specific setups or failing modems require a daily reboot. You can easily schedule this via Home Assistant natively rather than relying on OpenWrt cronjobs.
 
@@ -654,7 +654,7 @@ action:
 </details>
 
 <details>
-<summary><strong>🔐 VPN Failure Alert</strong></summary>
+<summary><strong>?? VPN Failure Alert</strong></summary>
 
 Get notified immediately if a specific VPN tunnel (WireGuard or OpenVPN) goes down.
 
@@ -669,13 +669,13 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "🔐 VPN Outage"
+      title: "?? VPN Outage"
       message: "VPN Interface wg0 has disconnected!"
 ```
 </details>
 
 <details>
-<summary><strong>📡 New Device Connection Alert</strong></summary>
+<summary><strong>?? New Device Connection Alert</strong></summary>
 
 Use the `openwrt_new_device` event to get notified whenever a new, previously unknown device connects to your network for the first time.
 
@@ -687,13 +687,13 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "📡 New Device Found"
+      title: "?? New Device Found"
       message: "A new device with MAC {{ trigger.event.data.mac }} connected to {{ trigger.event.data.host }}."
 ```
 </details>
 
 <details>
-<summary><strong>📦 Automatic Backup Before Update</strong></summary>
+<summary><strong>?? Automatic Backup Before Update</strong></summary>
 
 Automatically trigger a configuration backup right before a firmware update to ensure you can always restore your settings even if a flash goes wrong.
 
@@ -711,7 +711,7 @@ action:
 </details>
 
 <details>
-<summary><strong>📉 High Latency Notification</strong></summary>
+<summary><strong>?? High Latency Notification</strong></summary>
 
 Monitor your internet connection quality and get notified if latency increases significantly, which might indicate ISP issues or network congestion.
 
@@ -726,13 +726,13 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "📉 Network Latency Spike"
+      title: "?? Network Latency Spike"
       message: "Current WAN latency is {{ states('sensor.openwrt_wan_latency') }}ms."
 ```
 </details>
 
 <details>
-<summary><strong>🏎️ SQM Night Mode (Speed Boost)</strong></summary>
+<summary><strong>??? SQM Night Mode (Speed Boost)</strong></summary>
 
 Automatically increase SQM bandwidth limits during night hours when network contention is lower.
 
@@ -774,7 +774,7 @@ action:
 </details>
 
 <details>
-<summary><strong>⚡ WiFi Optimizer (Channel Scan)</strong></summary>
+<summary><strong>? WiFi Optimizer (Channel Scan)</strong></summary>
 
 Trigger a wireless optimization scan via custom command if high latency or packet loss is detected on a wireless interface.
 
@@ -795,7 +795,7 @@ action:
 </details>
 
 <details>
-<summary><strong>📶 Modem: SMS Notification on ISP Change</strong></summary>
+<summary><strong>?? Modem: SMS Notification on ISP Change</strong></summary>
 
 If you have a dual-SIM or roaming modem, get notified when the carrier changes.
 
@@ -807,7 +807,7 @@ trigger:
 action:
   - service: notify.notify
     data:
-      title: "🌍 Modem Switched Network"
+      title: "?? Modem Switched Network"
       message: "The router is now connected via {{ states('sensor.openwrt_qmodem_isp') }}."
 ```
 </details>
@@ -820,15 +820,15 @@ The integration provides a powerful firmware update entity that supports officia
 
 | Feature | LuCI RPC | Ubus (uhttpd) | SSH | Custom Repo (GitHub) |
 |---------|:---:|:---:|:---:|:---:|
-| **Check for Official Version** | ✅ | ✅ | ✅ | ❌ (uses repo instead) |
-| **Check for Snapshot Version** | ✅ | ✅ | ✅ | ✅ (via GitHub tags) |
-| **Check for Custom Repo Version** | ❌ | ❌ | ❌ | ✅ |
-| **Release Notes** | ✅ | ✅ | ✅ | ✅ (GitHub Release page) |
-| **Install Official Release** | ✅ | ✅ | ✅ | ❌ |
-| **Install from Custom Repo** | ✅ | ✅ | ✅ | ✅ (direct download) |
-| **Attended Sysupgrade (ASU)** | ✅ | ✅ | ✅ | ❌ (not needed) |
-| **Automated Backups** | ✅ | ✅ | ✅ | ✅ |
-| **SHA256 Checksum Verification** | ❌ | ❌ | ❌ | ✅ (if `sha256sums` asset exists) |
+| **Check for Official Version** | ? | ? | ? | ? (uses repo instead) |
+| **Check for Snapshot Version** | ? | ? | ? | ? (via GitHub tags) |
+| **Check for Custom Repo Version** | ? | ? | ? | ? |
+| **Release Notes** | ? | ? | ? | ? (GitHub Release page) |
+| **Install Official Release** | ? | ? | ? | ? |
+| **Install from Custom Repo** | ? | ? | ? | ? (direct download) |
+| **Attended Sysupgrade (ASU)** | ? | ? | ? | ? (not needed) |
+| **Automated Backups** | ? | ? | ? | ? |
+| **SHA256 Checksum Verification** | ? | ? | ? | ? (if `sha256sums` asset exists) |
 
 ### Attended Sysupgrade (ASU)
 
@@ -854,7 +854,7 @@ The integration automatically detects if your router is running a `SNAPSHOT` bui
 
 ### Custom Firmware Repositories (GitHub Releases)
 
-If you use a **custom OpenWrt fork** that publishes firmware via **GitHub Releases** (e.g. [`AgustinLorenzo/openwrt`](https://github.com/AgustinLorenzo/openwrt), or any other community build), you can configure this integration to check for updates from that repository — **without needing a custom ASU server**.
+If you use a **custom OpenWrt fork** that publishes firmware via **GitHub Releases** (e.g. [`AgustinLorenzo/openwrt`](https://github.com/AgustinLorenzo/openwrt), or any other community build), you can configure this integration to check for updates from that repository � **without needing a custom ASU server**.
 
 #### How it works
 
@@ -868,13 +868,13 @@ If you use a **custom OpenWrt fork** that publishes firmware via **GitHub Releas
 
 For advanced users, the **"Custom Firmware Pattern"** option allows you to specify a custom regex pattern to match the correct sysupgrade binary in the release assets. This is useful if the repository uses non-standard naming conventions.
 
-If left empty, the integration auto-generates a pattern based on your router's `target` and `board_name` — which works for most standard OpenWrt forks.
+If left empty, the integration auto-generates a pattern based on your router's `target` and `board_name` � which works for most standard OpenWrt forks.
 
 #### Important Notes
 
 > [!NOTE]
 > Custom firmware repositories use the **GitHub Releases API** (not ASU). This means:
-> - **No custom ASU server is required** — the integration downloads directly from the GitHub release assets.
+> - **No custom ASU server is required** � the integration downloads directly from the GitHub release assets.
 > - The repository must publish firmware as **GitHub Release assets** (`.bin` files attached to tagged releases).
 > - The GitHub API has rate limits (60 requests/hour for unauthenticated requests). Firmware checks happen periodically (every 6 hours by default), so this should not be an issue.
 
@@ -883,7 +883,7 @@ If left empty, the integration auto-generates a pattern based on your router's `
 
 ---
 
-## ❓ Troubleshooting & FAQ
+## ? Troubleshooting & FAQ
 
 ### "Access Denied" or Permission Errors
 OpenWrt's `rpcd` has very strict ACLs. Even `root` is sometimes restricted via the Ubus API.
@@ -959,7 +959,7 @@ To set up and use the MQTT presence detection feature, the OpenWrt user configur
 
 If you are using the `homeassistant` user created by this integration's provisioning script, all necessary permissions (including `file.exec` and access to `/etc/presence`) are automatically granted. If you use a custom user, ensure it has these ACLs configured in `/usr/share/rpcd/acl.d/`.
 
-## 🧑‍💻 Development
+## ????? Development
 
 This project uses modern Python development tools:
 - `ruff` for linting and formatting
@@ -981,15 +981,19 @@ Before committing, run tests and linters:
 make check
 ```
 
-## 💖 Credits & Acknowledgements
+## ?? Credits & Acknowledgements
 
 - **Main Author**: [FaserF](https://github.com/FaserF)
-- **MQTT Presence Detection**: Special thanks to [f45tb00t](https://github.com/f45tb00t) for the excellent [OpenWRT_HA_Presence](https://github.com/f45tb00t/OpenWRT_HA_Presence) scripts which are optionally integrated into this project.
-  - *Disclaimer*: The MQTT presence feature is a wrapper around third-party scripts. This functionality is provided "as-is" and is NOT officially supported by the main `ha-openwrt` integration. Bugs related to the MQTT scripts themselves should be reported to the original repository.
+- **MQTT Presence Detection**: Native presence detection support included in this project.
+  - *Disclaimer*: The MQTT presence feature is a native script implementation. This functionality is provided "as-is" and is NOT officially supported by the main `ha-openwrt` integration. Bugs should be reported to this repository.
 
 - **[kvj/hass_openwrt](https://github.com/kvj/hass_openwrt)**: The original repository which served as the inspiration and reference for OpenWrt integration concepts.
 - **[Home Assistant `fritz` Integration](https://github.com/home-assistant/core/tree/dev/homeassistant/components/fritz)**: The official Fritz!Box integration, which served as the gold standard for feature parity, particularly regarding the robust `device_tracker` scanner implementation and multi-platform architecture.
 
-## 📄 License
+## ?? License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+
+
+

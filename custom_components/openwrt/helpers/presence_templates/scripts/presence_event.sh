@@ -77,7 +77,17 @@ publish() {
 
   if [ "$state_val" = "home" ]; then
     zone_val="${ZONE_ENTITY:-zone.home}"
-    payload="{\"in_zones\":[\"${zone_val}\"],\"connected_ap\":\"${ROUTER_ID}\"}"
+    band=""; ssid=""
+    if [ -n "${IFACE:-}" ]; then
+      freq="$(iw dev "$IFACE" info 2>/dev/null | awk '/channel/ {gsub(/\(/, "", $3); print $3; exit}')"
+      case "${freq:-0}" in
+        2[0-9][0-9][0-9]) band="2.4 GHz" ;;
+        5[0-8][0-9][0-9]|59[0-2][0-9]) band="5 GHz" ;;
+        59[3-9][0-9]|[6-7][0-9][0-9][0-9]) band="6 GHz" ;;
+      esac
+      ssid="$(iw dev "$IFACE" info 2>/dev/null | sed -n 's/^[[:space:]]*ssid //p' | head -n 1 | sed 's/[\\"]//g')"
+    fi
+    payload="{\"in_zones\":[\"${zone_val}\"],\"connected_ap\":\"${ROUTER_ID}\",\"band\":\"${band}\",\"ssid\":\"${ssid}\",\"interface\":\"${IFACE:-}\"}"
     mqtt_state="${ZONE_NAME:-home}"
   else
     payload='{"in_zones":[]}'
@@ -122,7 +132,7 @@ is_seen_anywhere() {
 
 is_owned_by_other_ap() {
   [ -n "$TOPIC" ] || return 1
-  attr_payload="$(timeout 3 mosquitto_sub \
+  attr_payload="$(mosquitto_sub \
     -h "$BROKER" -p "$PORT" \
     -u "$USER" -P "$PASS" \
     -i "ap-presence-check-$ROUTER_ID-$$" \
