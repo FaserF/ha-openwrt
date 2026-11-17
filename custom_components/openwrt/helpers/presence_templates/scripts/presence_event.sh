@@ -198,13 +198,13 @@ REST="$*"
 # Prefer MLD address (mld_addr=) if present
 MAC="$(printf '%s\n' "$REST" |
     sed -n 's/.*mld_addr=\([0-9A-Fa-f:]\{17\}\).*/\1/p' |
-    head -n1)"
+    head -n1 | tr 'A-Z' 'a-z')"
 
 # Fall back to the original behaviour of first matching MAC
 if [ -z "$MAC" ]; then
     MAC="$(printf '%s\n' "$REST" |
         grep -Eoi '([0-9a-f]{2}:){5}[0-9a-f]{2}' |
-        head -n1 || true)"
+        head -n1 | tr 'A-Z' 'a-z' || true)"
 fi
 
 log "iface=$IFACE event=$EVENT rest='$REST' mac='$MAC'"
