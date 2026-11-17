@@ -80,7 +80,19 @@ class OpenWrtStatusMixin:
                 overall_success = False
                 continue
 
-            if "RC=0" not in (output or ""):
+            summary = [
+                line
+                for line in (output or "").strip().splitlines()
+                if not line.startswith("RC=")
+            ]
+            last_line = (
+                summary[-1] if summary else "no output (is conntrack-tools installed?)"
+            )
+
+            # conntrack exits with RC=1 when 0 flow entries matched to be deleted.
+            # This is normal when there is no active stream or for inactive neighbor IPs.
+            is_zero_entries = "0 flow entries have been deleted" in (output or "")
+            if "RC=0" not in (output or "") and not is_zero_entries:
                 _LOGGER.warning(
                     "[openwrt-conntrack-flush] Failed to flush conntrack for %s (%s): %s",
                     mac,
@@ -90,14 +102,6 @@ class OpenWrtStatusMixin:
                 overall_success = False
                 continue
 
-            summary = [
-                line
-                for line in (output or "").strip().splitlines()
-                if not line.startswith("RC=")
-            ]
-            last_line = (
-                summary[-1] if summary else "no output (is conntrack-tools installed?)"
-            )
             _LOGGER.info(
                 "[openwrt-conntrack-flush] %s (%s): %s",
                 mac,

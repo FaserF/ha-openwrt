@@ -265,7 +265,7 @@ class UbusFeaturesMixin:
             self._invalidate_slow_poll()
 
             if blocked:
-                return await self._flush_conntrack_for_mac(mac_upper)
+                await self._flush_conntrack_for_mac(mac_upper)
 
             return True
         except UbusError as err:

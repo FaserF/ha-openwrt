@@ -1245,7 +1245,7 @@ async def test_ubus_set_wireless_network_enabled_succeeds_even_if_notify_fails(
 async def test_ubus_set_access_control_blocked_conntrack_failure(
     ubus_client: UbusClient,
 ):
-    """Test set_access_control_blocked returns False when conntrack flush fails."""
+    """Test set_access_control_blocked returns True even if conntrack flush fails (best-effort)."""
     with (
         patch.object(
             ubus_client, "get_access_control", new_callable=AsyncMock, return_value=[]
@@ -1268,7 +1268,7 @@ async def test_ubus_set_access_control_blocked_conntrack_failure(
     ):
         result = await ubus_client.set_access_control_blocked("AA:BB:CC:DD:EE:FF", True)
 
-    assert result is False
+    assert result is True
     mock_flush.assert_called_once_with("AA:BB:CC:DD:EE:FF")
 
 

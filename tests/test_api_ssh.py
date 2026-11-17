@@ -400,7 +400,7 @@ async def test_ssh_get_connected_devices_iwinfo_fallback_rates(ssh_client: SshCl
 
 @pytest.mark.asyncio
 async def test_ssh_set_access_control_blocked_conntrack_failure(ssh_client: SshClient):
-    """Test SSH set_access_control_blocked returns False when conntrack flush fails."""
+    """Test SSH set_access_control_blocked returns True even if conntrack flush fails (best-effort)."""
     ssh_client._connected = True
     with (
         patch.object(
@@ -416,7 +416,7 @@ async def test_ssh_set_access_control_blocked_conntrack_failure(ssh_client: SshC
     ):
         result = await ssh_client.set_access_control_blocked("AA:BB:CC:DD:EE:FF", True)
 
-    assert result is False
+    assert result is True
     mock_flush.assert_called_once_with("AA:BB:CC:DD:EE:FF")
 
 
