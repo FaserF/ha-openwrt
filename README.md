@@ -101,11 +101,11 @@ Supports **OpenWrt 25.12** and newer (older versions are supported via `opkg` fa
 
 ## ?? Support This Project
 
-> I maintain this integration in my **free time alongside my regular job** — bug hunting, new features, testing on real devices. Test hardware costs money, and every donation helps me stay independent and dedicate more time to open-source work.
+> I maintain this integration in my **free time alongside my regular job** â€” bug hunting, new features, testing on real devices. Test hardware costs money, and every donation helps me stay independent and dedicate more time to open-source work.
 >
 > **This project is and will always remain 100% free.** There are no "Premium Upgrades", paid features, or subscriptions. Every feature is available to everyone.
 >
-> Donations are completely voluntary — but the more support I receive, the less I depend on other income sources and the more time I can realistically invest into these projects. ??
+> Donations are completely voluntary â€” but the more support I receive, the less I depend on other income sources and the more time I can realistically invest into these projects. ??
 
 <div align="center">
 
@@ -209,7 +209,7 @@ The integration uses the following subsystems:
 | **LEDs** | Read current state of router LEDs | Toggling LEDs, changing brightness |
 | **MWAN3** | Read Multi-WAN load balancing status (with ubus: the `mwan3.status` call) | - |
 | **MQTT Presence** | Automatic deployment of presence scripts | Deploying/Updating scripts (requires `file.exec`) |
-| **NLBWMon** | Top Bandwidth Hosts sensor — reads per-host traffic via `nlbw` CLI (requires `file.exec` for `/usr/sbin/nlbw`) | - |
+| **NLBWMon** | Top Bandwidth Hosts sensor â€” reads per-host traffic via `nlbw` CLI (requires `file.exec` for `/usr/sbin/nlbw`) | - |
 
 During setup, the integration will check your user's permissions and display a summary of available features.
 
@@ -495,7 +495,7 @@ action:
 <details>
 <summary><strong>?? Alert When a Single Host Dominates Bandwidth</strong></summary>
 
-Trigger a notification when the top bandwidth consumer has transferred more than 10 GB in the current accounting period — useful for catching runaway downloads or misconfigured devices. Requires `nlbwmon` and the **Enable NLBWMon Top Hosts Sensor** option to be turned on.
+Trigger a notification when the top bandwidth consumer has transferred more than 10 GB in the current accounting period â€” useful for catching runaway downloads or misconfigured devices. Requires `nlbwmon` and the **Enable NLBWMon Top Hosts Sensor** option to be turned on.
 
 ```yaml
 alias: "Network: Top Bandwidth Host Over 10 GB"
@@ -854,7 +854,7 @@ The integration automatically detects if your router is running a `SNAPSHOT` bui
 
 ### Custom Firmware Repositories (GitHub Releases)
 
-If you use a **custom OpenWrt fork** that publishes firmware via **GitHub Releases** (e.g. [`AgustinLorenzo/openwrt`](https://github.com/AgustinLorenzo/openwrt), or any other community build), you can configure this integration to check for updates from that repository — **without needing a custom ASU server**.
+If you use a **custom OpenWrt fork** that publishes firmware via **GitHub Releases** (e.g. [`AgustinLorenzo/openwrt`](https://github.com/AgustinLorenzo/openwrt), or any other community build), you can configure this integration to check for updates from that repository â€” **without needing a custom ASU server**.
 
 #### How it works
 
@@ -868,13 +868,13 @@ If you use a **custom OpenWrt fork** that publishes firmware via **GitHub Releas
 
 For advanced users, the **"Custom Firmware Pattern"** option allows you to specify a custom regex pattern to match the correct sysupgrade binary in the release assets. This is useful if the repository uses non-standard naming conventions.
 
-If left empty, the integration auto-generates a pattern based on your router's `target` and `board_name` — which works for most standard OpenWrt forks.
+If left empty, the integration auto-generates a pattern based on your router's `target` and `board_name` â€” which works for most standard OpenWrt forks.
 
 #### Important Notes
 
 > [!NOTE]
 > Custom firmware repositories use the **GitHub Releases API** (not ASU). This means:
-> - **No custom ASU server is required** — the integration downloads directly from the GitHub release assets.
+> - **No custom ASU server is required** â€” the integration downloads directly from the GitHub release assets.
 > - The repository must publish firmware as **GitHub Release assets** (`.bin` files attached to tagged releases).
 > - The GitHub API has rate limits (60 requests/hour for unauthenticated requests). Firmware checks happen periodically (every 6 hours by default), so this should not be an issue.
 
