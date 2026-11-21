@@ -1,133 +1,83 @@
-name: Bug Report
-description: Report a bug with the OpenWrt Home Assistant integration
-title: '[Bug]: '
-labels: ['bug', 'triage']
-assignees:
-  - FaserF
+name: 🐛 Bug Report
+description: Create a report to help improve this project.
+title: "[Bug]: "
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        ## Before submitting
-        - 🔍 Search [existing issues](https://github.com/FaserF/ha-openwrt/issues) to avoid duplicates
-        - 📖 Check the [Documentation Site](https://faserf.github.io/ha-openwrt/)
-        - 🔗 View the integration: [![Open your Home Assistant instance and show the openwrt integration.](https://my.home-assistant.io/badges/integration.svg)](https://my.home-assistant.io/redirect/integration/?domain=openwrt)
+        Thanks for opening an issue! Automated triage and diagnostics are provided by [faserf-hermes-agent[bot]](https://github.com/apps/faserf-hermes-agent).
 
   - type: input
-    id: integration_version
+    id: version
     attributes:
-      label: Integration Version
-      description: Which version of ha-openwrt are you running? (Marketplace/HACS or integration page)
-      placeholder: e.g. v2.5.6
+      label: Version / Release
+      description: Which version of this repository/component are you using? (e.g. v1.2.0, latest commit)
+      placeholder: "e.g. 1.2.0"
     validations:
       required: true
 
   - type: input
-    id: ha_version
+    id: env_version
     attributes:
-      label: Home Assistant Version
-      description: |
-        [![Open your Home Assistant instance and show your Home Assistant version information.](https://my.home-assistant.io/badges/info.svg)](https://my.home-assistant.io/redirect/info/)
-      placeholder: e.g. 2026.11.2
-    validations:
-      required: true
-
-  - type: dropdown
-    id: ha_install_type
-    attributes:
-      label: Home Assistant Installation Type
-      description: |
-        Can be found in: [![Open your Home Assistant instance and show your Home Assistant version information.](https://my.home-assistant.io/badges/info.svg)](https://my.home-assistant.io/redirect/info/)
-      options:
-        - Home Assistant OS
-        - Home Assistant Container
-        - Home Assistant Supervised
-        - Home Assistant Core
-    validations:
-      required: true
-
-  - type: input
-    id: openwrt_version
-    attributes:
-      label: OpenWrt Version
-      description: Which version of OpenWrt is running on your router?
-      placeholder: e.g. 25.12.6
-    validations:
-      required: true
-
-  - type: input
-    id: router_model
-    attributes:
-      label: Router Model
-      description: What router model are you using? (optional but helpful)
-      placeholder: e.g. Linksys WRT3200ACM, GL.iNet GL-MT6000
+      label: Environment Version (Home Assistant / Python / OS)
+      description: Applicable runtime environment details (e.g. Home Assistant 2026.11.2, Python 3.14, Ubuntu 24.04).
+      placeholder: "e.g. Home Assistant 2026.11.2"
     validations:
       required: false
 
-  - type: dropdown
-    id: connection_method
+  - type: checkboxes
+    id: pre_release
     attributes:
-      label: Connection Method
-      description: How is Home Assistant connecting to OpenWrt?
+      label: Release Channel
       options:
-        - ubus (HTTP/HTTPS)
-        - LuCI RPC
-        - SSH
-    validations:
-      required: true
+        - label: I am using a Beta or Pre-release version
+          required: false
 
   - type: textarea
     id: description
     attributes:
-      label: Describe the Bug
-      description: A clear and concise description of what the bug is.
+      label: Describe the bug
+      description: A clear and concise description of what went wrong.
     validations:
       required: true
 
   - type: textarea
-    id: steps
+    id: reproduction
     attributes:
       label: Steps to Reproduce
-      description: Step-by-step instructions to reproduce the behavior.
+      description: Steps to reproduce the behavior.
       placeholder: |
-        1. Configure integration with '...'
-        2. Navigate to '...'
-        3. See error / unexpected behavior
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
     validations:
-      required: false
+      required: true
 
   - type: textarea
     id: expected
     attributes:
       label: Expected Behavior
-      description: What did you expect to happen?
+      description: What did you expect to happen instead?
     validations:
-      required: false
-
-  - type: textarea
-    id: diagnostics
-    attributes:
-      label: Diagnostics
-      description: |
-        Download diagnostics from the integration page and paste here (very helpful!):
-        [![Open your Home Assistant instance and show the openwrt integration.](https://my.home-assistant.io/badges/integration.svg)](https://my.home-assistant.io/redirect/integration/?domain=openwrt)
-      render: json
-    validations:
-      required: false
+      required: true
 
   - type: textarea
     id: logs
     attributes:
-      label: Relevant Log Output
-      description: |
-        Enable debug logging and paste relevant log lines here.
-        Add to `configuration.yaml`:
-        ```yaml
-        logger:
-          default: warning
-          logs:
-            custom_components.openwrt: debug
-        ```
+      label: Diagnostic Logs & Tracebacks
+      description: Paste relevant debug logs or stack traces here (enclosed in code blocks).
       render: shell
     validations:
-      required: true
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have checked existing issues and documentation for duplicates.
+          required: true
+        - label: I understand this project is maintained in free time by @FaserF with assistance from Hermes Fleet AI.
+          required: true
