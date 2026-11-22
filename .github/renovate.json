@@ -1,0 +1,43 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":automergeMinor",
+    ":automergeDigest",
+    ":prHourlyLimitNone",
+    ":prConcurrentLimitNone"
+  ],
+  "timezone": "Europe/Berlin",
+  "schedule": ["before 6am on monday"],
+  "assignees": ["FaserF"],
+  "packageRules": [
+    {
+      "description": "Group GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions dependencies",
+      "automerge": true
+    },
+    {
+      "description": "Group Python dev / test dependencies",
+      "groupName": "python test & lint dependencies",
+      "automerge": true,
+      "matchPackageNames": [
+        "/pytest/",
+        "/ruff/",
+        "/mypy/",
+        "/coverage/"
+      ]
+    },
+    {
+      "description": "Group Home Assistant dependencies",
+      "groupName": "home-assistant dependencies",
+      "automerge": false,
+      "matchPackageNames": [
+        "/homeassistant/",
+        "/pytest-homeassistant-custom-component/"
+      ]
+    }
+  ]
+}

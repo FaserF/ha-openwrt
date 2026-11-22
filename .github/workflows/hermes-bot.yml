@@ -1,0 +1,23 @@
+name: Hermes Interactive Bot
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted, edited]
+  issues:
+    types: [edited]
+  pull_request:
+    types: [edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  bot:
+    uses: FaserF/repo-template/.github/workflows/reusable-hermes-bot.yml@v1
+    secrets: inherit
