@@ -33,14 +33,14 @@ jobs:
     steps:
       - name: Generate Bot Token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v3.4.0
         continue-on-error: true
         with:
           app-id: ${{ secrets.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_PRIVATE_KEY }}
 
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
@@ -93,7 +93,7 @@ jobs:
   release:
     needs: prepare
     if: always() && (github.event_name == 'push' || needs.prepare.result == 'success')
-    uses: FaserF/repo-template/.github/workflows/reusable-release.yml@v1
+    uses: FaserF/repo-template/.github/workflows/reusable-release.yml@v1.0.12
     with:
       tag_name: ${{ github.event_name == 'workflow_dispatch' && needs.prepare.outputs.tag_name || github.ref_name }}
       draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
