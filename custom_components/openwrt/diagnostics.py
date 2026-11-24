@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -25,10 +26,59 @@ REDACT_KEYS = {
     "ipv6_address",
     "host",
     "mac",
+    "mac_address",
     "public_key",
+    "private_key",
+    "token",
+    "secret",
+    "api_key",
+    "authorization",
+    "cookie",
     "endpoint",
     "allowed_ips",
 }
+
+
+def redact_log_line(line: str) -> str:
+    """Redact IPs, MACs, credentials, tokens, emails, and private domains."""
+    line = re.sub(r"(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}", "[REDACTED_MAC]", line)
+    line = re.sub(
+        r"\b(?:[a-zA-Z][a-zA-Z0-9+.-]*://)[^:@/\s]+:[^@/\s]+@",
+        "https://[REDACTED_CRED]@",
+        line,
+    )
+    line = re.sub(
+        r"(\b(?:Bearer|Basic|Token)\s+)[A-Za-z0-9._~+/=-]{8,}",
+        r"\1[REDACTED_TOKEN]",
+        line,
+        flags=re.IGNORECASE,
+    )
+    line = re.sub(
+        r"((?:password|passwd|secret|token|api[_-]?key|cookie)\s*[:=]\s*['\"]?)([^\s'\",;}\]]+)",
+        r"\1[REDACTED_SECRET]",
+        line,
+        flags=re.IGNORECASE,
+    )
+    line = re.sub(
+        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[REDACTED_EMAIL]", line
+    )
+    line = re.sub(
+        r"\b[a-zA-Z0-9._-]+\.(?:tailnet\.[a-zA-Z0-9.-]+|ts\.net|local|lan|home\.arpa|internal)\b",
+        "[REDACTED_HOST]",
+        line,
+        flags=re.IGNORECASE,
+    )
+    line = re.sub(
+        r"(?<![vV\d.])\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b(?![\d.])",
+        "[REDACTED_IP]",
+        line,
+    )
+    line = re.sub(
+        r"(?<![:\w])(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{1,4}(?![:\w])|(?<![:\w])(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F:]{1,20}(?![:\w])",
+        "[REDACTED_IP]",
+        line,
+    )
+    return line
 
 
 def _to_json_safe(obj: Any) -> Any:
@@ -82,7 +132,9 @@ async def async_get_config_entry_diagnostics(
                 "release_distribution": data.device_info.release_distribution,
                 "release_version": data.device_info.release_version,
                 "release_revision": data.device_info.release_revision,
-                "mac_address": data.device_info.mac_address,
+                "mac_address": "[REDACTED_MAC]"
+                if data.device_info.mac_address
+                else None,
                 "uptime": data.device_info.uptime,
             }
             diag["system_resources"] = {
@@ -192,20 +244,10 @@ async def async_get_config_entry_diagnostics(
                     "pid": p.pid,
                     "user": p.user,
                     "cpu": p.cpu_usage,
-                    "command": p.command,
+                    "command": redact_log_line(str(p.command or "")),
                 }
                 for p in data.system_resources.top_processes[:5]
             ]
-            import re
-
-            def redact_log_line(line: str) -> str:
-                line = re.sub(
-                    r"(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}", "[REDACTED_MAC]", line
-                )
-                line = re.sub(
-                    r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "[REDACTED_IP]", line
-                )
-                return line
 
             diag["system_logs"] = [
                 redact_log_line(line) for line in getattr(data, "system_logs", [])
@@ -253,8 +295,12 @@ async def async_get_config_entry_diagnostics(
                         if getattr(_dev, "config_entry_id", None)
                         else [entry.entry_id]
                     ),
-                    "identifiers": [list(i) for i in _dev.identifiers],
-                    "connections": [list(c) for c in _dev.connections],
+                    "identifiers": [
+                        [redact_log_line(str(x)) for x in i] for i in _dev.identifiers
+                    ],
+                    "connections": [
+                        [redact_log_line(str(x)) for x in c] for c in _dev.connections
+                    ],
                 }
             )
 
