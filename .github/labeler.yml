@@ -1,22 +1,21 @@
-# Add "enhancement" label to PRs modifying feat/* branches or having feature in title
+# Pull Request Labeler configuration
 enhancement:
   - head-branch: ['^feat/', '^feature/']
 
-# Add "bug" label to PRs modifying fix/* branches
 bug:
   - head-branch: ['^fix/', '^bugfix/']
 
-# Add "documentation" label
+dependencies:
+  - head-branch: ['^renovate/', '^deps/']
+
 documentation:
   - changed-files:
     - any-glob-to-any-file: ['**/*.md', 'docs/**']
 
-# Add "ci" label
 ci:
   - changed-files:
-    - any-glob-to-any-file: ['.github/**']
+    - any-glob-to-any-file: ['.github/**', 'scripts/**']
 
-# Add "tests" label
 tests:
   - changed-files:
-    - any-glob-to-any-file: ['tests/**']
+    - any-glob-to-any-file: ['tests/**', '**/*test*']
