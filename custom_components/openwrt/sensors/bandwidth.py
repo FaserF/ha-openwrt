@@ -107,7 +107,7 @@ class OpenWrtNlbwmonRxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEn
     _attr_entity_registry_enabled_default = False
     _attr_icon = "mdi:download"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_native_unit_of_measurement = UnitOfInformation.MEGABYTES
+    _attr_native_unit_of_measurement = UnitOfInformation.MEBIBYTES
     _attr_device_class = SensorDeviceClass.DATA_SIZE
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
@@ -158,7 +158,7 @@ class OpenWrtNlbwmonTxSensor(CoordinatorEntity[OpenWrtDataCoordinator], SensorEn
     _attr_entity_registry_enabled_default = False
     _attr_icon = "mdi:upload"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_native_unit_of_measurement = UnitOfInformation.MEGABYTES
+    _attr_native_unit_of_measurement = UnitOfInformation.MEBIBYTES
     _attr_device_class = SensorDeviceClass.DATA_SIZE
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 

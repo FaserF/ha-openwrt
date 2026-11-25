@@ -638,3 +638,27 @@ def test_coordinator_reparents_with_legacy_device_registry(hass) -> None:
     registry.async_update_device.assert_called_once_with(
         "client_id", via_device_id="ssid_id"
     )
+
+
+def test_use_hostname_as_name_option() -> None:
+    """Validate optional router hostname & subdevice name prefixing (#234)."""
+    from custom_components.openwrt.const import CONF_USE_HOSTNAME_AS_NAME
+    from custom_components.openwrt.helpers import (
+        format_subdevice_name,
+        resolve_router_name,
+    )
+
+    device_info = MagicMock(hostname="gw-office", model="GL-MT6000")
+    entry_default = MagicMock(title="192.168.1.1", options={})
+    entry_hostname = MagicMock(
+        title="192.168.1.1",
+        options={CONF_USE_HOSTNAME_AS_NAME: True},
+    )
+
+    assert resolve_router_name(entry_default, device_info) == "GL-MT6000"
+    assert format_subdevice_name("5 GHz", entry_default, "GL-MT6000") == "5 GHz"
+
+    assert resolve_router_name(entry_hostname, device_info) == "gw-office"
+    assert (
+        format_subdevice_name("5 GHz", entry_hostname, "gw-office") == "gw-office 5 GHz"
+    )

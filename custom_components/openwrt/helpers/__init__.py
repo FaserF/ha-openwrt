@@ -2,14 +2,50 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 
-from ..const import CONF_HOST, DOMAIN
+from ..const import (
+    CONF_HOST,
+    CONF_USE_HOSTNAME_AS_NAME,
+    DEFAULT_USE_HOSTNAME_AS_NAME,
+    DOMAIN,
+)
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
+
+
+def _use_hostname_as_name(entry: ConfigEntry) -> bool:
+    """Return whether hostname naming is explicitly enabled for this config entry."""
+    options = getattr(entry, "options", None)
+    if not isinstance(options, Mapping):
+        return DEFAULT_USE_HOSTNAME_AS_NAME
+    return bool(options.get(CONF_USE_HOSTNAME_AS_NAME, DEFAULT_USE_HOSTNAME_AS_NAME))
+
+
+def resolve_router_name(
+    entry: ConfigEntry,
+    device_info: Any | None,
+    current_name: str | None = None,
+) -> str:
+    """Resolve the display name for the router device."""
+    use_hostname = _use_hostname_as_name(entry)
+    hostname = getattr(device_info, "hostname", None) if device_info else None
+    model = getattr(device_info, "model", None) if device_info else None
+    if use_hostname:
+        return str(hostname or model or entry.title)
+    new_name = model or hostname or entry.title
+    if (
+        current_name
+        and new_name
+        and len(current_name) > len(new_name)
+        and new_name.lower() in current_name.lower()
+    ):
+        return current_name
+    return str(new_name)
 
 
 def _router_id(entry: ConfigEntry) -> str:
@@ -62,6 +98,17 @@ def format_radio_name(radio: str, band: str | None) -> str:
     """Return a concise radio display name with a stable fallback."""
     normalized_band = normalize_band(band) if band else "unknown"
     return normalized_band if normalized_band != "unknown" else radio
+
+
+def format_subdevice_name(
+    base_label: str,
+    entry: ConfigEntry,
+    router_name: str | None = None,
+) -> str:
+    """Prefix a radio or AP device name with router_name when enabled."""
+    if _use_hostname_as_name(entry) and router_name:
+        return f"{router_name} {base_label}"
+    return base_label
 
 
 def normalize_band(band: str | None) -> str:

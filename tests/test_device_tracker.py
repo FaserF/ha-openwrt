@@ -639,3 +639,37 @@ def test_disconnected_wifi_client_transitions_to_not_home_with_dhcp_lease(
         # Beyond consider_home window (>20s): must transition to not_home!
         mock_get_now.return_value = initial_last_seen + timedelta(seconds=25)
         assert tracker.is_connected is False
+
+
+def test_device_tracker_exposes_band_and_ssid_attributes(
+    mock_coordinator: MagicMock,
+) -> None:
+    """Expose wireless band and SSID on tracker extra state attributes (#224)."""
+    from custom_components.openwrt.device_trackers.entity import (
+        compute_device_tracker_attrs,
+    )
+
+    mac = "aa:bb:cc:dd:ee:01"
+    mock_coordinator.hass.data = {
+        "openwrt": {
+            "tracker_wireless_state": {
+                mac: {
+                    "connected": True,
+                    "connection_type": "5 GHz",
+                    "band": "5 GHz",
+                    "ssid": "MainWiFi",
+                }
+            }
+        }
+    }
+    device = ConnectedDevice(
+        mac=mac,
+        ip="192.168.1.42",
+        hostname="phone",
+        interface="phy1-ap0",
+        is_wireless=True,
+        connected=True,
+    )
+    attrs = compute_device_tracker_attrs(mock_coordinator, mac, device)
+    assert attrs["band"] == "5 GHz"
+    assert attrs["ssid"] == "MainWiFi"

@@ -14,6 +14,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     EntityCategory,
+    UnitOfDataRate,
     UnitOfInformation,
 )
 from homeassistant.util import dt as dt_util
@@ -152,7 +153,7 @@ def _create_net_traffic_sensors(
                     name=f"{iface_name} {direction.upper()}",
                     translation_key=f"net_{direction}",
                     translation_placeholders={"interface": iface_name},
-                    native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+                    native_unit_of_measurement=UnitOfInformation.MEBIBYTES,
                     device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.TOTAL_INCREASING,
                     entity_category=EntityCategory.DIAGNOSTIC,
@@ -351,7 +352,8 @@ def _create_net_rate_sensors(
                     name=f"{iface_name} {direction.upper()} Rate",
                     translation_key=f"net_{direction}_rate",
                     translation_placeholders={"interface": iface_name},
-                    native_unit_of_measurement="Mbps",
+                    native_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
+                    device_class=SensorDeviceClass.DATA_RATE,
                     state_class=SensorStateClass.MEASUREMENT,
                     entity_registry_enabled_default=False,
                     value_fn=lambda data, n=iface_name, d=direction: next(
@@ -386,7 +388,7 @@ def _create_vpn_sensors(
                 name=f"{label} RX",
                 translation_key="vpn_rx",
                 translation_placeholders={"interface": iface_name},
-                native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+                native_unit_of_measurement=UnitOfInformation.MEBIBYTES,
                 device_class=SensorDeviceClass.DATA_SIZE,
                 state_class=SensorStateClass.TOTAL_INCREASING,
                 entity_category=EntityCategory.DIAGNOSTIC,
@@ -414,7 +416,7 @@ def _create_vpn_sensors(
                 name=f"{label} TX",
                 translation_key="vpn_tx",
                 translation_placeholders={"interface": iface_name},
-                native_unit_of_measurement=UnitOfInformation.MEGABYTES,
+                native_unit_of_measurement=UnitOfInformation.MEBIBYTES,
                 device_class=SensorDeviceClass.DATA_SIZE,
                 state_class=SensorStateClass.TOTAL_INCREASING,
                 entity_category=EntityCategory.DIAGNOSTIC,

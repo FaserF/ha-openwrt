@@ -25,7 +25,9 @@ from ..helpers import (
     format_ap_name,
     format_radio_device_id,
     format_radio_name,
+    format_subdevice_name,
     normalize_band,
+    resolve_router_name,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -115,7 +117,12 @@ class OpenWrtRadioSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEntity
         super().__init__(coordinator)
         self._client = client
         self._radio = radio
-        label = format_radio_name(radio, band)
+        router_name = resolve_router_name(
+            entry, coordinator.data.device_info if coordinator.data else None
+        )
+        label = format_subdevice_name(
+            format_radio_name(radio, band), entry, router_name
+        )
         self._attr_name = "Physical radio"
         self._attr_unique_id = f"{entry.entry_id}_radio_{radio}"
         self._attr_device_info = _get_device_info(
@@ -208,7 +215,12 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
             iface_name, section_id if section_id else iface_name
         )
 
-        name_label = format_ap_name(ssid or iface_name, frequency)
+        router_name = resolve_router_name(
+            entry, coordinator.data.device_info if coordinator.data else None
+        )
+        name_label = format_subdevice_name(
+            format_ap_name(ssid or iface_name, frequency), entry, router_name
+        )
 
         via_device_id: str | None = None
         if radio:
@@ -236,12 +248,15 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
         """Return wireless interface status."""
         if self.coordinator.data is None:
             return None
+        by_name: bool | None = None
         for wifi in self.coordinator.data.wireless_interfaces:
-            if wifi.name == self._iface_name or (
-                self._section_id and wifi.section == self._section_id
-            ):
+            # Kernel names (phy0-apX) are reassigned on wifi reload, so the UCI
+            # section is the stable identifier and name is fallback-only.
+            if self._section_id and wifi.section == self._section_id:
                 return wifi.interface_enabled
-        return None
+            if by_name is None and wifi.name == self._iface_name:
+                by_name = wifi.interface_enabled
+        return by_name
 
     async def _async_set_network_enabled(self, enabled: bool) -> None:
         """Set the SSID and coordinate its physical radio."""
@@ -275,8 +290,10 @@ class OpenWrtWirelessSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEnt
 
             if self.coordinator.data:
                 for wifi in self.coordinator.data.wireless_interfaces:
-                    if wifi.name == self._iface_name or (
-                        self._section_id and wifi.section == self._section_id
+                    if (
+                        wifi.section == self._section_id
+                        if self._section_id
+                        else wifi.name == self._iface_name
                     ):
                         wifi.interface_enabled = enabled
                         wifi.enabled = enabled

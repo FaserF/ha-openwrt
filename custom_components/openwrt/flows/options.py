@@ -35,6 +35,7 @@ from ..const import (
     CONF_TRUST_BRIDGE_FDB,
     CONF_TRUST_STALE_ARP,
     CONF_UPDATE_INTERVAL,
+    CONF_USE_HOSTNAME_AS_NAME,
     CONNECTION_TYPE_LUCI_RPC,
     CONNECTION_TYPE_SSH,
     CONNECTION_TYPE_UBUS,
@@ -51,6 +52,7 @@ from ..const import (
     DEFAULT_TRUST_BRIDGE_FDB,
     DEFAULT_TRUST_STALE_ARP,
     DEFAULT_UPDATE_INTERVAL,
+    DEFAULT_USE_HOSTNAME_AS_NAME,
     DOMAIN,
 )
 from .helpers import (
@@ -210,6 +212,12 @@ class OpenWrtOptionsFlow(OptionsPackagesFlowMixin, OptionsMqttFlowMixin, Options
                 vol.Optional(
                     CONF_REVERSE_DNS,
                     default=current.get(CONF_REVERSE_DNS, DEFAULT_REVERSE_DNS),
+                ): bool,
+                vol.Optional(
+                    CONF_USE_HOSTNAME_AS_NAME,
+                    default=current.get(
+                        CONF_USE_HOSTNAME_AS_NAME, DEFAULT_USE_HOSTNAME_AS_NAME
+                    ),
                 ): bool,
                 vol.Optional(
                     CONF_REDEPLOY_USER,

@@ -244,7 +244,8 @@
           "gps_modem_enabled": "GPS-Modem-Tracking aktivieren",
           "gps_modem_port": "GPS-Modem Serieller Port",
           "gps_poll_interval": "GPS-Modem Abfrageintervall (Sekunden)",
-          "reverse_dns": "Hostnamen per Reverse-DNS auflösen"
+          "reverse_dns": "Hostnamen per Reverse-DNS auflösen",
+          "use_hostname_as_name": "Router-Hostnamen als Gerätenamen verwenden und Untergeräte präfixieren"
         },
         "description": "Konfiguriere die Optionen der OpenWrt-Integration."
       },

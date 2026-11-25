@@ -29,7 +29,12 @@ from ..const import (
     DOMAIN,
 )
 from ..coordinator import OpenWrtDataCoordinator
-from ..helpers import get_via_device_id, is_random_mac, resolve_client_name
+from ..helpers import (
+    get_via_device_id,
+    is_random_mac,
+    normalize_band,
+    resolve_client_name,
+)
 from ..helpers.mac_vendor import get_mac_vendor_info
 
 
@@ -94,14 +99,30 @@ def compute_device_tracker_attrs(
                 "interface": state_info.get("interface"),
                 "signal_strength": state_info.get("signal_strength"),
                 "connection_type": state_info.get("connection_type"),
+                "band": state_info.get("band"),
+                "ssid": state_info.get("ssid"),
             }
         )
     elif device:
+        band = None
+        ssid = None
+        if device.is_wireless and device.interface and coordinator.data:
+            for wifi in coordinator.data.wireless_interfaces:
+                if device.interface in {wifi.name, wifi.section, wifi.ifname}:
+                    band = (
+                        normalize_band(wifi.band or wifi.frequency)
+                        if wifi.band or wifi.frequency
+                        else None
+                    )
+                    ssid = wifi.ssid or None
+                    break
         attrs.update(
             {
                 "interface": device.interface,
                 "signal_strength": device.signal,
                 "connected_ap": None,
+                "band": band,
+                "ssid": ssid,
             }
         )
     else:

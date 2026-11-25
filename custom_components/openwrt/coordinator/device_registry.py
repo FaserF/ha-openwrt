@@ -32,8 +32,10 @@ from ..helpers import (
     format_ap_stable_id,
     format_radio_device_id,
     format_radio_name,
+    format_subdevice_name,
     is_random_mac,
     normalize_band,
+    resolve_router_name,
 )
 from ..helpers.mac_vendor import get_mac_vendor_info
 
@@ -243,15 +245,9 @@ class DeviceRegistryMixin(_Base):
         if existing_device and existing_device.name:
             current_name = existing_device.name
 
-        new_name = device_info.model or device_info.hostname or self.config_entry.title
-        # If AX3600 is reported but Xiaomi AX3600 is currently set, stick with Xiaomi
-        if (
-            current_name
-            and new_name
-            and len(current_name) > len(new_name)
-            and new_name.lower() in current_name.lower()
-        ):
-            new_name = current_name
+        new_name = resolve_router_name(
+            self.config_entry, device_info, current_name=current_name
+        )
 
         router_entry = device_registry.async_get_or_create(
             config_entry_id=self.config_entry.entry_id,
@@ -269,6 +265,12 @@ class DeviceRegistryMixin(_Base):
             via_device_id=via_device_id,  # type: ignore[call-arg]
             configuration_url=f"http://{self.config_entry.data[CONF_HOST]}",
         )
+        if (
+            self.config_entry.options.get("use_hostname_as_name", False)
+            and new_name
+            and router_entry.name != new_name
+        ):
+            device_registry.async_update_device(router_entry.id, name=new_name)
 
         # 2. Register physical radios and AP devices for wireless interfaces.
         radio_info: dict[str, str] = {}
@@ -284,7 +286,9 @@ class DeviceRegistryMixin(_Base):
 
         radio_devices: dict[str, dr.DeviceEntry] = {}
         for radio, band in radio_info.items():
-            label = format_radio_name(radio, band)
+            label = format_subdevice_name(
+                format_radio_name(radio, band), self.config_entry, new_name
+            )
             manufacturer = device_info.release_distribution or ATTR_MANUFACTURER
             radio_device = device_registry.async_get_or_create(
                 config_entry_id=self.config_entry.entry_id,
@@ -328,7 +332,9 @@ class DeviceRegistryMixin(_Base):
                 if wifi.band or wifi.frequency
                 else ""
             )
-            label = format_ap_name(wifi.ssid, band)
+            label = format_subdevice_name(
+                format_ap_name(wifi.ssid, band), self.config_entry, new_name
+            )
 
             # Group virtual interfaces only within the same physical radio.
             stable_id = format_ap_stable_id(wifi.ssid, band, wifi.radio)

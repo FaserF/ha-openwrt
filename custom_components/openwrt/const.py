@@ -38,6 +38,7 @@ CONF_TRUST_BRIDGE_FDB: Final = "trust_bridge_fdb"
 CONF_FORCE_WIRELESS_MACS: Final = "force_wireless_macs"
 CONF_REDEPLOY_USER: Final = "redeploy_user"
 CONF_REVERSE_DNS: Final = "reverse_dns"
+CONF_USE_HOSTNAME_AS_NAME: Final = "use_hostname_as_name"
 
 CONF_GPS_MODEM_ENABLED: Final = "gps_modem_enabled"
 CONF_GPS_MODEM_PORT: Final = "gps_modem_port"
@@ -76,6 +77,7 @@ DEFAULT_SKIP_RANDOM_MAC: Final = True
 DEFAULT_TRUST_STALE_ARP: Final = True
 DEFAULT_TRUST_BRIDGE_FDB: Final = True
 DEFAULT_REVERSE_DNS: Final = False
+DEFAULT_USE_HOSTNAME_AS_NAME: Final = False
 
 DHCP_SOFTWARE_AUTO: Final = "auto"
 DHCP_SOFTWARE_DNSMASQ: Final = "dnsmasq"

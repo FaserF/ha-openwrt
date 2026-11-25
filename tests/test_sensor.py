@@ -576,3 +576,73 @@ def test_wireless_clients_reach_zero_when_disconnected() -> None:
 
     wireless_clients = next(s for s in sys_sensors if s.key == "wireless_clients")
     assert wireless_clients.value_fn(data) == 0
+
+
+def test_wifi_bitrate_and_network_units() -> None:
+    """Verify standardized Wi-Fi bitrate and network rate/data units (#225, #238)."""
+    from homeassistant.const import UnitOfDataRate, UnitOfInformation
+
+    from custom_components.openwrt.api.base import NetworkInterface
+    from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
+    from custom_components.openwrt.sensor import _create_net_sensors
+    from custom_components.openwrt.sensors.wireless import _create_wifi_sensors
+
+    coordinator = MagicMock()
+    coordinator.router_id = "router_mac"
+    coordinator.interface_to_stable_id = {"wlan1": "Main_5 GHz"}
+    coordinator.last_update_success = True
+    iface = NetworkInterface(
+        name="wan",
+        protocol="dhcp",
+        rx_bytes=10_000_000,
+        tx_bytes=5_000_000,
+    )
+    coordinator._prev_network_stats = {
+        "wan": {"rx_bytes": 0, "tx_bytes": 0, "time": 100.0}
+    }
+    coordinator._last_update_time = 100.0
+    coordinator.data = OpenWrtData(
+        network_interfaces=[iface],
+        wireless_interfaces=[
+            WirelessInterface(
+                name="wlan1",
+                ssid="Main",
+                mode="sta",
+                radio="radio1",
+                band="5 GHz",
+            )
+        ],
+    )
+    entry = MagicMock(entry_id="test_entry", unique_id="router_mac")
+    entry.options = {}
+
+    OpenWrtDataCoordinator._async_process_network_rates(
+        coordinator, coordinator.data, 110.0
+    )
+    assert iface.rx_rate == 8.0
+    assert iface.tx_rate == 4.0
+
+    net_sensors = _create_net_sensors(coordinator, entry, iface)
+    rx_rate = next(
+        s for s in net_sensors if s.entity_description.key == "net_wan_rx_rate"
+    )
+    rx_total = next(s for s in net_sensors if s.entity_description.key == "net_wan_rx")
+    assert rx_rate.entity_description.device_class == SensorDeviceClass.DATA_RATE
+    assert (
+        rx_rate.entity_description.native_unit_of_measurement
+        == UnitOfDataRate.MEGABITS_PER_SECOND
+    )
+    assert (
+        rx_total.entity_description.native_unit_of_measurement
+        == UnitOfInformation.MEBIBYTES
+    )
+
+    wifi_sensors = _create_wifi_sensors(coordinator, entry, "wlan1", "Main", "sta")
+    bitrate = next(
+        s for s in wifi_sensors if s.entity_description.key == "wifi_wlan1_bitrate"
+    )
+    assert bitrate.entity_description.device_class == SensorDeviceClass.DATA_RATE
+    assert (
+        bitrate.entity_description.native_unit_of_measurement
+        == UnitOfDataRate.MEGABITS_PER_SECOND
+    )

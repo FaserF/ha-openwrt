@@ -282,12 +282,8 @@ class NetworkMixin(_Base):
                     rx_diff = iface.rx_bytes - prev.get("rx_bytes", 0)
                     tx_diff = iface.tx_bytes - prev.get("tx_bytes", 0)
                     if rx_diff >= 0 and tx_diff >= 0:
-                        iface.rx_rate = round(
-                            (rx_diff * 8) / (1024 * 1024) / elapsed, 2
-                        )
-                        iface.tx_rate = round(
-                            (tx_diff * 8) / (1024 * 1024) / elapsed, 2
-                        )
+                        iface.rx_rate = round((rx_diff * 8) / 1_000_000 / elapsed, 2)
+                        iface.tx_rate = round((tx_diff * 8) / 1_000_000 / elapsed, 2)
 
         for iface in data.network_interfaces:
             self._prev_network_stats[iface.name] = {

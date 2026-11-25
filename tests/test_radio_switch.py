@@ -571,3 +571,49 @@ async def test_wireless_switch_passes_ssid_to_client() -> None:
         disable_radio=True,
         ssid="Guest_Network",
     )
+
+
+@pytest.mark.asyncio
+async def test_wireless_switch_prioritizes_section_id_over_ifname() -> None:
+    """Match UCI section ID before volatile ifname on wireless switches (#227)."""
+    shared_ifname = WirelessInterface(
+        name="phy0-ap0",
+        section="guest_24g",
+        radio="radio0",
+        ssid="Guest",
+        interface_enabled=False,
+        radio_enabled=True,
+    )
+    primary_section = WirelessInterface(
+        name="phy0-ap1",
+        section="default_radio0",
+        radio="radio0",
+        ssid="Main",
+        interface_enabled=True,
+        radio_enabled=True,
+    )
+    coordinator = MagicMock()
+    coordinator.router_id = "router_id"
+    coordinator.data = OpenWrtData(wireless_interfaces=[shared_ifname, primary_section])
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.hass.async_create_task = MagicMock(
+        side_effect=lambda task: task.close()
+    )
+    client = MagicMock()
+    client.set_wireless_network_enabled = AsyncMock(return_value=True)
+    entry = MagicMock(entry_id="test_entry", unique_id="router_id")
+    entry.options = {}
+    switch = OpenWrtWirelessSwitch(
+        coordinator,
+        entry,
+        client,
+        "phy0-ap0",
+        "Main",
+        radio="radio0",
+        section_id="default_radio0",
+    )
+
+    assert switch.is_on is True
+    await switch.async_turn_off()
+    assert primary_section.interface_enabled is False
+    assert shared_ifname.interface_enabled is False

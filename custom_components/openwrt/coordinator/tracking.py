@@ -23,7 +23,7 @@ from ..const import (
     DEFAULT_TRACK_DEVICES,
     DOMAIN,
 )
-from ..helpers import is_random_mac
+from ..helpers import is_random_mac, normalize_band
 
 if TYPE_CHECKING:
     from .base import CoordinatorBase
@@ -490,6 +490,18 @@ class TrackingMixin(_Base):
                 ap_name = self.config_entry.title or self.config_entry.data.get(
                     CONF_HOST
                 )
+                band = ""
+                ssid = ""
+                if device.interface:
+                    for wifi in data.wireless_interfaces:
+                        if device.interface in {wifi.name, wifi.section, wifi.ifname}:
+                            band = (
+                                normalize_band(wifi.band or wifi.frequency)
+                                if wifi.band or wifi.frequency
+                                else ""
+                            )
+                            ssid = wifi.ssid or ""
+                            break
                 wireless_states[mac] = {
                     "owner_entry_id": self.config_entry.entry_id,
                     "last_seen": datetime.now(),
@@ -499,6 +511,8 @@ class TrackingMixin(_Base):
                     "interface": device.interface,
                     "signal_strength": device.signal,
                     "connection_type": device.connection_type,
+                    "band": band,
+                    "ssid": ssid,
                 }
                 affected_macs.add(mac)
             elif (

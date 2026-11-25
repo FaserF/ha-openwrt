@@ -10,7 +10,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, EntityCategory
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfDataRate
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -22,6 +22,8 @@ from ..helpers import (
     format_ap_device_id,
     format_ap_name,
     format_radio_device_id,
+    format_subdevice_name,
+    resolve_router_name,
 )
 from .base import OpenWrtSensorDescription, OpenWrtSensorEntity, _get_device_info
 
@@ -44,7 +46,12 @@ class OpenWrtWifiSensorEntity(OpenWrtSensorEntity):
         """Initialize."""
         super().__init__(coordinator, entry, description)
 
-        name_label = format_ap_name(ssid or iface_name, frequency)
+        router_name = resolve_router_name(
+            entry, coordinator.data.device_info if coordinator.data else None
+        )
+        name_label = format_subdevice_name(
+            format_ap_name(ssid or iface_name, frequency), entry, router_name
+        )
 
         # Ensure sensors are grouped under the correct AP device
         stable_id = coordinator.interface_to_stable_id.get(iface_name, iface_name)
@@ -353,7 +360,12 @@ def _create_wifi_station_sensors(
             PERCENTAGE,
             SensorStateClass.MEASUREMENT,
         ),
-        "bitrate": ("Bitrate", "wifi_bitrate", "Mbps", SensorStateClass.MEASUREMENT),
+        "bitrate": (
+            "Bitrate",
+            "wifi_bitrate",
+            UnitOfDataRate.MEGABITS_PER_SECOND,
+            SensorStateClass.MEASUREMENT,
+        ),
         "noise": ("Noise Level", "wifi_noise", "dBm", SensorStateClass.MEASUREMENT),
     }
 
