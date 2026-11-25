@@ -10,6 +10,6 @@
     "test": "node --check www/router-flyout-card.js && node --test tests/router-flyout-card.test.cjs"
   },
   "devDependencies": {
-    "jsdom": "26.1.0"
+    "jsdom": "31.0.1"
   }
 }
