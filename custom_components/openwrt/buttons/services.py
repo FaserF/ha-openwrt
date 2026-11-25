@@ -44,7 +44,20 @@ def _get_kick_button_cls():
 
 _LOGGER = logging.getLogger(__name__)
 
+
+async def _noop_refresh(_client: OpenWrtClient) -> None:
+    """No-op client action; OpenWrtButtonEntity triggers coordinator refresh."""
+
+
 BUTTONS: tuple[OpenWrtButtonDescription, ...] = (
+    OpenWrtButtonDescription(
+        key="refresh",
+        name="Refresh Router Details",
+        translation_key="refresh",
+        icon="mdi:refresh",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        press_fn=_noop_refresh,
+    ),
     OpenWrtButtonDescription(
         key="reboot",
         name="Reboot",

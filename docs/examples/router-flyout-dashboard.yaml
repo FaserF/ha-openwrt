@@ -1,0 +1,17 @@
+title: Router
+views:
+  - title: Network
+    path: network
+    cards:
+      - type: custom:router-flyout-card
+        title: OpenWrt Router
+        image: /local/router-flyout-scene.svg
+        router_image: /local/router-flyout-router.svg
+        entity: sensor.openwrt_wan_status
+        refresh_entity: button.openwrt_refresh_router_details
+        status_url: http://openwrt.lan/cgi-bin/luci/
+        # For multiple routers, specify the Home Assistant config entry ID:
+        # entry_id: REPLACE_WITH_CONFIG_ENTRY_ID
+        entity_map:
+          wan_status: sensor.openwrt_wan_status
+          connected_devices_count: sensor.openwrt_connected_devices

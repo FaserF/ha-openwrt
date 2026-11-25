@@ -1,0 +1,15 @@
+{
+  "name": "speedport-router-flyout",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.18"
+  },
+  "scripts": {
+    "test": "node --check www/router-flyout-card.js && node --test tests/router-flyout-card.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

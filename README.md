@@ -989,6 +989,7 @@ make check
 
 - **[kvj/hass_openwrt](https://github.com/kvj/hass_openwrt)**: The original repository which served as the inspiration and reference for OpenWrt integration concepts.
 - **[Home Assistant `fritz` Integration](https://github.com/home-assistant/core/tree/dev/homeassistant/components/fritz)**: The official Fritz!Box integration, which served as the gold standard for feature parity, particularly regarding the robust `device_tracker` scanner implementation and multi-platform architecture.
+- **[stevenrudolphcom/telekom-devices](https://github.com/stevenrudolphcom/telekom-devices)** ([@stevenrudolphcom](https://github.com/stevenrudolphcom)): Inspiration and initial implementation of the optional Lovelace Router Flyout Card (`www/router-flyout-card.js`) and `Refresh Router Details` button pattern.
 
 ## ?? License
 

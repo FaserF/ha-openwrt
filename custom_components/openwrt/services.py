@@ -29,6 +29,7 @@ from .const import (
     SERVICE_DELETE_STATIC_LEASE,
     SERVICE_EXEC,
     SERVICE_GENERATE_REPORT,
+    SERVICE_GET_RAW_DATA,
     SERVICE_GET_SYSTEM_LOGS,
     SERVICE_INIT,
     SERVICE_REBOOT,
@@ -541,6 +542,83 @@ uci commit dhcp
                 ),
                 vol.Optional("log_type"): vol.In(["system", "kernel"]),
             },
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    async def _handle_get_raw_data(call: ServiceCall) -> ServiceResponse:
+        """Return cached router summary and status data for dashboards."""
+        entry_id = call.data.get("entry_id")
+        entries = hass.data.get(DOMAIN, {})
+        if entry_id:
+            if entry_id not in entries:
+                msg = f"Config entry {entry_id} not found"
+                raise vol.Invalid(msg)
+            target_id = entry_id
+        elif entries:
+            target_id = next(iter(entries))
+        else:
+            return {}
+
+        coordinator: OpenWrtDataCoordinator | None = entries[target_id].get(
+            DATA_COORDINATOR
+        )
+        data = coordinator.data if coordinator else None
+        if data is None:
+            return {}
+
+        dev = data.device_info
+        sys_res = data.system_resources
+        connected = [d for d in data.all_connected_devices if d.connected]
+        if not connected and data.connected_devices:
+            connected = [d for d in data.connected_devices if d.connected]
+
+        ssids = [w.ssid for w in data.wireless_interfaces if w.ssid]
+        channels = [
+            str(w.channel) for w in data.wireless_interfaces if w.channel is not None
+        ]
+        wan_iface = next(
+            (i for i in data.network_interfaces if i.name.lower().startswith("wan")),
+            None,
+        )
+
+        return {
+            "device_name": dev.model or dev.hostname or "OpenWrt",
+            "hostname": dev.hostname,
+            "model": dev.model,
+            "firmware_version": dev.release_version,
+            "kernel_version": dev.kernel_version,
+            "uptime": sys_res.uptime,
+            "cpu_load": sys_res.load_1min,
+            "memory_usage_pct": (
+                round((sys_res.memory_used / sys_res.memory_total) * 100, 1)
+                if sys_res.memory_total
+                else None
+            ),
+            "wan_status": "up" if (wan_iface and wan_iface.up) else "unknown",
+            "external_ip": data.external_ip
+            or (wan_iface.ipv4_address if wan_iface else None),
+            "latency_ms": data.latency.latency_ms if data.latency else None,
+            "wireless_ssids": ", ".join(dict.fromkeys(ssids)),
+            "wireless_channels": ", ".join(dict.fromkeys(channels)),
+            "connected_devices_count": len(connected),
+            "wireless_clients_count": sum(1 for d in connected if d.is_wireless),
+            "vpn_interfaces_count": len(data.vpn_interfaces),
+            "adblock_enabled": bool(data.adblock.enabled) if data.adblock else False,
+            "tailscale_running": (
+                data.tailscale.backend_state == "Running" if data.tailscale else False
+            ),
+            "reboot_required": data.reboot_required,
+        }
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_RAW_DATA,
+        _handle_get_raw_data,
+        schema=vol.Schema(
+            {
+                vol.Optional("entry_id"): cv.string,
+            }
         ),
         supports_response=SupportsResponse.ONLY,
     )

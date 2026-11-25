@@ -154,3 +154,14 @@ create_backup:
       selector:
         config_entry:
           integration: openwrt
+
+get_raw_data:
+  description: Returns cached router summary and status data for dashboards and custom cards.
+  fields:
+    entry_id:
+      description: Optional config entry ID of the OpenWrt router.
+      example: 1234567890abcdef1234567890abcdef
+      required: false
+      selector:
+        config_entry:
+          integration: openwrt

@@ -792,6 +792,9 @@
       }
     },
     "button": {
+      "refresh": {
+        "name": "Refresh Router Details"
+      },
       "reboot": {
         "name": "Reboot Router"
       },
@@ -1093,6 +1096,16 @@
         "entry_id": {
           "name": "Device",
           "description": "The OpenWrt router."
+        }
+      }
+    },
+    "get_raw_data": {
+      "name": "Get Raw Data",
+      "description": "Returns cached router summary and status data for dashboards and custom cards.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "Optional OpenWrt router config entry."
         }
       }
     }

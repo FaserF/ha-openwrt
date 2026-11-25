@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="600" viewBox="0 0 1000 600">
+  <rect width="1000" height="600" fill="#192633"/>
+  <rect x="100" y="80" width="800" height="440" rx="24" fill="#263c50" stroke="#7193ad" stroke-width="4"/>
+  <path d="M500 80v440M100 300h800" stroke="#7193ad" stroke-width="4"/>
+  <text x="140" y="460" fill="#dae6ef" font-family="sans-serif" font-size="28">Heimnetzwerk</text>
+</svg>

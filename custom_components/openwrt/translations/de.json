@@ -792,6 +792,9 @@
       }
     },
     "button": {
+      "refresh": {
+        "name": "Routerdetails aktualisieren"
+      },
       "reboot": {
         "name": "Router neustarten"
       },
@@ -1093,6 +1096,16 @@
         "entry_id": {
           "name": "Gerät",
           "description": "Der OpenWrt-Router."
+        }
+      }
+    },
+    "get_raw_data": {
+      "name": "Rohdaten abrufen",
+      "description": "Gibt zwischengespeicherte Router-Zusammenfassungs- und Statusdaten für Dashboards zurück.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Optionaler Konfigurationseintrag des OpenWrt-Routers."
         }
       }
     }
