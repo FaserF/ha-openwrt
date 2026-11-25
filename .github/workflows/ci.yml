@@ -3,8 +3,17 @@ name: CI
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".github/ISSUE_TEMPLATE/**"
   pull_request:
     branches: [main, master]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,7 +21,7 @@ permissions:
 
 jobs:
   ci:
-    uses: FaserF/repo-template/.github/workflows/reusable-ci.yml@v1.0.21
+    uses: FaserF/repo-template/.github/workflows/reusable-ci.yml@v1
     with:
       project_type: "ha-integration"
     secrets: inherit
