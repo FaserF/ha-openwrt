@@ -47,7 +47,7 @@ If you prefer to set up the permissions manually, follow these steps:
    ```bash
    uci add rpcd login
    uci set rpcd.@login[-1].username='homeassistant'
-   uci set rpcd.@login[-1].password='$p$homeassistant'
+   uci set rpcd.@login[-1].password='REDACTED_SECRET_70560'
    uci add_list rpcd.@login[-1].read='homeassistant'
    uci add_list rpcd.@login[-1].write='homeassistant'
    uci commit rpcd
