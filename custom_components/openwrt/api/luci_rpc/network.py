@@ -16,11 +16,9 @@ from ..base import (
     parse_mwan_track_metrics,
 )
 from .exceptions import LuciRpcError
+from .network_wireless import LuciRpcNetworkWirelessMixin
 
 _LOGGER = logging.getLogger(__name__)
-
-
-from .network_wireless import LuciRpcNetworkWirelessMixin
 
 
 class LuciRpcNetworkMixin(LuciRpcNetworkWirelessMixin):

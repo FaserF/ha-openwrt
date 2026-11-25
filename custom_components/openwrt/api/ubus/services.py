@@ -9,14 +9,12 @@ from ..base import (
     classify_service,
 )
 from .exceptions import UbusError, UbusPermissionError
+from .services_packages import UbusServicesPackagesMixin
 
 _LOGGER = logging.getLogger(__name__)
 UBUS_JSONRPC_VERSION = "2.0"
 UBUS_ID_AUTH = 1
 UBUS_ID_CALL = 2
-
-
-from .services_packages import UbusServicesPackagesMixin
 
 
 class UbusServicesMixin(UbusServicesPackagesMixin):

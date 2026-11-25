@@ -27,7 +27,11 @@ from ..const import (
     CONNECTION_TYPE_UBUS,
     DOMAIN,
 )
-from .helpers import translation
+from .helpers import (
+    _generate_package_table,
+    _generate_permission_table,
+    translation,
+)
 
 
 def create_client(*args: Any, **kwargs: Any) -> Any:
@@ -35,11 +39,6 @@ def create_client(*args: Any, **kwargs: Any) -> Any:
 
     return config_flow.create_client(*args, **kwargs)
 
-
-from .helpers import (
-    _generate_package_table,
-    _generate_permission_table,
-)
 
 _LOGGER = logging.getLogger(__name__)
 

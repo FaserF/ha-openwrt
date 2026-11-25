@@ -20,11 +20,9 @@ from .exceptions import (
     LuciRpcSslError,
     LuciRpcTimeoutError,
 )
+from .features_services import LuciRpcFeaturesServicesMixin
 
 _LOGGER = logging.getLogger(__name__)
-
-
-from .features_services import LuciRpcFeaturesServicesMixin
 
 
 class LuciRpcFeaturesMixin(LuciRpcFeaturesServicesMixin):

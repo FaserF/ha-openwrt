@@ -14,14 +14,12 @@ from ..base import (
     UsbDevice,
 )
 from .exceptions import UbusError
+from .system_ops import UbusSystemOpsMixin
 
 _LOGGER = logging.getLogger(__name__)
 UBUS_JSONRPC_VERSION = "2.0"
 UBUS_ID_AUTH = 1
 UBUS_ID_CALL = 2
-
-
-from .system_ops import UbusSystemOpsMixin
 
 
 class UbusSystemMixin(UbusSystemOpsMixin):

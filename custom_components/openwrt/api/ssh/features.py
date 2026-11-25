@@ -14,11 +14,9 @@ from ..base import (
     ServiceInfo,
     classify_service,
 )
+from .features_services import SshFeaturesServicesMixin
 
 _LOGGER = logging.getLogger(__name__)
-
-
-from .features_services import SshFeaturesServicesMixin
 
 
 class SshFeaturesMixin(SshFeaturesServicesMixin):

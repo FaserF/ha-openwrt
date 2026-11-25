@@ -47,15 +47,6 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import create_client
-
-_LOGGER = logging.getLogger(__name__)
-
-CONNECTION_TYPE_MAP = {
-    CONNECTION_TYPE_UBUS: "ubus (HTTP/HTTPS)",
-    CONNECTION_TYPE_LUCI_RPC: "LuCI RPC",
-    CONNECTION_TYPE_SSH: "SSH (not recommended)",
-}
-
 from .flows.auth import AuthFlowMixin
 from .flows.discovery import DiscoveryFlowMixin
 from .flows.features import FeaturesFlowMixin
@@ -71,6 +62,14 @@ from .flows.helpers import (
 )
 from .flows.options import OpenWrtOptionsFlow
 from .flows.provisioning import ProvisioningFlowMixin
+
+_LOGGER = logging.getLogger(__name__)
+
+CONNECTION_TYPE_MAP = {
+    CONNECTION_TYPE_UBUS: "ubus (HTTP/HTTPS)",
+    CONNECTION_TYPE_LUCI_RPC: "LuCI RPC",
+    CONNECTION_TYPE_SSH: "SSH (not recommended)",
+}
 
 
 class OpenWrtConfigFlow(

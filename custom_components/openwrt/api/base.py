@@ -10,11 +10,6 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
-if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
-
-_LOGGER = logging.getLogger(__name__)
-
 from .client import (
     OpenWrtAggregatorMixin,
     OpenWrtClientHelpersMixin,
@@ -67,6 +62,11 @@ from .models import (
     parse_mwan_track_metrics,
 )
 from .provisioning import PROVISION_SCRIPT_TEMPLATE
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "AccessControl",

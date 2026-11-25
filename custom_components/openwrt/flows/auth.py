@@ -14,15 +14,6 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 
-from .helpers import selector, translation
-
-
-def async_get_clientsession(*args: Any, **kwargs: Any) -> Any:
-    from .. import config_flow
-
-    return config_flow.async_get_clientsession(*args, **kwargs)
-
-
 from ..api.luci_rpc import (
     LuciRpcAuthError,
     LuciRpcConnectionError,
@@ -66,6 +57,13 @@ from ..const import (
     DEFAULT_VERIFY_SSL,
     DOMAIN,
 )
+from .helpers import _generate_diagnostic_report, selector, translation
+
+
+def async_get_clientsession(*args: Any, **kwargs: Any) -> Any:
+    from .. import config_flow
+
+    return config_flow.async_get_clientsession(*args, **kwargs)
 
 
 def create_client(*args: Any, **kwargs: Any) -> Any:
@@ -73,10 +71,6 @@ def create_client(*args: Any, **kwargs: Any) -> Any:
 
     return config_flow.create_client(*args, **kwargs)
 
-
-from .helpers import (
-    _generate_diagnostic_report,
-)
 
 _LOGGER = logging.getLogger(__name__)
 
