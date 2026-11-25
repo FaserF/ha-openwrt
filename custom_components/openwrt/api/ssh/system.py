@@ -11,11 +11,9 @@ from ..base import (
     SystemResources,
     UsbDevice,
 )
+from .system_diagnostics import SshSystemDiagnosticsMixin
 
 _LOGGER = logging.getLogger(__name__)
-
-
-from .system_diagnostics import SshSystemDiagnosticsMixin
 
 
 class SshSystemMixin(SshSystemDiagnosticsMixin):

@@ -15,6 +15,7 @@ from ..base import (
     parse_mwan_track_metrics,
 )
 from .exceptions import UbusError
+from .network_wireless import UbusNetworkWirelessMixin
 
 _LOGGER = logging.getLogger(__name__)
 UBUS_JSONRPC_VERSION = "2.0"
@@ -32,9 +33,6 @@ def _as_seconds(value: Any) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
-
-
-from .network_wireless import UbusNetworkWirelessMixin
 
 
 class UbusNetworkMixin(UbusNetworkWirelessMixin):

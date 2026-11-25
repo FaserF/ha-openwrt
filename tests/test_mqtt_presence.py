@@ -857,3 +857,136 @@ async def test_mqtt_cleanup_runs_when_presence_was_previously_enabled(
         mock_task.assert_called_once()
         # Close the unawaited coroutine passed to async_create_task
         mock_task.call_args[0][0].close()
+
+
+async def test_presence_templates_hostapd_variants_and_mlo(tmp_path) -> None:
+    """Test hostapd-* socket discovery, iwinfo fallback, and Wi-Fi 7 MLO handling."""
+    import os
+    import re
+    import subprocess
+    from pathlib import Path
+
+    tpl_dir = (
+        Path(__file__).resolve().parents[1]
+        / "custom_components"
+        / "openwrt"
+        / "helpers"
+        / "presence_templates"
+    )
+    hostapd_init = (tpl_dir / "init.d" / "presence_hostapd").read_text(encoding="utf-8")
+    event_sh = (tpl_dir / "scripts" / "presence_event.sh").read_text(encoding="utf-8")
+    healthcheck_sh = (tpl_dir / "scripts" / "healthcheck.sh").read_text(
+        encoding="utf-8"
+    )
+    install_sh = (tpl_dir / "scripts" / "install.sh").read_text(encoding="utf-8")
+
+    # 1. Verify vendor hostapd-* socket paths and -p "$CTRL_DIR"
+    assert "/var/run/hostapd-*/*" in hostapd_init
+    assert '-p "$CTRL_DIR"' in hostapd_init
+    assert "1000>&-" in hostapd_init
+    assert "/var/run/hostapd-*/*" in healthcheck_sh
+    assert '-p "$ctrl_dir"' in healthcheck_sh
+    assert "need iwinfo" in healthcheck_sh
+    assert "iwinfo" in install_sh
+    assert "/var/run/hostapd-*/*" in event_sh
+    assert "iwinfo" in event_sh
+    assert "mld_addr=" in event_sh
+
+    # 2. Extract and execute the initial-scan awk pipeline on mixed MLO + non-MLO output
+    match = re.search(
+        r"\(\s*\n\s*# Read iwinfo first.*?\n\s*\)\s*\\\s*\n\s*\| awk '(.*?)'\s*\\\s*\n\s*\| sort -u",
+        hostapd_init,
+        re.DOTALL,
+    )
+    assert match is not None
+    awk_prog = match.group(1)
+
+    sample_input = (
+        "IWINFO 02:11:22:33:44:55  -45 dBm / SNR 40 dB\n"
+        "IWINFO \tmld addr: 02:AA:BB:CC:DD:EE\n"
+        "IWINFO AA:BB:CC:DD:EE:01  -52 dBm / SNR 35 dB\n"
+        "IWINFO \tRX: 866.7 MBit/s\n"
+        "IWINFO AA:BB:CC:DD:EE:02  -60 dBm / SNR 30 dB\n"
+        "IW Station 02:11:22:33:44:55 (on phy0-ap0)\n"
+        "IW Station aa:bb:cc:dd:ee:01 (on phy0-ap0)\n"
+        "IW Station 11:22:33:44:55:99 (on phy0-ap0)\n"
+    )
+    res = subprocess.run(
+        ["awk", awk_prog],
+        input=sample_input,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    macs = sorted(set(res.stdout.strip().splitlines()))
+    # MLO link MAC (02:11:22:33:44:55) must be suppressed in favor of its MLD address
+    assert macs == [
+        "02:aa:bb:cc:dd:ee",
+        "11:22:33:44:55:99",
+        "aa:bb:cc:dd:ee:01",
+        "aa:bb:cc:dd:ee:02",
+    ]
+
+    # 3. Verify presence_event.sh prefers mld_addr= and falls back to link MAC (lowercased)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    pub_log = tmp_path / "pub.log"
+    (bin_dir / "mosquitto_pub").write_text(
+        f'#!/bin/sh\necho "$*" >> "{pub_log}"\n', encoding="utf-8"
+    )
+    (bin_dir / "mosquitto_pub").chmod(0o755)
+    (bin_dir / "iw").write_text(
+        '#!/bin/sh\necho "  channel 36 (5180 MHz)"\necho "  ssid TestNet"\n',
+        encoding="utf-8",
+    )
+    (bin_dir / "iw").chmod(0o755)
+    (bin_dir / "logger").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (bin_dir / "logger").chmod(0o755)
+
+    # Run only the MAC extraction logic from presence_event.sh by invoking on a temp copy
+    conf = tmp_path / "presence.conf"
+    mqtt_conf = tmp_path / "presence_mqtt.conf"
+    dev_conf = tmp_path / "presence_devices.conf"
+    conf.write_text('ROUTER_ID="ap1"\nGRACE_SECONDS=0\n', encoding="utf-8")
+    mqtt_conf.write_text(
+        'BROKER="127.0.0.1"\nPORT=1883\nUSER="u"\nPASS="p"\n', encoding="utf-8"
+    )
+    dev_conf.write_text("", encoding="utf-8")
+
+    patched_event_sh = (
+        event_sh.replace("/etc/presence/presence.conf", str(conf))
+        .replace("/etc/presence/presence_mqtt.conf", str(mqtt_conf))
+        .replace("/etc/presence/presence_devices.conf", str(dev_conf))
+    )
+    event_script = tmp_path / "presence_event.sh"
+    event_script.write_text(patched_event_sh, encoding="utf-8")
+    event_script.chmod(0o755)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+
+    subprocess.run(
+        [
+            str(event_script),
+            "phy0-ap0",
+            "AP-STA-CONNECTED",
+            "02:11:22:33:44:55",
+            "mld_addr=02:AA:BB:CC:DD:EE",
+        ],
+        env=env,
+        check=True,
+    )
+    subprocess.run(
+        [
+            str(event_script),
+            "phy0-ap0",
+            "AP-STA-CONNECTED",
+            "AA:BB:CC:DD:EE:01",
+        ],
+        env=env,
+        check=True,
+    )
+    log_text = pub_log.read_text(encoding="utf-8")
+    assert "-t presence/02_aa_bb_cc_dd_ee " in log_text
+    assert "-t presence/02_11_22_33_44_55 " not in log_text
+    assert "-t presence/aa_bb_cc_dd_ee_01 " in log_text

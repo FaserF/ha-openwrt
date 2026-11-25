@@ -59,6 +59,8 @@ from .helpers import (
     should_redeploy_mqtt_presence,
     should_remove_mqtt_presence,
 )
+from .options_mqtt import OptionsMqttFlowMixin
+from .options_packages import OptionsPackagesFlowMixin
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,9 +69,6 @@ CONNECTION_TYPE_MAP = {
     CONNECTION_TYPE_LUCI_RPC: "LuCI RPC",
     CONNECTION_TYPE_SSH: "SSH (not recommended)",
 }
-
-from .options_mqtt import OptionsMqttFlowMixin
-from .options_packages import OptionsPackagesFlowMixin
 
 
 class OpenWrtOptionsFlow(OptionsPackagesFlowMixin, OptionsMqttFlowMixin, OptionsFlow):

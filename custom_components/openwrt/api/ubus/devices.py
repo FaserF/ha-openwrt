@@ -11,6 +11,7 @@ from ..base import (
     IpNeighbor,
     LldpNeighbor,
 )
+from .devices_discovery import UbusDevicesDiscoveryMixin
 from .exceptions import (
     UbusAuthError,
     UbusConnectionError,
@@ -24,9 +25,6 @@ _LOGGER = logging.getLogger(__name__)
 UBUS_JSONRPC_VERSION = "2.0"
 UBUS_ID_AUTH = 1
 UBUS_ID_CALL = 2
-
-
-from .devices_discovery import UbusDevicesDiscoveryMixin
 
 
 class UbusDevicesMixin(UbusDevicesDiscoveryMixin):

@@ -18,17 +18,16 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from ..api.base import OpenWrtData, StorageUsage
+from ..const import DOMAIN
+from ..coordinator import OpenWrtDataCoordinator
+
 
 def _get_device_info(*args: Any, **kwargs: Any) -> DeviceInfo:
     """Return DeviceInfo, respecting any runtime patches on custom_components.openwrt.sensor."""
     sensor_mod = sys.modules.get("custom_components.openwrt.sensor")
     device_info_cls = getattr(sensor_mod, "DeviceInfo", DeviceInfo)
     return device_info_cls(*args, **kwargs)
-
-
-from ..api.base import OpenWrtData, StorageUsage
-from ..const import DOMAIN
-from ..coordinator import OpenWrtDataCoordinator
 
 
 def _format_bytes(num_bytes: int) -> str:

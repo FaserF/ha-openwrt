@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -522,9 +522,6 @@ async def test_device_tracker_cleanup_unwhitelisted_entities() -> None:
 
     # phone2 is not in whitelist, so its entity should be removed
     mock_ent_reg.async_remove.assert_called_once_with("device_tracker.phone2")
-
-
-from datetime import datetime
 
 
 def test_device_tracker_reboot_availability_and_retention(

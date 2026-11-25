@@ -7,13 +7,6 @@ import sys
 from datetime import datetime, timedelta
 from typing import Any
 
-
-def _get_now():
-    mod = sys.modules.get("custom_components.openwrt.device_tracker")
-    dt = getattr(mod, "datetime", datetime)
-    return dt.now()
-
-
 from homeassistant.components.device_tracker import (
     ScannerEntity,
     SourceType,
@@ -25,13 +18,6 @@ from homeassistant.helpers import (
 )
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-
-
-def _get_device_info(*args: Any, **kwargs: Any) -> DeviceInfo:
-    mod = sys.modules.get("custom_components.openwrt.device_tracker")
-    cls = getattr(mod, "DeviceInfo", DeviceInfo)
-    return cls(*args, **kwargs)
-
 
 from ..const import (
     ATTR_MANUFACTURER,
@@ -45,6 +31,19 @@ from ..const import (
 from ..coordinator import OpenWrtDataCoordinator
 from ..helpers import get_via_device_id, is_random_mac, resolve_client_name
 from ..helpers.mac_vendor import get_mac_vendor_info
+
+
+def _get_now():
+    mod = sys.modules.get("custom_components.openwrt.device_tracker")
+    dt = getattr(mod, "datetime", datetime)
+    return dt.now()
+
+
+def _get_device_info(*args: Any, **kwargs: Any) -> DeviceInfo:
+    mod = sys.modules.get("custom_components.openwrt.device_tracker")
+    cls = getattr(mod, "DeviceInfo", DeviceInfo)
+    return cls(*args, **kwargs)
+
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -18,11 +18,9 @@ from ..base import (
     WireGuardPeer,
     parse_mwan_track_metrics,
 )
+from .network_wireless import SshNetworkWirelessMixin
 
 _LOGGER = logging.getLogger(__name__)
-
-
-from .network_wireless import SshNetworkWirelessMixin
 
 
 class SshNetworkMixin(SshNetworkWirelessMixin):

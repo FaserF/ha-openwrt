@@ -25,6 +25,10 @@ from ..const import (
     DATA_COORDINATOR,
     DOMAIN,
 )
+from .helpers import (
+    _build_mqtt_deploy_args,
+    should_redeploy_mqtt_presence,
+)
 
 
 def create_client(*args: Any, **kwargs: Any) -> Any:
@@ -32,11 +36,6 @@ def create_client(*args: Any, **kwargs: Any) -> Any:
 
     return config_flow.create_client(*args, **kwargs)
 
-
-from .helpers import (
-    _build_mqtt_deploy_args,
-    should_redeploy_mqtt_presence,
-)
 
 _LOGGER = logging.getLogger(__name__)
 
