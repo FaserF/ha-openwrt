@@ -11,4 +11,4 @@ permissions:
 
 jobs:
   lint:
-    uses: FaserF/repo-template/.github/workflows/reusable-linter.yml@v1.0.12
+    uses: FaserF/repo-template/.github/workflows/reusable-linter.yml@v1.0.14

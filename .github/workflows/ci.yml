@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   ci:
-    uses: FaserF/repo-template/.github/workflows/reusable-ci.yml@v1.0.12
+    uses: FaserF/repo-template/.github/workflows/reusable-ci.yml@v1.0.14
     with:
       project_type: "ha-integration"
     secrets: inherit
