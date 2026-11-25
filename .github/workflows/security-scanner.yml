@@ -16,5 +16,5 @@ permissions:
 
 jobs:
   security-scan:
-    uses: FaserF/repo-template/.github/workflows/reusable-security-scanner.yml@v1.0.12
+    uses: FaserF/repo-template/.github/workflows/reusable-security-scanner.yml@v1.0.14
     secrets: inherit
