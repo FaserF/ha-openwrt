@@ -93,7 +93,7 @@ jobs:
   release:
     needs: prepare
     if: always() && (github.event_name == 'push' || needs.prepare.result == 'success')
-    uses: FaserF/repo-template/.github/workflows/reusable-release.yml@v1.0.20
+    uses: FaserF/repo-template/.github/workflows/reusable-release.yml@v1.0.21
     with:
       tag_name: ${{ github.event_name == 'workflow_dispatch' && needs.prepare.outputs.tag_name || github.ref_name }}
       draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
