@@ -7,6 +7,7 @@ on:
     types: [labeled]
 
 permissions:
+  actions: read
   contents: write
   pull-requests: write
   issues: write
@@ -14,5 +15,5 @@ permissions:
 jobs:
   resolve:
     if: github.event.label.name == 'openhands:ready'
-    uses: FaserF/repo-template/.github/workflows/reusable-openhands-resolver.yml@v1.0.23
+    uses: FaserF/repo-template/.github/workflows/reusable-openhands-resolver.yml@v1.0.24
     secrets: inherit

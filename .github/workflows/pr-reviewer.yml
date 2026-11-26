@@ -5,11 +5,11 @@ on:
     types: [opened, synchronize, reopened, review_requested]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
 
 jobs:
   review:
-    uses: FaserF/repo-template/.github/workflows/reusable-pr-reviewer.yml@v1.0.23
+    uses: FaserF/repo-template/.github/workflows/reusable-pr-reviewer.yml@v1.0.24
     secrets: inherit

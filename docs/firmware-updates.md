@@ -81,3 +81,6 @@ If left empty, the integration auto-generates a pattern based on your router's `
 
 > [!WARNING]
 > When a custom repo is configured, the integration will **only** check that repository for updates. Official OpenWrt release checks and ASU are disabled in this mode.
+
+> [!NOTE]
+> Across Home Assistant restarts, the update entity keeps `latest_version` unknown (`None`) until the first remote firmware check succeeds so any version you previously marked as **Skipped** is preserved.

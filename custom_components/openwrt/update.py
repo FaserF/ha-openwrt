@@ -156,6 +156,14 @@ class OpenWrtUpdateEntity(
         if self.coordinator.data is None:
             return None
 
+        # Keep latest_version unknown until the first remote firmware check
+        # succeeds so Home Assistant preserves skipped_version across restarts.
+        if (
+            not getattr(self.coordinator, "_firmware_checked", True)
+            and not self.coordinator.data.firmware_latest_version
+        ):
+            return None
+
         # If we determined the latest remote version is not newer than our
         # current system, we are up to date
         if not self.coordinator.data.firmware_upgradable:

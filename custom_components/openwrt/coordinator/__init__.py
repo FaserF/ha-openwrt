@@ -377,6 +377,10 @@ class OpenWrtDataCoordinator(
                 await self._check_firmware_update(data)
             except Exception as err:
                 _LOGGER.debug("Firmware update check failed: %s", err)
+            else:
+                distro = (data.device_info.release_distribution or "").strip().lower()
+                if data.firmware_latest_version or distro not in ("openwrt", ""):
+                    self._firmware_checked = True
 
         # Calculate stabilized boot time
         uptime = data.system_resources.uptime

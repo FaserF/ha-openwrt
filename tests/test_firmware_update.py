@@ -1855,6 +1855,7 @@ async def test_revision_change_after_upgrade_clears_stale_offer() -> None:
     entity = OpenWrtUpdateEntity(coordinator, entry)
 
     # Before the upgrade: the last check found 25.12.6
+    coordinator._firmware_checked = True
     coordinator._async_sync_firmware_state(data)
     data.firmware_latest_version = "25.12.6"
     data.firmware_upgradable = True
@@ -1958,3 +1959,85 @@ async def test_client_refresh_device_info_updates_cache_and_forces_slow_poll() -
         assert await client.async_refresh_device_info() is info
     assert client._cached_device_info is info
     assert client._last_slow_poll_time == 0.0
+
+
+@pytest.mark.asyncio
+async def test_latest_version_unknown_before_first_firmware_check() -> None:
+    """Keep latest_version as None before the first remote check to preserve skipped_version."""
+    coordinator, entry, data = _upgrade_coordinator(hass_time=30_000.0)
+    coordinator._async_sync_firmware_state(data)
+    coordinator._firmware_checked = False
+    data.firmware_upgradable = False
+    data.firmware_latest_version = None
+
+    entity = OpenWrtUpdateEntity(coordinator, entry)
+    assert entity.installed_version == "25.12.5 (r33051-f5dae5ece4)"
+    assert entity.latest_version is None
+
+    # Once the first remote check completes up-to-date, latest_version resolves
+    # to installed_version.
+    coordinator._firmware_checked = True
+    data.firmware_latest_version = "25.12.5"
+    assert entity.latest_version == entity.installed_version
+    assert entity.latest_version == "25.12.5 (r33051-f5dae5ece4)"
+
+
+@pytest.mark.asyncio
+async def test_firmware_checked_flag_set_only_on_complete_check() -> None:
+    """_firmware_checked stays False after failed/empty OpenWrt check and becomes True once resolved."""
+    coordinator, entry, data = _upgrade_coordinator(hass_time=30_000.0)
+    coordinator._firmware_checked = False
+    coordinator._last_firmware_check = 0.0
+    coordinator.client.get_all_data = AsyncMock(return_value=data)
+    coordinator._async_filter_and_track_devices = AsyncMock()
+    coordinator._store.async_save = AsyncMock()
+    entity = OpenWrtUpdateEntity(coordinator, entry)
+
+    async def _failed_check(target_data: object) -> None:
+        return None
+
+    with patch.object(coordinator, "_check_firmware_update", side_effect=_failed_check):
+        await coordinator._async_update_data()
+
+    assert coordinator._firmware_checked is False
+    assert entity.latest_version is None
+
+    coordinator.hass.loop.time.return_value = 60_000.0
+    coordinator._last_firmware_check = 0.0
+
+    async def _uptodate_check(target_data: object) -> None:
+        target_data.firmware_latest_version = "25.12.5"  # type: ignore[attr-defined]
+        target_data.firmware_upgradable = False  # type: ignore[attr-defined]
+
+    with patch.object(
+        coordinator, "_check_firmware_update", side_effect=_uptodate_check
+    ):
+        await coordinator._async_update_data()
+
+    assert coordinator._firmware_checked is True
+    assert entity.latest_version == entity.installed_version
+    assert entity.latest_version == "25.12.5 (r33051-f5dae5ece4)"
+
+
+@pytest.mark.asyncio
+async def test_latest_version_upgradable_after_first_check() -> None:
+    """Once the first remote check finds an update, latest_version exposes it."""
+    coordinator, entry, data = _upgrade_coordinator(hass_time=30_000.0)
+    coordinator._firmware_checked = False
+    coordinator._last_firmware_check = 0.0
+    coordinator.client.get_all_data = AsyncMock(return_value=data)
+    coordinator._async_filter_and_track_devices = AsyncMock()
+    coordinator._store.async_save = AsyncMock()
+    entity = OpenWrtUpdateEntity(coordinator, entry)
+
+    async def _upgrade_check(target_data: object) -> None:
+        target_data.firmware_latest_version = "25.12.6"  # type: ignore[attr-defined]
+        target_data.firmware_upgradable = True  # type: ignore[attr-defined]
+
+    with patch.object(
+        coordinator, "_check_firmware_update", side_effect=_upgrade_check
+    ):
+        await coordinator._async_update_data()
+
+    assert coordinator._firmware_checked is True
+    assert entity.latest_version == "25.12.6"
