@@ -1,5 +1,6 @@
 """Tests for Coordinator exponential backoff on poll failure."""
 
+import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -143,6 +144,41 @@ async def test_reboot_state_ends_after_timeout(hass) -> None:
     repair.assert_called_once()
     assert not coordinator.in_reboot_installation
     assert coordinator.update_interval == timedelta(seconds=20)
+
+
+@pytest.mark.asyncio
+async def test_reboot_abandons_hung_polls(hass) -> None:
+    """A poll that hangs while the router goes down cannot block the next one."""
+    hass.loop.time = MagicMock(return_value=100000.0)
+    mock_client = MagicMock()
+    coordinator = _coordinator(hass, mock_client)
+    started = asyncio.Event()
+
+    async def hang() -> None:
+        started.set()
+        await asyncio.Event().wait()
+
+    mock_client.get_all_data = hang
+    # A zero poll timeout expires at the first await: no real waiting
+    with patch(
+        "custom_components.openwrt.coordinator.REBOOT_POLL_TIMEOUT", timedelta(0)
+    ):
+        # A poll already in flight, without a timeout, when Reboot is pressed
+        in_flight = asyncio.create_task(coordinator._async_update_data())
+        await started.wait()
+        await coordinator.async_reboot()
+        # The guard only fails the test, instead of hanging, if not bounded
+        async with asyncio.timeout(1):
+            with pytest.raises(UpdateFailed):
+                await in_flight
+
+        # A poll started in the reboot state
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+
+    assert coordinator.in_reboot_installation
+    assert coordinator.update_interval == timedelta(seconds=10)
+    assert coordinator._current_backoff_interval == 10
 
 
 @pytest.mark.asyncio

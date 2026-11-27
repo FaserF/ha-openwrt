@@ -146,9 +146,11 @@ __all__ = [
 
 _LOGGER = logging.getLogger(__name__)
 
-# While the router reboots, poll it on this fixed interval (no backoff), and
-# give up waiting for it after REBOOT_TIMEOUT.
+# While the router reboots, poll it on this fixed interval (no backoff),
+# abandon a poll that takes longer than REBOOT_POLL_TIMEOUT (a healthy one
+# takes a few seconds), and give up waiting for it after REBOOT_TIMEOUT.
 REBOOT_POLL_INTERVAL = timedelta(seconds=10)
+REBOOT_POLL_TIMEOUT = timedelta(seconds=30)
 REBOOT_TIMEOUT = timedelta(minutes=10)
 
 
@@ -178,6 +180,7 @@ class OpenWrtDataCoordinator(
         self.config_entry = config_entry
         self.in_reboot_installation = False
         self._reboot_started = 0.0
+        self._fetch_timeout: asyncio.Timeout | None = None
         self._firmware_checked = False
         self._firmware_revision: str | None = None
         self._device_info_refresh_pending = False
@@ -350,6 +353,13 @@ class OpenWrtDataCoordinator(
         self.last_update_success = False
         self.async_update_listeners()
         self._schedule_refresh()
+        # Refreshes run one at a time, so bound a poll already in flight too:
+        # it was started without a timeout and may hang while the router goes
+        # down, holding up the next poll.
+        if self._fetch_timeout is not None:
+            self._fetch_timeout.reschedule(
+                asyncio.get_running_loop().time() + REBOOT_POLL_TIMEOUT.total_seconds()
+            )
 
     async def _async_update_data(self) -> OpenWrtData:
         """Fetch data."""
@@ -368,7 +378,16 @@ class OpenWrtDataCoordinator(
             self.in_reboot_installation = False
             self._reboot_started = 0.0
         try:
-            data = await self._async_fetch_all_data()
+            # No time limit outside the reboot state
+            try:
+                async with asyncio.timeout(
+                    REBOOT_POLL_TIMEOUT.total_seconds()
+                    if self._reboot_started
+                    else None
+                ) as self._fetch_timeout:
+                    data = await self._async_fetch_all_data()
+            finally:
+                self._fetch_timeout = None
             # An uptime longer than the time since the reboot was sent means
             # the router has not gone down yet. Checked after the fetch, as the
             # reboot may have been sent while it was in flight.
