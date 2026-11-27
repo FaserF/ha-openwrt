@@ -51,8 +51,7 @@ def register_services(hass: HomeAssistant) -> None:
         for eid, data in hass.data[DOMAIN].items():
             if entry_id and eid != entry_id:
                 continue
-            client = data[DATA_CLIENT]
-            await client.reboot()
+            await data[DATA_COORDINATOR].async_reboot()
 
     async def _handle_exec(call: ServiceCall) -> None:
         """Handle execute command service call."""

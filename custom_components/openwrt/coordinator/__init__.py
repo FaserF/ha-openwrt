@@ -14,7 +14,7 @@ from typing import Any
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
     device_registry as dr,
 )
@@ -146,6 +146,11 @@ __all__ = [
 
 _LOGGER = logging.getLogger(__name__)
 
+# While the router reboots, poll it on this fixed interval (no backoff), and
+# give up waiting for it after REBOOT_TIMEOUT.
+REBOOT_POLL_INTERVAL = timedelta(seconds=10)
+REBOOT_TIMEOUT = timedelta(minutes=10)
+
 
 class OpenWrtDataCoordinator(
     FeaturesMixin,
@@ -172,6 +177,7 @@ class OpenWrtDataCoordinator(
         self.hass = hass
         self.config_entry = config_entry
         self.in_reboot_installation = False
+        self._reboot_started = 0.0
         self._firmware_checked = False
         self._firmware_revision: str | None = None
         self._device_info_refresh_pending = False
@@ -319,17 +325,65 @@ class OpenWrtDataCoordinator(
                     )
                     self.last_update_success = False
 
+    async def async_reboot(self) -> None:
+        """Reboot the router and show it as rebooting until it is back."""
+        if await self.client.reboot():
+            self.async_set_rebooting()
+
+    @callback
+    def async_set_rebooting(self) -> None:
+        """Mark the router as rebooting and poll it quickly until it is back.
+
+        Entities go unavailable right away. The state ends at the first poll
+        that finds the router booted since now, or after REBOOT_TIMEOUT.
+        """
+        _LOGGER.info(
+            "%s is rebooting, polling every %s s until it is back",
+            self.client.host,
+            REBOOT_POLL_INTERVAL.total_seconds(),
+        )
+        self.in_reboot_installation = True
+        self._reboot_started = self.hass.loop.time()
+        # Polled like a backoff step, so the next success restores the interval
+        self._current_backoff_interval = int(REBOOT_POLL_INTERVAL.total_seconds())
+        self.update_interval = REBOOT_POLL_INTERVAL
+        self.last_update_success = False
+        self.async_update_listeners()
+        self._schedule_refresh()
+
     async def _async_update_data(self) -> OpenWrtData:
         """Fetch data."""
+        # _reboot_started is only set by async_set_rebooting(), not by a
+        # firmware install, which still ends on the first successful poll.
+        if (
+            self._reboot_started
+            and self.hass.loop.time() - self._reboot_started
+            > REBOOT_TIMEOUT.total_seconds()
+        ):
+            _LOGGER.warning(
+                "%s did not come back within %s after the reboot",
+                self.client.host,
+                REBOOT_TIMEOUT,
+            )
+            self.in_reboot_installation = False
+            self._reboot_started = 0.0
         try:
             data = await self._async_fetch_all_data()
+            # An uptime longer than the time since the reboot was sent means
+            # the router has not gone down yet. Checked after the fetch, as the
+            # reboot may have been sent while it was in flight.
+            if (
+                self._reboot_started
+                and data.system_resources.uptime
+                >= self.hass.loop.time() - self._reboot_started
+            ):
+                raise UpdateFailed("Router has not rebooted yet")
             await self._async_resolve_reverse_dns(data)
             self.last_successful_update = datetime.now()
             if self.in_reboot_installation:
-                _LOGGER.info(
-                    "Device rebooted successfully after firmware update, connection restored."
-                )
+                _LOGGER.info("Device rebooted successfully, connection restored.")
                 self.in_reboot_installation = False
+                self._reboot_started = 0.0
                 self._device_info_refresh_pending = True
             # Reset backoff on success
             if self._current_backoff_interval != self._configured_update_interval:
@@ -342,6 +396,14 @@ class OpenWrtDataCoordinator(
                     self._configured_update_interval,
                 )
         except Exception as err:
+            if self._reboot_started:
+                _LOGGER.debug(
+                    "%s is rebooting (%s). Polling again in %s seconds.",
+                    self.client.host,
+                    err,
+                    REBOOT_POLL_INTERVAL.total_seconds(),
+                )
+                raise UpdateFailed(f"Error fetching data: {err}") from err
             # Double backoff up to 10 minutes (600 seconds)
             self._current_backoff_interval = min(
                 self._current_backoff_interval * 2, 600
@@ -583,9 +645,11 @@ class OpenWrtDataCoordinator(
                 await self.client.connect()
                 return await self.client.get_all_data()
             except Exception as retry_err:
-                _LOGGER.warning("Updating data failed: %s", retry_err)
                 self.client._connected = False
-                async_create_connection_lost_repair(self.hass, self.config_entry)
+                # A rebooting router is expected to be unreachable
+                if not self._reboot_started:
+                    _LOGGER.warning("Updating data failed: %s", retry_err)
+                    async_create_connection_lost_repair(self.hass, self.config_entry)
                 raise UpdateFailed(f"Error fetching data: {retry_err}") from retry_err
         except Exception as err:
             _LOGGER.exception("Unexpected error updating OpenWrt data: %s", err)
