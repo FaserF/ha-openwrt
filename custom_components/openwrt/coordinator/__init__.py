@@ -150,7 +150,7 @@ _LOGGER = logging.getLogger(__name__)
 # abandon a poll that takes longer than REBOOT_POLL_TIMEOUT (a healthy one
 # takes a few seconds), and give up waiting for it after REBOOT_TIMEOUT.
 REBOOT_POLL_INTERVAL = timedelta(seconds=10)
-REBOOT_POLL_TIMEOUT = timedelta(seconds=30)
+REBOOT_POLL_TIMEOUT = timedelta(seconds=60)
 REBOOT_TIMEOUT = timedelta(minutes=10)
 
 
