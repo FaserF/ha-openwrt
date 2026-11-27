@@ -124,7 +124,9 @@ class UbusServicesPackagesMixin:
             perms.read_devices = has_perm("network", "status") or has_uci(
                 "dhcp", "read"
             )
-            perms.write_devices = has_perm("sys", "exec")
+            # Wake on LAN runs through file.exec, which also covers kicking
+            # clients when hostapd.<iface> del_client is not granted.
+            perms.write_devices = has_perm("file", "exec")
             perms.read_services = has_perm("service", "list")
             perms.write_services = has_perm("service", "list")
             perms.write_access_control = perms.write_firewall

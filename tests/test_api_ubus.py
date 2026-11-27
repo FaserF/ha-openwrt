@@ -321,6 +321,30 @@ async def test_ubus_check_permissions_root(ubus_client: UbusClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("ubus_acl", "allowed"),
+    [
+        ({"file": ["exec"], "hostapd.*": ["*"]}, True),
+        ({"file": ["*"]}, True),
+        ({"*": ["*"]}, True),
+        ({"hostapd.*": ["*"]}, False),
+        ({"sys": ["exec"]}, False),
+    ],
+)
+async def test_ubus_session_acl_write_devices(
+    ubus_client: UbusClient, ubus_acl: dict[str, list[str]], allowed: bool
+):
+    """Wake on LAN and kicking clients need file.exec, not LuCI RPC's sys.exec."""
+    ubus_client._session_id = "test_token"
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {"acls": {"ubus": ubus_acl}}
+
+        perms = await ubus_client.check_permissions()
+
+    assert perms.write_devices is allowed
+
+
+@pytest.mark.asyncio
 async def test_ubus_provision_user(ubus_client: UbusClient):
     """Test user provisioning via ubus."""
     ubus_client._session_id = "test_token"
