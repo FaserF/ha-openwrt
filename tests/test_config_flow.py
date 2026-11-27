@@ -472,6 +472,76 @@ async def test_provision_failed_step(hass) -> None:
         assert result["step_id"] == "permissions_ubus"
 
 
+async def test_run_repair_waits_for_services(hass) -> None:
+    """Repair installs with a long timeout and retries the test while uhttpd restarts."""
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+    from custom_components.openwrt.flows.provisioning import PACKAGE_INSTALL_TIMEOUT
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    flow._data = {"host": "192.168.1.1", "connection_type": "luci_rpc"}
+    flow._diagnostic_report = "RPC endpoint returned 404"
+
+    ssh = MagicMock()
+    ssh.connect = AsyncMock(return_value=True)
+    ssh.disconnect = AsyncMock()
+    ssh.execute_command = AsyncMock(return_value="/usr/bin/apk")
+    with (
+        patch(
+            "custom_components.openwrt.flows.provisioning.SshClient",
+            return_value=ssh,
+        ),
+        patch(
+            "custom_components.openwrt.flows.provisioning.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+        patch.object(
+            flow,
+            "_test_connection",
+            new_callable=AsyncMock,
+            side_effect=["cannot_connect", "cannot_connect", None],
+        ) as mock_test,
+        patch.object(flow, "_async_set_unique_id_and_check", new_callable=AsyncMock),
+    ):
+        result = await flow.async_step_run_repair()
+
+    assert result["step_id"] == "repair_success"
+    assert mock_test.await_count == 3
+    ssh.execute_command.assert_any_await(
+        "apk update && apk add luci-mod-rpc", timeout=PACKAGE_INSTALL_TIMEOUT
+    )
+
+
+async def test_repair_failed_step(hass) -> None:
+    """A failed repair can be retried or left via the diagnostics step."""
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    flow._data = {"host": "192.168.1.1", "connection_type": "luci_rpc"}
+
+    with patch(
+        "custom_components.openwrt.flows.provisioning.SshClient"
+    ) as mock_ssh_cls:
+        mock_ssh_cls.return_value.connect = AsyncMock(side_effect=TimeoutError())
+        result = await flow.async_step_run_repair()
+    assert result["type"].lower() == "form"
+    assert result["step_id"] == "repair_failed"
+    assert result["data_schema"] is not None
+
+    with patch.object(
+        flow, "async_step_run_repair", new_callable=AsyncMock
+    ) as mock_run_repair:
+        await flow.async_step_repair_failed({"run_repair": True})
+        mock_run_repair.assert_awaited_once()
+
+    with patch.object(
+        flow, "async_step_diagnostics", new_callable=AsyncMock
+    ) as mock_diagnostics:
+        await flow.async_step_repair_failed({"run_repair": False})
+        mock_diagnostics.assert_awaited_once()
+
+
 async def test_ssdp_discovery(hass) -> None:
     """Test successful SSDP discovery and duplicate host abort."""
     from custom_components.openwrt.config_flow import OpenWrtConfigFlow

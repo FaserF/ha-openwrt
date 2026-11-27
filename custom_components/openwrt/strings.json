@@ -150,7 +150,10 @@
       },
       "repair_failed": {
         "title": "Automatic Repair Failed",
-        "description": "The integration attempted automatic repair but failed:\n\n```\n{error}\n```\n\nPlease check your router configuration or try configuring manually."
+        "description": "The integration attempted automatic repair but failed:\n\n```\n{error}\n```\n\nPlease check your router configuration or try configuring manually.",
+        "data": {
+          "run_repair": "Retry the automatic repair (uncheck to go back)"
+        }
       },
       "repair_success": {
         "title": "Automatic Repair Successful",

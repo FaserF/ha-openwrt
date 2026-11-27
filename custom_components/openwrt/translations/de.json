@@ -150,7 +150,10 @@
       },
       "repair_failed": {
         "title": "Automatische Reparatur fehlgeschlagen",
-        "description": "Der Reparaturversuch ist fehlgeschlagen:\n\n```\n{error}\n```\n\nBitte überprüfe deine Router-Konfiguration oder konfiguriere manuell."
+        "description": "Der Reparaturversuch ist fehlgeschlagen:\n\n```\n{error}\n```\n\nBitte überprüfe deine Router-Konfiguration oder konfiguriere manuell.",
+        "data": {
+          "run_repair": "Automatische Reparatur erneut versuchen (abwählen, um zurückzugehen)"
+        }
       },
       "repair_success": {
         "title": "Automatische Reparatur erfolgreich",

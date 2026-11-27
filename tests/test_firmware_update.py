@@ -883,7 +883,7 @@ async def test_ssh_install_releases_the_connection_lock_between_polls(
     downloaded = asyncio.Event()
     router = _FakeJobRouter(["Downloading"])
 
-    async def exec_locked(command: str, retry: bool = True) -> str:
+    async def exec_locked(command: str, retry: bool = True, timeout: float = 15) -> str:
         assert client._connection_lock.locked()
         if command == "uptime":
             return "up"

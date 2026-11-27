@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.openwrt.api.ssh import SshAuthError, SshClient
+from custom_components.openwrt.api.ssh import (
+    SshAuthError,
+    SshClient,
+    SshConnectionError,
+)
 
 
 @pytest.fixture
@@ -198,7 +202,7 @@ async def test_ssh_get_connected_devices_iwinfo_fallback(ssh_client: SshClient):
     ssh_client._connected = True
     with patch.object(ssh_client, "_exec", new_callable=AsyncMock) as mock_exec:
 
-        def exec_side_effect(command: str) -> str:
+        def exec_side_effect(command: str, **kwargs: object) -> str:
             if "cat /proc/net/arp" in command:
                 return "IP address       HW type     Flags       HW address            Mask     Device\n192.168.1.5      0x1         0x2         00:11:22:33:44:55     *        br-lan"
             if "iwinfo" in command:
@@ -505,6 +509,24 @@ async def test_parallel_commands_recover_once(ssh_client: SshClient) -> None:
         assert results == ["ok"] * 20
         old.close.assert_called_once()
         factory.return_value.connect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_command_timeout_is_not_rerun(ssh_client: SshClient) -> None:
+    """A timed-out command may still be running, so it must not be run again."""
+    ssh_client.hass = None
+    old = MagicMock()
+    stream = MagicMock()
+    stream.read.side_effect = TimeoutError()
+    old.exec_command.return_value = (None, stream, stream)
+    ssh_client._client = old
+    with (
+        patch("paramiko.SSHClient") as factory,
+        pytest.raises(SshConnectionError, match="SSH command failed: TimeoutError"),
+    ):
+        await ssh_client.execute_command("apk add luci-mod-rpc", timeout=300)
+    old.exec_command.assert_called_once_with("apk add luci-mod-rpc", timeout=300)
+    factory.assert_not_called()
 
 
 @pytest.mark.asyncio
