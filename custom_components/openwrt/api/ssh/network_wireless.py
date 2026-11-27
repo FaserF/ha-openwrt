@@ -64,6 +64,7 @@ class SshNetworkWirelessMixin:
                                 radio_data.get("config", {}).get("band", "")
                                 or radio_data.get("config", {}).get("hwmode", "")
                             ),
+                            htmode=radio_data.get("config", {}).get("htmode", ""),
                             hwmode=radio_data.get("config", {}).get("hwmode", ""),
                             section=iface.get("section"),
                             ifname=iface.get("ifname"),
@@ -219,6 +220,7 @@ class SshNetworkWirelessMixin:
                         wifi.txpower = info["txpower"]
                     if info.get("txpower_offset") is not None:
                         wifi.txpower_offset = info["txpower_offset"]
+                    wifi.apply_iwinfo_modes(info)
 
                     # Association list for client count
                     assoc_str = await self._exec(

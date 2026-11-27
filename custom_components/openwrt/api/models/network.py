@@ -98,6 +98,18 @@ class WirelessInterface:
         """Return whether a UCI disabled option is active."""
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
+    def apply_iwinfo_modes(self, info: dict[str, Any]) -> None:
+        """Set HT and hardware mode from `ubus call iwinfo info` output.
+
+        The runtime values reported by iwinfo take precedence over the UCI
+        radio options, which are kept when iwinfo does not report a mode.
+        """
+        if info.get("htmode"):
+            self.htmode = str(info["htmode"])
+        hwmode = info.get("hwmode")
+        if hwmode:
+            self.hwmode = "/".join(hwmode) if isinstance(hwmode, list) else str(hwmode)
+
     def __post_init__(self) -> None:
         """Post-process wireless data."""
         if not self.band:

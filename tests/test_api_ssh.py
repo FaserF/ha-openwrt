@@ -130,6 +130,36 @@ config wifi-iface 'guest'
 
 
 @pytest.mark.asyncio
+async def test_ssh_wireless_htmode_and_hwmode_from_iwinfo(
+    ssh_client: SshClient,
+) -> None:
+    """Prefer the runtime iwinfo modes over the UCI radio options."""
+    ssh_client.packages.wireless = True
+
+    def exec_side_effect(command: str) -> str:
+        if "network.wireless status" in command:
+            return (
+                '{"radio0":{"up":true,"config":{"band":"2g","htmode":"HE40"},'
+                '"interfaces":[{"section":"main","ifname":"wlan0",'
+                '"config":{"ssid":"Main"}}]}}'
+            )
+        if "iwinfo info" in command:
+            return '{"ssid":"Main","hwmode":"ax","htmode":"HE20"}'
+        return ""
+
+    with patch.object(
+        ssh_client,
+        "_exec",
+        new_callable=AsyncMock,
+        side_effect=exec_side_effect,
+    ):
+        interfaces = await ssh_client.get_wireless_interfaces()
+
+    assert interfaces[0].htmode == "HE20"
+    assert interfaces[0].hwmode == "ax"
+
+
+@pytest.mark.asyncio
 async def test_ssh_runtime_disabled_interface_is_not_enabled(
     ssh_client: SshClient,
 ) -> None:
