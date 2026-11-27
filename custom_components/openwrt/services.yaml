@@ -165,3 +165,97 @@ get_raw_data:
       selector:
         config_entry:
           integration: openwrt
+
+generate_report:
+  description: Generates a detailed system report in markdown format and returns it as a service response.
+  fields:
+    entry_id:
+      description: The config entry ID of the OpenWrt router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        config_entry:
+          integration: openwrt
+
+get_system_logs:
+  description: Returns recent system or kernel log lines from the OpenWrt router as a service response.
+  fields:
+    entry_id:
+      description: The config entry ID of the OpenWrt router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        config_entry:
+          integration: openwrt
+    count:
+      description: Number of log lines to return.
+      example: 50
+      default: 50
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    log_type:
+      description: The log to read (system for logread, kernel for dmesg).
+      example: "system"
+      default: "system"
+      required: false
+      selector:
+        select:
+          options:
+            - "system"
+            - "kernel"
+    filter:
+      description: Only return lines matching this regular expression (logread -e).
+      example: "hostapd"
+      required: false
+      selector:
+        text: {}
+
+add_static_lease:
+  description: Adds a static DHCP lease on the OpenWrt router, replacing any existing lease for the same MAC address.
+  fields:
+    entry_id:
+      description: The config entry ID of the OpenWrt router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        config_entry:
+          integration: openwrt
+    mac:
+      description: The MAC address of the device.
+      example: "AA:BB:CC:DD:EE:FF"
+      required: true
+      selector:
+        text: {}
+    ip:
+      description: The IPv4 address to assign.
+      example: "192.168.1.100"
+      required: true
+      selector:
+        text: {}
+    name:
+      description: Optional hostname for the lease.
+      example: "my-laptop"
+      required: false
+      selector:
+        text: {}
+
+delete_static_lease:
+  description: Deletes the static DHCP lease for a MAC address on the OpenWrt router.
+  fields:
+    entry_id:
+      description: The config entry ID of the OpenWrt router.
+      example: 1234567890abcdef1234567890abcdef
+      required: true
+      selector:
+        config_entry:
+          integration: openwrt
+    mac:
+      description: The MAC address of the device.
+      example: "AA:BB:CC:DD:EE:FF"
+      required: true
+      selector:
+        text: {}

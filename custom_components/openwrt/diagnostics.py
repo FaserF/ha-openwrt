@@ -13,7 +13,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_MQTT_PRESENCE, CONF_SSH_KEY, DATA_COORDINATOR, DOMAIN
+from .const import (
+    CONF_MQTT_PRESENCE,
+    CONF_SSH_KEY,
+    DATA_CLIENT,
+    DATA_COORDINATOR,
+    DOMAIN,
+)
 from .coordinator import OpenWrtDataCoordinator
 
 REDACT_KEYS = {
@@ -249,9 +255,12 @@ async def async_get_config_entry_diagnostics(
                 for p in data.system_resources.top_processes[:5]
             ]
 
-            diag["system_logs"] = [
-                redact_log_line(line) for line in getattr(data, "system_logs", [])
-            ]
+            # Fetch more lines than the coordinator polls, to help bug reports
+            client = hass.data[DOMAIN][entry.entry_id].get(DATA_CLIENT)
+            system_logs = (
+                await client.get_system_logs(count=100) if client else []
+            ) or getattr(data, "system_logs", [])
+            diag["system_logs"] = [redact_log_line(line) for line in system_logs]
             diag["dmesg_logs"] = [
                 redact_log_line(line) for line in getattr(data, "dmesg_logs", [])
             ]

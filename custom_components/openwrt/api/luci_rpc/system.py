@@ -383,12 +383,14 @@ class LuciRpcSystemMixin:
             _LOGGER.debug("Unexpected error listing installed packages: %s", err)
             return []
 
-    async def get_system_logs(self, count: int = 10) -> list[str]:
+    async def get_system_logs(
+        self, count: int = 10, log_filter: str | None = None
+    ) -> list[str]:
         """Get recent system log entries via execute_command (logread)."""
         try:
             # Directly use execute_command (sys.exec) with logread
             # Calling direct ubus log.read via LuCI RPC causes uhttpd spam on certain devices
-            cmd = await self._get_logread_command(count)
+            cmd = await self._get_logread_command(count, log_filter)
             output = await self.execute_command(cmd)
             if output:
                 return [line.strip() for line in output.splitlines() if line.strip()]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import abc
 import logging
 import re
+import shlex
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -402,14 +403,21 @@ class OpenWrtClient(
         """Set LED brightness (0-255)."""
         return False
 
-    async def get_system_logs(self, count: int = 10) -> list[str]:
+    async def get_system_logs(
+        self, count: int = 10, log_filter: str | None = None
+    ) -> list[str]:
         """Get recent system log entries."""
         return []
 
-    async def get_dmesg_logs(self, count: int = 100) -> list[str]:
+    async def get_dmesg_logs(
+        self, count: int = 100, log_filter: str | None = None
+    ) -> list[str]:
         """Get recent dmesg kernel log entries."""
         try:
-            output = await self.execute_command(f"dmesg | tail -n {int(count or 100)}")
+            cmd = "dmesg"
+            if log_filter:
+                cmd += f" | grep -e {shlex.quote(log_filter)}"
+            output = await self.execute_command(f"{cmd} | tail -n {int(count or 100)}")
             if output:
                 return [line.strip() for line in output.splitlines() if line.strip()]
         except Exception as err:

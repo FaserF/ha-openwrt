@@ -15,29 +15,33 @@ _LOGGER = logging.getLogger(__name__)
 class SshSystemDiagnosticsMixin:
     """Mixin for SSH diagnostics, logs, and reboot operations."""
 
-    async def get_system_logs(self, count: int = 10) -> list[str]:
+    async def get_system_logs(
+        self, count: int = 10, log_filter: str | None = None
+    ) -> list[str]:
         """Get recent system log entries via SSH."""
         try:
-            # 1. Try via direct ubus call (More robust/structured)
-            try:
-                # Use double braces for f-string escaping if needed,
-                # but here we just need to ensure the JSON is valid for the shell
-                res_out = await self._exec(
-                    f"ubus call log read '{{\"lines\": {int(count or 10)}}}'"
-                )
-                if res_out:
-                    res = json.loads(res_out)
-                    if res and isinstance(res, dict) and "log" in res:
-                        return [
-                            entry.get("msg", "").strip()
-                            for entry in res.get("log", [])
-                            if entry.get("msg")
-                        ]
-            except Exception as err:
-                _LOGGER.debug("Direct SSH ubus log read failed: %s", err)
+            # 1. Try via direct ubus call (More robust/structured).
+            # Skipped when filtering: logread -e does the matching on the router.
+            if not log_filter:
+                try:
+                    # Use double braces for f-string escaping if needed,
+                    # but here we just need to ensure the JSON is valid for the shell
+                    res_out = await self._exec(
+                        f"ubus call log read '{{\"lines\": {int(count or 10)}}}'"
+                    )
+                    if res_out:
+                        res = json.loads(res_out)
+                        if res and isinstance(res, dict) and "log" in res:
+                            return [
+                                entry.get("msg", "").strip()
+                                for entry in res.get("log", [])
+                                if entry.get("msg")
+                            ]
+                except Exception as err:
+                    _LOGGER.debug("Direct SSH ubus log read failed: %s", err)
 
             # 2. Fallback to logread command
-            cmd = await self._get_logread_command(count)
+            cmd = await self._get_logread_command(count, log_filter)
             output = await self._exec(cmd)
             if output:
                 return [line.strip() for line in output.splitlines() if line.strip()]

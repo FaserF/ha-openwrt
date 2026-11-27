@@ -1108,6 +1108,64 @@
           "description": "Optionaler Konfigurationseintrag des OpenWrt-Routers."
         }
       }
+    },
+    "get_system_logs": {
+      "name": "System-Logs abrufen",
+      "description": "Gibt aktuelle System- oder Kernel-Log-Zeilen des OpenWrt-Routers zurück.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt-Router."
+        },
+        "count": {
+          "name": "Anzahl",
+          "description": "Anzahl der zurückzugebenden Log-Zeilen."
+        },
+        "log_type": {
+          "name": "Log-Typ",
+          "description": "Das zu lesende Log (system für logread, kernel für dmesg)."
+        },
+        "filter": {
+          "name": "Filter",
+          "description": "Nur Zeilen zurückgeben, die diesem regulären Ausdruck entsprechen (logread -e)."
+        }
+      }
+    },
+    "add_static_lease": {
+      "name": "Statischen DHCP-Lease hinzufügen",
+      "description": "Fügt einen statischen DHCP-Lease hinzu und ersetzt einen vorhandenen Lease für dieselbe MAC-Adresse.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt-Router."
+        },
+        "mac": {
+          "name": "MAC-Adresse",
+          "description": "Die MAC-Adresse des Geräts."
+        },
+        "ip": {
+          "name": "IP-Adresse",
+          "description": "Die zuzuweisende IPv4-Adresse."
+        },
+        "name": {
+          "name": "Hostname",
+          "description": "Optionaler Hostname für den Lease."
+        }
+      }
+    },
+    "delete_static_lease": {
+      "name": "Statischen DHCP-Lease löschen",
+      "description": "Löscht den statischen DHCP-Lease für eine MAC-Adresse.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät",
+          "description": "Der OpenWrt-Router."
+        },
+        "mac": {
+          "name": "MAC-Adresse",
+          "description": "Die MAC-Adresse des Geräts."
+        }
+      }
     }
   }
 }

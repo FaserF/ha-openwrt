@@ -43,3 +43,29 @@ Send a Magic Packet through the router to wake up a device.
 ## `openwrt.create_backup`
 
 Triggers a configuration backup and returns the path to the backup file.
+
+## `openwrt.generate_report`
+
+Generates a Markdown system report (model, firmware, resources, top processes, recent logs) and returns it as a service response.
+
+## `openwrt.get_system_logs`
+
+Returns recent log lines from the router as a service response.
+
+- **`count`**: (Optional) Number of lines to return, 1 to 1000 (default: `50`).
+- **`log_type`**: (Optional) `system` (logread, default) or `kernel` (dmesg).
+- **`filter`**: (Optional) Only return lines matching this regular expression, e.g. `hostapd` or a MAC address. Uses `logread -e` (or `grep` for kernel logs), and `count` applies to the matching lines.
+
+## `openwrt.add_static_lease`
+
+Adds a static DHCP lease, replacing any existing lease for the same MAC address.
+
+- **`mac`**: MAC address of the device.
+- **`ip`**: IPv4 address to assign.
+- **`name`**: (Optional) Hostname for the lease.
+
+## `openwrt.delete_static_lease`
+
+Deletes the static DHCP lease for a MAC address.
+
+- **`mac`**: MAC address of the device.

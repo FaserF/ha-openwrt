@@ -53,8 +53,14 @@ class OpenWrtClientHelpersMixin:
 
         return 0
 
-    async def _get_logread_command(self, count: int) -> str:
+    async def _get_logread_command(
+        self, count: int, log_filter: str | None = None
+    ) -> str:
         """Resolve the correct logread command (detecting -n vs -l)."""
+        if log_filter:
+            # Filter the whole buffer first, then keep the last `count` matches
+            return f"/sbin/logread -e {shlex.quote(log_filter)} | tail -n {int(count or 10)}"
+
         if self._logread_flag is None:
             # Default to -n as it's the legacy/standard OpenWrt behavior
             self._logread_flag = "-n"
