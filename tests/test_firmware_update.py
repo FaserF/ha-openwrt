@@ -377,6 +377,7 @@ async def test_custom_build_install_passes_checksum_without_force(
     entity = OpenWrtUpdateEntity(coordinator, entry)
     entity.hass = hass
     await entity.async_install(version=None, backup=False)
+    coordinator.async_set_rebooting.assert_called_once_with()
 
     coordinator.client.install_firmware.assert_awaited_once_with(
         "https://example.com/fw-sysupgrade.bin",
@@ -590,6 +591,7 @@ async def test_asu_install_passes_image_sha256(hass: HomeAssistant) -> None:
         )
         await entity.async_install(version=None, backup=False)
 
+    entity.coordinator.async_set_rebooting.assert_called_once_with()
     entity.coordinator.client.install_firmware.assert_awaited_once_with(
         url, keep_settings=True, force=False, sha256=SHA
     )

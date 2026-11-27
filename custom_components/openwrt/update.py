@@ -345,6 +345,8 @@ class OpenWrtUpdateEntity(
                 await self.coordinator.client.install_firmware(
                     url, keep_settings=True, force=False, sha256=checksum
                 )
+                # install_firmware returns once sysupgrade has started
+                self.coordinator.async_set_rebooting()
             except Exception as err:
                 msg = f"Failed to initiate firmware installation: {err}"
                 raise HomeAssistantError(msg) from err
@@ -433,6 +435,8 @@ class OpenWrtUpdateEntity(
                 force=False,
                 sha256=image.sha256,
             )
+            # install_firmware returns once sysupgrade has started
+            self.coordinator.async_set_rebooting()
 
         except Exception as err:
             _LOGGER.exception("ASU firmware update failed")

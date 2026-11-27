@@ -363,8 +363,8 @@ class OpenWrtDataCoordinator(
 
     async def _async_update_data(self) -> OpenWrtData:
         """Fetch data."""
-        # _reboot_started is only set by async_set_rebooting(), not by a
-        # firmware install, which still ends on the first successful poll.
+        # _reboot_started is set by async_set_rebooting(): on a reboot, or once
+        # a firmware install has started sysupgrade.
         if (
             self._reboot_started
             and self.hass.loop.time() - self._reboot_started

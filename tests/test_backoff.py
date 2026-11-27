@@ -183,7 +183,7 @@ async def test_reboot_abandons_hung_polls(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_firmware_install_reboot_ends_on_first_success(hass) -> None:
-    """A firmware install sets the flag directly and keeps its upstream behaviour."""
+    """Before sysupgrade starts, a firmware install only sets the flag."""
     hass.loop.time = MagicMock(return_value=100000.0)
     mock_client = MagicMock()
     coordinator = _coordinator(hass, mock_client)
