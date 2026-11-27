@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import logging
 import socket
 from collections.abc import Mapping
@@ -24,6 +25,7 @@ from ..const import (
     CONNECTION_TYPE_LUCI_RPC,
     CONNECTION_TYPE_SSH,
     CONNECTION_TYPE_UBUS,
+    DATA_COORDINATOR,
     DOCS_URL,
     DOMAIN,
 )
@@ -36,6 +38,19 @@ CONNECTION_TYPE_MAP = {
     CONNECTION_TYPE_LUCI_RPC: "LuCI RPC",
     CONNECTION_TYPE_SSH: "SSH (not recommended)",
 }
+
+# Limit how many hosts known to configured routers are probed in one scan, so
+# the scan stays quick on large networks.
+MAX_KNOWN_HOSTS_TO_PROBE = 100
+
+
+def _is_private_ipv4(value: str) -> bool:
+    """Return True for private IPv4 addresses (skips IPv6, WAN and junk)."""
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return address.version == 4 and address.is_private
 
 
 class DiscoveryFlowMixin:
@@ -113,7 +128,7 @@ class DiscoveryFlowMixin:
         return await self.async_step_discovery(user_input={})
 
     async def _async_get_potential_hosts(self) -> set[str]:
-        """Gather potential router IPs from defaults and HA network adapters."""
+        """Gather potential router IPs from defaults, HA adapters and known hosts."""
         potential_hosts: set[str] = {"192.168.1.1", "192.168.0.1", "10.0.0.1"}
 
         with contextlib.suppress(Exception):
@@ -126,6 +141,41 @@ class DiscoveryFlowMixin:
                     if local_ip and (parts := local_ip.split(".")) and len(parts) == 4:
                         potential_hosts.add(".".join([*parts[:-1], "1"]))
                         potential_hosts.add(".".join([*parts[:-1], "254"]))
+
+        # Other OpenWrt devices (e.g. access points) may only be known to an
+        # already-configured router, through its DHCP leases or neighbours
+        entries = self.hass.config_entries.async_entries(DOMAIN)
+        configured_hosts = {entry.data.get(CONF_HOST) for entry in entries}
+        known_hosts: list[str] = []
+        for entry in entries:
+            coordinator = (
+                self.hass.data.get(DOMAIN, {})
+                .get(entry.entry_id, {})
+                .get(DATA_COORDINATOR)
+            )
+            if not coordinator or not coordinator.data:
+                continue
+            data = coordinator.data
+            for item in (
+                *data.dhcp_leases,
+                *data.ip_neighbors,
+                *data.all_connected_devices,
+            ):
+                if (
+                    item.ip not in configured_hosts
+                    and item.ip not in potential_hosts
+                    and _is_private_ipv4(item.ip)
+                ):
+                    known_hosts.append(item.ip)
+
+        known_hosts = list(dict.fromkeys(known_hosts))
+        if len(known_hosts) > MAX_KNOWN_HOSTS_TO_PROBE:
+            _LOGGER.debug(
+                "Probing only the first %s of %s hosts known to configured routers",
+                MAX_KNOWN_HOSTS_TO_PROBE,
+                len(known_hosts),
+            )
+        potential_hosts.update(known_hosts[:MAX_KNOWN_HOSTS_TO_PROBE])
 
         return potential_hosts
 

@@ -273,6 +273,88 @@ async def test_multi_router_selection(hass) -> None:
     assert result["step_id"] == "credentials"
 
 
+def _mock_configured_router(hass, data):
+    """Register a configured router entry whose coordinator holds data."""
+    from custom_components.openwrt.const import DATA_COORDINATOR, DOMAIN
+
+    entry = MagicMock()
+    entry.data = {CONF_HOST: "192.168.1.1"}
+    entry.entry_id = "main_router"
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        DATA_COORDINATOR: MagicMock(data=data),
+    }
+    return patch.object(hass.config_entries, "async_entries", return_value=[entry])
+
+
+async def test_discovery_probes_hosts_known_to_configured_routers(hass) -> None:
+    """Test the scan probes neighbours and DHCP leases of configured routers."""
+    from custom_components.openwrt.api.base import OpenWrtData
+    from custom_components.openwrt.api.models.network import (
+        DhcpLease,
+        IpNeighbor,
+    )
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    data = OpenWrtData(
+        dhcp_leases=[DhcpLease(hostname="ap-office", ip="192.168.1.3")],
+        ip_neighbors=[
+            IpNeighbor(ip="192.168.1.2"),
+            IpNeighbor(ip="192.168.1.1"),
+            IpNeighbor(ip="fe80::1"),
+            IpNeighbor(ip="8.8.8.8"),
+        ],
+    )
+    probed: list[str] = []
+
+    async def mock_probe_router(host, hostname=None):
+        probed.append(host)
+        if host == "192.168.1.3":
+            return {
+                "host": host,
+                "hostname": "ap-office",
+                "capabilities": ["ubus"],
+                "method": "ubus",
+            }
+        return None
+
+    with (
+        _mock_configured_router(hass, data),
+        patch.object(flow, "_async_probe_router", side_effect=mock_probe_router),
+        patch("homeassistant.components.network.async_get_adapters", return_value=[]),
+    ):
+        result = await flow.async_step_user({"flow_type": "discovery"})
+
+    assert {"192.168.1.2", "192.168.1.3"} <= set(probed)
+    assert "fe80::1" not in probed
+    assert "8.8.8.8" not in probed
+    assert result["step_id"] == "confirm_discovery"
+    assert flow._discovered_routers[0]["host"] == "192.168.1.3"
+
+
+async def test_discovery_caps_hosts_known_to_configured_routers(hass) -> None:
+    """Test the scan does not probe an unbounded number of known hosts."""
+    from custom_components.openwrt.api.base import OpenWrtData
+    from custom_components.openwrt.api.models.network import IpNeighbor
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+    from custom_components.openwrt.flows.discovery import MAX_KNOWN_HOSTS_TO_PROBE
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    data = OpenWrtData(
+        ip_neighbors=[IpNeighbor(ip=f"10.0.1.{i}") for i in range(2, 254)],
+    )
+
+    with (
+        _mock_configured_router(hass, data),
+        patch("homeassistant.components.network.async_get_adapters", return_value=[]),
+    ):
+        hosts = await flow._async_get_potential_hosts()
+
+    assert len(hosts) == 3 + MAX_KNOWN_HOSTS_TO_PROBE
+
+
 async def test_dhcp_discovery(hass) -> None:
     """Test successful DHCP discovery."""
 
