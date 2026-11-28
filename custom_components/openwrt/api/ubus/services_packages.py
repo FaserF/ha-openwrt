@@ -98,15 +98,16 @@ class UbusServicesPackagesMixin:
                 return False
 
             def can_run_shell() -> bool:
-                # execute_command runs /bin/sh through file.exec, which rpcd
-                # allows only with the ubus method and an exec grant on the path.
+                # execute_command runs /bin/sh -c <command> through file.exec,
+                # which rpcd allows only with the ubus method and an exec grant
+                # on /bin/sh or on a pattern covering the full command line.
                 if not has_perm("file", "exec"):
                     return False
                 if not acls_all:
                     # The legacy layout carries no file path ACLs.
                     return True
                 return any(
-                    fnmatchcase("/bin/sh", path)
+                    (fnmatchcase("/bin/sh", path) or fnmatchcase("/bin/sh -c *", path))
                     and any(fnmatchcase("exec", func) for func in funcs)
                     for path, funcs in acls_all.get("file", {}).items()
                 )

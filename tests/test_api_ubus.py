@@ -350,6 +350,8 @@ async def test_ubus_check_permissions_root(ubus_client: UbusClient):
         ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh": ["exec"]}}, True),
         ({"ubus": {"file": ["*"]}, "file": {"/bin/*": ["read", "exec"]}}, True),
         ({"ubus": {"*": ["*"]}, "file": {"*": ["*"]}}, True),
+        ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh -c *": ["exec"]}}, True),
+        ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh -c id *": ["exec"]}}, False),
         ({"ubus": {"file": ["exec"]}}, False),
         ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh": ["read"]}}, False),
         ({"ubus": {"file": ["exec"]}, "file": {"/usr/bin/id": ["exec"]}}, False),
