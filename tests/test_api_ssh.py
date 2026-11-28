@@ -530,6 +530,26 @@ async def test_command_timeout_is_not_rerun(ssh_client: SshClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_dead_connection_still_recovers(ssh_client: SshClient) -> None:
+    """On a dead connection paramiko times out opening the channel, before the
+    command starts, and raises SSHException rather than TimeoutError, so the
+    command is still retried on a fresh connection."""
+    import paramiko
+
+    ssh_client.hass = None
+    old = MagicMock()
+    old.exec_command.side_effect = paramiko.SSHException("Timeout opening channel.")
+    ssh_client._client = old
+    stream = MagicMock()
+    stream.read.return_value = b"ok"
+    stream.channel.recv_exit_status.return_value = 0
+    with patch("paramiko.SSHClient") as factory:
+        factory.return_value.exec_command.return_value = (None, stream, stream)
+        assert await ssh_client.execute_command("uptime") == "ok"
+    factory.return_value.connect.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_cancelled_connect_waits_and_closes_client(ssh_client: SshClient) -> None:
     """Cancellation cannot release ownership while the blocking worker is running."""
     import asyncio
