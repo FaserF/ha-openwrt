@@ -401,9 +401,9 @@ class OpenWrtDataCoordinator(
             # An uptime longer than the time since the reboot (or firmware
             # install) was sent means the router has not gone down yet.
             # Checked after the last await before the reboot state ends, as the
-            # reboot may have been sent while this poll was in flight. An uptime of 0 means it could not
-            # be read; it ends the state only for a router that never reports
-            # one.
+            # reboot may have been sent while this poll was in flight. An
+            # uptime of 0 means it could not be read; it ends the state only
+            # for a router that never reports one.
             uptime = data.system_resources.uptime
             if self._reboot_started and (
                 uptime >= self.hass.loop.time() - self._reboot_since
