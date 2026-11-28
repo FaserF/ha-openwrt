@@ -367,11 +367,11 @@ class LuciRpcFeaturesServicesMixin:
         try:
             # First ensure trigger is set to none to allow manual control
             await self.execute_command(
-                f"echo none > /sys/class/leds/{name}/trigger 2>/dev/null"
+                f"echo none > {shlex.quote(f'/sys/class/leds/{name}/trigger')} 2>/dev/null"
             )
             # Write brightness
             await self.execute_command(
-                f"echo {int(brightness)} > /sys/class/leds/{name}/brightness"
+                f"echo {int(brightness)} > {shlex.quote(f'/sys/class/leds/{name}/brightness')}"
             )
             self._invalidate_slow_poll()
             return True

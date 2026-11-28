@@ -69,6 +69,9 @@ def register_services(hass: HomeAssistant) -> None:
         entry_id = call.data["entry_id"]
         service_name = call.data["service_name"]
         action = call.data["action"]
+        if "/" in service_name:
+            msg = f"Invalid service name {service_name!r}: expected a script name in /etc/init.d"
+            raise vol.Invalid(msg)
         if entry_id in hass.data[DOMAIN]:
             client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
             await client.manage_service(service_name, action)
@@ -167,15 +170,12 @@ def register_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError("Could not resolve a MAC address for Wake-on-LAN")
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
-        command = f"ether-wake {shlex.quote(mac)}"
-        if interface:
-            command = f"ether-wake -i {shlex.quote(interface)} {shlex.quote(mac)}"
+        args = ["-i", interface, mac] if interface else [mac]
 
         try:
-            output = await client.execute_command(command)
+            output = await client.execute_command(shlex.join(["ether-wake", *args]))
             if output and "not found" in output.lower():
-                command = command.replace("ether-wake", "etherwake")
-                await client.execute_command(command)
+                await client.execute_command(shlex.join(["etherwake", *args]))
         except Exception as err:
             msg = f"Failed to send WoL packet: {err}"
             raise HomeAssistantError(msg) from err
@@ -294,7 +294,7 @@ def register_services(hass: HomeAssistant) -> None:
 
             # Clean up the remote backup file
             try:
-                await client.execute_command(f"rm -f {backup_path}")
+                await client.execute_command(f"rm -f {shlex.quote(backup_path)}")
             except Exception as clean_err:
                 _LOGGER.warning(
                     "Could not delete remote backup file %s: %s", backup_path, clean_err

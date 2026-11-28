@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shlex
 from typing import Any
 
 import aiohttp
 
-from ..base import (
-    PROVISION_SCRIPT_TEMPLATE,
-    OpenWrtClient,
-)
+from ..base import OpenWrtClient
+from ..provisioning import build_provision_script
 from .devices import LuciRpcDevicesMixin
 from .exceptions import (
     LuciRpcAuthError,
@@ -289,7 +288,7 @@ class LuciRpcClient(
         # 1. Try via LuCI RPC (often more restricted than ubus, but let's try reading passwd)
         try:
             res = await self.execute_command(
-                f"grep -q '^{username}:' /etc/passwd && echo 'exists'",
+                f"grep -q {shlex.quote(f'^{username}:')} /etc/passwd && echo 'exists'",
             )
             if res and isinstance(res, str) and "exists" in res:
                 return True
@@ -306,7 +305,7 @@ class LuciRpcClient(
     ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via LuCI RPC."""
         # Use the harmonized provisioning script from base
-        script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
+        script = build_provision_script(username, password)
         try:
             output = await self.execute_command(script)
 

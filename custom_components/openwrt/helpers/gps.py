@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 from datetime import datetime
 from typing import Any
 
@@ -78,9 +79,9 @@ async def async_update_gps_location(
 
         # Build single robust shell script to query the modem using file descriptor redirection
         cmd = (
-            f"exec 3<>{port}; "
+            f"exec 3<>{shlex.quote(port)}; "
             f"stty 9600 cs8 -parenb -cstopb raw -echo min 0 time 20 <&3 2>/dev/null || "
-            f"stty -F {port} 9600 cs8 -parenb -cstopb raw -echo min 0 time 20 2>/dev/null; "
+            f"stty -F {shlex.quote(port)} 9600 cs8 -parenb -cstopb raw -echo min 0 time 20 2>/dev/null; "
             f"printf 'AT+QGPS?\\r' >&3; "
             f"GPS_STATUS=$(timeout 2 cat <&3); "
             f"if ! echo \"$GPS_STATUS\" | grep -q '+QGPS: 1'; then "

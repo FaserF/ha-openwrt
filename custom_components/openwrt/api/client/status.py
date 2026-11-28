@@ -132,16 +132,16 @@ class OpenWrtStatusMixin:
                             )
                             # Check if interface is up
                             ip_out = await self.execute_command(
-                                f"ip link show {iface_name} 2>/dev/null",
+                                f"ip link show {shlex.quote(iface_name)} 2>/dev/null",
                             )
                             vpn.up = bool(ip_out and "UP" in ip_out)
 
                             # Get RX/TX bytes
                             rx_out = await self.execute_command(
-                                f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null",
+                                f"cat {shlex.quote(f'/sys/class/net/{iface_name}/statistics/rx_bytes')} 2>/dev/null",
                             )
                             tx_out = await self.execute_command(
-                                f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null",
+                                f"cat {shlex.quote(f'/sys/class/net/{iface_name}/statistics/tx_bytes')} 2>/dev/null",
                             )
                             try:
                                 vpn.rx_bytes = (
@@ -200,10 +200,10 @@ class OpenWrtStatusMixin:
                             )
                             # Get RX/TX bytes
                             rx_out = await self.execute_command(
-                                f"cat /sys/class/net/{iface_name}/statistics/rx_bytes 2>/dev/null",
+                                f"cat {shlex.quote(f'/sys/class/net/{iface_name}/statistics/rx_bytes')} 2>/dev/null",
                             )
                             tx_out = await self.execute_command(
-                                f"cat /sys/class/net/{iface_name}/statistics/tx_bytes 2>/dev/null",
+                                f"cat {shlex.quote(f'/sys/class/net/{iface_name}/statistics/tx_bytes')} 2>/dev/null",
                             )
                             try:
                                 vpn.rx_bytes = (

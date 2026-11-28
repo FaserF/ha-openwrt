@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import shlex
 from typing import Any
 
 from homeassistant.components.update import (
@@ -488,7 +489,9 @@ class OpenWrtUpdateEntity(
             if success:
                 _LOGGER.info("Backup successfully saved to: %s", local_path)
                 # Cleanup remote file
-                await self.coordinator.client.execute_command(f"rm {remote_path}")
+                await self.coordinator.client.execute_command(
+                    f"rm {shlex.quote(remote_path)}"
+                )
             else:
                 msg = f"Failed to download backup from router to {local_path}"
                 _LOGGER.error(msg)
@@ -555,9 +558,9 @@ class OpenWrtPackageUpdateEntity(
         try:
             script = (
                 f"if command -v apk >/dev/null 2>&1; then "
-                f"  apk add --upgrade {self._package_name}; "
+                f"  apk add --upgrade {shlex.quote(self._package_name)}; "
                 f"elif command -v opkg >/dev/null 2>&1; then "
-                f"  opkg install {self._package_name}; "
+                f"  opkg install {shlex.quote(self._package_name)}; "
                 f"fi"
             )
             await client.execute_command(script)

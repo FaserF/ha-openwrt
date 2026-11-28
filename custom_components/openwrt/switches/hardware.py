@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 from typing import Any, cast
 
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
@@ -58,7 +59,7 @@ class OpenWrtWireGuardSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEn
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable."""
         try:
-            await self._client.execute_command(f"ifup {self._iface_name}")
+            await self._client.execute_command(f"ifup {shlex.quote(self._iface_name)}")
             if self.coordinator.data:
                 for wg in self.coordinator.data.wireguard_interfaces:
                     if wg.name == self._iface_name:
@@ -74,7 +75,9 @@ class OpenWrtWireGuardSwitch(CoordinatorEntity[OpenWrtDataCoordinator], SwitchEn
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable."""
         try:
-            await self._client.execute_command(f"ifdown {self._iface_name}")
+            await self._client.execute_command(
+                f"ifdown {shlex.quote(self._iface_name)}"
+            )
             if self.coordinator.data:
                 for wg in self.coordinator.data.wireguard_interfaces:
                     if wg.name == self._iface_name:

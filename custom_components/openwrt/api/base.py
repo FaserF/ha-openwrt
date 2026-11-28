@@ -5,6 +5,7 @@ from __future__ import annotations
 import abc
 import logging
 import re
+import shlex
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -222,7 +223,9 @@ class OpenWrtClient(
 
         # Fallback to id -u
         try:
-            output = await self.execute_command(f"id -u {username} 2>/dev/null")
+            output = await self.execute_command(
+                f"id -u {shlex.quote(username)} 2>/dev/null"
+            )
             return output.strip().isdigit()
         except Exception:
             return False
@@ -360,7 +363,12 @@ class OpenWrtClient(
 
     async def kick_device(self, mac_address: str, interface: str) -> bool:
         """Kick a wireless device from the network using hostapd."""
-        cmd_ubus = f'ubus call hostapd.{interface} del_client \'{{"addr":"{mac_address}","reason":5,"deauth":true,"ban_time":60000}}\''
+        payload = (
+            f'{{"addr":"{mac_address}","reason":5,"deauth":true,"ban_time":60000}}'
+        )
+        cmd_ubus = shlex.join(
+            ["ubus", "call", f"hostapd.{interface}", "del_client", payload]
+        )
         try:
             output = await self.execute_command(cmd_ubus)
             if (
@@ -372,7 +380,9 @@ class OpenWrtClient(
         except Exception:
             pass
 
-        cmd_cli = f"hostapd_cli -i {interface} deauthenticate {mac_address}"
+        cmd_cli = shlex.join(
+            ["hostapd_cli", "-i", interface, "deauthenticate", mac_address]
+        )
         try:
             output = await self.execute_command(cmd_cli)
             if output and "OK" in output:

@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+
+def build_provision_script(username: str, password: str) -> str:
+    """Fill in the provisioning script; both values go inside single quotes."""
+    return PROVISION_SCRIPT_TEMPLATE.format(
+        username=username.replace("'", "'\\''"),
+        password=password.replace("'", "'\\''"),
+    )
+
+
 PROVISION_SCRIPT_TEMPLATE = """
 # Dedicated Home Assistant User Provisioning Script
 # This script creates a system user, sets a password, and configures RPC/LuCI ACLs.

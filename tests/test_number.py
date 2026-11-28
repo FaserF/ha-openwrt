@@ -78,7 +78,7 @@ async def test_txpower_number_creation_and_control() -> None:
     # Test setting native value
     await entity.async_set_native_value(15)
     client.execute_command.assert_called_with(
-        "uci set wireless.radio0.txpower='15' && uci commit wireless && wifi reload"
+        "uci set wireless.radio0.txpower=15 && uci commit wireless && wifi reload"
     )
     coordinator.async_request_refresh.assert_called()
 

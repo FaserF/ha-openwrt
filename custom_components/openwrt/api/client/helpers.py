@@ -292,7 +292,9 @@ class OpenWrtClientHelpersMixin:
             gw_ip = parts[parts.index("via") + 1]
 
             # 2. Get MAC for that IP
-            neigh_out = await self.execute_command(f"ip neigh show {gw_ip} 2>/dev/null")
+            neigh_out = await self.execute_command(
+                f"ip neigh show {shlex.quote(gw_ip)} 2>/dev/null"
+            )
             if "lladdr" in neigh_out:
                 neigh_parts = neigh_out.split()
                 return neigh_parts[neigh_parts.index("lladdr") + 1].upper()
