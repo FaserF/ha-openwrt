@@ -355,8 +355,8 @@ class OpenWrtDataCoordinator(
         self._schedule_refresh()
         # Refreshes run one at a time, so bound a poll already in flight too:
         # it was started without a timeout and may hang while the router goes
-        # down, holding up the next poll.
-        if self._fetch_timeout is not None:
+        # down, holding up the next poll. An expired timeout cannot be moved.
+        if self._fetch_timeout is not None and not self._fetch_timeout.expired():
             self._fetch_timeout.reschedule(
                 asyncio.get_running_loop().time() + REBOOT_POLL_TIMEOUT.total_seconds()
             )
@@ -388,16 +388,19 @@ class OpenWrtDataCoordinator(
                     data = await self._async_fetch_all_data()
             finally:
                 self._fetch_timeout = None
+            await self._async_resolve_reverse_dns(data)
             # An uptime longer than the time since the reboot was sent means
-            # the router has not gone down yet. Checked after the fetch, as the
-            # reboot may have been sent while it was in flight.
-            if (
-                self._reboot_started
-                and data.system_resources.uptime
-                >= self.hass.loop.time() - self._reboot_started
+            # the router has not gone down yet. Checked after the last await
+            # before the reboot state ends, as the reboot may have been sent
+            # while this poll was in flight. An uptime of 0 means it could not
+            # be read; it ends the state only for a router that never reports
+            # one.
+            uptime = data.system_resources.uptime
+            if self._reboot_started and (
+                uptime >= self.hass.loop.time() - self._reboot_started
+                or (not uptime and self._last_uptime)
             ):
                 raise UpdateFailed("Router has not rebooted yet")
-            await self._async_resolve_reverse_dns(data)
             self.last_successful_update = datetime.now()
             if self.in_reboot_installation:
                 _LOGGER.info("Device rebooted successfully, connection restored.")
@@ -428,18 +431,11 @@ class OpenWrtDataCoordinator(
                 self._current_backoff_interval * 2, 600
             )
             self.update_interval = timedelta(seconds=self._current_backoff_interval)
-            if self.in_reboot_installation:
-                _LOGGER.info(
-                    "Device is rebooting due to firmware update (%s). Polling again in %s seconds.",
-                    err,
-                    self._current_backoff_interval,
-                )
-            else:
-                _LOGGER.warning(
-                    "Update failed: %s. Backing off next poll to %s seconds",
-                    err,
-                    self._current_backoff_interval,
-                )
+            _LOGGER.warning(
+                "Update failed: %s. Backing off next poll to %s seconds",
+                err,
+                self._current_backoff_interval,
+            )
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
         async_delete_connection_lost_repair(self.hass, self.config_entry)

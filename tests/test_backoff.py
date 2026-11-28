@@ -182,23 +182,47 @@ async def test_reboot_abandons_hung_polls(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_firmware_install_reboot_ends_on_first_success(hass) -> None:
-    """Before sysupgrade starts, a firmware install only sets the flag."""
+async def test_reboot_unreadable_uptime_is_not_back(hass) -> None:
+    """An uptime of 0 (not read) only ends the state if none was ever read."""
+    now = 100000.0
+    hass.loop.time = MagicMock(side_effect=lambda: now)
+    mock_client = MagicMock()
+    coordinator = _coordinator(hass, mock_client)
+    data = MagicMock()
+    data.system_resources.uptime = 0
+    mock_client.get_all_data = AsyncMock(return_value=data)
+
+    coordinator._last_uptime = 86400
+    await coordinator.async_reboot()
+    now += 20
+    with pytest.raises(UpdateFailed, match="not rebooted yet"):
+        await coordinator._async_update_data()
+    assert coordinator.in_reboot_installation
+
+    coordinator._last_uptime = None
+    await coordinator._async_update_data()
+    assert not coordinator.in_reboot_installation
+
+
+@pytest.mark.asyncio
+async def test_reboot_during_poll_post_processing_keeps_the_state(hass) -> None:
+    """A reboot sent while a poll resolves reverse DNS does not end at once."""
     hass.loop.time = MagicMock(return_value=100000.0)
     mock_client = MagicMock()
     coordinator = _coordinator(hass, mock_client)
-    coordinator.in_reboot_installation = True
     data = MagicMock()
-    # Longer than the loop time: the reboot-button uptime check would reject it
-    data.system_resources.uptime = 200000
+    data.system_resources.uptime = 86400
     mock_client.get_all_data = AsyncMock(return_value=data)
 
-    with patch("custom_components.openwrt.coordinator._LOGGER") as logger:
-        await coordinator._async_update_data()
+    async def reboot_now(_data) -> None:
+        coordinator.async_set_rebooting()
 
-    assert not coordinator.in_reboot_installation
-    assert coordinator._reboot_started == 0.0
-    logger.warning.assert_not_called()
+    with (
+        patch.object(coordinator, "_async_resolve_reverse_dns", reboot_now),
+        pytest.raises(UpdateFailed, match="not rebooted yet"),
+    ):
+        await coordinator._async_update_data()
+    assert coordinator.in_reboot_installation
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,7 @@ from custom_components.openwrt.api.firmware_install import (
     FIRMWARE_JOB_RUNNING,
     FIRMWARE_JOB_STARTED,
     FIRMWARE_JOB_TOO_LATE,
+    FirmwareInstallError,
 )
 from custom_components.openwrt.coordinator import OpenWrtData, OpenWrtDataCoordinator
 from custom_components.openwrt.update import OpenWrtUpdateEntity
@@ -714,6 +715,28 @@ async def test_stock_install_passes_checksum(hass: HomeAssistant) -> None:
         force=False,
         sha256=SHA,
     )
+    entity.coordinator.async_set_rebooting.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_failed_install_does_not_enter_reboot_state(hass: HomeAssistant) -> None:
+    """An install that did not start sysupgrade leaves polling as it was."""
+    data = OpenWrtData()
+    data.firmware_install_url = "https://downloads.example.com/fw-sysupgrade.bin"
+    data.firmware_checksum = SHA
+    data.asu_status = "unsupported"
+    entity = _install_entity(hass, data)
+    entity.coordinator.async_get_non_default_packages = AsyncMock(return_value=[])
+    entity.coordinator.in_reboot_installation = False
+    entity.coordinator.client.install_firmware.side_effect = FirmwareInstallError(
+        "download failed"
+    )
+
+    with pytest.raises(HomeAssistantError, match="download failed"):
+        await entity.async_install(version=None, backup=False)
+
+    entity.coordinator.async_set_rebooting.assert_not_called()
+    assert entity.coordinator.in_reboot_installation is False
 
 
 # --- Detached install (ubus, LuCI RPC, SSH) ---

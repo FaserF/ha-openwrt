@@ -329,8 +329,6 @@ class OpenWrtUpdateEntity(
             url = data.firmware_install_url
             _LOGGER.info("Initiating firmware installation from: %s", url)
             try:
-                # Mark coordinator that a reboot/sysupgrade is expected
-                self.coordinator.in_reboot_installation = True
                 # Never force (-F): sysupgrade's own image/board checks are the
                 # last guard against a wrong image. Images are verified against
                 # the published sha256 (profiles.json for official images, the
@@ -426,7 +424,6 @@ class OpenWrtUpdateEntity(
                 "ASU build complete. Flashing image from: %s",
                 image.url,
             )
-            self.coordinator.in_reboot_installation = True
             # The router checks the image against the sha256 the ASU server
             # published for it.
             await self.coordinator.client.install_firmware(
