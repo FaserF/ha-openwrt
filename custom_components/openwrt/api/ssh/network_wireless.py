@@ -169,6 +169,7 @@ class SshNetworkWirelessMixin:
                                 radio_config.get("band", "")
                                 or radio_config.get("hwmode", "")
                             ),
+                            htmode=radio_config.get("htmode", ""),
                             hwmode=radio_config.get("hwmode", ""),
                             section=sect_name,
                             ifname=sect_data.get("ifname", ""),

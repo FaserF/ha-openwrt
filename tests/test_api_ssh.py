@@ -94,6 +94,7 @@ config wifi-device 'radio0'
 
 config wifi-device 'radio1'
 \toption band '5g'
+\toption htmode 'HE80'
 \toption disabled 'true'
 
 config wifi-iface 'main'
@@ -124,6 +125,7 @@ config wifi-iface 'guest'
     assert active.interface_enabled is True
     assert disabled.radio == "radio1"
     assert disabled.band == "5 GHz"
+    assert disabled.htmode == "HE80"
     assert disabled.radio_enabled is False
     assert disabled.interface_enabled is True
     assert disabled.enabled is False

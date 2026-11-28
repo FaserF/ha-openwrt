@@ -190,6 +190,7 @@ class UbusNetworkWirelessMixin:
                                 radio_config.get("band", "")
                                 or radio_config.get("hwmode", "")
                             ),
+                            htmode=radio_config.get("htmode", ""),
                             hwmode=radio_config.get("hwmode", ""),
                             txpower=_valid_txpower(radio_config.get("txpower")),
                             section=sect_name,

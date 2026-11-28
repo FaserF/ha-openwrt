@@ -158,6 +158,7 @@ class LuciRpcNetworkWirelessMixin:
                             up=configured_enabled,
                             radio=radio_name,
                             radio_enabled=not radio_disabled,
+                            htmode=radio_config.get("htmode", ""),
                             hwmode=radio_config.get("hwmode", ""),
                             section=sect_name,
                             ifname=sect_data.get("ifname", ""),

@@ -116,6 +116,7 @@ async def test_disabled_radio_remains_discoverable_from_uci(
 config wifi-device 'radio0'
 \toption type 'mac80211'
 \toption band '2g'
+\toption htmode 'HE40'
 \toption disabled '1'
 
 config wifi-iface 'default_radio0'
@@ -144,6 +145,7 @@ config wifi-iface 'default_radio0'
     assert interfaces[0].radio_enabled is False
     assert interfaces[0].enabled is False
     assert interfaces[0].band == "2.4 GHz"
+    assert interfaces[0].htmode == "HE40"
 
 
 @pytest.mark.asyncio
