@@ -64,7 +64,7 @@ permissions:
 
 jobs:
   release:
-    uses: FaserF/repo-template/.github/workflows/reusable-release.yml@v1.0.24
+    uses: FaserF/repo-template/.github/workflows/reusable-release.yml@v1.0.26
     with:
       tag_name: ${{ github.event_name == 'push' && github.ref_name || '' }}
       channel: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || 'stable' }}
