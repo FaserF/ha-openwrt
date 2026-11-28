@@ -5,6 +5,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.openwrt.coordinator import OpenWrtDataCoordinator
@@ -227,14 +228,84 @@ async def test_reboot_during_poll_post_processing_keeps_the_state(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_failed_reboot_keeps_normal_polling(hass) -> None:
-    """A reboot the router did not accept does not enter the rebooting state."""
+    """A reboot the router did not accept is an error and changes nothing."""
     hass.loop.time = MagicMock(return_value=100000.0)
     mock_client = MagicMock()
     coordinator = _coordinator(hass, mock_client)
     mock_client.reboot = AsyncMock(return_value=False)
 
-    await coordinator.async_reboot()
+    with pytest.raises(HomeAssistantError, match="did not accept"):
+        await coordinator.async_reboot()
 
     assert not coordinator.in_reboot_installation
     coordinator.async_update_listeners.assert_not_called()
     coordinator._schedule_refresh.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reboot_after_the_uptime_check_fails_the_poll(hass) -> None:
+    """A reboot sent late in a poll does not let it show the router available."""
+    hass.loop.time = MagicMock(return_value=100000.0)
+    mock_client = MagicMock()
+    coordinator = _coordinator(hass, mock_client)
+    data = MagicMock()
+    data.system_resources.uptime = 86400
+    mock_client.get_all_data = AsyncMock(return_value=data)
+
+    async def reboot_now(_data) -> None:
+        coordinator.async_set_rebooting()
+
+    with (
+        patch.object(
+            coordinator, "_async_refresh_device_info_after_reboot", reboot_now
+        ),
+        pytest.raises(UpdateFailed, match="not rebooted yet"),
+    ):
+        await coordinator._async_update_data()
+    assert coordinator.in_reboot_installation
+
+
+@pytest.mark.asyncio
+async def test_rebooting_clears_the_connection_lost_repair(hass) -> None:
+    """A repair raised just before the reboot state, as the router went down, goes."""
+    hass.loop.time = MagicMock(return_value=100000.0)
+    coordinator = _coordinator(hass, MagicMock())
+
+    with patch(
+        "custom_components.openwrt.coordinator.async_delete_connection_lost_repair"
+    ) as delete:
+        coordinator.async_set_rebooting()
+    delete.assert_called_once_with(hass, coordinator.config_entry)
+
+
+@pytest.mark.asyncio
+async def test_reboot_since_an_earlier_time(hass) -> None:
+    """A router that rebooted after `since` but before the call counts as back."""
+    now = 100000.0
+    hass.loop.time = MagicMock(side_effect=lambda: now)
+    mock_client = MagicMock()
+    coordinator = _coordinator(hass, mock_client)
+    data = MagicMock()
+    # Booted 100 s ago: after the install started, before it returned
+    data.system_resources.uptime = 100
+    mock_client.get_all_data = AsyncMock(return_value=data)
+
+    coordinator.async_set_rebooting(since=now - 600)
+    now += 5
+    await coordinator._async_update_data()
+    assert not coordinator.in_reboot_installation
+
+
+@pytest.mark.asyncio
+async def test_reboot_skips_an_expired_poll_timeout(hass) -> None:
+    """An in-flight poll timeout that already expired cannot be rescheduled."""
+    hass.loop.time = MagicMock(return_value=100000.0)
+    coordinator = _coordinator(hass, MagicMock())
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0) as expired:
+            await asyncio.sleep(1)
+    coordinator._fetch_timeout = expired
+
+    coordinator.async_set_rebooting()
+
+    assert coordinator.in_reboot_installation

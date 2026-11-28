@@ -1,7 +1,7 @@
 """Tests for firmware update backup failure and URL resolution."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
@@ -378,7 +378,7 @@ async def test_custom_build_install_passes_checksum_without_force(
     entity = OpenWrtUpdateEntity(coordinator, entry)
     entity.hass = hass
     await entity.async_install(version=None, backup=False)
-    coordinator.async_set_rebooting.assert_called_once_with()
+    coordinator.async_set_rebooting.assert_called_once_with(ANY)
 
     coordinator.client.install_firmware.assert_awaited_once_with(
         "https://example.com/fw-sysupgrade.bin",
@@ -592,7 +592,7 @@ async def test_asu_install_passes_image_sha256(hass: HomeAssistant) -> None:
         )
         await entity.async_install(version=None, backup=False)
 
-    entity.coordinator.async_set_rebooting.assert_called_once_with()
+    entity.coordinator.async_set_rebooting.assert_called_once_with(ANY)
     entity.coordinator.client.install_firmware.assert_awaited_once_with(
         url, keep_settings=True, force=False, sha256=SHA
     )
@@ -706,6 +706,13 @@ async def test_stock_install_passes_checksum(hass: HomeAssistant) -> None:
     data.asu_status = "unsupported"
     entity = _install_entity(hass, data)
     entity.coordinator.async_get_non_default_packages = AsyncMock(return_value=[])
+    hass.loop.time = MagicMock(return_value=100.0)
+
+    async def install(*_args, **_kwargs) -> None:
+        # Download and sysupgrade take a while; the router may be back already
+        hass.loop.time.return_value = 400.0
+
+    entity.coordinator.client.install_firmware.side_effect = install
 
     await entity.async_install(version=None, backup=False)
 
@@ -715,7 +722,8 @@ async def test_stock_install_passes_checksum(hass: HomeAssistant) -> None:
         force=False,
         sha256=SHA,
     )
-    entity.coordinator.async_set_rebooting.assert_called_once_with()
+    # The reboot is counted from before the install, not from its return
+    entity.coordinator.async_set_rebooting.assert_called_once_with(100.0)
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,7 @@ import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import (
     device_registry as dr,
 )
@@ -180,6 +181,7 @@ class OpenWrtDataCoordinator(
         self.config_entry = config_entry
         self.in_reboot_installation = False
         self._reboot_started = 0.0
+        self._reboot_since = 0.0
         self._fetch_timeout: asyncio.Timeout | None = None
         self._firmware_checked = False
         self._firmware_revision: str | None = None
@@ -330,15 +332,18 @@ class OpenWrtDataCoordinator(
 
     async def async_reboot(self) -> None:
         """Reboot the router and show it as rebooting until it is back."""
-        if await self.client.reboot():
-            self.async_set_rebooting()
+        if not await self.client.reboot():
+            msg = "the router did not accept the reboot command"
+            raise HomeAssistantError(msg)
+        self.async_set_rebooting()
 
     @callback
-    def async_set_rebooting(self) -> None:
+    def async_set_rebooting(self, since: float | None = None) -> None:
         """Mark the router as rebooting and poll it quickly until it is back.
 
         Entities go unavailable right away. The state ends at the first poll
-        that finds the router booted since now, or after REBOOT_TIMEOUT.
+        that finds the router booted after `since` (a loop time, default now),
+        or REBOOT_TIMEOUT after this call.
         """
         _LOGGER.info(
             "%s is rebooting, polling every %s s until it is back",
@@ -347,6 +352,10 @@ class OpenWrtDataCoordinator(
         )
         self.in_reboot_installation = True
         self._reboot_started = self.hass.loop.time()
+        self._reboot_since = self._reboot_started if since is None else since
+        # A poll that failed just before this, as the router went down, may
+        # have raised it
+        async_delete_connection_lost_repair(self.hass, self.config_entry)
         # Polled like a backoff step, so the next success restores the interval
         self._current_backoff_interval = int(REBOOT_POLL_INTERVAL.total_seconds())
         self.update_interval = REBOOT_POLL_INTERVAL
@@ -389,15 +398,15 @@ class OpenWrtDataCoordinator(
             finally:
                 self._fetch_timeout = None
             await self._async_resolve_reverse_dns(data)
-            # An uptime longer than the time since the reboot was sent means
-            # the router has not gone down yet. Checked after the last await
-            # before the reboot state ends, as the reboot may have been sent
-            # while this poll was in flight. An uptime of 0 means it could not
+            # An uptime longer than the time since the reboot (or firmware
+            # install) was sent means the router has not gone down yet.
+            # Checked after the last await before the reboot state ends, as the
+            # reboot may have been sent while this poll was in flight. An uptime of 0 means it could not
             # be read; it ends the state only for a router that never reports
             # one.
             uptime = data.system_resources.uptime
             if self._reboot_started and (
-                uptime >= self.hass.loop.time() - self._reboot_started
+                uptime >= self.hass.loop.time() - self._reboot_since
                 or (not uptime and self._last_uptime)
             ):
                 raise UpdateFailed("Router has not rebooted yet")
@@ -605,6 +614,10 @@ class OpenWrtDataCoordinator(
                         self.data.qmodem_info.gps_last_update_ok
                     )
 
+        # A reboot sent while this poll was past the uptime check: it read the
+        # router before it went down, so do not show it as available again.
+        if self._reboot_started:
+            raise UpdateFailed("Router has not rebooted yet")
         return data
 
     async def _async_fetch_all_data(self) -> OpenWrtData:
