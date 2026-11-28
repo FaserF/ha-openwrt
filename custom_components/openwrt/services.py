@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import time
 
 import voluptuous as vol
@@ -91,7 +92,7 @@ def register_services(hass: HomeAssistant) -> None:
             if option:
                 cmd_parts[-1] += f".{option}"
 
-        cmd = " ".join(cmd_parts)
+        cmd = shlex.join(cmd_parts)
         try:
             result = await client.execute_command(cmd)
             return {"value": result.strip() if result else ""}
@@ -117,7 +118,10 @@ def register_services(hass: HomeAssistant) -> None:
         if option:
             target += f".{option}"
 
-        cmd = f"uci set {target}='{value}' && uci commit {config} && reload_config"
+        cmd = (
+            f"uci set {shlex.quote(target)}={shlex.quote(value)} && "
+            f"uci commit {shlex.quote(config)} && reload_config"
+        )
         try:
             await client.execute_command(cmd)
         except Exception as err:
@@ -163,9 +167,9 @@ def register_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError("Could not resolve a MAC address for Wake-on-LAN")
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
-        command = f"ether-wake {mac}"
+        command = f"ether-wake {shlex.quote(mac)}"
         if interface:
-            command = f"ether-wake -i {interface} {mac}"
+            command = f"ether-wake -i {shlex.quote(interface)} {shlex.quote(mac)}"
 
         try:
             output = await client.execute_command(command)
@@ -405,7 +409,7 @@ def register_services(hass: HomeAssistant) -> None:
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
 
-        del_script = f"""m="{mac}"
+        del_script = f"""m={shlex.quote(mac)}
 i=0
 while true; do
   val=$(uci get dhcp.@host[$i].mac 2>/dev/null)
@@ -419,11 +423,11 @@ done"""
 
         add_parts = [
             "uci add dhcp host",
-            f"uci set dhcp.@host[-1].mac='{mac}'",
-            f"uci set dhcp.@host[-1].ip='{ip}'",
+            f"uci set dhcp.@host[-1].mac={shlex.quote(mac)}",
+            f"uci set dhcp.@host[-1].ip={shlex.quote(ip)}",
         ]
         if name:
-            add_parts.append(f"uci set dhcp.@host[-1].name='{name}'")
+            add_parts.append(f"uci set dhcp.@host[-1].name={shlex.quote(name)}")
 
         add_parts.extend(
             [
@@ -451,7 +455,7 @@ done"""
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
 
-        script = f"""m="{mac}"
+        script = f"""m={shlex.quote(mac)}
 i=0
 while true; do
   val=$(uci get dhcp.@host[$i].mac 2>/dev/null)
