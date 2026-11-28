@@ -111,7 +111,7 @@ class WirelessInterface:
             self.htmode = str(htmode)
         hwmode = info.get("hwmode")
         if hwmode and hwmode != "unknown":
-            self.hwmode = "/".join(hwmode) if isinstance(hwmode, list) else str(hwmode)
+            self.hwmode = str(hwmode)
 
     def __post_init__(self) -> None:
         """Post-process wireless data."""
