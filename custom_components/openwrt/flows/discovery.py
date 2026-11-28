@@ -19,6 +19,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
+from homeassistant.util.network import is_private
 
 from ..const import (
     CONF_CONNECTION_TYPE,
@@ -45,12 +46,14 @@ MAX_KNOWN_HOSTS_TO_PROBE = 100
 
 
 def _is_private_ipv4(value: str) -> bool:
-    """Return True for private IPv4 addresses (skips IPv6, WAN and junk)."""
+    """Return True for LAN IPv4 addresses (skips IPv6, loopback, WAN and junk)."""
     try:
         address = ipaddress.ip_address(value)
     except ValueError:
         return False
-    return address.version == 4 and address.is_private
+    # ipaddress' is_private also accepts loopback, link-local and reserved
+    # ranges; HA's helper only accepts 10/8, 172.16/12 and 192.168/16
+    return address.version == 4 and is_private(address)
 
 
 class DiscoveryFlowMixin:

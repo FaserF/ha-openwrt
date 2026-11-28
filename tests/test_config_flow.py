@@ -298,19 +298,22 @@ async def test_discovery_probes_hosts_known_to_configured_routers(hass) -> None:
     flow = OpenWrtConfigFlow()
     flow.hass = hass
     data = OpenWrtData(
-        dhcp_leases=[DhcpLease(hostname="ap-office", ip="192.168.1.3")],
+        dhcp_leases=[DhcpLease(hostname="ap-office", ip="172.16.0.1")],
         ip_neighbors=[
             IpNeighbor(ip="192.168.1.2"),
             IpNeighbor(ip="192.168.1.1"),
             IpNeighbor(ip="fe80::1"),
             IpNeighbor(ip="8.8.8.8"),
+            IpNeighbor(ip="127.0.0.1"),
+            IpNeighbor(ip="169.254.1.1"),
+            IpNeighbor(ip=""),
         ],
     )
     probed: list[str] = []
 
     async def mock_probe_router(host, hostname=None):
         probed.append(host)
-        if host == "192.168.1.3":
+        if host == "172.16.0.1":
             return {
                 "host": host,
                 "hostname": "ap-office",
@@ -326,11 +329,12 @@ async def test_discovery_probes_hosts_known_to_configured_routers(hass) -> None:
     ):
         result = await flow.async_step_user({"flow_type": "discovery"})
 
-    assert {"192.168.1.2", "192.168.1.3"} <= set(probed)
-    assert "fe80::1" not in probed
-    assert "8.8.8.8" not in probed
+    # The default gateways plus the private IPv4 hosts the router knows about
+    assert sorted(probed) == sorted(
+        ["192.168.1.1", "192.168.0.1", "10.0.0.1", "192.168.1.2", "172.16.0.1"]
+    )
     assert result["step_id"] == "confirm_discovery"
-    assert flow._discovered_routers[0]["host"] == "192.168.1.3"
+    assert flow._discovered_routers[0]["host"] == "172.16.0.1"
 
 
 async def test_discovery_caps_hosts_known_to_configured_routers(hass) -> None:
