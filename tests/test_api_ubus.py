@@ -553,6 +553,48 @@ async def test_ubus_rejects_invalid_reported_txpower(ubus_client: UbusClient) ->
 
 
 @pytest.mark.asyncio
+async def test_ubus_uci_only_interface_reads_radio_htmode(
+    ubus_client: UbusClient,
+) -> None:
+    """Use the UCI radio's HT mode for an interface only present in UCI."""
+    ubus_client.packages.wireless = True
+
+    def call_side_effect(object_name, method, params=None, *args, **kwargs):
+        if object_name == "network.wireless" and method == "status":
+            return {"radio0": {"disabled": True, "config": {}, "interfaces": []}}
+        if object_name == "uci" and method == "get":
+            return {
+                "values": {
+                    "radio0": {
+                        ".type": "wifi-device",
+                        "band": "2g",
+                        "htmode": "HE40",
+                        "disabled": "1",
+                    },
+                    "main": {
+                        ".type": "wifi-iface",
+                        "device": "radio0",
+                        "mode": "ap",
+                        "ssid": "Main",
+                    },
+                }
+            }
+        return {}
+
+    with patch.object(
+        ubus_client,
+        "_call",
+        new_callable=AsyncMock,
+        side_effect=call_side_effect,
+    ):
+        interfaces = await ubus_client.get_wireless_interfaces()
+
+    assert len(interfaces) == 1
+    assert interfaces[0].section == "main"
+    assert interfaces[0].htmode == "HE40"
+
+
+@pytest.mark.asyncio
 async def test_ubus_wireless_skips_radio_info(ubus_client: UbusClient):
     """Test that physical radio names are not queried as iwinfo interfaces."""
     ubus_client.packages.wireless = True
