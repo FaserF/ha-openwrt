@@ -273,12 +273,12 @@ async def test_multi_router_selection(hass) -> None:
     assert result["step_id"] == "credentials"
 
 
-def _mock_configured_router(hass, data):
+def _mock_configured_router(hass, data, host="192.168.1.2"):
     """Register a configured router entry whose coordinator holds data."""
     from custom_components.openwrt.const import DATA_COORDINATOR, DOMAIN
 
     entry = MagicMock()
-    entry.data = {CONF_HOST: "192.168.1.2"}
+    entry.data = {CONF_HOST: host}
     entry.entry_id = "main_router"
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         DATA_COORDINATOR: MagicMock(data=data),
@@ -357,6 +357,74 @@ async def test_discovery_caps_hosts_known_to_configured_routers(hass) -> None:
         hosts = await flow._async_get_potential_hosts()
 
     assert len(hosts) == 3 + MAX_KNOWN_HOSTS_TO_PROBE
+
+
+async def test_discovery_skips_router_configured_by_hostname(hass) -> None:
+    """Test a router configured by hostname is not probed or offered again."""
+    from custom_components.openwrt.api.base import OpenWrtData
+    from custom_components.openwrt.api.models.network import DhcpLease
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    data = OpenWrtData(
+        local_ips={"192.168.1.1", "172.16.0.1"},
+        dhcp_leases=[DhcpLease(ip="172.16.0.1")],
+    )
+    probed: list[str] = []
+
+    async def mock_probe_router(host, hostname=None):
+        probed.append(host)
+        return {"host": host, "hostname": host, "capabilities": [], "method": "ubus"}
+
+    with (
+        _mock_configured_router(hass, data, host="router.lan"),
+        patch.object(flow, "_async_probe_router", side_effect=mock_probe_router),
+        patch("homeassistant.components.network.async_get_adapters", return_value=[]),
+    ):
+        result = await flow.async_step_user({"flow_type": "discovery"})
+
+    # The default gateways are still probed, but the configured router is not
+    # offered again under one of its own IPs
+    assert sorted(probed) == sorted(["192.168.1.1", "192.168.0.1", "10.0.0.1"])
+    assert {r["host"] for r in flow._discovered_routers} == {
+        "192.168.0.1",
+        "10.0.0.1",
+    }
+    assert result["step_id"] == "select_device"
+
+
+async def test_discovery_limits_concurrent_reverse_dns(hass) -> None:
+    """Test the scan does not fill the executor with reverse DNS lookups."""
+    import asyncio
+    import socket
+
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+    from custom_components.openwrt.flows.discovery import MAX_CONCURRENT_REVERSE_DNS
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    in_flight = peak = 0
+
+    async def mock_run_in_executor(executor, func, *args):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.01)
+        in_flight -= 1
+        raise socket.herror
+
+    with (
+        patch.object(
+            asyncio.get_running_loop(), "run_in_executor", mock_run_in_executor
+        ),
+        patch.object(flow, "_async_check_reachable", return_value=False),
+    ):
+        await asyncio.gather(
+            *(flow._async_probe_router(f"10.0.1.{i}") for i in range(2, 102))
+        )
+
+    assert peak == MAX_CONCURRENT_REVERSE_DNS
 
 
 async def test_dhcp_discovery(hass) -> None:
