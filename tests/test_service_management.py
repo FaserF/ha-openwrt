@@ -1,5 +1,6 @@
 """Tests for Service Management (Restart/Stop)."""
 
+import shlex
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -194,3 +195,24 @@ async def test_action_during_slow_poll_forces_another():
     # A slow poll also runs the medium tier, well inside its 180 s interval.
     client.get_ip_neighbors.assert_awaited_once()
     assert client._last_slow_poll_time > 0.0
+
+
+@pytest.mark.asyncio
+async def test_manage_service_name_is_shell_quoted():
+    """Shell syntax in a service name is passed as part of the path, not run."""
+    name = "x; reboot; $(reboot)"
+    expected = [f"/etc/init.d/{name}", "stop"]
+    kwargs = {"host": "192.0.2.1", "username": "root", "password": "password"}
+
+    luci = LuciRpcClient(MagicMock(), MagicMock(), **kwargs)
+    with patch.object(luci, "_rpc_call", new_callable=AsyncMock) as mock_rpc:
+        assert await luci.manage_service(name, "stop")
+    assert shlex.split(mock_rpc.call_args[0][2][0]) == expected
+
+    ubus = UbusClient(MagicMock(), MagicMock(), **kwargs)
+    with (
+        patch.object(ubus, "_call", side_effect=[UbusError("rc"), Exception("exec")]),
+        patch.object(ubus, "execute_command", new_callable=AsyncMock) as mock_exec,
+    ):
+        assert await ubus.manage_service(name, "stop")
+    assert shlex.split(mock_exec.call_args[0][0]) == expected

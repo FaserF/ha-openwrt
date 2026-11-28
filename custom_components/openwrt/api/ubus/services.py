@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 
 from ..base import (
     DiagnosticResult,
@@ -61,7 +62,9 @@ class UbusServicesMixin(UbusServicesPackagesMixin):
             except Exception:
                 # 3. Final fallback to shell execute_command
                 try:
-                    await self.execute_command(f"/etc/init.d/{name} {action}")
+                    await self.execute_command(
+                        f"{shlex.quote(f'/etc/init.d/{name}')} {shlex.quote(action)}"
+                    )
                     self._invalidate_slow_poll()
                     return True
                 except Exception as err:

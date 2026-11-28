@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shlex
 from typing import Any
 
 from ..base import (
@@ -128,7 +129,11 @@ class LuciRpcFeaturesServicesMixin:
     async def manage_service(self, name: str, action: str) -> bool:
         """Manage a system service (start/stop/restart/enable/disable) via LuCI RPC."""
         try:
-            await self._rpc_call("sys", "exec", [f"/etc/init.d/{name} {action}"])
+            await self._rpc_call(
+                "sys",
+                "exec",
+                [f"{shlex.quote(f'/etc/init.d/{name}')} {shlex.quote(action)}"],
+            )
             self._invalidate_slow_poll()
             return True
         except Exception as err:
