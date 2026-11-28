@@ -479,7 +479,7 @@ async def test_run_repair_waits_for_services(hass) -> None:
 
     flow = OpenWrtConfigFlow()
     flow.hass = hass
-    flow._data = {"host": "192.168.1.1", "connection_type": "luci_rpc"}
+    flow._data = {"host": "192.0.2.1", "connection_type": "luci_rpc"}
     flow._diagnostic_report = "RPC endpoint returned 404"
 
     ssh = MagicMock()
@@ -518,7 +518,7 @@ async def test_repair_failed_step(hass) -> None:
 
     flow = OpenWrtConfigFlow()
     flow.hass = hass
-    flow._data = {"host": "192.168.1.1", "connection_type": "luci_rpc"}
+    flow._data = {"host": "192.0.2.1", "connection_type": "luci_rpc"}
 
     with patch(
         "custom_components.openwrt.flows.provisioning.SshClient"
