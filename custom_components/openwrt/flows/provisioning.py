@@ -34,6 +34,9 @@ def create_client(*args: Any, **kwargs: Any) -> Any:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Package index update + install can take minutes on slow routers
+PACKAGE_INSTALL_TIMEOUT = 300
+
 CONNECTION_TYPE_MAP = {
     CONNECTION_TYPE_UBUS: "ubus (HTTP/HTTPS)",
     CONNECTION_TYPE_LUCI_RPC: "LuCI RPC",
@@ -338,6 +341,9 @@ class ProvisioningFlowMixin:
         """Connect via SSH and perform the repair."""
         host = self._data.get(CONF_HOST) or ""
         conn_type = self._data.get(CONF_CONNECTION_TYPE, CONNECTION_TYPE_UBUS)
+        # The connection tests below replace the diagnostic report. Keep the one
+        # that asked for the repair, so a retry installs the same package.
+        report = self._diagnostic_report
 
         try:
             # We connect using SshClient
@@ -365,7 +371,7 @@ class ProvisioningFlowMixin:
                 pkg_mgr = "apk"
 
             # Determine if we should install luci-mod-rpc or uhttpd-mod-ubus
-            report_str = str(self._diagnostic_report or "").lower()
+            report_str = str(report or "").lower()
             needs_luci_rpc = conn_type == CONNECTION_TYPE_LUCI_RPC and (
                 "404" in report_str
                 or "rpc endpoint" in report_str
@@ -377,17 +383,25 @@ class ProvisioningFlowMixin:
 
             if needs_luci_rpc:
                 if pkg_mgr == "apk":
-                    await ssh.execute_command("apk update && apk add luci-mod-rpc")
+                    await ssh.execute_command(
+                        "apk update && apk add luci-mod-rpc",
+                        timeout=PACKAGE_INSTALL_TIMEOUT,
+                    )
                 else:
                     await ssh.execute_command(
-                        "opkg update && opkg install luci-mod-rpc"
+                        "opkg update && opkg install luci-mod-rpc",
+                        timeout=PACKAGE_INSTALL_TIMEOUT,
                     )
             elif needs_ubus:
                 if pkg_mgr == "apk":
-                    await ssh.execute_command("apk update && apk add uhttpd-mod-ubus")
+                    await ssh.execute_command(
+                        "apk update && apk add uhttpd-mod-ubus",
+                        timeout=PACKAGE_INSTALL_TIMEOUT,
+                    )
                 else:
                     await ssh.execute_command(
-                        "opkg update && opkg install uhttpd-mod-ubus"
+                        "opkg update && opkg install uhttpd-mod-ubus",
+                        timeout=PACKAGE_INSTALL_TIMEOUT,
                     )
 
             # Restart web server to ensure changes are loaded
@@ -395,22 +409,42 @@ class ProvisioningFlowMixin:
             await ssh.disconnect()
 
             # Now, test the connection again using original config data!
-            test_error = await self._test_connection(self._data)
-            if test_error is None:
-                # Success! Let's register unique ID and show success step
-                await self._async_set_unique_id_and_check()
-                return await self.async_step_repair_success()
-            else:
+            # uhttpd needs a moment to come back up after the restart.
+            for _ in range(5):
+                await asyncio.sleep(2)
+                test_error = await self._test_connection(self._data)
+                if test_error is None:
+                    break
+            if test_error is not None:
                 raise Exception(
                     f"Connection test still failed after repair. Error: {test_error}"
                 )
 
         except Exception as err:
             _LOGGER.exception("Automatic repair failed: %s", err)
-            return self.async_show_form(
-                step_id="repair_failed",
-                description_placeholders={"error": str(err)},
-            )
+            self._diagnostic_report = report
+            self._repair_error = str(err)
+            return await self.async_step_repair_failed()
+
+        # Outside the try, so an abort (e.g. already configured) reaches the user
+        await self._async_set_unique_id_and_check()
+        return await self.async_step_repair_success()
+
+    async def async_step_repair_failed(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Let the user retry the repair or go back to the diagnostics."""
+        if user_input is not None:
+            if user_input.get("run_repair"):
+                return await self.async_step_run_repair()
+            return await self.async_step_diagnostics()
+
+        return self.async_show_form(
+            step_id="repair_failed",
+            data_schema=vol.Schema({vol.Optional("run_repair", default=True): bool}),
+            description_placeholders={"error": self._repair_error or "Unknown error"},
+        )
 
     async def async_step_repair_success(
         self,

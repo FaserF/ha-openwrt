@@ -84,18 +84,20 @@ class SshClient(
                 _LOGGER.debug("SSH worker failed during cancellation", exc_info=True)
             raise
 
-    async def _exec(self, command: str, retry: bool = True) -> str:
+    async def _exec(self, command: str, retry: bool = True, timeout: float = 15) -> str:
         async with self._connection_lock:
-            return await self._exec_locked(command, retry)
+            return await self._exec_locked(command, retry, timeout)
 
-    async def _exec_locked(self, command: str, retry: bool = True) -> str:
+    async def _exec_locked(
+        self, command: str, retry: bool = True, timeout: float = 15
+    ) -> str:
         """Execute a command via SSH and return stdout."""
 
         def _run() -> str:
             if self._client is None:
                 msg = "Not connected"
                 raise SshError(msg)
-            _stdin, stdout, stderr = self._client.exec_command(command, timeout=15)
+            _stdin, stdout, stderr = self._client.exec_command(command, timeout=timeout)
             # Read streams to prevent blocking
             out_bytes = stdout.read()
             err_bytes = stderr.read()
@@ -123,11 +125,15 @@ class SshClient(
                     self._client.close()
                 self._client = None
 
-            if retry:
+            # A timeout does not mean the connection dropped: the command may
+            # still be running on the router, so running it again is unsafe.
+            if retry and not isinstance(err, TimeoutError):
                 _LOGGER.debug("Attempting to reconnect and retry SSH command...")
                 try:
                     if await self._connect_locked():
-                        return await self._exec_locked(command, retry=False)
+                        return await self._exec_locked(
+                            command, retry=False, timeout=timeout
+                        )
                 except Exception as reconnect_err:
                     _LOGGER.debug(
                         "SSH reconnection failed during retry: %s",
@@ -141,11 +147,13 @@ class SshClient(
 
             if isinstance(err, SshError):
                 raise
-            raise SshConnectionError(f"SSH command failed: {err}") from err
+            raise SshConnectionError(
+                f"SSH command failed: {str(err) or type(err).__name__}"
+            ) from err
 
-    async def execute_command(self, command: str) -> str:
+    async def execute_command(self, command: str, timeout: float = 15) -> str:
         """Execute a command via SSH."""
-        return await self._exec(command)
+        return await self._exec(command, timeout=timeout)
 
     async def file_exec(
         self, command: str, params: list[str] | None = None
