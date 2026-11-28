@@ -93,23 +93,11 @@ class UbusSystemMixin(UbusSystemOpsMixin):
         if not info.mac_address:
             # Robust fallback via shell command (often works even if ubus network fails)
             try:
-                # We can't use 'self.execute_command' here as it's not in OpenWrtClient base,
-                # but UbusClient has its own way to run commands if sys.exec is available.
-                # Actually, ubus 'file' or 'sys' might work.
-                # Let's use 'sys.exec' if available.
-                sys_exec_out = await self._call(
-                    "sys",
-                    "exec",
-                    {
-                        "command": "cat /sys/class/net/br-lan/address 2>/dev/null || cat /sys/class/net/eth0/address 2>/dev/null",
-                    },
+                mac_out = await self.execute_command(
+                    "cat /sys/class/net/br-lan/address 2>/dev/null || cat /sys/class/net/eth0/address 2>/dev/null"
                 )
-                if (
-                    sys_exec_out
-                    and isinstance(sys_exec_out, str)
-                    and ":" in sys_exec_out
-                ):
-                    info.mac_address = sys_exec_out.strip().lower()
+                if mac_out and ":" in mac_out:
+                    info.mac_address = mac_out.strip().lower()
             except Exception:
                 pass
 

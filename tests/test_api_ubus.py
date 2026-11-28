@@ -210,6 +210,29 @@ async def test_ubus_get_device_info(ubus_client: UbusClient):
 
 
 @pytest.mark.asyncio
+async def test_ubus_get_device_info_mac_shell_fallback(ubus_client: UbusClient):
+    """Without a lan interface, the MAC comes from the shell via file.exec."""
+    with (
+        patch.object(
+            ubus_client, "_call", new_callable=AsyncMock, return_value={"model": "R"}
+        ),
+        patch.object(
+            ubus_client, "get_network_interfaces", new_callable=AsyncMock
+        ) as mock_ifaces,
+        patch.object(
+            ubus_client, "execute_command", new_callable=AsyncMock
+        ) as mock_exec,
+    ):
+        mock_ifaces.return_value = []
+        mock_exec.return_value = "AA:BB:CC:DD:EE:FF\n"
+
+        info = await ubus_client.get_device_info()
+
+    assert info.mac_address == "aa:bb:cc:dd:ee:ff"
+    assert "/sys/class/net/br-lan/address" in mock_exec.await_args.args[0]
+
+
+@pytest.mark.asyncio
 async def test_ubus_get_sqm_status(ubus_client: UbusClient):
     """Test fetching SQM status via ubus."""
     ubus_client._session_id = "test_token"
@@ -318,6 +341,37 @@ async def test_ubus_check_permissions_root(ubus_client: UbusClient):
         assert perms.read_network is True
         assert perms.read_wireless is True
         assert perms.write_firewall is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("acls", "allowed"),
+    [
+        ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh": ["exec"]}}, True),
+        ({"ubus": {"file": ["*"]}, "file": {"/bin/*": ["read", "exec"]}}, True),
+        ({"ubus": {"*": ["*"]}, "file": {"*": ["*"]}}, True),
+        ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh -c *": ["exec"]}}, True),
+        ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh -c id *": ["exec"]}}, False),
+        ({"ubus": {"file": ["exec"]}}, False),
+        ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh": ["read"]}}, False),
+        ({"ubus": {"file": ["exec"]}, "file": {"/usr/bin/id": ["exec"]}}, False),
+        ({"ubus": {"hostapd.*": ["*"]}, "file": {"/bin/sh": ["exec"]}}, False),
+        ({"ubus": {"sys": ["exec"]}, "file": {"/bin/sh": ["exec"]}}, False),
+    ],
+)
+async def test_ubus_session_acl_shell_permissions(
+    ubus_client: UbusClient, acls: dict[str, dict[str, list[str]]], allowed: bool
+):
+    """Shell features need ubus file.exec plus an exec grant on /bin/sh."""
+    ubus_client._session_id = "test_token"
+    with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {"acls": acls}
+
+        perms = await ubus_client.check_permissions()
+
+    assert perms.write_devices is allowed
+    assert perms.write_mqtt is allowed
+    assert perms.read_batman is allowed
 
 
 @pytest.mark.asyncio

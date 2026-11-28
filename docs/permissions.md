@@ -121,7 +121,7 @@ fallbacks and optional controls:
 | Sessions and permission checks | `session.access/list` | — |
 | Services | `rc.list`, `service.list` | `rc.init`, `service.reloading` |
 | Optional monitoring | `mwan3.status`, `upnp.get_mappings`, `adblock.status`, `nlbwmon.get_data`, `luci.getMountPoints` | Package-specific shell commands |
-| Files, probes and command fallbacks | `file.read/list/stat` | `file.write/exec`, `sys.exec` |
+| Files, probes and command fallbacks | `file.read/list/stat` | `file.write/exec` |
 
 `session.login` uses OpenWrt's default unauthenticated ACL. JSON-RPC `list`, used
 to enumerate ubus objects, is distinct from `session.list`. The integration does not need `session.destroy` for its inspected session

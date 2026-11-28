@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from fnmatch import fnmatchcase
 from typing import Any
 
 from ..base import OpenWrtPackages, OpenWrtPermissions
@@ -96,6 +97,23 @@ class UbusServicesPackagesMixin:
                             return True
                 return False
 
+            def can_run_shell() -> bool:
+                # execute_command runs /bin/sh -c <command> through file.exec,
+                # which rpcd allows only with the ubus method and an exec grant
+                # on /bin/sh or on a pattern covering the full command line.
+                if not has_perm("file", "exec"):
+                    return False
+                if not acls_all:
+                    # The legacy layout carries no file path ACLs.
+                    return True
+                return any(
+                    (fnmatchcase("/bin/sh", path) or fnmatchcase("/bin/sh -c *", path))
+                    and any(fnmatchcase("exec", func) for func in funcs)
+                    for path, funcs in acls_all.get("file", {}).items()
+                )
+
+            can_shell = can_run_shell()
+
             perms.read_system = has_perm("system", "info") or has_uci("system", "read")
             perms.write_system = has_perm("system", "reboot") or has_uci(
                 "system", "write"
@@ -124,12 +142,14 @@ class UbusServicesPackagesMixin:
             perms.read_devices = has_perm("network", "status") or has_uci(
                 "dhcp", "read"
             )
-            perms.write_devices = has_perm("sys", "exec")
+            # Wake on LAN runs through the shell, which also covers kicking
+            # clients when hostapd.<iface> del_client is not granted.
+            perms.write_devices = can_shell
             perms.read_services = has_perm("service", "list")
             perms.write_services = has_perm("service", "list")
             perms.write_access_control = perms.write_firewall
-            perms.read_batman = has_perm("batman", "*") or has_perm("file", "exec")
-            perms.write_mqtt = has_perm("file", "exec")
+            perms.read_batman = has_perm("batman", "*") or can_shell
+            perms.write_mqtt = can_shell
 
             return True
         return False
