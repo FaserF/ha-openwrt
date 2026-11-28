@@ -108,24 +108,26 @@ async def test_static_lease_inputs_are_shell_quoted(hass) -> None:
     handlers = {
         call[0][1]: call[0][2] for call in hass.services.async_register.call_args_list
     }
-    mac, name = "$(reboot)", "x'; reboot; '"
+    fields = {"mac": '$(reboot)"; reboot; "', "ip": "`reboot`", "name": "x'; reboot; '"}
 
     call_data = MagicMock()
-    call_data.data = {
-        "entry_id": "test_entry_id",
-        "mac": mac,
-        "ip": "`reboot`",
-        "name": name,
-    }
+    call_data.data = {"entry_id": "test_entry_id", **fields}
     await handlers["add_static_lease"](call_data)
     await handlers["delete_static_lease"](call_data)
 
-    for call in mock_client.execute_command.call_args_list:
-        lines = call[0][0].splitlines()
-        assert shlex.split(lines[0]) == [f"m={mac}"]
-    add_lines = mock_client.execute_command.call_args_list[0][0][0].splitlines()
-    assert shlex.split(add_lines[-3]) == ["uci", "set", f"dhcp.@host[-1].name={name}"]
-    assert shlex.split(add_lines[-4]) == ["uci", "set", "dhcp.@host[-1].ip=`reboot`"]
+    add_script, del_script = (
+        call[0][0] for call in mock_client.execute_command.call_args_list
+    )
+    for script in (add_script, del_script):
+        assert shlex.split(script.splitlines()[0]) == [f"m={fields['mac']}"]
+    uci_sets = [
+        shlex.split(line)
+        for line in add_script.splitlines()
+        if line.startswith("uci set")
+    ]
+    assert uci_sets == [
+        ["uci", "set", f"dhcp.@host[-1].{key}={value}"] for key, value in fields.items()
+    ]
 
 
 @pytest.mark.asyncio
