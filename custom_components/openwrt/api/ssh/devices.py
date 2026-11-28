@@ -456,7 +456,7 @@ class SshDevicesMixin:
         seen_leases = set()
         for leasefile, domain in lease_configs:
             with contextlib.suppress(Exception):
-                content = await self._exec(f"cat {leasefile} 2>/dev/null")
+                content = await self._exec(f"cat {shlex.quote(leasefile)} 2>/dev/null")
                 for line in content.strip().split("\n"):
                     parts = line.split()
                     if len(parts) >= 4:

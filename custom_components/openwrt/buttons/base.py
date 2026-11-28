@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any, cast
@@ -105,15 +106,14 @@ class OpenWrtWakeOnLanButton(CoordinatorEntity[OpenWrtDataCoordinator], ButtonEn
 
     async def async_press(self) -> None:
         """Press button."""
-        command = f"ether-wake {self._mac}"
-        if self._interface:
-            command = f"ether-wake -i {self._interface} {self._mac}"
+        args = ["-i", self._interface, self._mac] if self._interface else [self._mac]
 
         try:
-            output = await self._client.execute_command(command)
+            output = await self._client.execute_command(
+                shlex.join(["ether-wake", *args])
+            )
             if output and "not found" in output.lower():
-                command = command.replace("ether-wake", "etherwake")
-                await self._client.execute_command(command)
+                await self._client.execute_command(shlex.join(["etherwake", *args]))
         except Exception as err:
             if "not found" in str(err).lower():
                 msg = (

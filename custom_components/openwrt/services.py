@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import time
 
 import voluptuous as vol
@@ -80,6 +81,9 @@ def register_services(hass: HomeAssistant) -> None:
         entry_id = call.data["entry_id"]
         service_name = call.data["service_name"]
         action = call.data["action"]
+        if "/" in service_name:
+            msg = f"Invalid service name {service_name!r}: expected a script name in /etc/init.d"
+            raise vol.Invalid(msg)
         if entry_id in hass.data[DOMAIN]:
             client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
             await client.manage_service(service_name, action)
@@ -103,7 +107,7 @@ def register_services(hass: HomeAssistant) -> None:
             if option:
                 cmd_parts[-1] += f".{option}"
 
-        cmd = " ".join(cmd_parts)
+        cmd = shlex.join(cmd_parts)
         try:
             result = await client.execute_command(cmd)
             return {"value": result.strip() if result else ""}
@@ -129,7 +133,10 @@ def register_services(hass: HomeAssistant) -> None:
         if option:
             target += f".{option}"
 
-        cmd = f"uci set {target}='{value}' && uci commit {config} && reload_config"
+        cmd = (
+            f"uci set {shlex.quote(target)}={shlex.quote(value)} && "
+            f"uci commit {shlex.quote(config)} && reload_config"
+        )
         try:
             await client.execute_command(cmd)
         except Exception as err:
@@ -175,15 +182,12 @@ def register_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError("Could not resolve a MAC address for Wake-on-LAN")
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
-        command = f"ether-wake {mac}"
-        if interface:
-            command = f"ether-wake -i {interface} {mac}"
+        args = ["-i", interface, mac] if interface else [mac]
 
         try:
-            output = await client.execute_command(command)
+            output = await client.execute_command(shlex.join(["ether-wake", *args]))
             if output and "not found" in output.lower():
-                command = command.replace("ether-wake", "etherwake")
-                await client.execute_command(command)
+                await client.execute_command(shlex.join(["etherwake", *args]))
         except Exception as err:
             msg = f"Failed to send WoL packet: {err}"
             raise HomeAssistantError(msg) from err
@@ -302,7 +306,7 @@ def register_services(hass: HomeAssistant) -> None:
 
             # Clean up the remote backup file
             try:
-                await client.execute_command(f"rm -f {backup_path}")
+                await client.execute_command(f"rm -f {shlex.quote(backup_path)}")
             except Exception as clean_err:
                 _LOGGER.warning(
                     "Could not delete remote backup file %s: %s", backup_path, clean_err
@@ -417,7 +421,7 @@ def register_services(hass: HomeAssistant) -> None:
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
 
-        del_script = f"""m="{mac}"
+        del_script = f"""m={shlex.quote(mac)}
 i=0
 while true; do
   val=$(uci get dhcp.@host[$i].mac 2>/dev/null)
@@ -431,11 +435,11 @@ done"""
 
         add_parts = [
             "uci add dhcp host",
-            f"uci set dhcp.@host[-1].mac='{mac}'",
-            f"uci set dhcp.@host[-1].ip='{ip}'",
+            f"uci set dhcp.@host[-1].mac={shlex.quote(mac)}",
+            f"uci set dhcp.@host[-1].ip={shlex.quote(ip)}",
         ]
         if name:
-            add_parts.append(f"uci set dhcp.@host[-1].name='{name}'")
+            add_parts.append(f"uci set dhcp.@host[-1].name={shlex.quote(name)}")
 
         add_parts.extend(
             [
@@ -463,7 +467,7 @@ done"""
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
 
-        script = f"""m="{mac}"
+        script = f"""m={shlex.quote(mac)}
 i=0
 while true; do
   val=$(uci get dhcp.@host[$i].mac 2>/dev/null)

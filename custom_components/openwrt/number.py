@@ -7,6 +7,7 @@ allowing direct dashboard control instead of requiring the options flow.
 from __future__ import annotations
 
 import logging
+import shlex
 from typing import Any, cast
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -189,7 +190,7 @@ class OpenWrtTxPowerNumber(CoordinatorEntity[OpenWrtDataCoordinator], NumberEnti
 
         try:
             await client.execute_command(
-                f"uci set wireless.{self._radio}.txpower='{txpower}' && "
+                f"uci set {shlex.quote(f'wireless.{self._radio}.txpower={txpower}')} && "
                 f"uci commit wireless && wifi reload",
             )
         except Exception as err:

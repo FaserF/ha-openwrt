@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shlex
 
 from ..base import (
     DeviceInfo,
@@ -329,7 +330,9 @@ class SshSystemMixin(SshSystemDiagnosticsMixin):
                 for zone_path in zones_output.strip().split():
                     zone_name = zone_path.split("/")[-1]
                     try:
-                        temp_str = await self._exec(f"cat {zone_path}/temp 2>/dev/null")
+                        temp_str = await self._exec(
+                            f"cat {shlex.quote(f'{zone_path}/temp')} 2>/dev/null"
+                        )
                         if temp_str and temp_str.strip().isdigit():
                             temp_val = int(temp_str.strip())
                             # Handle mC vs C

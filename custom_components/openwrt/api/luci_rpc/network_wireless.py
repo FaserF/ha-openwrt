@@ -202,7 +202,7 @@ class LuciRpcNetworkWirelessMixin:
             try:
                 # Get basic info
                 iwinfo_str = await self.execute_command(
-                    f'ubus call iwinfo info \'{{"device":"{iface_name}"}}\' 2>/dev/null'
+                    f"ubus call iwinfo info {shlex.quote(json.dumps({'device': iface_name}, separators=(',', ':')))} 2>/dev/null"
                 )
                 if iwinfo_str and iwinfo_str.strip().startswith("{"):
                     info = json.loads(iwinfo_str)
@@ -233,7 +233,7 @@ class LuciRpcNetworkWirelessMixin:
 
                     # Association list for client count
                     assoc_str = await self.execute_command(
-                        f'ubus call iwinfo assoclist \'{{"device":"{iface_name}"}}\' 2>/dev/null'
+                        f"ubus call iwinfo assoclist {shlex.quote(json.dumps({'device': iface_name}, separators=(',', ':')))} 2>/dev/null"
                     )
                     if assoc_str and assoc_str.strip().startswith("{"):
                         assoc = json.loads(assoc_str).get("results", [])
@@ -242,7 +242,7 @@ class LuciRpcNetworkWirelessMixin:
                     if not wifi.clients_count:
                         with contextlib.suppress(Exception):
                             clients_str = await self.execute_command(
-                                f"ubus call hostapd.{iface_name} get_clients 2>/dev/null"
+                                f"ubus call {shlex.quote(f'hostapd.{iface_name}')} get_clients 2>/dev/null"
                             )
                             if clients_str and clients_str.strip().startswith("{"):
                                 hc = json.loads(clients_str).get("clients", {})
@@ -453,7 +453,7 @@ class LuciRpcNetworkWirelessMixin:
             target = await self._resolve_wireless_section_luci(interface)
             action = "0" if enabled else "1"
             cmd = (
-                f"uci set wireless.{target}.disabled={action} && "
+                f"uci set {shlex.quote(f'wireless.{target}.disabled={action}')} && "
                 "uci commit wireless && "
                 "wifi reload"
             )
@@ -496,10 +496,14 @@ class LuciRpcNetworkWirelessMixin:
         try:
             # Try wps_start first (standard OpenWrt hostapd method), fallback to wps_push
             try:
-                await self.execute_command(f"ubus call hostapd.{interface} wps_start")
+                await self.execute_command(
+                    f"ubus call {shlex.quote(f'hostapd.{interface}')} wps_start"
+                )
                 return True
             except Exception:
-                await self.execute_command(f"ubus call hostapd.{interface} wps_push")
+                await self.execute_command(
+                    f"ubus call {shlex.quote(f'hostapd.{interface}')} wps_push"
+                )
                 return True
         except Exception as err:
             _LOGGER.debug(

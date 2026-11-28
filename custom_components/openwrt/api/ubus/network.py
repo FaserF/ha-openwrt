@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 from typing import Any
 
 from ..base import (
@@ -383,7 +384,9 @@ class UbusNetworkMixin(UbusNetworkWirelessMixin):
 
     async def _get_mac_from_ip(self, ip: str) -> str | None:
         """Get the MAC address for a specific IP from the ARP/neighbor table."""
-        neigh_out = await self.execute_command(f"ip neigh show {ip} 2>/dev/null")
+        neigh_out = await self.execute_command(
+            f"ip neigh show {shlex.quote(ip)} 2>/dev/null"
+        )
         if "lladdr" in neigh_out:
             parts = neigh_out.split()
             try:

@@ -435,7 +435,7 @@ class SshNetworkWirelessMixin:
                     obj = line.strip()
                     if obj:
                         status_out = await self._exec(
-                            f"ubus call {obj} wps_status 2>/dev/null"
+                            f"ubus call {shlex.quote(obj)} wps_status 2>/dev/null"
                         )
                         if status_out and "Active" in status_out:
                             return WpsStatus(enabled=True, status="Active")
@@ -454,7 +454,9 @@ class SshNetworkWirelessMixin:
                 for line in out.strip().splitlines():
                     obj = line.strip()
                     if obj:
-                        res = await self._exec(f"ubus call {obj} {method} 2>/dev/null")
+                        res = await self._exec(
+                            f"ubus call {shlex.quote(obj)} {method} 2>/dev/null"
+                        )
                         if res is not None:
                             success = True
                 return success

@@ -11,11 +11,11 @@ import paramiko  # type: ignore[import-untyped]
 from homeassistant.helpers import storage
 
 from ..base import (
-    PROVISION_SCRIPT_TEMPLATE,
     OpenWrtClient,
     OpenWrtPackages,
     OpenWrtPermissions,
 )
+from ..provisioning import build_provision_script
 from .devices import SshDevicesMixin
 from .exceptions import (
     SshAuthError,
@@ -193,7 +193,7 @@ class SshClient(
     ) -> tuple[bool, str | None]:
         """Create a dedicated system user and configure RPC permissions via SSH."""
         # Use the harmonized provisioning script from base
-        script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
+        script = build_provision_script(username, password)
         try:
             output = await self._exec(script)
 

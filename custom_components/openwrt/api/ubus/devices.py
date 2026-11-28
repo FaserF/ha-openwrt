@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import shlex
 from typing import Any
 
 from ..base import (
@@ -535,7 +536,7 @@ class UbusDevicesMixin(UbusDevicesDiscoveryMixin):
                     with contextlib.suppress(Exception):
                         # Priority 2: file.exec (original fallback)
                         content = await self.execute_command(
-                            f"cat {leasefile} 2>/dev/null",
+                            f"cat {shlex.quote(leasefile)} 2>/dev/null",
                         )
 
                 if content:

@@ -8,10 +8,10 @@ import contextlib
 import logging
 from typing import Any
 
-from ..base import PROVISION_SCRIPT_TEMPLATE
 from ..firmware_install import (
     run_detached_firmware_install,
 )
+from ..provisioning import build_provision_script
 from .exceptions import (
     UbusError,
     UbusPermissionError,
@@ -125,7 +125,7 @@ class UbusSystemOpsMixin:
         returns a clear error message instead of silently failing.
         """
         # Use the harmonized provisioning script from base
-        script = PROVISION_SCRIPT_TEMPLATE.format(username=username, password=password)
+        script = build_provision_script(username, password)
         try:
             output = await self.execute_command(script)
 

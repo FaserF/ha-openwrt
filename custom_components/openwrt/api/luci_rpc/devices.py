@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shlex
 
 from ..base import (
     ConnectedDevice,
@@ -50,7 +51,9 @@ class LuciRpcDevicesMixin:
             lease_configs = await self.get_dnsmasq_lease_configs()
             seen_leases = set()
             for leasefile, domain in lease_configs:
-                leases_str = await self.execute_command(f"cat {leasefile} 2>/dev/null")
+                leases_str = await self.execute_command(
+                    f"cat {shlex.quote(leasefile)} 2>/dev/null"
+                )
                 if leases_str:
                     for line in leases_str.strip().split("\n"):
                         parts = line.split()
@@ -158,7 +161,7 @@ class LuciRpcDevicesMixin:
 
             for iface in ifaces:
                 assoc_str = await self.execute_command(
-                    f'ubus call iwinfo assoclist \'{{"device":"{iface}"}}\' 2>/dev/null'
+                    f"ubus call iwinfo assoclist {shlex.quote(json.dumps({'device': iface}, separators=(',', ':')))} 2>/dev/null"
                 )
                 if assoc_str and assoc_str.strip().startswith("{"):
                     try:
@@ -400,7 +403,7 @@ class LuciRpcDevicesMixin:
 
                 try:
                     fdb_str = await self.execute_command(
-                        f'ubus call network.device fdb \'{{"name":"{dev_name}"}}\' 2>/dev/null'
+                        f"ubus call network.device fdb {shlex.quote(json.dumps({'name': dev_name}, separators=(',', ':')))} 2>/dev/null"
                     )
                     if fdb_str and fdb_str.strip().startswith("["):
                         fdb = json.loads(fdb_str)
@@ -513,7 +516,7 @@ class LuciRpcDevicesMixin:
                     leases_str = await self._rpc_call(
                         "sys",
                         "exec",
-                        [f"cat {leasefile} 2>/dev/null"],
+                        [f"cat {shlex.quote(leasefile)} 2>/dev/null"],
                     )
                     if leases_str:
                         for line in leases_str.strip().split("\n"):

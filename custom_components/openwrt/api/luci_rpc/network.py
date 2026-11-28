@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shlex
 
 from ..base import (
     LldpNeighbor,
@@ -244,7 +245,7 @@ class LuciRpcNetworkMixin(LuciRpcNetworkWirelessMixin):
                             if iface.device:
                                 try:
                                     mac = await self.execute_command(
-                                        f"cat /sys/class/net/{iface.device}/address 2>/dev/null",
+                                        f"cat {shlex.quote(f'/sys/class/net/{iface.device}/address')} 2>/dev/null",
                                     )
                                     if mac and ":" in mac:
                                         iface.mac_address = mac.strip().lower()
@@ -330,11 +331,13 @@ class LuciRpcNetworkMixin(LuciRpcNetworkWirelessMixin):
         """Manage a network interface via LuCI RPC."""
         try:
             if action == "reconnect":
-                await self.execute_command(f"ifdown {name} && ifup {name}")
+                await self.execute_command(
+                    f"ifdown {shlex.quote(name)} && ifup {shlex.quote(name)}"
+                )
             elif action == "up":
-                await self.execute_command(f"ifup {name}")
+                await self.execute_command(f"ifup {shlex.quote(name)}")
             elif action == "down":
-                await self.execute_command(f"ifdown {name}")
+                await self.execute_command(f"ifdown {shlex.quote(name)}")
             return True
         except Exception:
             return False

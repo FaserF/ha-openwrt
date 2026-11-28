@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 
 from ..base import (
     DiagnosticResult,
@@ -61,7 +62,9 @@ class UbusServicesMixin(UbusServicesPackagesMixin):
             except Exception:
                 # 3. Final fallback to shell execute_command
                 try:
-                    await self.execute_command(f"/etc/init.d/{name} {action}")
+                    await self.execute_command(
+                        f"{shlex.quote(f'/etc/init.d/{name}')} {shlex.quote(action)}"
+                    )
                     self._invalidate_slow_poll()
                     return True
                 except Exception as err:
@@ -320,7 +323,7 @@ class UbusServicesMixin(UbusServicesPackagesMixin):
             val = str(int(brightness))
             # First ensure trigger is set to none
             await self.execute_command(
-                f"echo none > /sys/class/leds/{name}/trigger 2>/dev/null"
+                f"echo none > {shlex.quote(f'/sys/class/leds/{name}/trigger')} 2>/dev/null"
             )
             # Try file.write
             await self._call(
@@ -334,7 +337,7 @@ class UbusServicesMixin(UbusServicesPackagesMixin):
             try:
                 # Fallback to shell
                 await self.execute_command(
-                    f"echo {val} > /sys/class/leds/{name}/brightness"
+                    f"echo {val} > {shlex.quote(f'/sys/class/leds/{name}/brightness')}"
                 )
                 self._invalidate_slow_poll()
                 return True

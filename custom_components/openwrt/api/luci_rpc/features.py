@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 
 from ..base import (
     AccessControl,
@@ -160,7 +161,7 @@ class LuciRpcFeaturesMixin(LuciRpcFeaturesServicesMixin):
         """Enable or disable a firewall rule via UCI over LuCI RPC."""
         try:
             val = "1" if enabled else "0"
-            cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
+            cmd = f"uci set {shlex.quote(f'firewall.{section_id}.enabled={val}')} && uci commit firewall && /etc/init.d/firewall reload"
             await self.execute_command(cmd)
             self._invalidate_slow_poll()
             return True
@@ -282,7 +283,7 @@ class LuciRpcFeaturesMixin(LuciRpcFeaturesServicesMixin):
         """Enable or disable a firewall redirect via UCI over LuCI RPC."""
         try:
             val = "1" if enabled else "0"
-            cmd = f"uci set firewall.{section_id}.enabled='{val}' && uci commit firewall && /etc/init.d/firewall reload"
+            cmd = f"uci set {shlex.quote(f'firewall.{section_id}.enabled={val}')} && uci commit firewall && /etc/init.d/firewall reload"
             await self.execute_command(cmd)
             self._invalidate_slow_poll()
             return True
