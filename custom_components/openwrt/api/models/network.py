@@ -103,11 +103,14 @@ class WirelessInterface:
 
         The runtime values reported by iwinfo take precedence over the UCI
         radio options, which are kept when iwinfo does not report a mode.
+        rpcd reports "unknown" when it cannot read a mode, which is treated as
+        not reported.
         """
-        if info.get("htmode"):
-            self.htmode = str(info["htmode"])
+        htmode = info.get("htmode")
+        if htmode and htmode != "unknown":
+            self.htmode = str(htmode)
         hwmode = info.get("hwmode")
-        if hwmode:
+        if hwmode and hwmode != "unknown":
             self.hwmode = "/".join(hwmode) if isinstance(hwmode, list) else str(hwmode)
 
     def __post_init__(self) -> None:
