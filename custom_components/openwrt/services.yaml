@@ -208,7 +208,7 @@ get_system_logs:
             - "system"
             - "kernel"
     filter:
-      description: Only return lines matching this regular expression (logread -e).
+      description: Only return lines matching this case-sensitive regular expression.
       example: "hostapd"
       required: false
       selector:
@@ -232,7 +232,7 @@ add_static_lease:
         text: {}
     ip:
       description: The IPv4 address to assign.
-      example: "192.168.1.100"
+      example: "192.0.2.100"
       required: true
       selector:
         text: {}

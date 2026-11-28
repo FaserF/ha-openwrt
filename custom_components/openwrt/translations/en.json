@@ -1127,7 +1127,7 @@
         },
         "filter": {
           "name": "Filter",
-          "description": "Only return lines matching this regular expression (logread -e)."
+          "description": "Only return lines matching this case-sensitive regular expression."
         }
       }
     },

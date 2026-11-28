@@ -124,11 +124,18 @@ async def test_diagnostics_redacts_logs(hass) -> None:
 
         # A live fetch with more lines is preferred over the cached ones
         mock_client = MagicMock()
-        mock_client.get_system_logs = AsyncMock(return_value=["fresh 10.0.0.2"])
+        mock_client.get_system_logs = AsyncMock(return_value=["fresh 192.0.2.2"])
         hass.data[DOMAIN]["test_entry_id"][DATA_CLIENT] = mock_client
         diag = await async_get_config_entry_diagnostics(hass, mock_entry)
         mock_client.get_system_logs.assert_awaited_once_with(count=100)
         assert diag["system_logs"] == ["fresh [REDACTED_IP]"]
+
+        # An empty live fetch falls back to the cached lines
+        mock_client.get_system_logs = AsyncMock(return_value=[])
+        diag = await async_get_config_entry_diagnostics(hass, mock_entry)
+        assert diag["system_logs"] == [
+            "system log containing IP [REDACTED_IP] and MAC [REDACTED_MAC]"
+        ]
 
 
 @pytest.mark.asyncio
@@ -138,7 +145,7 @@ async def test_log_filter_is_shell_quoted() -> None:
     client = UbusClient(
         MagicMock(),
         MagicMock(),
-        host="192.168.1.1",
+        host="192.0.2.1",
         username="root",
         password="password",
     )
@@ -179,7 +186,7 @@ async def test_ssh_log_filter_uses_logread() -> None:
     client = SshClient(
         MagicMock(),
         MagicMock(),
-        host="192.168.1.1",
+        host="192.0.2.1",
         username="root",
         password="password",
     )

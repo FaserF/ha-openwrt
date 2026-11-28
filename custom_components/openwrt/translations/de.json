@@ -1127,7 +1127,7 @@
         },
         "filter": {
           "name": "Filter",
-          "description": "Nur Zeilen zurückgeben, die diesem regulären Ausdruck entsprechen (logread -e)."
+          "description": "Nur Zeilen zurückgeben, die diesem regulären Ausdruck entsprechen (Groß- und Kleinschreibung werden unterschieden)."
         }
       }
     },
