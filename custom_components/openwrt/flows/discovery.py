@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import logging
 import socket
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import voluptuous as vol
@@ -18,16 +19,21 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
+from homeassistant.util.network import is_private
 
 from ..const import (
     CONF_CONNECTION_TYPE,
     CONNECTION_TYPE_LUCI_RPC,
     CONNECTION_TYPE_SSH,
     CONNECTION_TYPE_UBUS,
+    DATA_COORDINATOR,
     DOCS_URL,
     DOMAIN,
 )
 from .helpers import selector
+
+if TYPE_CHECKING:
+    from ..api.models.data import OpenWrtData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +42,26 @@ CONNECTION_TYPE_MAP = {
     CONNECTION_TYPE_LUCI_RPC: "LuCI RPC",
     CONNECTION_TYPE_SSH: "SSH (not recommended)",
 }
+
+# Limit how many hosts known to configured routers are probed in one scan, so
+# the scan stays quick on large networks.
+MAX_KNOWN_HOSTS_TO_PROBE = 100
+
+# Reverse DNS lookups block a thread of Home Assistant's shared executor (64
+# threads). When DNS does not answer, 100 lookups at once filled all of them for
+# 5 s, so cap them at half the executor.
+MAX_CONCURRENT_REVERSE_DNS = 32
+
+
+def _is_private_ipv4(value: str) -> bool:
+    """Return True for LAN IPv4 addresses (skips IPv6, loopback, WAN and junk)."""
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    # ipaddress' is_private also accepts loopback, link-local and reserved
+    # ranges; HA's helper only accepts 10/8, 172.16/12 and 192.168/16
+    return address.version == 4 and is_private(address)
 
 
 class DiscoveryFlowMixin:
@@ -93,10 +119,7 @@ class DiscoveryFlowMixin:
         tasks = [self._async_probe_router(host) for host in potential_hosts]
         results = await asyncio.gather(*tasks)
 
-        existing_hosts = {
-            entry.data.get(CONF_HOST)
-            for entry in self.hass.config_entries.async_entries(DOMAIN)
-        }
+        existing_hosts = self._configured_hosts()
 
         for router_info in results:
             if router_info:
@@ -112,8 +135,31 @@ class DiscoveryFlowMixin:
 
         return await self.async_step_discovery(user_input={})
 
+    def _configured_routers_data(self) -> list[OpenWrtData]:
+        """Return the coordinator data of the configured routers that have it."""
+        domain_data = self.hass.data.get(DOMAIN, {})
+        router_data = []
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            coordinator = domain_data.get(entry.entry_id, {}).get(DATA_COORDINATOR)
+            if coordinator and coordinator.data:
+                router_data.append(coordinator.data)
+        return router_data
+
+    def _configured_hosts(self) -> set[str | None]:
+        """Return configured routers' hosts and the IPs they report as their own.
+
+        The IPs catch a router that was configured by hostname.
+        """
+        hosts = {
+            entry.data.get(CONF_HOST)
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+        }
+        for data in self._configured_routers_data():
+            hosts.update(data.local_ips)
+        return hosts
+
     async def _async_get_potential_hosts(self) -> set[str]:
-        """Gather potential router IPs from defaults and HA network adapters."""
+        """Gather potential router IPs from defaults, HA adapters and known hosts."""
         potential_hosts: set[str] = {"192.168.1.1", "192.168.0.1", "10.0.0.1"}
 
         with contextlib.suppress(Exception):
@@ -126,6 +172,34 @@ class DiscoveryFlowMixin:
                     if local_ip and (parts := local_ip.split(".")) and len(parts) == 4:
                         potential_hosts.add(".".join([*parts[:-1], "1"]))
                         potential_hosts.add(".".join([*parts[:-1], "254"]))
+
+        # Other OpenWrt devices (e.g. access points) may only be known to an
+        # already-configured router, through its DHCP leases or neighbours.
+        # all_connected_devices is included because, unlike dhcp_leases, it is
+        # not cut down to the devices picked for device tracking.
+        configured_hosts = self._configured_hosts()
+        known_hosts: list[str] = []
+        for data in self._configured_routers_data():
+            for item in (
+                *data.dhcp_leases,
+                *data.ip_neighbors,
+                *data.all_connected_devices,
+            ):
+                if (
+                    item.ip not in configured_hosts
+                    and item.ip not in potential_hosts
+                    and _is_private_ipv4(item.ip)
+                ):
+                    known_hosts.append(item.ip)
+
+        known_hosts = list(dict.fromkeys(known_hosts))
+        if len(known_hosts) > MAX_KNOWN_HOSTS_TO_PROBE:
+            _LOGGER.debug(
+                "Probing only the first %s of %s hosts known to configured routers",
+                MAX_KNOWN_HOSTS_TO_PROBE,
+                len(known_hosts),
+            )
+        potential_hosts.update(known_hosts[:MAX_KNOWN_HOSTS_TO_PROBE])
 
         return potential_hosts
 
@@ -268,7 +342,10 @@ class DiscoveryFlowMixin:
         if not effective_hostname or effective_hostname == host:
             try:
                 loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(None, socket.gethostbyaddr, host)
+                async with self._reverse_dns_limit:
+                    result = await loop.run_in_executor(
+                        None, socket.gethostbyaddr, host
+                    )
                 effective_hostname = result[0]
             except Exception:
                 effective_hostname = effective_hostname or host

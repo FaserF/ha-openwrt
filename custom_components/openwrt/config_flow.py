@@ -48,7 +48,7 @@ from .const import (
 )
 from .coordinator import create_client
 from .flows.auth import AuthFlowMixin
-from .flows.discovery import DiscoveryFlowMixin
+from .flows.discovery import MAX_CONCURRENT_REVERSE_DNS, DiscoveryFlowMixin
 from .flows.features import FeaturesFlowMixin
 from .flows.helpers import (
     MQTT_PRESENCE_REDEPLOY_KEYS,
@@ -96,6 +96,7 @@ class OpenWrtConfigFlow(
         self._generated_password: str | None = None
         self._discovered_host: str | None = None
         self._discovered_routers: list[dict[str, str]] = []
+        self._reverse_dns_limit = asyncio.Semaphore(MAX_CONCURRENT_REVERSE_DNS)
         self._ubus_restricted: bool = False
         self._diagnostic_report: str | None = None
         self._repair_username: str = "root"
