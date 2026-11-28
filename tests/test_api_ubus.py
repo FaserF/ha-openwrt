@@ -210,6 +210,29 @@ async def test_ubus_get_device_info(ubus_client: UbusClient):
 
 
 @pytest.mark.asyncio
+async def test_ubus_get_device_info_mac_shell_fallback(ubus_client: UbusClient):
+    """Without a lan interface, the MAC comes from the shell via file.exec."""
+    with (
+        patch.object(
+            ubus_client, "_call", new_callable=AsyncMock, return_value={"model": "R"}
+        ),
+        patch.object(
+            ubus_client, "get_network_interfaces", new_callable=AsyncMock
+        ) as mock_ifaces,
+        patch.object(
+            ubus_client, "execute_command", new_callable=AsyncMock
+        ) as mock_exec,
+    ):
+        mock_ifaces.return_value = []
+        mock_exec.return_value = "AA:BB:CC:DD:EE:FF\n"
+
+        info = await ubus_client.get_device_info()
+
+    assert info.mac_address == "aa:bb:cc:dd:ee:ff"
+    assert "/sys/class/net/br-lan/address" in mock_exec.await_args.args[0]
+
+
+@pytest.mark.asyncio
 async def test_ubus_get_sqm_status(ubus_client: UbusClient):
     """Test fetching SQM status via ubus."""
     ubus_client._session_id = "test_token"
