@@ -542,6 +542,87 @@ async def test_repair_failed_step(hass) -> None:
         mock_diagnostics.assert_awaited_once()
 
 
+async def test_repair_retry_installs_again(hass) -> None:
+    """The failed connection test must not stop a retry from installing again."""
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+    from custom_components.openwrt.flows.provisioning import PACKAGE_INSTALL_TIMEOUT
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    flow._data = {"host": "192.0.2.1", "connection_type": "luci_rpc"}
+    flow._diagnostic_report = "RPC endpoint returned 404"
+
+    async def failed_test(_data):
+        flow._diagnostic_report = None  # as _test_connection does
+        return "cannot_connect"
+
+    ssh = MagicMock()
+    ssh.connect = AsyncMock(return_value=True)
+    ssh.disconnect = AsyncMock()
+    ssh.execute_command = AsyncMock(return_value="/usr/bin/apk")
+    with (
+        patch(
+            "custom_components.openwrt.flows.provisioning.SshClient",
+            return_value=ssh,
+        ),
+        patch(
+            "custom_components.openwrt.flows.provisioning.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+        patch.object(flow, "_test_connection", side_effect=failed_test),
+    ):
+        result = await flow.async_step_run_repair()
+        assert result["step_id"] == "repair_failed"
+        result = await flow.async_step_repair_failed({"run_repair": True})
+
+    assert result["step_id"] == "repair_failed"
+    installs = [
+        c
+        for c in ssh.execute_command.await_args_list
+        if c.args[0] == "apk update && apk add luci-mod-rpc"
+    ]
+    assert len(installs) == 2
+    assert installs[1].kwargs == {"timeout": PACKAGE_INSTALL_TIMEOUT}
+
+
+async def test_run_repair_lets_abort_through(hass) -> None:
+    """An already configured router aborts the flow instead of failing the repair."""
+    from custom_components.openwrt.config_flow import OpenWrtConfigFlow
+
+    class AbortFlow(Exception):  # stands in for HA's, which tests mock
+        pass
+
+    flow = OpenWrtConfigFlow()
+    flow.hass = hass
+    flow._data = {"host": "192.0.2.1", "connection_type": "luci_rpc"}
+
+    ssh = MagicMock()
+    ssh.connect = AsyncMock(return_value=True)
+    ssh.disconnect = AsyncMock()
+    ssh.execute_command = AsyncMock(return_value="")
+    with (
+        patch(
+            "custom_components.openwrt.flows.provisioning.SshClient",
+            return_value=ssh,
+        ),
+        patch(
+            "custom_components.openwrt.flows.provisioning.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+        patch.object(
+            flow, "_test_connection", new_callable=AsyncMock, return_value=None
+        ),
+        patch.object(
+            flow,
+            "_async_set_unique_id_and_check",
+            new_callable=AsyncMock,
+            side_effect=AbortFlow("already_configured"),
+        ),
+        pytest.raises(AbortFlow),
+    ):
+        await flow.async_step_run_repair()
+
+
 async def test_ssdp_discovery(hass) -> None:
     """Test successful SSDP discovery and duplicate host abort."""
     from custom_components.openwrt.config_flow import OpenWrtConfigFlow
