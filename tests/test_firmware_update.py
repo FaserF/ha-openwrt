@@ -1,7 +1,7 @@
 """Tests for firmware update backup failure and URL resolution."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
@@ -18,6 +18,7 @@ from custom_components.openwrt.api.firmware_install import (
     FIRMWARE_JOB_RUNNING,
     FIRMWARE_JOB_STARTED,
     FIRMWARE_JOB_TOO_LATE,
+    FirmwareInstallError,
 )
 from custom_components.openwrt.coordinator import OpenWrtData, OpenWrtDataCoordinator
 from custom_components.openwrt.update import OpenWrtUpdateEntity
@@ -377,6 +378,7 @@ async def test_custom_build_install_passes_checksum_without_force(
     entity = OpenWrtUpdateEntity(coordinator, entry)
     entity.hass = hass
     await entity.async_install(version=None, backup=False)
+    coordinator.async_set_rebooting.assert_called_once_with(ANY)
 
     coordinator.client.install_firmware.assert_awaited_once_with(
         "https://example.com/fw-sysupgrade.bin",
@@ -590,6 +592,7 @@ async def test_asu_install_passes_image_sha256(hass: HomeAssistant) -> None:
         )
         await entity.async_install(version=None, backup=False)
 
+    entity.coordinator.async_set_rebooting.assert_called_once_with(ANY)
     entity.coordinator.client.install_firmware.assert_awaited_once_with(
         url, keep_settings=True, force=False, sha256=SHA
     )
@@ -703,6 +706,13 @@ async def test_stock_install_passes_checksum(hass: HomeAssistant) -> None:
     data.asu_status = "unsupported"
     entity = _install_entity(hass, data)
     entity.coordinator.async_get_non_default_packages = AsyncMock(return_value=[])
+    hass.loop.time = MagicMock(return_value=100.0)
+
+    async def install(*_args, **_kwargs) -> None:
+        # Download and sysupgrade take a while; the router may be back already
+        hass.loop.time.return_value = 400.0
+
+    entity.coordinator.client.install_firmware.side_effect = install
 
     await entity.async_install(version=None, backup=False)
 
@@ -712,6 +722,29 @@ async def test_stock_install_passes_checksum(hass: HomeAssistant) -> None:
         force=False,
         sha256=SHA,
     )
+    # The reboot is counted from before the install, not from its return
+    entity.coordinator.async_set_rebooting.assert_called_once_with(100.0)
+
+
+@pytest.mark.asyncio
+async def test_failed_install_does_not_enter_reboot_state(hass: HomeAssistant) -> None:
+    """An install that did not start sysupgrade leaves polling as it was."""
+    data = OpenWrtData()
+    data.firmware_install_url = "https://downloads.example.com/fw-sysupgrade.bin"
+    data.firmware_checksum = SHA
+    data.asu_status = "unsupported"
+    entity = _install_entity(hass, data)
+    entity.coordinator.async_get_non_default_packages = AsyncMock(return_value=[])
+    entity.coordinator.in_reboot_installation = False
+    entity.coordinator.client.install_firmware.side_effect = FirmwareInstallError(
+        "download failed"
+    )
+
+    with pytest.raises(HomeAssistantError, match="download failed"):
+        await entity.async_install(version=None, backup=False)
+
+    entity.coordinator.async_set_rebooting.assert_not_called()
+    assert entity.coordinator.in_reboot_installation is False
 
 
 # --- Detached install (ubus, LuCI RPC, SSH) ---

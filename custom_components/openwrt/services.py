@@ -48,11 +48,23 @@ def register_services(hass: HomeAssistant) -> None:
     async def _handle_reboot(call: ServiceCall) -> None:
         """Handle reboot service call."""
         entry_id = call.data.get("entry_id")
-        for eid, data in hass.data[DOMAIN].items():
-            if entry_id and eid != entry_id:
+        failed: list[str] = []
+        for eid, data in list(hass.data[DOMAIN].items()):
+            # hass.data[DOMAIN] also holds shared stores, not only entries
+            if (entry_id and eid != entry_id) or not (
+                isinstance(data, dict) and DATA_COORDINATOR in data
+            ):
                 continue
-            client = data[DATA_CLIENT]
-            await client.reboot()
+            coordinator = data[DATA_COORDINATOR]
+            try:
+                await coordinator.async_reboot()
+            except Exception as err:
+                # Still reboot the other routers, then report every failure
+                _LOGGER.warning("Rebooting %s failed: %s", coordinator.name, err)
+                failed.append(f"{coordinator.name}: {err}")
+        if failed:
+            msg = f"Reboot failed for {'; '.join(failed)}"
+            raise HomeAssistantError(msg)
 
     async def _handle_exec(call: ServiceCall) -> None:
         """Handle execute command service call."""

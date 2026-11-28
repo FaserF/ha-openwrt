@@ -1,6 +1,6 @@
 """Test the OpenWrt button platform."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -11,7 +11,11 @@ from custom_components.openwrt.api.base import (
     OpenWrtPackages,
     OpenWrtPermissions,
 )
-from custom_components.openwrt.button import async_setup_entry
+from custom_components.openwrt.button import (
+    BUTTONS,
+    OpenWrtButtonEntity,
+    async_setup_entry,
+)
 from custom_components.openwrt.const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN
 
 
@@ -101,3 +105,20 @@ async def test_kick_button_default_disabled(hass) -> None:
 
     assert len(kick_buttons) == 1
     assert kick_buttons[0].entity_registry_enabled_default is False
+
+
+@pytest.mark.asyncio
+async def test_reboot_button_goes_through_coordinator() -> None:
+    """The Reboot button reboots via the coordinator, which tracks the reboot."""
+    coordinator = MagicMock()
+    coordinator.async_request_refresh = AsyncMock()
+    client = MagicMock()
+    client.coordinator.async_reboot = AsyncMock()
+    description = next(b for b in BUTTONS if b.key == "reboot")
+    entry = MagicMock()
+    entry.unique_id = "router"
+
+    await OpenWrtButtonEntity(coordinator, entry, description, client).async_press()
+
+    client.coordinator.async_reboot.assert_awaited_once()
+    client.reboot.assert_not_called()

@@ -64,7 +64,7 @@ BUTTONS: tuple[OpenWrtButtonDescription, ...] = (
         translation_key="reboot",
         device_class=ButtonDeviceClass.RESTART,
         entity_category=EntityCategory.CONFIG,
-        press_fn=lambda client: client.reboot(),
+        press_fn=lambda client: client.coordinator.async_reboot(),
     ),
     OpenWrtButtonDescription(
         key="wps_start",
