@@ -13,7 +13,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_MQTT_PRESENCE, CONF_SSH_KEY, DATA_COORDINATOR, DOMAIN
+from .const import (
+    CONF_MQTT_PRESENCE,
+    CONF_SSH_KEY,
+    DATA_CLIENT,
+    DATA_COORDINATOR,
+    DOMAIN,
+)
 from .coordinator import OpenWrtDataCoordinator
 
 REDACT_KEYS = {
@@ -39,8 +45,24 @@ REDACT_KEYS = {
 }
 
 
-def redact_log_line(line: str) -> str:
-    """Redact IPs, MACs, credentials, tokens, emails, and private domains."""
+def _known_hostnames(data: Any) -> re.Pattern[str] | None:
+    """Match the DHCP lease and client hostnames the integration knows of."""
+    names = {
+        name
+        for name in (
+            *(lease.hostname for lease in data.dhcp_leases),
+            *(device.hostname for device in data.all_connected_devices),
+        )
+        if name and name != "*"
+    }
+    if not names:
+        return None
+    words = "|".join(map(re.escape, sorted(names, key=len, reverse=True)))
+    return re.compile(rf"(?<![\w-])(?:{words})(?![\w-])", re.IGNORECASE)
+
+
+def redact_log_line(line: str, hostnames: re.Pattern[str] | None = None) -> str:
+    """Redact IPs, MACs, credentials, tokens, emails, domains and known hostnames."""
     line = re.sub(r"(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}", "[REDACTED_MAC]", line)
     line = re.sub(
         r"\b(?:[a-zA-Z][a-zA-Z0-9+.-]*://)[^:@/\s]+:[^@/\s]+@",
@@ -78,6 +100,9 @@ def redact_log_line(line: str) -> str:
         "[REDACTED_IP]",
         line,
     )
+    # Last, so a short hostname cannot split a MAC or IP before those are redacted
+    if hostnames:
+        line = hostnames.sub("[REDACTED_HOST]", line)
     return line
 
 
@@ -249,11 +274,18 @@ async def async_get_config_entry_diagnostics(
                 for p in data.system_resources.top_processes[:5]
             ]
 
+            # Fetch more lines than the coordinator polls, to help bug reports
+            client = hass.data[DOMAIN][entry.entry_id].get(DATA_CLIENT)
+            system_logs = (
+                await client.get_system_logs(count=100) if client else []
+            ) or getattr(data, "system_logs", [])
+            hostnames = _known_hostnames(data)
             diag["system_logs"] = [
-                redact_log_line(line) for line in getattr(data, "system_logs", [])
+                redact_log_line(line, hostnames) for line in system_logs
             ]
             diag["dmesg_logs"] = [
-                redact_log_line(line) for line in getattr(data, "dmesg_logs", [])
+                redact_log_line(line, hostnames)
+                for line in getattr(data, "dmesg_logs", [])
             ]
 
             if entry.options.get(CONF_MQTT_PRESENCE, False):

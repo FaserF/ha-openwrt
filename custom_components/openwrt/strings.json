@@ -1111,6 +1111,64 @@
           "description": "Optional OpenWrt router config entry."
         }
       }
+    },
+    "get_system_logs": {
+      "name": "Get System Logs",
+      "description": "Returns recent system or kernel log lines from the OpenWrt router.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The OpenWrt router."
+        },
+        "count": {
+          "name": "Count",
+          "description": "Number of log lines to return."
+        },
+        "log_type": {
+          "name": "Log Type",
+          "description": "The log to read (system for logread, kernel for dmesg)."
+        },
+        "filter": {
+          "name": "Filter",
+          "description": "Only return lines matching this case-sensitive regular expression."
+        }
+      }
+    },
+    "add_static_lease": {
+      "name": "Add Static Lease",
+      "description": "Adds a static DHCP lease, replacing any existing lease for the same MAC address.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The OpenWrt router."
+        },
+        "mac": {
+          "name": "MAC Address",
+          "description": "The MAC address of the device."
+        },
+        "ip": {
+          "name": "IP Address",
+          "description": "The IPv4 address to assign."
+        },
+        "name": {
+          "name": "Hostname",
+          "description": "Optional hostname for the lease."
+        }
+      }
+    },
+    "delete_static_lease": {
+      "name": "Delete Static Lease",
+      "description": "Deletes the static DHCP lease for a MAC address.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "The OpenWrt router."
+        },
+        "mac": {
+          "name": "MAC Address",
+          "description": "The MAC address of the device."
+        }
+      }
     }
   }
 }

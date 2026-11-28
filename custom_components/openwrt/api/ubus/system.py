@@ -489,12 +489,14 @@ class UbusSystemMixin(UbusSystemOpsMixin):
             if len(resources.top_processes) >= 10:
                 break
 
-    async def get_system_logs(self, count: int = 10) -> list[str]:
+    async def get_system_logs(
+        self, count: int = 10, log_filter: str | None = None
+    ) -> list[str]:
         """Get recent system log entries via execute_command (logread)."""
         try:
             # Directly use execute_command (file.exec) with logread
             # Calling direct ubus log.read via JSON-RPC causes uhttpd spam on certain devices
-            cmd = await self._get_logread_command(count)
+            cmd = await self._get_logread_command(count, log_filter)
             output = await self.execute_command(cmd)
             if output:
                 return [line.strip() for line in output.splitlines() if line.strip()]

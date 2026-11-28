@@ -13,7 +13,7 @@ from homeassistant.core import (
     ServiceResponse,
     SupportsResponse,
 )
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -526,6 +526,7 @@ uci commit dhcp
         entry_id = call.data["entry_id"]
         count = call.data.get("count", 50)
         log_type = call.data.get("log_type", "system")
+        log_filter = call.data.get("filter")
 
         if entry_id not in hass.data[DOMAIN]:
             msg = f"Config entry {entry_id} not found"
@@ -533,11 +534,16 @@ uci commit dhcp
 
         client = hass.data[DOMAIN][entry_id][DATA_CLIENT]
         try:
+            if log_filter and not await client.is_valid_log_filter(log_filter):
+                msg = f"Invalid filter regular expression: {log_filter}"
+                raise ServiceValidationError(msg)
             if log_type == "kernel":
-                logs = await client.get_dmesg_logs(count=count)
+                logs = await client.get_dmesg_logs(count=count, log_filter=log_filter)
             else:
-                logs = await client.get_system_logs(count=count)
+                logs = await client.get_system_logs(count=count, log_filter=log_filter)
             return {"logs": logs}
+        except ServiceValidationError:
+            raise
         except Exception as err:
             msg = f"Failed to retrieve logs: {err}"
             raise HomeAssistantError(msg) from err
@@ -553,6 +559,7 @@ uci commit dhcp
                     vol.Coerce(int), vol.Range(min=1, max=1000)
                 ),
                 vol.Optional("log_type"): vol.In(["system", "kernel"]),
+                vol.Optional("filter"): cv.string,
             },
         ),
         supports_response=SupportsResponse.ONLY,
