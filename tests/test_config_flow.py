@@ -278,7 +278,7 @@ def _mock_configured_router(hass, data):
     from custom_components.openwrt.const import DATA_COORDINATOR, DOMAIN
 
     entry = MagicMock()
-    entry.data = {CONF_HOST: "192.168.1.1"}
+    entry.data = {CONF_HOST: "192.168.1.2"}
     entry.entry_id = "main_router"
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         DATA_COORDINATOR: MagicMock(data=data),
@@ -287,7 +287,7 @@ def _mock_configured_router(hass, data):
 
 
 async def test_discovery_probes_hosts_known_to_configured_routers(hass) -> None:
-    """Test the scan probes neighbours and DHCP leases of configured routers."""
+    """Test the scan probes only LAN hosts known to configured routers."""
     from custom_components.openwrt.api.base import OpenWrtData
     from custom_components.openwrt.api.models.network import (
         DhcpLease,
@@ -301,7 +301,6 @@ async def test_discovery_probes_hosts_known_to_configured_routers(hass) -> None:
         dhcp_leases=[DhcpLease(hostname="ap-office", ip="172.16.0.1")],
         ip_neighbors=[
             IpNeighbor(ip="192.168.1.2"),
-            IpNeighbor(ip="192.168.1.1"),
             IpNeighbor(ip="fe80::1"),
             IpNeighbor(ip="8.8.8.8"),
             IpNeighbor(ip="127.0.0.1"),
@@ -329,9 +328,10 @@ async def test_discovery_probes_hosts_known_to_configured_routers(hass) -> None:
     ):
         result = await flow.async_step_user({"flow_type": "discovery"})
 
-    # The default gateways plus the private IPv4 hosts the router knows about
+    # The default gateways plus the leased host; the configured router itself,
+    # IPv6, public, loopback, link-local and empty addresses are skipped
     assert sorted(probed) == sorted(
-        ["192.168.1.1", "192.168.0.1", "10.0.0.1", "192.168.1.2", "172.16.0.1"]
+        ["192.168.1.1", "192.168.0.1", "10.0.0.1", "172.16.0.1"]
     )
     assert result["step_id"] == "confirm_discovery"
     assert flow._discovered_routers[0]["host"] == "172.16.0.1"
