@@ -190,6 +190,7 @@ class UbusNetworkWirelessMixin:
                                 radio_config.get("band", "")
                                 or radio_config.get("hwmode", "")
                             ),
+                            htmode=radio_config.get("htmode", ""),
                             hwmode=radio_config.get("hwmode", ""),
                             txpower=_valid_txpower(radio_config.get("txpower")),
                             section=sect_name,
@@ -339,13 +340,7 @@ class UbusNetworkWirelessMixin:
                     if iwinfo.get("txpower_offset") is not None:
                         wifi.txpower_offset = iwinfo["txpower_offset"]
 
-                    if "hwmode" in iwinfo and not wifi.hwmode:
-                        if isinstance(iwinfo["hwmode"], list):
-                            wifi.hwmode = "/".join(iwinfo["hwmode"])
-                        else:
-                            wifi.hwmode = str(iwinfo["hwmode"])
-                    if "htmode" in iwinfo and not wifi.htmode:
-                        wifi.htmode = str(iwinfo["htmode"])
+                    wifi.apply_iwinfo_modes(iwinfo)
 
                 # Association list
                 candidate_names = [wifi.name]

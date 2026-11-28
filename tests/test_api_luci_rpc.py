@@ -116,6 +116,7 @@ async def test_disabled_radio_remains_discoverable_from_uci(
 config wifi-device 'radio0'
 \toption type 'mac80211'
 \toption band '2g'
+\toption htmode 'HE40'
 \toption disabled '1'
 
 config wifi-iface 'default_radio0'
@@ -144,6 +145,50 @@ config wifi-iface 'default_radio0'
     assert interfaces[0].radio_enabled is False
     assert interfaces[0].enabled is False
     assert interfaces[0].band == "2.4 GHz"
+    assert interfaces[0].htmode == "HE40"
+
+
+@pytest.mark.asyncio
+async def test_luci_wireless_htmode_and_hwmode(luci_client: LuciRpcClient) -> None:
+    """Read HT and hardware mode from iwinfo, falling back to the UCI radio."""
+    luci_client.packages.wireless = True
+
+    async def execute(command: str) -> str:
+        if "network.wireless status" in command:
+            return (
+                '{"radio0":{"up":true,"config":{"band":"2g","htmode":"HE40"},'
+                '"interfaces":[{"section":"main","ifname":"phy0-ap0",'
+                '"config":{"ssid":"Main"}}]},'
+                '"radio1":{"up":true,"config":{"band":"5g","htmode":"HE80"},'
+                '"interfaces":[{"section":"main5","ifname":"phy1-ap0",'
+                '"config":{"ssid":"Main"}}]}}'
+            )
+        if "iwinfo devices" in command:
+            return '{"devices":["phy0-ap0","phy1-ap0"]}'
+        if "iwinfo info" in command and "phy0-ap0" in command:
+            return (
+                '{"ssid":"Main","bssid":"00:11:22:33:44:55","channel":1,'
+                '"hwmodes":["b","g","n","ax"],"hwmodes_text":"802.11b/g/n/ax",'
+                '"hwmode":"ax","htmode":"HE20"}'
+            )
+        if "iwinfo info" in command and "phy1-ap0" in command:
+            return '{"ssid":"Main","bssid":"00:11:22:33:44:66","channel":36}'
+        return ""
+
+    with patch.object(
+        luci_client,
+        "execute_command",
+        new_callable=AsyncMock,
+        side_effect=execute,
+    ):
+        interfaces = await luci_client.get_wireless_interfaces()
+
+    wifi2g = next(wifi for wifi in interfaces if wifi.section == "main")
+    assert wifi2g.htmode == "HE20"
+    assert wifi2g.hwmode == "ax"
+    wifi5g = next(wifi for wifi in interfaces if wifi.section == "main5")
+    assert wifi5g.htmode == "HE80"
+    assert wifi5g.hwmode == ""
 
 
 @pytest.mark.asyncio

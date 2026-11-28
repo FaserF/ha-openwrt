@@ -94,6 +94,7 @@ config wifi-device 'radio0'
 
 config wifi-device 'radio1'
 \toption band '5g'
+\toption htmode 'HE80'
 \toption disabled 'true'
 
 config wifi-iface 'main'
@@ -124,9 +125,40 @@ config wifi-iface 'guest'
     assert active.interface_enabled is True
     assert disabled.radio == "radio1"
     assert disabled.band == "5 GHz"
+    assert disabled.htmode == "HE80"
     assert disabled.radio_enabled is False
     assert disabled.interface_enabled is True
     assert disabled.enabled is False
+
+
+@pytest.mark.asyncio
+async def test_ssh_wireless_htmode_and_hwmode_from_iwinfo(
+    ssh_client: SshClient,
+) -> None:
+    """Prefer the runtime iwinfo modes over the UCI radio options."""
+    ssh_client.packages.wireless = True
+
+    def exec_side_effect(command: str) -> str:
+        if "network.wireless status" in command:
+            return (
+                '{"radio0":{"up":true,"config":{"band":"2g","htmode":"HE40"},'
+                '"interfaces":[{"section":"main","ifname":"wlan0",'
+                '"config":{"ssid":"Main"}}]}}'
+            )
+        if "iwinfo info" in command:
+            return '{"ssid":"Main","hwmode":"ax","htmode":"HE20"}'
+        return ""
+
+    with patch.object(
+        ssh_client,
+        "_exec",
+        new_callable=AsyncMock,
+        side_effect=exec_side_effect,
+    ):
+        interfaces = await ssh_client.get_wireless_interfaces()
+
+    assert interfaces[0].htmode == "HE20"
+    assert interfaces[0].hwmode == "ax"
 
 
 @pytest.mark.asyncio

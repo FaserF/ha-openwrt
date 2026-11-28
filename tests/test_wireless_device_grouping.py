@@ -369,6 +369,23 @@ def test_wireless_interface_band_population():
     assert WirelessInterface(hwmode="11ac").band == "5 GHz"
 
 
+def test_wireless_interface_apply_iwinfo_modes():
+    """Prefer iwinfo modes, but keep UCI values when iwinfo has none."""
+    from custom_components.openwrt.api.base import WirelessInterface
+
+    wifi = WirelessInterface(htmode="HE40", hwmode="11g")
+    wifi.apply_iwinfo_modes({"htmode": "HE20", "hwmode": "ax"})
+    assert (wifi.htmode, wifi.hwmode) == ("HE20", "ax")
+
+    wifi = WirelessInterface(htmode="HE40", hwmode="11g")
+    wifi.apply_iwinfo_modes({"htmode": "unknown", "hwmode": "unknown"})
+    assert (wifi.htmode, wifi.hwmode) == ("HE40", "11g")
+
+    wifi = WirelessInterface(htmode="HE40")
+    wifi.apply_iwinfo_modes({"hwmodes": ["b", "g", "n", "ax"]})
+    assert (wifi.htmode, wifi.hwmode) == ("HE40", "")
+
+
 @pytest.mark.asyncio
 async def test_coordinator_orphan_cleanup_ghost_sections(hass):
     """Verify that coordinator cleans up ghost devices with section-based identifiers."""

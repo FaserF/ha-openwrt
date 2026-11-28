@@ -65,6 +65,7 @@ class LuciRpcNetworkWirelessMixin:
                                 up=radio_data.get("up", False),
                                 radio=radio_name,
                                 radio_enabled=not radio_data.get("disabled", False),
+                                htmode=radio_data.get("config", {}).get("htmode", ""),
                                 hwmode=radio_data.get("config", {}).get("hwmode", ""),
                                 section=section,
                                 ifname=ifname,
@@ -157,6 +158,7 @@ class LuciRpcNetworkWirelessMixin:
                             up=configured_enabled,
                             radio=radio_name,
                             radio_enabled=not radio_disabled,
+                            htmode=radio_config.get("htmode", ""),
                             hwmode=radio_config.get("hwmode", ""),
                             section=sect_name,
                             ifname=sect_data.get("ifname", ""),
@@ -227,6 +229,7 @@ class LuciRpcNetworkWirelessMixin:
                         wifi.txpower = info["txpower"]
                     if info.get("txpower_offset") is not None:
                         wifi.txpower_offset = info["txpower_offset"]
+                    wifi.apply_iwinfo_modes(info)
 
                     # Association list for client count
                     assoc_str = await self.execute_command(
