@@ -292,6 +292,9 @@ class UpdateFailed(MockException):
 sys.modules["homeassistant.exceptions"].ConfigEntryAuthFailed = MockException
 sys.modules["homeassistant.exceptions"].ConfigEntryNotReady = MockException
 sys.modules["homeassistant.exceptions"].HomeAssistantError = MockException
+sys.modules["homeassistant.exceptions"].ServiceValidationError = type(
+    "ServiceValidationError", (MockException,), {}
+)
 sys.modules["homeassistant.helpers.update_coordinator"].UpdateFailed = UpdateFailed
 
 

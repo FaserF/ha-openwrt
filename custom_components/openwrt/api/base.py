@@ -409,6 +409,14 @@ class OpenWrtClient(
         """Get recent system log entries."""
         return []
 
+    async def is_valid_log_filter(self, log_filter: str) -> bool:
+        """Check a log filter with the router's grep, which exits 2 on a bad regex."""
+        # BusyBox grep compiles the pattern only once it reads a line, so feed it one
+        out = await self.execute_command(
+            f"echo | grep -e {shlex.quote(log_filter)} >/dev/null 2>&1; echo $?"
+        )
+        return out.strip() != "2"
+
     async def get_dmesg_logs(
         self, count: int = 100, log_filter: str | None = None
     ) -> list[str]:

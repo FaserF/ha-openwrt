@@ -4,9 +4,14 @@ import shlex
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.openwrt import _register_services
-from custom_components.openwrt.api.base import OpenWrtData
+from custom_components.openwrt.api.base import (
+    ConnectedDevice,
+    DhcpLease,
+    OpenWrtData,
+)
 from custom_components.openwrt.api.ssh import SshClient
 from custom_components.openwrt.api.ubus import UbusClient
 from custom_components.openwrt.const import DATA_CLIENT, DATA_COORDINATOR, DOMAIN
@@ -19,6 +24,7 @@ async def test_get_system_logs_service(hass) -> None:
     mock_client = MagicMock()
     mock_client.get_system_logs = AsyncMock(return_value=["syslog line 1"])
     mock_client.get_dmesg_logs = AsyncMock(return_value=["dmesg line 1"])
+    mock_client.is_valid_log_filter = AsyncMock(return_value=True)
 
     hass.data = {
         DOMAIN: {
@@ -67,6 +73,15 @@ async def test_get_system_logs_service(hass) -> None:
         mock_client.get_system_logs.assert_called_once_with(
             count=50, log_filter="hostapd"
         )
+        mock_client.is_valid_log_filter.assert_awaited_once_with("hostapd")
+
+        # An invalid filter is an error, not an empty or unfiltered result
+        mock_client.get_system_logs.reset_mock()
+        mock_client.is_valid_log_filter.return_value = False
+        call_data.data = {"entry_id": "test_entry_id", "filter": "hostapd["}
+        with pytest.raises(ServiceValidationError, match="Invalid filter"):
+            await log_handler(call_data)
+        mock_client.get_system_logs.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -137,6 +152,21 @@ async def test_diagnostics_redacts_logs(hass) -> None:
             "system log containing IP [REDACTED_IP] and MAC [REDACTED_MAC]"
         ]
 
+        # Known lease and client hostnames are redacted as whole words, after MACs
+        data.dhcp_leases = [DhcpLease(hostname="My-Laptop"), DhcpLease(hostname="*")]
+        data.all_connected_devices = [ConnectedDevice(hostname="aa")]
+        mock_client.get_system_logs = AsyncMock(
+            return_value=[
+                "DHCPACK(br-lan) aa:bb:cc:dd:ee:ff my-laptop",
+                "my-laptop-2 aa * kept",
+            ]
+        )
+        diag = await async_get_config_entry_diagnostics(hass, mock_entry)
+        assert diag["system_logs"] == [
+            "DHCPACK(br-lan) [REDACTED_MAC] [REDACTED_HOST]",
+            "my-laptop-2 [REDACTED_HOST] * kept",
+        ]
+
 
 @pytest.mark.asyncio
 async def test_log_filter_is_shell_quoted() -> None:
@@ -157,6 +187,8 @@ async def test_log_filter_is_shell_quoted() -> None:
         cmd = mock_exec.call_args[0][0]
         assert shlex.split(cmd) == [
             "/sbin/logread",
+            "|",
+            "grep",
             "-e",
             pattern,
             "|",
@@ -179,6 +211,17 @@ async def test_log_filter_is_shell_quoted() -> None:
             "5",
         ]
 
+        await client.is_valid_log_filter(pattern)
+        cmd = mock_exec.call_args[0][0]
+        assert shlex.split(cmd)[:5] == ["echo", "|", "grep", "-e", pattern]
+
+    # grep exits 2 only for a bad regex; 1 (no match) and 0 are valid
+    for out, valid in (("2", False), ("2\n", False), ("1", True), ("0", True)):
+        with patch.object(
+            client, "execute_command", new_callable=AsyncMock, return_value=out
+        ):
+            assert await client.is_valid_log_filter("x") is valid
+
 
 @pytest.mark.asyncio
 async def test_ssh_log_filter_uses_logread() -> None:
@@ -197,4 +240,4 @@ async def test_ssh_log_filter_uses_logread() -> None:
         logs = await client.get_system_logs(count=5, log_filter="hostapd")
 
     assert logs == ["hostapd: up"]
-    mock_exec.assert_called_once_with("/sbin/logread -e hostapd | tail -n 5")
+    mock_exec.assert_called_once_with("/sbin/logread | grep -e hostapd | tail -n 5")

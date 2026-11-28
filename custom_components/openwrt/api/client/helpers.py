@@ -58,8 +58,9 @@ class OpenWrtClientHelpersMixin:
     ) -> str:
         """Resolve the correct logread command (detecting -n vs -l)."""
         if log_filter:
-            # Filter the whole buffer first, then keep the last `count` matches
-            return f"/sbin/logread -e {shlex.quote(log_filter)} | tail -n {int(count or 10)}"
+            # Filter the whole buffer first, then keep the last `count` matches.
+            # grep rather than logread -e, which ignores an invalid regex silently.
+            return f"/sbin/logread | grep -e {shlex.quote(log_filter)} | tail -n {int(count or 10)}"
 
         if self._logread_flag is None:
             # Default to -n as it's the legacy/standard OpenWrt behavior

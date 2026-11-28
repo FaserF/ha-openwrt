@@ -54,7 +54,7 @@ Returns recent log lines from the router as a service response.
 
 - **`count`**: (Optional) Number of lines to return, 1 to 1000 (default: `50`).
 - **`log_type`**: (Optional) `system` (logread, default) or `kernel` (dmesg).
-- **`filter`**: (Optional) Only return lines matching this regular expression (case-sensitive), e.g. `hostapd` or a lowercase MAC address. Uses `logread -e` (or `grep` for kernel logs), and `count` applies to the matching lines.
+- **`filter`**: (Optional) Only return lines matching this regular expression (case-sensitive), e.g. `hostapd` or a lowercase MAC address. The router matches it with `grep` (a basic regular expression), `count` applies to the matching lines, and an invalid expression makes the action fail with an error.
 
 ## `openwrt.add_static_lease`
 
