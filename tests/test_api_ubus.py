@@ -345,26 +345,31 @@ async def test_ubus_check_permissions_root(ubus_client: UbusClient):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("ubus_acl", "allowed"),
+    ("acls", "allowed"),
     [
-        ({"file": ["exec"], "hostapd.*": ["*"]}, True),
-        ({"file": ["*"]}, True),
-        ({"*": ["*"]}, True),
-        ({"hostapd.*": ["*"]}, False),
-        ({"sys": ["exec"]}, False),
+        ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh": ["exec"]}}, True),
+        ({"ubus": {"file": ["*"]}, "file": {"/bin/*": ["read", "exec"]}}, True),
+        ({"ubus": {"*": ["*"]}, "file": {"*": ["*"]}}, True),
+        ({"ubus": {"file": ["exec"]}}, False),
+        ({"ubus": {"file": ["exec"]}, "file": {"/bin/sh": ["read"]}}, False),
+        ({"ubus": {"file": ["exec"]}, "file": {"/usr/bin/id": ["exec"]}}, False),
+        ({"ubus": {"hostapd.*": ["*"]}, "file": {"/bin/sh": ["exec"]}}, False),
+        ({"ubus": {"sys": ["exec"]}, "file": {"/bin/sh": ["exec"]}}, False),
     ],
 )
-async def test_ubus_session_acl_write_devices(
-    ubus_client: UbusClient, ubus_acl: dict[str, list[str]], allowed: bool
+async def test_ubus_session_acl_shell_permissions(
+    ubus_client: UbusClient, acls: dict[str, dict[str, list[str]]], allowed: bool
 ):
-    """Wake on LAN and kicking clients need file.exec, not LuCI RPC's sys.exec."""
+    """Shell features need ubus file.exec plus an exec grant on /bin/sh."""
     ubus_client._session_id = "test_token"
     with patch.object(ubus_client, "_call", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = {"acls": {"ubus": ubus_acl}}
+        mock_call.return_value = {"acls": acls}
 
         perms = await ubus_client.check_permissions()
 
     assert perms.write_devices is allowed
+    assert perms.write_mqtt is allowed
+    assert perms.read_batman is allowed
 
 
 @pytest.mark.asyncio
